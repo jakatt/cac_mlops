@@ -152,7 +152,7 @@ docker compose ps
 | --- | --- | --- |
 | MLflow UI | <http://localhost:5000> | — |
 | MinIO console | <http://localhost:9001> | minioadmin / minioadmin |
-| API FastAPI | <http://localhost:8000/docs> | — |
+| API FastAPI | <http://localhost:8080/docs> | — |
 
 ```bash
 # Arrêter
@@ -165,7 +165,7 @@ docker compose down -v
 ### Tester l'API manuellement
 
 ```bash
-curl -s -X POST http://localhost:8000/predict \
+curl -s -X POST http://localhost:8080/predict \
   -H "Content-Type: application/json" \
   -d @src/models/test_features.json | python3 -m json.tool
 ```
