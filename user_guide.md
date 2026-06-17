@@ -8,7 +8,7 @@ Stack : FastAPI · MLflow · DVC · scikit-learn · Docker Compose · Scaleway O
 ## Pré-requis (Mac)
 
 | Outil | Version min | Vérification |
-|---|---|---|
+| --- | --- | --- |
 | Python | 3.11+ | `python3 --version` |
 | Git | — | `git --version` |
 | Docker Desktop | — | `docker info` |
@@ -22,8 +22,8 @@ Stack : FastAPI · MLflow · DVC · scikit-learn · Docker Compose · Scaleway O
 git clone git@github.com:<org>/cac_mlops.git
 cd cac_mlops
 
-# 2. Aller sur la branche de développement active
-git checkout jacques
+# 2. Aller sur ta branche de développement
+git checkout noel   # ou jacques selon qui tu es
 
 # 3. Créer et activer le venv
 python3 -m venv my_env
@@ -66,8 +66,8 @@ ls data/raw/2021/
 # → carcteristiques-2021.csv  lieux-2021.csv  usagers-2021.csv  vehicules-2021.csv
 ```
 
-> **Note** : le serveur Scaleway doit être démarré pour `dvc push/pull`
-> (Object Storage est facturé au Go stocké, pas à l'heure — il est toujours disponible).
+> **Note** : l'Object Storage Scaleway est facturé au Go stocké, pas à l'heure —
+> `dvc pull` fonctionne même quand l'instance serveur est éteinte.
 
 ---
 
@@ -85,7 +85,9 @@ python -m src.data.import_raw_data --year 2023
 python -m src.data.import_raw_data --year 2024
 ```
 
-Les fichiers arrivent dans `data/raw/{year}/`. Les noms de fichiers ONISR **changent chaque année** (typo, abréviation, casse différente) — c'est géré automatiquement par le dictionnaire `FILENAMES` dans `src/data/import_raw_data.py`.
+Les fichiers arrivent dans `data/raw/{year}/`. Les noms de fichiers ONISR **changent chaque année**
+(typo, abréviation, casse différente) — c'est géré automatiquement par le dictionnaire `FILENAMES`
+dans `src/data/import_raw_data.py`.
 
 ### Étape 2 — Valider le schéma
 
@@ -114,7 +116,9 @@ Sortie dans `data/preprocessed/cumul_2021_2022_2023/` :
 python -m src.models.train_model
 ```
 
-Le run est tracké dans MLflow (`http://localhost:5000`). Le modèle est enregistré dans le **Model Registry** sous `rf_accidents/Staging` si les KPI passent :
+Le run est tracké dans MLflow (`http://localhost:5000`). Le modèle est enregistré dans le
+**Model Registry** sous `rf_accidents/Staging` si les KPI passent :
+
 - F1 ≥ 0.68 · AUC ≥ 0.75 · Recall ≥ 0.65
 
 ---
@@ -145,10 +149,10 @@ docker compose ps
 ```
 
 | Service | URL | Credentials |
-|---|---|---|
-| MLflow UI | http://localhost:5000 | — |
-| MinIO console | http://localhost:9001 | minioadmin / minioadmin |
-| API FastAPI | http://localhost:8000/docs | — |
+| --- | --- | --- |
+| MLflow UI | <http://localhost:5000> | — |
+| MinIO console | <http://localhost:9001> | minioadmin / minioadmin |
+| API FastAPI | <http://localhost:8000/docs> | — |
 
 ```bash
 # Arrêter
@@ -170,7 +174,8 @@ curl -s -X POST http://localhost:8000/predict \
 
 ## 6. Serveur Scaleway (production)
 
-Le serveur est un **DEV1-L** (`scw-jovial-dubinsky`). Il est **arrêté par défaut** pour économiser — démarre-le uniquement quand tu en as besoin.
+Le serveur est un **DEV1-L** (`scw-jovial-dubinsky`). Il est **arrêté par défaut** pour
+économiser — démarre-le uniquement quand tu en as besoin.
 
 ### Connexion SSH
 
@@ -181,10 +186,9 @@ ssh root@<IP_SERVEUR>
 
 ### Démarrer / arrêter le serveur
 
-Depuis la console Scaleway (console.scaleway.com) ou :
+Depuis la console Scaleway (<https://console.scaleway.com>) ou avec le CLI :
 
 ```bash
-# Si tu as le CLI scw installé
 scw instance server start <SERVER_ID>
 scw instance server stop <SERVER_ID>
 ```
@@ -218,7 +222,7 @@ dvc pull
 
 ## 7. Structure du projet
 
-```
+```text
 cac_mlops/
 ├── src/
 │   ├── data/
@@ -246,32 +250,83 @@ cac_mlops/
 
 ---
 
-## 8. Règles de collaboration Git
+## 8. Workflow Git
 
-- **`main`** : branche stable, pas de commit direct
-- **`jacques`** : branche de développement active — travaille dessus ou crée une branche à partir de là
-- Les fichiers `.dvc/*.dvc` **doivent être commis** (ce sont des pointeurs, pas des données)
+```text
+  jacques ──┐
+             ├──► PR ──► main ──► deploy automatique Scaleway
+  noel    ──┘
+```
+
+### Règles
+
+| Branche | Qui | Usage |
+| --- | --- | --- |
+| `jacques` | Jacques | développement personnel |
+| `noel` | Noël | développement personnel |
+| `main` | — | versions stables uniquement — **pas de commit direct** |
+
+- Les fichiers `*.dvc` **doivent être commis** dans Git (pointeurs, pas données)
 - `.dvc/config.local` ne doit **jamais** être commis
 
+### Workflow quotidien (ta branche)
+
 ```bash
-# Workflow typique
-git checkout jacques
-git pull origin jacques
+git checkout noel
+git pull origin noel        # récupère les dernières modifs de ta branche
+
 # ... travail ...
-git add src/...  data/raw/2023.dvc   # stage le code ET les pointeurs DVC
+
+git add src/...
+git add data/raw/2023.dvc   # si tu as ajouté des données à DVC
 git commit -m "feat: ..."
-dvc push                              # pousse les nouvelles données sur Scaleway
-git push origin jacques
+dvc push                    # pousse les données sur Scaleway
+git push origin noel
+```
+
+### Publier une version sur main (PR)
+
+```bash
+# 1. Sur GitHub : ouvre une Pull Request   noel → main  (ou jacques → main)
+#    Les tests CI tournent automatiquement — la PR ne peut merger que si ✅
+
+# 2. Merge la PR sur GitHub (bouton "Merge pull request")
+
+# 3. Le workflow deploy.yml se déclenche automatiquement sur le serveur :
+#    git pull → dvc pull → docker compose up → healthcheck API
+```
+
+### Récupérer le travail de l'autre
+
+```bash
+# Si Jacques a mergé des choses sur main que tu veux intégrer dans noel
+git checkout noel
+git fetch origin
+git merge origin/main       # ou git rebase origin/main
 ```
 
 ---
 
-## 9. Variables d'environnement
+## 9. Secrets GitHub à configurer (une seule fois)
 
-Pas de fichier `.env` obligatoire en local — les valeurs par défaut du `docker-compose.yml` suffisent. Pour surcharger :
+Pour que le déploiement automatique fonctionne, ajoute ces secrets dans
+**GitHub → Settings → Secrets and variables → Actions** :
+
+| Secret | Valeur |
+| --- | --- |
+| `SCALEWAY_HOST` | IP publique du serveur Scaleway |
+| `SCALEWAY_USER` | `root` (ou `deploy`) |
+| `SCALEWAY_SSH_KEY` | Clé SSH privée (contenu de `~/.ssh/id_ed25519`) |
+| `DEPLOY_DIR` | Chemin du projet sur le serveur (ex: `/home/deploy/cac_mlops`) |
+
+---
+
+## 10. Variables d'environnement
+
+Pas de fichier `.env` obligatoire en local — les valeurs par défaut du `docker-compose.yml` suffisent.
+Pour surcharger, crée un fichier `.env` à la racine :
 
 ```bash
-# .env (optionnel, créer à la racine)
 POSTGRES_USER=mlops
 POSTGRES_PASSWORD=mlops
 POSTGRES_DB=mlops
@@ -282,12 +337,12 @@ MLFLOW_TRACKING_URI=http://localhost:5000
 
 ---
 
-## 10. Dépannage rapide
+## 11. Dépannage rapide
 
 | Symptôme | Cause probable | Solution |
-|---|---|---|
-| `dvc pull` échoue avec 403 | Credentials manquants ou incorrects | Vérifier `.dvc/config.local` |
+| --- | --- | --- |
+| `dvc pull` échoue avec 403 | Credentials manquants | Vérifier `.dvc/config.local` |
 | `pytest` ImportError sur `services.api` | Package non installé | `pip install -e .` |
-| `docker compose up` — mlflow crashe | MinIO pas encore prêt | Attendre 30 s puis `docker compose restart mlflow` |
+| `docker compose up` — mlflow crashe | MinIO pas encore prêt | `docker compose restart mlflow` après 30 s |
 | API renvoie 503 | Modèle non chargé (MLflow vide) | Entraîner le modèle ou placer un `.joblib` dans `src/models/` |
-| `carcteristiques-2021.csv` introuvable | Mauvais dossier ou DVC non pull | `dvc pull` ou vérifier `data/raw/2021/` |
+| `carcteristiques-2021.csv` introuvable | DVC non pull ou mauvais dossier | `dvc pull` puis vérifier `data/raw/2021/` |
