@@ -80,7 +80,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       LOCAL_MODEL_PATH:    src/models/trained_model.joblib   # fallback si MLflow vide
     ports:
-      - "8000:8000"   # API → http://localhost:8000/docs
+      - "8080:8000"   # API → http://localhost:8080/docs (8000 réservé au rag-api)
     volumes:
       - ./src:/app/src:ro                    # pour le fallback local joblib
     healthcheck:
