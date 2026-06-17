@@ -47,12 +47,13 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
-    command: >
+    entrypoint: >
+      /bin/sh -c "pip install --quiet psycopg2-binary boto3 &&
       mlflow server
       --backend-store-uri postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}
       --default-artifact-root s3://mlflow/
       --host 0.0.0.0
-      --port 5000
+      --port 5000"
     ports:
       - "5000:5000"   # UI → http://localhost:5000
     healthcheck:
