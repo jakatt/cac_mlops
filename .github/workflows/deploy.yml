@@ -1,0 +1,39 @@
+name: Deploy — main → Scaleway
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy sur le serveur Scaleway
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key: ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            echo "==> Pull du code"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "==> Pull des données DVC"
+            dvc pull --run-cache || true
+
+            echo "==> Rebuild et redémarrage des services"
+            docker compose pull
+            docker compose up -d --build --remove-orphans
+
+            echo "==> Healthcheck"
+            sleep 15
+            curl -sf http://localhost:8000/health || (docker compose logs api && exit 1)
+
+            echo "==> Deploy OK"
