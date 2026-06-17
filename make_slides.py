@@ -101,7 +101,7 @@ def build_slide1(prs):
     # ── Header ────────────────────────────────────────────────────────────────
     title_box(slide,
               "Flow Annuel — Mise à Jour des Données ONISR",
-              "Déclenché chaque juin · Publication officielle ONISR sur data.gouv.fr")
+              "Entraînement : 2021 → 2022 → 2023   ·   Production simulée : données 2024 via simulate_production.py")
 
     # ── Layout constants ───────────────────────────────────────────────────────
     LX  = 0.18   # left column x
@@ -116,14 +116,14 @@ def build_slide1(prs):
 
     steps = [
         ("1", "DÉCLENCHEUR",       "Prefect flow planifié\n(annuel) ou manuel",                       DGREY,  ORANGE),
-        ("2", "INGESTION",         "Téléchargement data.gouv.fr\n4 fichiers CSV · ~340 000 lignes",   DGREY,  CYAN),
+        ("2", "INGESTION",         "data.gouv.fr API · FILENAMES mapping/année\n4 fichiers CSV · ~340 000 lignes",   DGREY,  CYAN),
         ("3", "VALIDATION SCHÉMA", "Pandera · 3 niveaux\nFormat · Colonnes · Qualité",                DGREY,  AMBER),
         ("4", "PREPROCESSING",     "Fusion 4 tables · Feature engineering\n~55 000 lignes × 28 feat", DGREY,  CYAN),
         ("5", "VERSIONING DATA",   "DVC tag data-v{N}\nPush → Scaleway Object Storage",               DGREY,  PURPLE),
         ("6", "ENTRAÎNEMENT",      "RandomForest sur cumul 2021→N\nMLflow run #{N} · params + metrics",DGREY, CYAN),
         ("7", "VALIDATION MODÈLE", "F1 ≥ 0.68 · AUC ≥ 0.75 · Recall ≥ 0.65\nvs modèle en production",DGREY, AMBER),
         ("8", "DÉPLOIEMENT",       "MLflow Registry → Production\nAPI rechargée · rolling update K8s", DGREY, GREEN),
-        ("9", "MONITORING",        "Prometheus · Evidently · Grafana\nDrift détecté → retrain auto",   DGREY, CYAN),
+        ("9", "MONITORING",        "Prometheus · Evidently · Grafana\nEvidently : ref=2021-23 · prod=2024 · retrain auto",   DGREY, CYAN),
     ]
 
     for i, (num, title, desc, bg, accent) in enumerate(steps):
@@ -164,6 +164,12 @@ def build_slide1(prs):
     box(slide, RX, y3 + 0.92, RW, 0.30, RGBColor(0x0A, 0x2E, 0x14),
         text="✅  OK → Pipeline continue",
         font_size=9, color=GREEN)
+
+    # ── Annotation monitoring (étape 9) ─────────────────────────────────────
+    y9 = Y0 + 8 * (BH + GAP)  # y de l'étape 9
+    box(slide, RX, y9, RW, 0.52, RGBColor(0x0A, 0x25, 0x35),
+        text="données 2024 →\nsimulate_production.py → Evidently\nref:2021-23  prod:2024",
+        font_size=8, color=CYAN, bold=False)
 
     # séparateur vertical  avant annotations
     line = slide.shapes.add_shape(1, Inches(RX - 0.08), Inches(y3 - 0.05),
@@ -287,7 +293,7 @@ def build_slide2(prs):
         text="Prometheus\nMétriques API + pipeline\nLatence · Volume · Erreurs",
         font_size=9, color=LGREY)
     box(slide, PX+5.55, y5, 3.80, 0.80, DGREY,
-        text="Evidently\nDétection drift features\nréférence vs production",
+        text="Evidently\nref: X_train 2021-2023\nprod: données 2024 (simulate_prod.py)",
         font_size=9, color=LGREY)
     box(slide, PX+9.50, y5, 3.85, 0.80, DGREY,
         text="Grafana\nDashboards · Alertes\nDrift CRITICAL → retrain auto",

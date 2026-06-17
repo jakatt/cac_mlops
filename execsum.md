@@ -2,7 +2,25 @@
 
 ## En deux phrases
 
-Système MLOps complet de prédiction de gravité d'accidents routiers, entraîné sur les données officielles ONISR (data.gouv.fr). Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données : ingestion → validation → preprocessing → entraînement → déploiement → monitoring, avec versioning intégral à chaque étape (DVC pour les données, Git pour le code, MLflow pour les modèles).
+Système MLOps complet de prédiction de gravité d'accidents routiers, entraîné sur les données officielles ONISR 2021-2023 (data.gouv.fr). Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise les données 2024 comme flux de production réel pour alimenter le monitoring drift Evidently (via `scripts/simulate_production.py`).
+
+## Statut d'implémentation
+
+```text
+PHASE 1 ✅ IMPLÉMENTÉE (branche jacques)
+  import_raw_data.py    FILENAMES mapping par année · API data.gouv.fr · --year
+  schema.py             Schémas Pandera 4 fichiers ONISR
+  schema_validator.py   3 niveaux CRITICAL / WARNING / OK
+  make_dataset.py       Paramétré --year/--cumul · suppression prompts interactifs
+  train_model.py        MLflow tracking · gate KPI · Model Registry
+  FastAPI               POST /predict · GET /health · GET /metrics
+  docker-compose.yml    PostgreSQL + MinIO + MLflow + API
+  Tests                 25/25 passent (unit : pipeline + validation + API)
+
+PHASE 2 ⏳ À VENIR   MLflow complet · DVC remote · microservices Docker
+PHASE 3 ⏳ À VENIR   Prefect · CI GitHub Actions · NGINX · Kubernetes
+PHASE 4 ⏳ À VENIR   Prometheus · Grafana · Evidently · simulate_production.py
+```
 
 ---
 
@@ -84,11 +102,20 @@ Système MLOps complet de prédiction de gravité d'accidents routiers, entraîn
   │  ÉTAPE 7 — MONITORING CONTINU                                      │
   │                                                                     │
   │  Prometheus  →  latence API, volume, erreurs                       │
-  │  Evidently   →  détection drift features (batch journalier)        │
+  │  Evidently   →  drift : X_train (2021-2023) vs requêtes prod       │
   │  Grafana     →  dashboards + alertes                               │
+  │                                                                     │
+  │  Source production : données 2024 rejouées via                     │
+  │  scripts/simulate_production.py (~4 600 req/mois × 12)             │
   │                                                                     │
   │  Si drift CRITICAL ──► retrain_flow déclenché automatiquement      │
   └─────────────────────────────────────────────────────────────────────┘
+
+  ╔═════════════════════════════════════════════════════════════════════╗
+  ║  DONNÉES 2024  →  simulation production (pas d'entraînement)       ║
+  ║  Nommage ONISR 2024 : Caract_2024.csv / Lieux_2024.csv            ║
+  ║  (convention change chaque année — géré par FILENAMES mapping)     ║
+  ╚═════════════════════════════════════════════════════════════════════╝
 
   TRAÇABILITÉ COMPLÈTE À CHAQUE EXÉCUTION
   ─────────────────────────────────────────
@@ -149,7 +176,8 @@ Système MLOps complet de prédiction de gravité d'accidents routiers, entraîn
   │  MONITORING                                                             │
   │                                                                         │
   │  Prometheus ──► collecte métriques API + pipeline                      │
-  │  Evidently  ──► détection drift (features prod vs référence train)     │
+  │  Evidently  ──► drift : X_train 2021-2023 vs données 2024 prod        │
+  │                 simulate_production.py → POST /predict → logs DB       │
   │  Grafana    ──► dashboards performances + drift + alertes              │
   │                                                                         │
   │  Drift CRITICAL ──► Prefect retrain_flow ──► nouveau modèle            │
@@ -189,14 +217,18 @@ Système MLOps complet de prédiction de gravité d'accidents routiers, entraîn
 
 ## Conseils pour la mise en PowerPoint
 
-**Slide 1 — Flow annuel**
+### Slide 1 — Flow annuel
+
 - Fond sombre (navy/dark), flèches oranges (couleur Liora)
-- 7 boîtes verticales numérotées, reliées par des flèches
+- 9 boîtes verticales numérotées, reliées par des flèches
 - Mettre en évidence les 3 branches de la validation schéma (❌/⚠️/✅) avec 3 couleurs
 - Encadré en bas "Traçabilité : Git · DVC · MLflow" en bannière horizontale
+- Annotation à droite à l'étape 9 : "données 2024 → simulate_production.py → Evidently"
 
-**Slide 2 — Architecture**
+### Slide 2 — Architecture
+
 - Diviser en 5 bandes horizontales : Source → Données → Entraînement → Serving → Monitoring
 - Bande du bas : Local vs Scaleway en 2 colonnes côte à côte
 - Logos des outils à côté de leur nom (Docker, MLflow, Prefect, NGINX, Evidently, Grafana)
 - Flèches de gauche à droite pour le flux de données, de haut en bas pour le cycle de vie
+- Dans la couche Monitoring : préciser "Evidently : ref=X_train 2021-23 · prod=données 2024"
