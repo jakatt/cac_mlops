@@ -74,3 +74,26 @@ class TestPredictEndpoint:
             payload = json.load(f)
         resp = client.post("/predict", json=payload)
         assert resp.status_code == 200, resp.text
+
+    def test_wrong_type_returns_422(self, client):
+        """Champ numérique remplacé par une chaîne → 422."""
+        payload = VALID_PAYLOAD.copy()
+        payload["vma"] = "rapide"
+        resp = client.post("/predict", json=payload)
+        assert resp.status_code == 422
+
+    def test_extra_field_ignored(self, client):
+        """Champ inconnu dans le payload → ignoré, pas d'erreur."""
+        payload = {**VALID_PAYLOAD, "champ_inconnu": 999}
+        resp = client.post("/predict", json=payload)
+        assert resp.status_code == 200
+
+    def test_model_version_in_response(self, client):
+        """model_version doit être une chaîne non vide."""
+        resp = client.post("/predict", json=VALID_PAYLOAD)
+        version = resp.json()["model_version"]
+        assert isinstance(version, str) and len(version) > 0
+
+    def test_metrics_endpoint_returns_200(self, client):
+        resp = client.get("/metrics")
+        assert resp.status_code == 200

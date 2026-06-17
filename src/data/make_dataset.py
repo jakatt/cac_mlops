@@ -96,7 +96,8 @@ def _engineer(
     )
 
     # ── target variable ────────────────────────────────────────────────────────
-    fusion["grav"] = fusion["grav"].replace([2, 3, 4], [0, 1, 1])
+    # grav=1 (indemne) → 0 ; grav=2 (blessé léger recode) → 0 ; 3/4 → 1 (grave)
+    fusion["grav"] = fusion["grav"].replace([1, 2, 3, 4], [0, 0, 1, 1])
 
     # ── NaN handling ──────────────────────────────────────────────────────────
     cols_minus1_to_nan = ["trajet", "secu1", "catv", "obsm", "motor", "circ", "surf", "situ", "vma", "atm", "col"]

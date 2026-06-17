@@ -133,3 +133,40 @@ class TestLevel3:
         _validate_level3(2021, dfs, report)
         warns = [m for m in report.messages if "grav_values" in m.check]
         assert len(warns) == 1
+
+
+# ── ValidationReport ──────────────────────────────────────────────────────────
+
+class TestValidationReport:
+    def test_overall_level_ok_when_no_messages(self):
+        report = ValidationReport(year=2021)
+        assert report.overall_level == "OK"
+
+    def test_overall_level_critical_after_critical_message(self, tmp_2021):
+        report = ValidationReport(year=2021)
+        _validate_level1(2021, tmp_2021 / "nonexistent", report)
+        assert report.overall_level == "CRITICAL"
+
+    def test_summary_contains_year(self):
+        report = ValidationReport(year=2022)
+        assert "2022" in report.summary()
+
+
+# ── Level 2 ───────────────────────────────────────────────────────────────────
+
+class TestLevel2:
+    def test_missing_required_column_raises_critical(self, tmp_2021):
+        """Supprimer une colonne requise de caracteristiques → CRITICAL level 2."""
+        from src.data.schema_validator import _validate_level2
+
+        caract_path = tmp_2021 / FILENAMES[2021]["caracteristiques"]
+        df = pd.read_csv(caract_path, sep=";")
+        df = df.drop(columns=["dep"])
+        df.to_csv(caract_path, sep=";", index=False)
+
+        report = ValidationReport(year=2021)
+        _validate_level1(2021, tmp_2021, report)
+        _validate_level2(2021, tmp_2021, report)
+
+        criticals = [m for m in report.messages if m.level == "CRITICAL"]
+        assert len(criticals) >= 1

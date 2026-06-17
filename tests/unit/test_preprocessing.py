@@ -130,3 +130,47 @@ class TestEngineer:
         forbidden = {"Num_Acc", "id_vehicule", "num_veh", "an_nais", "hrmn", "an"}
         overlap = forbidden & set(df.columns)
         assert not overlap, f"ID/raw columns leaked: {overlap}"
+
+    def test_grav_indemne_maps_to_zero(self):
+        """grav=1 (indemne) doit être recodé en 0 (non grave)."""
+        dfs = list(_minimal_dfs())
+        dfs[0] = dfs[0].copy()
+        dfs[0]["grav"] = [1, 1, 1]  # tous indemnes
+        df = _engineer(*dfs)
+        assert list(df["grav"].unique()) == [0]
+
+    def test_nb_victim_aggregated_per_accident(self):
+        """Deux usagers sur le même accident → nb_victim=2."""
+        dfs = list(_minimal_dfs())
+        users = dfs[0].copy()
+        # Doublon sur le premier accident
+        extra = users.iloc[[0]].copy()
+        extra["place"] = 2
+        users = pd.concat([users, extra], ignore_index=True)
+        dfs[0] = users
+        df = _engineer(*dfs)
+        # L'accident 202100001 doit avoir nb_victim=2
+        row = df[df.index == 0] if "Num_Acc" not in df.columns else df
+        assert df["nb_victim"].max() >= 2
+
+    def test_midnight_hrmn_gives_hour_zero(self):
+        """hrmn='0000' doit donner hour=0."""
+        dfs = list(_minimal_dfs())
+        dfs[1] = dfs[1].copy()
+        dfs[1].loc[0, "hrmn"] = "0000"
+        df = _engineer(*dfs)
+        assert 0 in df["hour"].values
+
+    def test_corse_2b_normalized(self):
+        """Département '2B' (Corse-du-Sud) → 202."""
+        dfs = list(_minimal_dfs())
+        dfs[1] = dfs[1].copy()
+        dfs[1].loc[0, "dep"] = "2B"
+        df = _engineer(*dfs)
+        assert 202 in df["dep"].values
+
+    def test_year_acc_derived_from_an(self):
+        """year_acc doit correspondre à la colonne 'an' de caracteristiques."""
+        df = _engineer(*_minimal_dfs())
+        assert "year_acc" in df.columns
+        assert (df["year_acc"] == 2021).all()
