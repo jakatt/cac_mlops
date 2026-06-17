@@ -7,18 +7,28 @@ Système MLOps complet de prédiction de gravité d'accidents routiers, entraîn
 ## Statut d'implémentation
 
 ```text
-PHASE 1 ✅ IMPLÉMENTÉE (branche jacques)
+PHASE 1 ✅ MERGÉE DANS MAIN
   import_raw_data.py    FILENAMES mapping par année · API data.gouv.fr · --year
   schema.py             Schémas Pandera 4 fichiers ONISR
   schema_validator.py   3 niveaux CRITICAL / WARNING / OK
   make_dataset.py       Paramétré --year/--cumul · suppression prompts interactifs
   train_model.py        MLflow tracking · gate KPI · Model Registry
-  FastAPI               POST /predict · GET /health · GET /metrics
-  docker-compose.yml    PostgreSQL + MinIO + MLflow + API
+  FastAPI               POST /predict · GET /health · GET /metrics (port 8080)
+  docker-compose.yml    PostgreSQL + MinIO + MLflow (custom image) + API
   Tests                 25/25 passent (unit : pipeline + validation + API)
 
-PHASE 2 ⏳ À VENIR   MLflow complet · DVC remote · microservices Docker
-PHASE 3 ⏳ À VENIR   Prefect · CI GitHub Actions · NGINX · Kubernetes
+INFRA ✅ OPÉRATIONNELLE (main → Scaleway)
+  DVC remote            Scaleway Object Storage (s3://cac-mlops-data/dvc)
+  Données versionnées   data/raw/2021/ → bucket Scaleway
+  CI GitHub Actions     ci.yml : lint + pytest sur push jacques/noel et PR→main
+  CD GitHub Actions     deploy.yml : SSH deploy automatique sur merge dans main
+                        → git pull · dvc pull · docker compose down && up · healthcheck
+  Serveur Scaleway      scw-jovial-dubinsky DEV1-L · /home/deploy/cac_mlops
+                        4 containers healthy : PostgreSQL · MinIO · MLflow · API
+  Workflow Git          jacques / noel → PR → main → deploy automatique
+
+PHASE 2 ⏳ À VENIR   MLflow Model Registry complet · données 2022+2023 · validate_model.py
+PHASE 3 ⏳ À VENIR   Prefect orchestration · NGINX · Kubernetes
 PHASE 4 ⏳ À VENIR   Prometheus · Grafana · Evidently · simulate_production.py
 ```
 
