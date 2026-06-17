@@ -20,6 +20,7 @@ jobs:
           key: ${{ secrets.SCALEWAY_SSH_KEY }}
           script: |
             set -e
+            export PATH=$PATH:/home/deploy/.local/bin
             cd ${{ secrets.DEPLOY_DIR }}
 
             echo "==> Pull du code"
@@ -33,8 +34,19 @@ jobs:
             docker compose pull
             docker compose up -d --build --remove-orphans
 
-            echo "==> Healthcheck"
-            sleep 15
-            curl -sf http://localhost:8000/health || (docker compose logs api && exit 1)
+            echo "==> Healthcheck (attente max 90s)"
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "API OK après $((i*5))s"
+                break
+              fi
+              if [ $i -eq 18 ]; then
+                echo "Timeout — logs API :"
+                docker compose logs --tail=50 api
+                exit 1
+              fi
+              echo "  attente... ($((i*5))s)"
+              sleep 5
+            done
 
             echo "==> Deploy OK"
