@@ -94,7 +94,7 @@ MÉTRIQUES PIPELINE
 │  → Déployer sans interruption de service                           │
 │  → Surveiller le comportement du modèle en production              │
 │                                                                     │
-│  Quand l'ONISR publiera les données 2024 (juin 2027),              │
+│  Quand l'ONISR publiera les données 2025 (juin 2026),              │
 │  une seule commande doit suffire pour mettre à jour le système.    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -120,9 +120,10 @@ URL          : https://www.data.gouv.fr/fr/datasets/
 Fréquence de publication : ANNUELLE
   → Les données de l'année N sont publiées en mai-juin de l'année N+1
   → Ex. données 2023 publiées en juin 2024 ← déjà disponibles
-  → Ex. données 2024 seront publiées vers juin 2025
+  → Ex. données 2024 publiées en mai 2025   ← déjà disponibles ✅
+  → Ex. données 2025 seront publiées vers juin 2026
 
-Disponibilité historique : 2005 → 2023 (19 années)
+Disponibilité historique : 2005 → 2024 (20 années)
 ```
 
 ### Pourquoi pas le proxy DataScientest ?
@@ -137,7 +138,7 @@ Disponibilité historique : 2005 → 2023 (19 années)
   ❌ Ne prouve rien sur l'année N+1    ✅ Prouve que le système est opérationnel
 ```
 
-### Périmètre retenu : 2021 → 2022 → 2023
+### Périmètre retenu : 2021 → 2022 → 2023 (entraînement) + 2024 (production)
 
 ```text
 POURQUOI PAS DEPUIS 2005 ?
@@ -146,7 +147,7 @@ Les données ONISR ont connu une refonte majeure de schéma en 2019 :
   • Avant 2019  : séparateur virgule, encodage Latin-1, colonne "secu" unique,
                   nommage différent de dizaines de colonnes
   • 2019-2020   : nouveau schéma, quelques différences résiduelles
-  • 2021-2023   : schéma STABLE et IDENTIQUE ← notre périmètre
+  • 2021-2023   : schéma STABLE et IDENTIQUE ← périmètre d'entraînement
 
 Ajouter 2005-2020 nécessiterait 3-4 semaines de travail de normalisation
 qui ne sont pas dans le budget temps du projet.
@@ -157,10 +158,34 @@ POURQUOI 2021 → 2022 → 2023 (dans cet ordre) ?
 Charger les années une par une valide la chaîne complète 3 fois :
   Itération 1 : 2021 seul  → modèle v1, DVC v1, MLflow run #1
   Itération 2 : +2022      → modèle v2, DVC v2, MLflow run #2
-  Itération 3 : +2023      → modèle v3, DVC v3, MLflow run #3
+  Itération 3 : +2023      → modèle v3, DVC v3, MLflow run #3 ← modèle en PRODUCTION
 
-Quand l'ONISR publiera 2024, on répètera exactement l'itération 4.
-Le pipeline n'aura pas à changer d'une ligne.
+2024 : DONNÉES DE PRODUCTION (pas d'entraînement)
+──────────────────────────────────────────────────
+Les données 2024 sont disponibles dès maintenant (publiées mai 2025).
+Elles servent à simuler un flux de production réel pour Evidently :
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │  RÔLE DE CHAQUE ANNÉE                                               │
+  │                                                                     │
+  │  2021        →  entraînement (baseline)     → modèle v1            │
+  │  2021+2022   →  entraînement (enrichi)      → modèle v2            │
+  │  2021+2023   →  entraînement (final)        → modèle v3 = PROD     │
+  │                                                                     │
+  │  2024        →  simulation production        ← NOUVEAU              │
+  │               Rejoué mois par mois via POST /predict               │
+  │               Le modèle v3 n'a JAMAIS vu ces données               │
+  │               Evidently compare distribution 2021-2023 vs 2024     │
+  │               → drift RÉEL, pas simulé                             │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  Script : scripts/simulate_production.py
+  Stratégie : ~55 000 accidents 2024 envoyés en 12 batches mensuels
+  (~4 600 requêtes/mois → loggés PostgreSQL → analysés par Evidently)
+
+Quand l'ONISR publiera 2025 (juin 2026), on répètera l'itération 4
+(entraînement sur 2021-2025) et 2026 deviendra les nouvelles données
+de production. Le pipeline ne changera pas d'une ligne.
 ```
 
 ### Volume des données
@@ -197,6 +222,59 @@ FICHIERS PAR ANNÉE (format 2021-2023)
   ─────────────────────────────
   ~55 450 lignes × 28 features + 1 cible (par année)
   Cumul 3 années : ~166 000 lignes (train + test)
+```
+
+### Mapping des noms de fichiers par année (CRITIQUE)
+
+L'ONISR change la convention de nommage des fichiers à chaque période.
+`import_raw_data.py` doit utiliser le mapping ci-dessous — un nom hardcodé
+ou un pattern générique `caracteristiques-{year}.csv` cassera dès 2022.
+
+```python
+# src/data/import_raw_data.py
+
+FILENAMES = {
+    2021: {
+        "caracteristiques": "carcteristiques-2021.csv",   # faute de frappe ONISR
+        "lieux":            "lieux-2021.csv",
+        "usagers":          "usagers-2021.csv",
+        "vehicules":        "vehicules-2021.csv",
+    },
+    2022: {
+        "caracteristiques": "carcteristiques-2022.csv",   # même faute reconduite
+        "lieux":            "lieux-2022.csv",
+        "usagers":          "usagers-2022.csv",
+        "vehicules":        "vehicules-2022.csv",
+    },
+    2023: {
+        "caracteristiques": "caract-2023.csv",            # abrégé (faute corrigée)
+        "lieux":            "lieux-2023.csv",
+        "usagers":          "usagers-2023.csv",
+        "vehicules":        "vehicules-2023.csv",
+    },
+    2024: {
+        "caracteristiques": "Caract_2024.csv",            # majuscule + underscore
+        "lieux":            "Lieux_2024.csv",
+        "usagers":          "Usagers_2024.csv",
+        "vehicules":        "Vehicules_2024.csv",
+    },
+}
+```
+
+```text
+ÉVOLUTION DES CONVENTIONS DE NOMMAGE ONISR
+────────────────────────────────────────────────────────────────────────
+  Année   Fichier caract.              Changement notable
+  ──────  ───────────────────────────  ──────────────────────────────────
+  2021    carcteristiques-2021.csv     faute de frappe ("carcteristiques")
+  2022    carcteristiques-2022.csv     même faute reconduite
+  2023    caract-2023.csv              abrégé, faute corrigée
+  2024    Caract_2024.csv              1ère lettre majuscule + underscore
+
+→ Le Niveau 1 de la validation schéma vérifie que le fichier attendu
+  est téléchargeable via le mapping FILENAMES avant même de l'ouvrir.
+  Si un nom change pour l'année N+1, la validation lève une CRITICAL
+  avec le message exact du nom attendu vs nom trouvé.
 ```
 
 ---
@@ -533,13 +611,24 @@ Année 2023
   Niveau 3 : ✅
   → Pipeline continue, WARNING loggé → modèle v3
 
-Année 2024 (hypothèse : ONISR renomme secu1 → equipement_secu)
-  Niveau 1 : ✅
+Année 2024 (données de production — non intégrées à l'entraînement)
+  Usage : simulation production via scripts/simulate_production.py
+  Niveau 1 : ⚠️  NAMING CHANGE RÉEL (testé en live)
+               Attendu : carcteristiques-2024.csv (pattern 2021-2023)
+               Trouvé  : Caract_2024.csv (majuscule + underscore)
+               → Géré par FILENAMES mapping dans import_raw_data.py
+               → Sans ce mapping : FileNotFoundError immédiat
+  Niveau 2 : À vérifier — schéma colonnes potentiellement stable
+  Niveau 3 : À vérifier — distributions 2024 vs 2021-2023 (drift attendu)
+
+  Scénario hypothétique sur données d'entraînement futures (2025+) :
+  (ONISR renomme secu1 → equipement_secu)
+  Niveau 1 : ✅ (si mapping FILENAMES mis à jour)
   Niveau 2 : ❌  CRITICAL — colonne requise 'secu1' absente
   → Pipeline stoppé
-  → Alerte : "SchemaError year=2024 : missing required column 'secu1'"
+  → Alerte : "SchemaError year=2025 : missing required column 'secu1'"
   → Modèle 2023 reste actif en production
-  → Équipe met à jour Schema2024 → relance le flow → tout repart
+  → Équipe met à jour Schema2025 → relance le flow → tout repart
 ```
 
 ### Stratégie d'alerte par phase
@@ -595,9 +684,14 @@ C'est le cœur de la valeur MLOps du projet. Chaque ajout d'année est tracé de
 │                                                                             │
 │       ↓              ↓                        ↓                             │
 │                                                                             │
-│   commit       tag: data-v4           run: rf_2021_2024                     │
-│   "feat:       data/raw/2021-2024/    → si meilleur : Production           │
-│    add 2024"   ...                    → si dégradé  : alerte, pas déployé  │
+│   commit       tag: prod-2024         (pas de run entraînement)             │
+│   "data:       data/production/2024/  2024 = données de production         │
+│    add 2024    Caract_2024.csv        rejoué via simulate_production.py     │
+│    prod data"  Lieux_2024.csv        Evidently compare vs X_train 2021-23  │
+│                Usagers_2024.csv      → drift réel mesuré sur 12 mois       │
+│                Vehicules_2024.csv                                            │
+│                                                                             │
+│  (Quand 2025 sera disponible en juin 2026 → data-v4, run rf_2021_2025)    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1094,16 +1188,43 @@ Les accidents routiers évoluent dans le temps :
   → changements de comportement post-COVID
   → nouvelles zones urbaines, nouvelles routes
 
-Si le modèle entraîné sur 2021-2023 est encore en production
-en 2027, ses prédictions peuvent se dégrader silencieusement
-sans que les métriques de service (latence, erreurs HTTP) l'indiquent.
+Si le modèle entraîné sur 2021-2023 est déployé en production,
+ses prédictions peuvent se dégrader silencieusement sans que les
+métriques de service (latence, erreurs HTTP) l'indiquent.
+
+STRATÉGIE : 2024 COMME DONNÉES DE PRODUCTION
+─────────────────────────────────────────────
+Le projet n'attend pas de vrais utilisateurs pour générer du drift.
+Les données 2024 (disponibles sur data.gouv.fr) servent à simuler
+un flux de production réel et mesurer le drift immédiatement.
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  FLUX DE SIMULATION PRODUCTION                                   │
+  │                                                                  │
+  │  data/production/2024/*.csv         55 000 accidents réels 2024  │
+  │          │                          Le modèle n'a JAMAIS vu ces  │
+  │          ▼                          données                      │
+  │  scripts/simulate_production.py                                  │
+  │          │                                                       │
+  │          ▼  ~4 600 requêtes / mois (55k / 12)                   │
+  │  POST /predict ─────────────────► FastAPI                       │
+  │          │                        → prédiction logged PostgreSQL  │
+  │          │                        → features + timestamp + pred  │
+  │          ▼                                                       │
+  │  PostgreSQL (table predictions)                                  │
+  │          │                                                       │
+  │          ▼  batch mensuel (Prefect)                              │
+  │  Evidently ─────────────────────► rapport drift mois N          │
+  │    référence : X_train 2021-2023  → 12 rapports sur l'année     │
+  │    production : logs mois courant → drift réel, pas simulé      │
+  └──────────────────────────────────────────────────────────────────┘
 
 CE QU'EVIDENTLY COMPARE
 ────────────────────────
-  Référence : distribution des features sur X_train (données d'entraînement)
-  Production : distribution des features reçues via POST /predict (logs PostgreSQL)
+  Référence : distribution des 28 features sur X_train (2021-2023)
+  Production : features reçues via POST /predict (logs PostgreSQL, mois N)
 
-  Pour chaque feature des 28 features du modèle :
+  Pour chaque feature :
   ┌────────────────────────────────────────────────────────────────┐
   │  Feature        Test statistique    Seuil d'alerte             │
   │  ─────────────  ─────────────────   ──────────────────────────  │
@@ -1122,12 +1243,14 @@ CE QU'EVIDENTLY COMPARE
 FLUX EVIDENTLY EN PRODUCTION
 ──────────────────────────────
 
-  [API FastAPI]  →  chaque prédiction loggée dans PostgreSQL
-       │              (features reçues + prédiction + timestamp)
+  [simulate_production.py]  →  POST /predict (batch mensuel 2024)
        │
-  [Job batch journalier — Prefect]
+  [API FastAPI]             →  chaque prédiction loggée dans PostgreSQL
+       │                        (features reçues + prédiction + timestamp)
        │
-       ├── extrait les N dernières prédictions depuis PostgreSQL
+  [Job batch mensuel — Prefect]
+       │
+       ├── extrait les prédictions du mois depuis PostgreSQL
        │
        ├── génère rapport Evidently :
        │     ColumnDriftReport (feature par feature)
@@ -1149,6 +1272,10 @@ RÉSULTAT PAR SCÉNARIO
   Drift CRITICAL            : réentraînement automatique déclenché
                               → si nouveau modèle meilleur : déployé
                               → sinon : alerte manuelle requise
+
+  Sur 2024, on s'attend à observer un drift progressif sur certaines
+  features (catv, dep, atm) reflétant les évolutions réelles du
+  parc automobile et des comportements entre 2021-2023 et 2024.
 ```
 
 #### Prometheus & Grafana — Surveillance des performances
@@ -1291,14 +1418,20 @@ cac_mlops/
 │       └── ci.yml                         # lint → test → build → push
 │
 ├── data/                                  # ignoré par Git, géré par DVC
-│   ├── raw/
+│   ├── raw/                               # données d'entraînement
 │   │   ├── 2021/
-│   │   │   ├── caracteristiques-2021.csv
+│   │   │   ├── carcteristiques-2021.csv   # faute de frappe ONISR conservée
 │   │   │   ├── lieux-2021.csv
 │   │   │   ├── usagers-2021.csv
 │   │   │   └── vehicules-2021.csv
 │   │   ├── 2022/                          # ajouté en itération 2
 │   │   └── 2023/                          # ajouté en itération 3
+│   ├── production/                        # données de production (pas d'entraînement)
+│   │   └── 2024/
+│   │       ├── Caract_2024.csv            # convention ONISR 2024 : majuscule + underscore
+│   │       ├── Lieux_2024.csv
+│   │       ├── Usagers_2024.csv
+│   │       └── Vehicules_2024.csv
 │   └── preprocessed/
 │       ├── 2021/
 │       │   ├── X_train.csv  X_test.csv
@@ -1347,11 +1480,16 @@ cac_mlops/
 │   └── features/
 │       └── build_features.py
 │
+├── scripts/
+│   └── simulate_production.py             # rejoue data/production/2024/ via POST /predict
+│                                          # ~4 600 req/mois × 12 → logs PostgreSQL Evidently
+│
 ├── orchestration/
 │   └── flows/
 │       ├── etl_flow.py                    # Prefect : ingestion + validation + prep
 │       ├── training_flow.py               # Prefect : entraînement + MLflow
-│       └── retrain_flow.py                # Prefect : réentraînement automatique
+│       ├── retrain_flow.py                # Prefect : réentraînement automatique
+│       └── drift_monitoring_flow.py       # Prefect : batch mensuel Evidently [Phase 4]
 │
 ├── infrastructure/
 │   ├── nginx/nginx.conf
@@ -1395,8 +1533,8 @@ cac_mlops/
 │  Source des données        │  data.gouv.fr (ONISR) — source officielle     │
 │                            │  Pas le proxy DataScientest (figé, pédago)    │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Périmètre temporel        │  2021, 2022, 2023 (même format, no normaliz.) │
-│                            │  Chargement année par année pour valider chain│
+│  Périmètre temporel        │  2021, 2022, 2023 → entraînement (même format)│
+│                            │  2024 → simulation production (drift réel)    │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Validation de schéma      │  3 niveaux : CRITICAL (stop) / WARNING (log)  │
 │                            │  / INFO (trace) — outil : Pandera             │
@@ -1419,6 +1557,14 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Cloud                     │  Scaleway Kapsule (K8s) + Object Storage      │
 │                            │  + Managed Database                           │
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Données de production     │  2024 (data.gouv.fr, déjà disponibles)        │
+│  pour monitoring drift     │  Rejoué via scripts/simulate_production.py    │
+│                            │  Evidently compare vs X_train 2021-2023       │
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Mapping noms fichiers     │  Dict FILENAMES par année dans                │
+│  (découverte critique)     │  import_raw_data.py — obligatoire dès 2022    │
+│                            │  (convention ONISR change chaque année)        │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Normalisation pré-2019    │  Architecture prévue, non implémentée         │
 │                            │  Extensible si le projet le justifie plus tard│
