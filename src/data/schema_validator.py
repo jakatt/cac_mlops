@@ -140,13 +140,14 @@ def _validate_level2(
             TABLE_SCHEMAS[table].validate(df, lazy=True)
         except pa.errors.SchemaErrors as exc:
             # Collect type errors; column-presence errors already handled above
+            # exc.schema_errors is a list of SchemaError objects (pandera >= 0.14)
             type_errors = [
                 e for e in exc.schema_errors
-                if "column_in_dataframe" not in str(e.get("check", ""))
+                if "column_in_dataframe" not in str(getattr(e, "check", ""))
             ]
             if type_errors:
                 detail = "; ".join(
-                    str(e.get("failure_case", e)) for e in type_errors[:5]
+                    str(getattr(e, "failure_cases", e)) for e in type_errors[:5]
                 )
                 report.add("WARNING", table, "type_check", f"Type mismatches: {detail}")
         except Exception as exc:
