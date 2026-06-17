@@ -5,6 +5,7 @@ services:
   # ── PostgreSQL — backend MLflow + logs prédictions ──────────────────────────
   postgresql:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER:     ${POSTGRES_USER:-mlops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlops}
@@ -20,6 +21,7 @@ services:
   # ── MinIO — stockage local compatible S3 (artefacts MLflow + DVC) ───────────
   minio:
     image: minio/minio:latest
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-minioadmin}
@@ -40,6 +42,7 @@ services:
     build:
       context: .
       dockerfile: services/mlflow/Dockerfile
+    restart: unless-stopped
     depends_on:
       postgresql:
         condition: service_healthy
@@ -68,6 +71,7 @@ services:
     build:
       context: .
       dockerfile: services/api/Dockerfile
+    restart: unless-stopped
     depends_on:
       mlflow:
         condition: service_healthy
