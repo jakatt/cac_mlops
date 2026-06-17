@@ -915,11 +915,11 @@ MATIN
 
 PENDANT LE DÉVELOPPEMENT
   → Modifier le code dans src/ ou services/
-  → docker-compose restart training     ← réentraîne si besoin
-  → pytest tests/                       ← vérifie que rien n'est cassé
+  → docker compose restart api          ← redémarre l'API si besoin
+  → pytest tests/unit/                  ← vérifie que rien n'est cassé
   → http://localhost:5000               ← inspecte les runs MLflow
-  → http://localhost:8000/docs          ← teste l'API Swagger
-  → http://localhost:4200               ← vérifie les flows Prefect
+  → http://localhost:8080/docs          ← teste l'API Swagger
+  → http://localhost:9001               ← console MinIO (artefacts MLflow)
 
 FIN DE JOURNÉE
   git add <fichiers modifiés>
@@ -931,16 +931,22 @@ FIN DE JOURNÉE
 ### Correspondance services local ↔ Scaleway
 
 ```text
-LOCAL (docker-compose)              SCALEWAY (production)
+LOCAL (docker compose)              SCALEWAY (actuel — Phase 1+2)
 ──────────────────────────────      ────────────────────────────────────
-MinIO (artefacts MLflow)        →   Scaleway Object Storage
-PostgreSQL Docker               →   Scaleway Managed Database
-docker-compose up               →   Scaleway Kapsule (Kubernetes)
-localhost:8000                  →   Load Balancer → NGINX Ingress
-1 instance API                  →   N replicas selon charge
-pytest local                    →   GitHub Actions CI
+MinIO (artefacts MLflow)        →   Scaleway Object Storage (DVC + MLflow)
+PostgreSQL Docker               →   PostgreSQL Docker (même serveur)
+docker compose up               →   docker compose up (scw-jovial-dubinsky)
+localhost:8080/docs             →   51.159.187.132:8080/docs
+pytest local                    →   GitHub Actions CI (ci.yml)
+git push (branche perso)        →   GitHub Actions deploy (deploy.yml → SSH)
 
-Seules les variables d'environnement changent, pas le code.
+SCALEWAY (cible — Phase 3+)
+──────────────────────────────
+Scaleway Kapsule (Kubernetes)       → N replicas API
+Scaleway Managed Database           → PostgreSQL managé
+NGINX Ingress                       → TLS + rate limiting
+
+Seules les variables d'environnement changent entre local et prod.
 ```
 
 ### Variables d'environnement : local vs prod
@@ -1354,28 +1360,69 @@ LIVRABLES DOCUMENTATION (docs/)
 
 ## 10. Flux de travail collaboratif
 
-```text
-TRAVAIL EN ÉQUIPE (Jacques + collègue)
+### Branches et rôles
 
-                   GitHub (code)                  Scaleway S3
-                        │                         ┌────────────────┐
-              ┌─────────┴─────────┐               │ DVC remote     │
-              │                   │               │ bucket data    │
-           Jacques            Collègue            └────────┬───────┘
-              │                   │                        │
-    git push/pull      git push/pull                       │
-    dvc push/pull  ─────────────────────────────► dvc push/pull
-              │                   │
-              └─────────┬─────────┘
-                        │
-               GitHub Actions CI
-               (push → lint → test → build)
-                        │
-               Scaleway Container Registry
-               (image Docker versionnée)
-                        │
-               Scaleway Kapsule
-               (déploiement K8s)
+```text
+  jacques ──┐  (développement Jacques)
+             ├──► Pull Request ──► main ──► deploy automatique Scaleway
+  noel    ──┘  (développement Noël)
+```
+
+| Branche | Qui | Règle |
+| --- | --- | --- |
+| `jacques` | Jacques | commits libres, push direct |
+| `noel` | Noël | commits libres, push direct |
+| `main` | — | **pas de commit direct** — uniquement via PR |
+
+### GitHub Actions : deux workflows
+
+```text
+ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
+  1. pip install -r requirements.txt
+  2. flake8 (erreurs bloquantes)
+  3. pytest tests/unit/ -v
+  → la PR ne peut pas merger si ✗
+
+deploy.yml — déclenché sur : push/merge dans main
+  1. SSH vers scw-jovial-dubinsky (deploy@51.159.187.132)
+  2. export PATH → /home/deploy/.local/bin
+  3. cd /home/deploy/cac_mlops
+  4. git fetch origin main && git reset --hard origin/main
+  5. dvc pull (données Scaleway Object Storage)
+  6. docker compose down --remove-orphans
+  7. docker compose up -d --build
+  8. healthcheck : curl http://localhost:8080/health (retry 18×5s = 90s max)
+  → ✓ ou logs API + exit 1
+```
+
+### Workflow quotidien (sur ta branche)
+
+```bash
+# Récupérer les dernières modifs de main (si collègue a mergé)
+git fetch origin
+git merge origin/main
+
+# ... travail ...
+git add src/...
+git add data/raw/2023.dvc   # si nouvelles données versionnées
+git commit -m "feat: ..."
+dvc push                    # pousse les données sur Scaleway Object Storage
+git push origin jacques     # (ou noel)
+
+# Quand prêt à publier : ouvrir une PR sur GitHub  jacques → main
+# Les tests CI tournent → merger → deploy automatique sur le serveur
+```
+
+### Synchronisation données (DVC)
+
+```text
+                   Scaleway Object Storage
+                   s3://cac-mlops-data/dvc
+                          │
+           ┌──────────────┼──────────────┐
+           │              │              │
+       jacques          noel      Scaleway server
+    dvc push/pull   dvc push/pull   dvc pull (auto via deploy.yml)
 ```
 
 ### Cycle d'ajout d'une nouvelle année de données
@@ -1415,7 +1462,8 @@ cac_mlops/
 │
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                         # lint → test → build → push
+│       ├── ci.yml                         # lint + pytest sur push jacques/noel et PR→main
+│       └── deploy.yml                     # SSH deploy automatique sur merge dans main
 │
 ├── data/                                  # ignoré par Git, géré par DVC
 │   ├── raw/                               # données d'entraînement
