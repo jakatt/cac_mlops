@@ -78,8 +78,11 @@ target/
 # Jupyter NB Checkpoints
 .ipynb_checkpoints/
 
-# exclude data from source control by default
-/data/
+# exclude raw data from source control — DVC pointer files (.dvc) are tracked instead
+/data/**/*.csv
+/data/**/*.parquet
+/data/**/*.pkl
+/data/**/*.joblib
 
 # Mac OS-specific storage files
 .DS_Store

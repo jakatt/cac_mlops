@@ -1,0 +1,5 @@
+[core]
+    remote = scaleway
+['remote "scaleway"']
+    url = s3://cac-mlops-data/dvc
+    endpointurl = https://s3.fr-par.scw.cloud
