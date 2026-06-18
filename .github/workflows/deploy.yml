@@ -108,6 +108,11 @@ jobs:
               fi
             fi
 
+            echo "==> Suppression volumes nommés obsolètes (données déjà sur /data bind mounts)"
+            docker volume rm cac_mlops_minio_data cac_mlops_postgres_data cac_mlops_prefect_data 2>/dev/null || true
+            echo "==> NVMe après nettoyage volumes"
+            df -h /
+
             echo "==> Libération du port 8090 (nginx)"
             for cid in $(docker ps -aq --filter "publish=8090"); do
               echo "  Arrêt conteneur $cid (port 8090)"
