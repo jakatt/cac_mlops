@@ -38,13 +38,15 @@ jobs:
             [ "$STATUS" = "401" ] && echo "✅ Auth guard OK" || (echo "❌ Expected 401, got $STATUS" && exit 1)
 
             echo "=== 4. POST /predict avec token (expect 200) ==="
-            RESULT=$(curl -sf -X POST "$API/predict" \
+            PREDICT_BODY='{"place":10,"catu":1,"sexe":1,"secu1":1,"year_acc":2023,"victim_age":35,"catv":7,"obsm":1,"motor":1,"circ":2,"surf":1,"situ":1,"vma":50,"nb_victim":1,"nb_vehicules":1,"hour":14,"lum":1,"dep":75,"com":75056,"agg_":2,"int":1,"atm":1,"col":2,"lat":48.8566,"long":2.3522}'
+            HTTP_CODE=$(curl -s -o /tmp/predict_resp.json -w "%{http_code}" \
+              -X POST "$API/predict" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $TOKEN" \
-              -d '{"place":10,"catu":1,"sexe":1,"secu1":1,"year_acc":2023,"victim_age":35,"catv":7,"obsm":1,"motor":1,"circ":2,"surf":1,"situ":1,"vma":50,"nb_victim":1,"nb_vehicules":1,"hour":14,"lum":1,"dep":75,"com":75056,"agg_":2,"int":1,"atm":1,"col":2,"lat":48.8566,"long":2.3522}')
-            echo "Résultat: $RESULT"
-            echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('prediction:', d.get('prediction','?')); exit(0)"
-            echo "✅ /predict OK avec JWT"
+              -d "$PREDICT_BODY")
+            RESULT=$(cat /tmp/predict_resp.json)
+            echo "HTTP: $HTTP_CODE  Body: $RESULT"
+            [ "$HTTP_CODE" = "200" ] && echo "✅ /predict OK avec JWT" || (echo "❌ Expected 200, got $HTTP_CODE" && exit 1)
 
             echo "=== 5. Rate limit (21 requêtes rapides, expect 429) ==="
             GOT_429=0
