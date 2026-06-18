@@ -1,0 +1,44 @@
+name: cac-mlops
+prefect-version: "3.*"
+
+# No remote build/push — flows run as local processes on the worker
+build: null
+push: null
+
+pull:
+  - prefect.deployments.steps.set_working_directory:
+      directory: /app
+
+deployments:
+
+  # ── ETL — manual or called from retrain ──────────────────────────────────────
+  - name: etl
+    entrypoint: src/flows/etl_flow.py:etl_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      year: 2023
+      cumul: true
+
+  # ── Train — manual trigger ────────────────────────────────────────────────────
+  - name: train
+    entrypoint: src/flows/train_flow.py:train_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      year: 2023
+      cumul: true
+      promote: true
+
+  # ── Retrain — scheduled every Monday 02:00 Paris time ────────────────────────
+  - name: retrain-weekly
+    entrypoint: src/flows/retrain_flow.py:retrain_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      year: 2023
+      cumul: true
+    schedules:
+      - cron: "0 2 * * 1"
+        timezone: "Europe/Paris"
+        active: true

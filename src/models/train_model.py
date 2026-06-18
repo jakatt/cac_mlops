@@ -145,7 +145,7 @@ def train(
         run_id = run.info.run_id
         logger.info("MLflow run_id: %s", run_id)
 
-        return metrics
+        return metrics, run_id
 
 
 def main() -> None:
@@ -168,7 +168,7 @@ def main() -> None:
     args = parser.parse_args()
 
     years = [y for y in TRAINING_YEARS if y <= args.year] if args.cumul else [args.year]
-    train(
+    _metrics, _run_id = train(
         years=years,
         n_estimators=args.n_estimators,
         max_depth=args.max_depth,

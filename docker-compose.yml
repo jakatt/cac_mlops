@@ -70,29 +70,79 @@ services:
       mlflow:
         condition: service_healthy
     environment:
-      MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_MODEL_NAME:   rf_accidents
-      MLFLOW_MODEL_STAGE:  Production
+      MLFLOW_TRACKING_URI:    http://mlflow:5000
+      MLFLOW_MODEL_NAME:      rf_accidents
+      MLFLOW_MODEL_STAGE:     Production
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID:   ${MINIO_ROOT_USER:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      LOCAL_MODEL_PATH:    src/models/trained_model.joblib   # fallback si MLflow vide
+      AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
+      LOCAL_MODEL_PATH:       src/models/trained_model.joblib
+      JWT_SECRET_KEY:         ${JWT_SECRET_KEY:-dev-secret-change-in-production}
+      API_USERNAME:           ${API_USERNAME:-admin}
+      API_PASSWORD:           ${API_PASSWORD:-changeme}
     ports:
-      - "8080:8000"   # API → http://localhost:8080/docs (8000 réservé au rag-api)
+      - "8080:8000"   # direct access (admin / healthcheck)
     volumes:
-      - ./src:/app/src:ro                    # pour le fallback local joblib
+      - ./src:/app/src:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 5
 
-  # ── Prefect — orchestration [Phase 3] ───────────────────────────────────────
-  # prefect:
-  #   image: prefecthq/prefect:2-python3.11
-  #   command: prefect server start --host 0.0.0.0
-  #   ports:
-  #     - "4200:4200"
+  # ── NGINX — reverse proxy + rate limiting [Phase 3] ─────────────────────────
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"     # production entry point (rate-limited)
+    volumes:
+      - ./services/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Prefect server — orchestration UI [Phase 3] ──────────────────────────────
+  prefect:
+    image: prefecthq/prefect:3-python3.11
+    restart: unless-stopped
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"   # UI → http://localhost:4200
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: "sqlite+aiosqlite:////prefect/prefect.db"
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+    volumes:
+      - prefect_data:/prefect
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+
+  # ── Prefect worker — runs flows as local processes [Phase 3] ─────────────────
+  prefect-worker:
+    image: ghcr.io/jakatt/cac-mlops-prefect-worker:latest
+    restart: unless-stopped
+    depends_on:
+      prefect:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      PREFECT_API_URL:        http://prefect:4200/api
+      MLFLOW_TRACKING_URI:    http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - ./data:/app/data     # raw + preprocessed data accessible to flows
 
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   # prometheus:
@@ -111,3 +161,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  prefect_data:

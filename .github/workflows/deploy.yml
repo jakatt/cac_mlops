@@ -32,6 +32,12 @@ jobs:
             -f services/api/Dockerfile .
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest
 
+      - name: Build + push Prefect worker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-prefect-worker:latest \
+            -f services/prefect/Dockerfile .
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-prefect-worker:latest
+
   # ── Job 2 : deploy SSH sur Scaleway ────────────────────────────────────────
   deploy:
     needs: build
@@ -79,15 +85,16 @@ jobs:
             echo "==> Démarrage"
             docker compose up -d
 
-            echo "==> Healthcheck (attente max 90s)"
+            echo "==> Healthcheck API via nginx:80 (attente max 90s)"
             for i in $(seq 1 18); do
-              if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+              if curl -sf http://localhost/health > /dev/null 2>&1; then
                 echo "API OK après $((i*5))s"
                 break
               fi
               if [ $i -eq 18 ]; then
-                echo "Timeout — logs API :"
-                docker compose logs --tail=50 api
+                echo "Timeout — logs :"
+                docker compose logs --tail=30 api
+                docker compose logs --tail=20 nginx
                 exit 1
               fi
               echo "  attente... ($((i*5))s)"
