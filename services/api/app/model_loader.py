@@ -2,7 +2,7 @@
 Model loading from MLflow Registry or local joblib fallback.
 
 Priority:
-  1. MLflow Model Registry (stage=Production)
+  1. MLflow Model Registry (alias Production — MLflow 3.x)
   2. MLFLOW_MODEL_URI env variable (explicit URI)
   3. LOCAL_MODEL_PATH env variable (local .joblib)
 """
@@ -25,13 +25,14 @@ def _load_from_mlflow() -> tuple | None:
         mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
         mlflow.set_tracking_uri(mlflow_uri)
 
-        model_name = os.getenv("MLFLOW_MODEL_NAME", "rf_accidents")
-        model_stage = os.getenv("MLFLOW_MODEL_STAGE", "Production")
-        uri = f"models:/{model_name}/{model_stage}"
+        model_name  = os.getenv("MLFLOW_MODEL_NAME",  "rf_accidents")
+        model_alias = os.getenv("MLFLOW_MODEL_STAGE", "Production")
+        # MLflow 3.x : aliases (@Production) remplacent les stages dépréciés
+        uri = f"models:/{model_name}@{model_alias}"
 
         logger.info("Loading model from MLflow: %s", uri)
         model = mlflow.sklearn.load_model(uri)
-        return model, f"{model_name}/{model_stage}"
+        return model, f"{model_name}@{model_alias}"
     except Exception as exc:
         logger.warning("MLflow model load failed (%s) — trying fallback", exc)
         return None
