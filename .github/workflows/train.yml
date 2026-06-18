@@ -42,8 +42,13 @@ jobs:
             echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
 
             # ── 1. Pull données DVC (exécuté sur le host, pas dans Docker) ──────
-            echo "==> Pull données DVC"
-            dvc pull data/raw/$YEAR || true
+            echo "==> Pull données DVC (toutes les années nécessaires)"
+            # Cumul = toutes les années de 2021 jusqu'à $YEAR
+            for y in 2021 2022 2023; do
+              if [ "$y" -le "$YEAR" ]; then
+                dvc pull data/raw/$y || true
+              fi
+            done
 
             # ── 2. Preprocessing ─────────────────────────────────────────────────
             echo "==> Preprocessing (dans le conteneur api)"
