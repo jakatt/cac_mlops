@@ -34,27 +34,25 @@ jobs:
             echo "=== Espace après suppression images ==="
             df -h /dev/vda1
 
-            echo "==> Copie du data root Docker vers /data/docker"
-            mkdir -p /data/docker
-            rsync -aH /var/lib/docker/ /data/docker/
+            echo "==> Copie du data root Docker vers /data/docker (sudo requis)"
+            sudo mkdir -p /data/docker
+            sudo rsync -aH /var/lib/docker/ /data/docker/
             echo "Copie terminée."
 
             echo "==> Configuration du daemon Docker (nouveau data-root)"
-            cat > /etc/docker/daemon.json << 'DAEMON'
-            {"data-root": "/data/docker"}
-            DAEMON
+            echo '{"data-root": "/data/docker"}' | sudo tee /etc/docker/daemon.json
 
             echo "==> Redémarrage du daemon Docker"
-            systemctl stop docker
+            sudo systemctl stop docker
             sleep 3
-            systemctl start docker
+            sudo systemctl start docker
             sleep 8
 
             echo "=== Vérification nouveau data-root ==="
             docker info | grep "Docker Root Dir"
 
-            echo "==> Nettoyage ancienne data root sur NVMe (libère ~4 GB)"
-            rm -rf /var/lib/docker
+            echo "==> Nettoyage ancienne data root sur NVMe (libère ~3 GB)"
+            sudo rm -rf /var/lib/docker
             df -h /dev/vda1 /dev/sda
 
             echo "==> Pull de nos images (vers /data/docker)"
