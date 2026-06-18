@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlops}
       POSTGRES_DB:       ${POSTGRES_DB:-mlops}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${DOCKER_VOLUMES_PATH:-./volumes}/postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlops}"]
       interval: 10s
@@ -28,7 +28,7 @@ services:
       - "9000:9000"
       - "9001:9001"   # console UI → http://localhost:9001
     volumes:
-      - minio_data:/data
+      - ${DOCKER_VOLUMES_PATH:-./volumes}/minio_data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -125,6 +125,6 @@ services:
   #   ports:
   #     - "3000:3000"
 
-volumes:
-  postgres_data:
-  minio_data:
+# Volumes supprimés — données stockées via bind mounts sur /data (block storage)
+# DOCKER_VOLUMES_PATH=/data dans .env sur le serveur → block storage (19 GB)
+# En local, DOCKER_VOLUMES_PATH non défini → ./volumes (ignoré par git)

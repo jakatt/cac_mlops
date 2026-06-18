@@ -71,6 +71,35 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            echo "==> Configuration DOCKER_VOLUMES_PATH → block storage /data"
+            grep -q "DOCKER_VOLUMES_PATH" .env 2>/dev/null || echo "DOCKER_VOLUMES_PATH=/data" >> .env
+
+            echo "==> Migration volumes Docker → /data (one-time, idempotent)"
+            MINIO_VOL=$(docker volume ls --format '{{.Name}}' | grep minio_data | head -1)
+            PG_VOL=$(docker volume ls --format '{{.Name}}' | grep postgres_data | head -1)
+
+            if [ -n "$MINIO_VOL" ]; then
+              MINIO_EMPTY=$(docker run --rm -v /data/minio_data:/check alpine sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
+              if [ "$MINIO_EMPTY" = "0" ]; then
+                echo "  Copie $MINIO_VOL → /data/minio_data"
+                docker run --rm -v "${MINIO_VOL}:/source" -v /data/minio_data:/dest alpine cp -a /source/. /dest/
+                echo "  minio_data migré"
+              else
+                echo "  /data/minio_data déjà peuplé, skip"
+              fi
+            fi
+
+            if [ -n "$PG_VOL" ]; then
+              PG_EMPTY=$(docker run --rm -v /data/postgres_data:/check alpine sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
+              if [ "$PG_EMPTY" = "0" ]; then
+                echo "  Copie $PG_VOL → /data/postgres_data"
+                docker run --rm -v "${PG_VOL}:/source" -v /data/postgres_data:/dest alpine cp -a /source/. /dest/
+                echo "  postgres_data migré"
+              else
+                echo "  /data/postgres_data déjà peuplé, skip"
+              fi
+            fi
+
             echo "==> Espace disque disponible"
             df -h /
 
