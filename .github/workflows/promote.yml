@@ -1,0 +1,56 @@
+name: Promote model version to @Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version du modèle à promouvoir (ex: 6)"
+        required: true
+        default: "6"
+      model_name:
+        description: "Nom du modèle MLflow"
+        required: true
+        default: "rf_accidents"
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Force promote model to @Production
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            VERSION="${{ github.event.inputs.version }}"
+            MODEL="${{ github.event.inputs.model_name }}"
+
+            echo "==> Promotion $MODEL v$VERSION → @Production"
+            docker compose exec -T api python3 -c "
+import mlflow, os
+os.environ.setdefault('MLFLOW_TRACKING_URI', 'http://mlflow:5000')
+c = mlflow.tracking.MlflowClient()
+c.set_registered_model_alias('$MODEL', 'Production', '$VERSION')
+print('OK: $MODEL v$VERSION est maintenant @Production')
+"
+            echo "==> Redemarrage API (charge le nouveau modele)"
+            docker compose restart api
+
+            echo "==> Healthcheck"
+            for i in $(seq 1 12); do
+              if curl -sf --max-time 5 http://localhost:8090/health | grep -q '"model_loaded": true'; then
+                echo "API OK — modele charge"
+                curl -sf --max-time 5 http://localhost:8090/health
+                break
+              fi
+              [ $i -eq 12 ] && echo "Timeout healthcheck" && exit 1
+              sleep 5
+            done
+
+            echo "==> Promotion terminee"
