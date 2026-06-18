@@ -14,8 +14,8 @@ PHASE 1 ✅ MERGÉE DANS MAIN
   make_dataset.py       Paramétré --year/--cumul · suppression prompts interactifs
   train_model.py        MLflow tracking · gate KPI · Model Registry
   FastAPI               POST /predict · GET /health · GET /metrics (port 8080)
-  docker-compose.yml    PostgreSQL + MinIO + MLflow (custom image) + API
-  Tests                 25/25 passent (unit : pipeline + validation + API)
+  docker-compose.yml    PostgreSQL + MinIO + MLflow v3.1.0 (custom image) + API
+  Tests                 38/38 passent (unit : pipeline + validation + API)
 
 INFRA ✅ OPÉRATIONNELLE (main → Scaleway)
   DVC remote            Scaleway Object Storage (s3://cac-mlops-data/dvc)
@@ -27,7 +27,16 @@ INFRA ✅ OPÉRATIONNELLE (main → Scaleway)
                         4 containers healthy : PostgreSQL · MinIO · MLflow · API
   Workflow Git          jacques / noel → PR → main → deploy automatique
 
-PHASE 2 ⏳ À VENIR   MLflow Model Registry complet · données 2022+2023 · validate_model.py
+MODÈLE ✅ EN PRODUCTION
+  Données               2021 seul (54 698 accidents · 28 features)
+  Entraînement          38 288 train / 16 410 test
+  KPI                   accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
+  Seuils                f1 ⚠️ <0.68 · recall ⚠️ <0.65 · auc ✅ >0.75
+  MLflow                rf_accidents@Production (v2 sur serveur · v1 en local)
+  API health            {"status":"ok","model_version":"rf_accidents@Production"}
+  Note                  KPI améliorés en ajoutant 2022+2023 (Phase 2)
+
+PHASE 2 ⏳ EN COURS    données 2022+2023 · améliorer F1≥0.68 et Recall≥0.65 · validate_model.py
 PHASE 3 ⏳ À VENIR   Prefect orchestration · NGINX · Kubernetes
 PHASE 4 ⏳ À VENIR   Prometheus · Grafana · Evidently · simulate_production.py
 ```
