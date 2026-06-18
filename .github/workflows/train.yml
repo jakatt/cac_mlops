@@ -1,6 +1,10 @@
 name: Train — pipeline on Scaleway
 
 on:
+  # Retrain hebdomadaire : lundi 02h00 UTC
+  schedule:
+    - cron: '0 2 * * 1'
+
   workflow_dispatch:
     inputs:
       year:
@@ -31,9 +35,9 @@ jobs:
             export PATH=$PATH:/home/deploy/.local/bin
             cd ${{ secrets.DEPLOY_DIR }}
 
-            YEAR=${{ github.event.inputs.year }}
-            CUMUL=${{ github.event.inputs.cumul }}
-            PROMOTE=${{ github.event.inputs.promote }}
+            YEAR="${{ github.event.inputs.year || '2023' }}"
+            CUMUL="${{ github.event.inputs.cumul || 'true' }}"
+            PROMOTE="${{ github.event.inputs.promote || 'true' }}"
 
             echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
 

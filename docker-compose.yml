@@ -123,25 +123,8 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Prefect worker — runs flows as local processes [Phase 3] ─────────────────
-  prefect-worker:
-    image: ghcr.io/jakatt/cac-mlops-prefect-worker:latest
-    restart: unless-stopped
-    depends_on:
-      prefect:
-        condition: service_healthy
-      mlflow:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    environment:
-      PREFECT_API_URL:        http://prefect:4200/api
-      MLFLOW_TRACKING_URI:    http://mlflow:5000
-      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
-      AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
-    volumes:
-      - ./data:/app/data     # raw + preprocessed data accessible to flows
+  # ── Prefect worker — déployé en Phase 5 (K8s) pour ne pas saturer le disque ──
+  # Le scheduling hebdomadaire est assuré par le trigger cron de train.yml (CI).
 
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   # prometheus:
