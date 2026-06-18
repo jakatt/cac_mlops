@@ -5,23 +5,56 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
+  packages: write   # push vers ghcr.io
 
+jobs:
+
+  # ── Job 1 : build et push des images vers ghcr.io ──────────────────────────
+  build:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
+      - name: Login ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build + push MLflow image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest \
+            -f services/mlflow/Dockerfile .
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest
+
+      - name: Build + push API image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest \
+            -f services/api/Dockerfile .
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest
+
+  # ── Job 2 : deploy SSH sur Scaleway ────────────────────────────────────────
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GHCR_USER:  ${{ github.actor }}
+
+    steps:
       - name: Deploy sur le serveur Scaleway
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SCALEWAY_HOST }}
+          host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
-          key: ${{ secrets.SCALEWAY_SSH_KEY }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          envs:     GHCR_TOKEN,GHCR_USER
           script: |
             set -e
             export PATH=$PATH:/home/deploy/.local/bin
             cd ${{ secrets.DEPLOY_DIR }}
+
+            echo "==> Login ghcr.io"
+            echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USER --password-stdin
 
             echo "==> Pull du code"
             git fetch origin main
@@ -30,14 +63,10 @@ jobs:
             echo "==> Pull des données DVC"
             dvc pull --run-cache || true
 
-            echo "==> Nettoyage Docker (espace disque)"
-            docker image prune -f
-            docker builder prune -f
-
-            echo "==> Rebuild et redémarrage des services"
+            echo "==> Pull des images pré-buildées + redémarrage"
             docker compose pull
             docker compose down --remove-orphans
-            docker compose up -d --build
+            docker compose up -d
 
             echo "==> Healthcheck (attente max 90s)"
             for i in $(seq 1 18); do

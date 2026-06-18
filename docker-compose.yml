@@ -37,9 +37,7 @@ services:
 
   # ── MLflow — tracking server ─────────────────────────────────────────────────
   mlflow:
-    build:
-      context: .
-      dockerfile: services/mlflow/Dockerfile
+    image: ghcr.io/jakatt/cac-mlops-mlflow:latest
     restart: unless-stopped
     depends_on:
       postgresql:
@@ -66,9 +64,7 @@ services:
 
   # ── API — FastAPI inference service ─────────────────────────────────────────
   api:
-    build:
-      context: .
-      dockerfile: services/api/Dockerfile
+    image: ghcr.io/jakatt/cac-mlops-api:latest
     restart: unless-stopped
     depends_on:
       mlflow:
