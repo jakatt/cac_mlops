@@ -1,0 +1,80 @@
+name: Migrate Docker data root → /data/docker
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Migrate Docker data root to block storage
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            echo "=== Disque AVANT migration ==="
+            df -h /dev/vda1 /dev/sda
+            docker system df
+
+            echo "==> Arrêt de nos services MLops"
+            docker compose down
+
+            echo "==> Suppression de nos images pour libérer de la place sur NVMe"
+            docker image rm ghcr.io/jakatt/cac-mlops-api:latest    2>/dev/null || true
+            docker image rm ghcr.io/jakatt/cac-mlops-mlflow:latest 2>/dev/null || true
+            docker image prune -f
+
+            echo "=== Espace après suppression images ==="
+            df -h /dev/vda1
+
+            echo "==> Copie du data root Docker vers /data/docker"
+            mkdir -p /data/docker
+            rsync -aH /var/lib/docker/ /data/docker/
+            echo "Copie terminée."
+
+            echo "==> Configuration du daemon Docker (nouveau data-root)"
+            cat > /etc/docker/daemon.json << 'DAEMON'
+            {"data-root": "/data/docker"}
+            DAEMON
+
+            echo "==> Redémarrage du daemon Docker"
+            systemctl stop docker
+            sleep 3
+            systemctl start docker
+            sleep 8
+
+            echo "=== Vérification nouveau data-root ==="
+            docker info | grep "Docker Root Dir"
+
+            echo "==> Nettoyage ancienne data root sur NVMe (libère ~4 GB)"
+            rm -rf /var/lib/docker
+            df -h /dev/vda1 /dev/sda
+
+            echo "==> Pull de nos images (vers /data/docker)"
+            docker compose pull
+
+            echo "==> Démarrage des services"
+            docker compose up -d
+
+            echo "==> Healthcheck (attente max 90s)"
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
+                echo "API OK après $((i*5))s"
+                break
+              fi
+              [ $i -eq 18 ] && echo "Timeout healthcheck" && docker compose logs --tail=20 api && exit 1
+              sleep 5
+            done
+
+            echo "=== Disque APRÈS migration ==="
+            df -h /dev/vda1 /dev/sda
+            docker system df
+
+            echo "==> Migration terminée ✓"
