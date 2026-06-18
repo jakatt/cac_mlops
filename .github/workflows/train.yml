@@ -99,7 +99,7 @@ jobs:
 
             echo "==> Healthcheck (attente max 60s)"
             for i in $(seq 1 12); do
-              if curl -sf http://localhost/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
                 echo "API OK après $((i*5))s"
                 break
               fi

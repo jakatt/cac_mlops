@@ -97,11 +97,11 @@ services:
     depends_on:
       - api
     ports:
-      - "80:80"     # production entry point (rate-limited)
+      - "8090:80"   # production entry point (rate-limited) — port 80 on host taken by system service
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
       interval: 15s
       timeout: 5s
       retries: 5
