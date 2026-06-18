@@ -1,0 +1,13 @@
+# Overrides locaux — build depuis les Dockerfiles au lieu de tirer les images ghcr.io.
+# Docker Compose applique ce fichier automatiquement en développement local.
+# Résultat : build depuis le Dockerfile, image taguée avec le nom ghcr.io.
+services:
+  mlflow:
+    build:
+      context: .
+      dockerfile: services/mlflow/Dockerfile
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
