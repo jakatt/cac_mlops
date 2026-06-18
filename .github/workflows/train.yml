@@ -1,0 +1,110 @@
+name: Train — pipeline on Scaleway
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Année cible (ex: 2023)"
+        required: true
+        default: "2023"
+      cumul:
+        description: "Cumul depuis 2021 ? (true/false)"
+        required: true
+        default: "true"
+      promote:
+        description: "Promouvoir @Production si KPIs OK ? (true/false)"
+        required: true
+        default: "true"
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run pipeline sur Scaleway
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            YEAR=${{ github.event.inputs.year }}
+            CUMUL=${{ github.event.inputs.cumul }}
+            PROMOTE=${{ github.event.inputs.promote }}
+
+            echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
+
+            # ── 1. Pull données DVC (exécuté sur le host, pas dans Docker) ──────
+            echo "==> Pull données DVC"
+            dvc pull data/raw/$YEAR || true
+
+            # ── 2. Preprocessing ─────────────────────────────────────────────────
+            echo "==> Preprocessing (dans le conteneur api)"
+            if [ "$CUMUL" = "true" ]; then
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.data.make_dataset --year $YEAR --cumul
+            else
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.data.make_dataset --year $YEAR
+            fi
+
+            # ── 3. Entraînement ──────────────────────────────────────────────────
+            echo "==> Entraînement (dans le conteneur api)"
+            TRAIN_LOG=$(mktemp)
+            if [ "$CUMUL" = "true" ]; then
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.models.train_model --year $YEAR --cumul 2>&1 | tee "$TRAIN_LOG"
+            else
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.models.train_model --year $YEAR 2>&1 | tee "$TRAIN_LOG"
+            fi
+
+            RUN_ID=$(grep "MLflow run_id" "$TRAIN_LOG" | awk '{print $NF}' | tail -1)
+            rm -f "$TRAIN_LOG"
+
+            if [ -z "$RUN_ID" ]; then
+              echo "ERREUR : impossible de récupérer le run_id MLflow"
+              exit 1
+            fi
+            echo "==> run_id = $RUN_ID"
+
+            # ── 4. Validation + promotion ─────────────────────────────────────────
+            echo "==> Validation"
+            if [ "$PROMOTE" = "true" ]; then
+              docker compose run --rm api \
+                python -m src.models.validate_model --run-id $RUN_ID --promote
+            else
+              docker compose run --rm api \
+                python -m src.models.validate_model --run-id $RUN_ID
+            fi
+
+            # ── 5. Redémarrage API ────────────────────────────────────────────────
+            echo "==> Redémarrage API"
+            docker compose restart api
+
+            echo "==> Healthcheck (attente max 60s)"
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+                echo "API OK après $((i*5))s"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "Timeout healthcheck"
+                docker compose logs --tail=30 api
+                exit 1
+              fi
+              sleep 5
+            done
+
+            echo "==> Pipeline terminé ✓"
