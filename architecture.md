@@ -771,7 +771,7 @@ MLflow UI → Experiments → "accidents_severity"
 ║  ┌─────────────────────────────┐  ║  ┌──────────────────────────────────┐  ║
 ║  │  api        :8000           │  ║  │  Deployment: api  (N replicas)   │  ║
 ║  │  training   (no port)       │  ║  │  Deployment: mlflow              │  ║
-║  │  mlflow     :5000           │  ║  │  Deployment: prefect             │  ║
+║  │  mlflow     :5001 (host)    │  ║  │  Deployment: prefect             │  ║
 ║  │  minio      :9000/:9001     │  ║  │  Deployment: prometheus          │  ║
 ║  │  postgresql :5432           │  ║  │  Deployment: grafana             │  ║
 ║  │  prefect    :4200           │  ║  │  Ingress: nginx                  │  ║
@@ -883,9 +883,10 @@ training       —       Service one-shot — exécuté manuellement ou
                        déclenché par Prefect
                        Lance ETL → validation → preprocessing → train
 
-mlflow         5000    UI tracking : http://localhost:5000
-                       Compare les runs, gère le Model Registry
-                       Backend : PostgreSQL, artefacts : MinIO
+mlflow         5001    UI tracking : http://localhost:5001
+                       Compare les runs, gère le Model Registry (v3.1.0)
+                       Aliases (@Production) remplacent les stages dépréciés
+                       Backend : PostgreSQL, artefacts : MinIO (bucket mlflow)
 
 minio          9000    Stockage local compatible S3
                9001    Console UI MinIO : http://localhost:9001
@@ -917,7 +918,7 @@ PENDANT LE DÉVELOPPEMENT
   → Modifier le code dans src/ ou services/
   → docker compose restart api          ← redémarre l'API si besoin
   → pytest tests/unit/                  ← vérifie que rien n'est cassé
-  → http://localhost:5000               ← inspecte les runs MLflow
+  → http://localhost:5001               ← inspecte les runs MLflow (v3.1.0)
   → http://localhost:8080/docs          ← teste l'API Swagger
   → http://localhost:9001               ← console MinIO (artefacts MLflow)
 
@@ -957,7 +958,7 @@ Seules les variables d'environnement changent entre local et prod.
 MLFLOW_S3_ENDPOINT=http://minio:9000    MLFLOW_S3_ENDPOINT=https://s3.fr-par.scw.cloud
 AWS_ACCESS_KEY_ID=minioadmin            AWS_ACCESS_KEY_ID=<scw_access_key>
 AWS_SECRET_ACCESS_KEY=minioadmin        AWS_SECRET_ACCESS_KEY=<scw_secret_key>
-MLFLOW_TRACKING_URI=http://mlflow:5000  MLFLOW_TRACKING_URI=http://mlflow.svc:5000
+MLFLOW_TRACKING_URI=http://localhost:5001 MLFLOW_TRACKING_URI=http://mlflow.svc:5000
 DATABASE_URL=postgresql://local/mlflow  DATABASE_URL=postgresql://scw-managed/mlflow
 API_ENV=development                     API_ENV=production
 ```
@@ -966,44 +967,46 @@ API_ENV=development                     API_ENV=production
 
 ## 8. Partie Scaleway — production
 
-### Infrastructure cible
+### Infrastructure actuelle (Phase 1+2) — scw-jovial-dubinsky DEV1-L
 
 ```text
-SCALEWAY CLOUD
+SCALEWAY CLOUD — ÉTAT ACTUEL
+┌────────────────────────────────────────────────────────────────────────────┐
+│                                                                            │
+│   Serveur dédié : scw-jovial-dubinsky DEV1-L                              │
+│   IP publique   : 51.159.187.132                                           │
+│   User deploy   : /home/deploy/cac_mlops                                  │
+│                                                                            │
+│   docker-compose.yml (4 containers, restart: unless-stopped)              │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  postgresql  :5432    backend MLflow (volume persistant)         │   │
+│   │  minio       :9000/:9001  artefacts MLflow (bucket mlflow)      │   │
+│   │  mlflow      :5001    http://51.159.187.132:5001  (v3.1.0)      │   │
+│   │  api         :8080    http://51.159.187.132:8080                 │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Modèle en production : rf_accidents@Production (2021 · v1)              │
+│   KPI actuels : accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593     │
+│                                                                            │
+│   Scaleway Object Storage (compatible S3)                                  │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  bucket: cac-mlops-data   → données brutes (DVC remote)         │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Deploy : GitHub Actions deploy.yml → SSH → git pull + docker compose   │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+### Infrastructure cible (Phase 3+) — Kubernetes
+
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
 │   Scaleway Kapsule (Kubernetes managé)                                     │
-│   ┌────────────────────────────────────────────────────────────────────┐   │
-│   │                                                                    │   │
-│   │   Ingress NGINX ←── Load Balancer public                          │   │
-│   │        │                                                           │   │
-│   │        ▼                                                           │   │
-│   │   Namespace: mlops                                                 │   │
-│   │   ┌──────────────────────────────────────────────────────────┐   │   │
-│   │   │  Deployment: api   (auto-scaling 2–10 replicas)          │   │   │
-│   │   │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ...            │   │   │
-│   │   │  │ pod api │  │ pod api │  │ pod api │                  │   │   │
-│   │   │  └─────────┘  └─────────┘  └─────────┘                  │   │   │
-│   │   └──────────────────────────────────────────────────────────┘   │   │
-│   │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │   │
-│   │   │ Pod: mlflow  │  │ Pod: prefect │  │ Pod: training│         │   │
-│   │   └──────────────┘  └──────────────┘  └──────────────┘         │   │
-│   │   ┌──────────────┐  ┌──────────────┐                            │   │
-│   │   │ Pod: promethe│  │ Pod: grafana │   [Phase 4]               │   │
-│   │   └──────────────┘  └──────────────┘                            │   │
-│   └────────────────────────────────────────────────────────────────────┘   │
+│   · Ingress NGINX · auto-scaling API (2–10 replicas)                      │
+│   · Pods : api · mlflow · prefect · prometheus · grafana                  │
 │                                                                            │
 │   Scaleway Managed Database (PostgreSQL)                                   │
-│   → backend MLflow + logs prédictions                                      │
-│                                                                            │
-│   Scaleway Object Storage (compatible S3)                                  │
-│   ┌─────────────────────────────┐  ┌──────────────────────────────────┐   │
-│   │ bucket: cac-mlops-data      │  │ bucket: cac-mlops-mlflow         │   │
-│   │ → données brutes (DVC)      │  │ → artefacts modèles, plots       │   │
-│   └─────────────────────────────┘  └──────────────────────────────────┘   │
-│                                                                            │
-│   Scaleway Container Registry                                              │
-│   → images Docker buildées par GitHub Actions CI                          │
+│   Scaleway Container Registry (images CI/CD)                               │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1012,61 +1015,73 @@ SCALEWAY CLOUD
 
 ## 9. Stack technique par phase
 
-### Phase 1 — Fondations & Conteneurisation (deadline: 15/06 — en retard)
+### Phase 1 — Fondations & Conteneurisation ✅ TERMINÉE (mergée dans main)
 
 ```text
 OBJECTIF : avoir une API fonctionnelle et un pipeline dockerisé
 
-  À FAIRE EN PRIORITÉ
-  ───────────────────
+  RÉALISÉ ✅
+  ─────────
   services/api/app/main.py           FastAPI wrappant predict_model.py
   services/api/Dockerfile
-  docker-compose.yml                 api + postgresql
-  tests/unit/test_preprocessing.py   pytest sur make_dataset.py
-  tests/unit/test_predict.py         pytest sur predict_model.py
-  requirements.txt                   versions figées (pip freeze)
+  docker-compose.yml                 api + postgresql + MLflow v3.1.0 + MinIO
+  tests/unit/test_preprocessing.py   pytest → 38/38 passent
+  tests/unit/test_predict.py
+  tests/unit/test_schema_validator.py
+  requirements.txt                   versions figées
 
-  EXISTANT (conservé)
-  ───────────────────
-  src/data/import_raw_data.py        ✓
-  src/data/make_dataset.py           ✓ (à paramétrer par year)
-  src/models/train_model.py          ✓
+  src/data/import_raw_data.py        ✓ paramétré --year, FILENAMES mapping
+  src/data/make_dataset.py           ✓ paramétré --year/--cumul
+  src/data/schema.py                 ✓ schémas Pandera 4 fichiers
+  src/data/schema_validator.py       ✓ 3 niveaux CRITICAL/WARNING/OK
+  src/models/train_model.py          ✓ MLflow tracking + Model Registry
   src/models/predict_model.py        ✓
 
-  API ENDPOINTS Phase 1
-  ─────────────────────
+  CI/CD GitHub Actions
+  ────────────────────
+  .github/workflows/ci.yml     lint (flake8) + pytest sur push jacques/noel et PR→main
+  .github/workflows/deploy.yml SSH deploy automatique sur merge dans main
+                               → git pull · dvc pull · docker compose down && up · healthcheck
+
+  API ENDPOINTS
+  ─────────────
   POST /predict         → reçoit JSON 28 features, retourne {prediction, proba}
-  GET  /health          → retourne {"status": "ok", "model_version": "..."}
+  GET  /health          → retourne {"status": "ok", "model_version": "rf_accidents@Production"}
+  GET  /metrics         → métriques Prometheus
 ```
 
-### Phase 2 — Microservices, Suivi & Versioning (deadline: 29/06)
+### Phase 2 — Microservices, Suivi & Versioning ⏳ EN COURS (deadline: 29/06)
 
 ```text
 OBJECTIF : pipeline année-par-année tracé dans DVC + MLflow
 
-  À FAIRE
-  ───────
-  src/data/schema_validator.py       validation 3 niveaux (Pandera)
-  src/data/schema.py                 schémas Pandera des 4 fichiers
-  src/data/normalizer/               dispatcher + Schema2021Plus
-  services/training/Dockerfile
-  services/data_pipeline/Dockerfile
-  infrastructure/minio/              docker-compose extension
-  .dvcconfig                         remote = Scaleway S3
-  data/raw/2021/, data/raw/2022/, data/raw/2023/   via DVC
+  RÉALISÉ ✅ (itération 2021)
+  ──────────────────────────
+  MLflow v3.1.0 (image custom Docker, PostgreSQL backend, MinIO artefacts)
+  Modèle entraîné sur 2021 (54 698 accidents · 28 features)
+    → accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
+    → ⚠️ f1 et recall sous seuils (cible : ≥0.68 / ≥0.65) — à améliorer avec 2022+2023
+  rf_accidents@Production enregistré dans MLflow Registry (alias, MLflow 3.x)
+  API charge le modèle au démarrage : {"status":"ok","model_version":"rf_accidents@Production"}
+  DVC remote : Scaleway Object Storage (s3://cac-mlops-data/dvc)
+  data/raw/2021/ versionnée via DVC
 
-  AJOUTS docker-compose
-  ─────────────────────
-  + mlflow:5000
-  + minio:9000
-  + postgresql:5432 (si pas en Phase 1)
+  STACK DOCKER ACTUELLE (docker-compose.yml)
+  ──────────────────────────────────────────
+  postgresql  :5432    backend MLflow
+  minio       :9000/:9001  artefacts MLflow (bucket mlflow)
+  mlflow      :5001 (host) → http://localhost:5001  (container interne: 5000)
+  api         :8080 → http://localhost:8080 / http://51.159.187.132:8080
 
-  VALIDATION
-  ──────────
-  dvc tag data-v1 → train → MLflow run #1
-  dvc tag data-v2 → train → MLflow run #2
-  dvc tag data-v3 → train → MLflow run #3
-  → 3 runs comparables dans MLflow UI
+  À FAIRE (itérations 2022 + 2023)
+  ─────────────────────────────────
+  data/raw/2022/, data/raw/2023/   import + DVC push
+  make_dataset.py --cumul          preprocessing 2021+2022+2023
+  train_model.py                   MLflow run #2 et #3
+  validate_model.py                comparaison avec modèle @Production
+  → objectif : f1≥0.68 · recall≥0.65 · auc≥0.75
+  → si meilleur : set_registered_model_alias("rf_accidents", "Production", version)
+  → 3 runs comparables dans MLflow UI : http://localhost:5001
 ```
 
 ### Phase 3 — Orchestration & Déploiement (deadline: 27/07)
