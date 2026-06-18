@@ -26,3 +26,6 @@ coverage
 pytest>=8.0.0
 pytest-cov
 httpx          # TestClient FastAPI
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.0
+python-multipart>=0.0.9
