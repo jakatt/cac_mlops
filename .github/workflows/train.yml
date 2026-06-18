@@ -42,11 +42,16 @@ jobs:
             echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
 
             # ── 1. Pull données DVC (exécuté sur le host, pas dans Docker) ──────
+            echo "==> DVC version et remote"
+            dvc version 2>&1 | head -3
+            dvc remote list 2>&1
+
             echo "==> Pull données DVC (toutes les années nécessaires)"
-            # Cumul = toutes les années de 2021 jusqu'à $YEAR
             for y in 2021 2022 2023; do
               if [ "$y" -le "$YEAR" ]; then
-                dvc pull data/raw/$y || true
+                echo "  dvc pull data/raw/$y"
+                dvc pull data/raw/$y 2>&1 || echo "WARN: dvc pull $y failed"
+                ls data/raw/$y/ 2>/dev/null | head -5 || echo "  WARN: data/raw/$y vide ou absent"
               fi
             done
 
