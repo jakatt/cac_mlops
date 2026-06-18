@@ -106,25 +106,10 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Prefect server — orchestration UI [Phase 3] ──────────────────────────────
-  prefect:
-    image: ghcr.io/jakatt/cac-mlops-prefect-server:latest
-    restart: unless-stopped
-    ports:
-      - "4200:4200"   # UI → http://localhost:4200
-    environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: "sqlite+aiosqlite:////prefect/prefect.db"
-      PREFECT_SERVER_API_HOST: 0.0.0.0
-    volumes:
-      - prefect_data:/prefect
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
-      interval: 20s
-      timeout: 5s
-      retries: 10
-
-  # ── Prefect worker — déployé en Phase 5 (K8s) pour ne pas saturer le disque ──
+  # ── Prefect server + worker — déployés en Phase 5 (K8s) ────────────────────
+  # Disk budget trop serré sur DEV1-S pour y ajouter des images Prefect (~300MB+).
   # Le scheduling hebdomadaire est assuré par le trigger cron de train.yml (CI).
+  # Les flux Prefect (etl_flow, train_flow, retrain_flow) sont prêts dans src/flows/.
 
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   # prometheus:
@@ -143,4 +128,3 @@ services:
 volumes:
   postgres_data:
   minio_data:
-  prefect_data:
