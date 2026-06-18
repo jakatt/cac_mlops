@@ -1,0 +1,29 @@
+name: Diag — disk layout
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Disk diagnostic
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            echo "=== lsblk ==="
+            lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE
+            echo "=== df -h all ==="
+            df -h
+            echo "=== docker info ==="
+            docker info 2>/dev/null | grep -E "Docker Root Dir|Data Space|Metadata Space"
+            echo "=== docker system df ==="
+            docker system df
+            echo "=== minio_data volume ==="
+            docker volume inspect minio_data 2>/dev/null | grep -E "Mountpoint|Name"
+            echo "=== free disk on docker root ==="
+            DOCKER_ROOT=$(docker info 2>/dev/null | grep "Docker Root Dir" | awk '{print $NF}')
+            df -h "$DOCKER_ROOT" 2>/dev/null || echo "Docker root: $DOCKER_ROOT"
