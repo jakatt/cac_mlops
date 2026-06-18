@@ -16,6 +16,7 @@ from .model_loader import load_model
 from .routes.predict    import router as predict_router
 from .routes.health     import router as health_router
 from .routes.dashboard  import router as dashboard_router
+from .routes.auth       import router as auth_router
 from ._metrics import REQUESTS_TOTAL, PREDICTIONS_TOTAL
 from . import log_capture
 
@@ -42,6 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(predict_router)
 app.include_router(health_router)
 app.include_router(dashboard_router)

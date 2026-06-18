@@ -3,10 +3,11 @@ import logging
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..schemas.accident import AccidentFeatures, PredictionResponse
 from ..model_loader import get_model, get_model_version
+from ..auth import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,7 +21,10 @@ FEATURE_ORDER = [
 
 
 @router.post("/predict", response_model=PredictionResponse, tags=["inference"])
-def predict(features: AccidentFeatures) -> PredictionResponse:
+def predict(
+    features: AccidentFeatures,
+    _user: str = Depends(get_current_user),
+) -> PredictionResponse:
     """
     Predict accident severity.
 
