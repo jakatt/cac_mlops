@@ -56,16 +56,27 @@ jobs:
             echo "==> Login ghcr.io"
             echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USER --password-stdin
 
+            echo "==> Arrêt des conteneurs (libère les images)"
+            docker compose down --remove-orphans || true
+
+            echo "==> Nettoyage des anciennes images et du cache builder"
+            docker image prune -af
+            docker builder prune -af
+
             echo "==> Pull du code"
             git fetch origin main
             git reset --hard origin/main
 
+            echo "==> Espace disque disponible"
+            df -h /
+
             echo "==> Pull des données DVC"
             dvc pull --run-cache || true
 
-            echo "==> Pull des images pré-buildées + redémarrage"
+            echo "==> Pull des images pré-buildées"
             docker compose pull
-            docker compose down --remove-orphans
+
+            echo "==> Démarrage"
             docker compose up -d
 
             echo "==> Healthcheck (attente max 90s)"
