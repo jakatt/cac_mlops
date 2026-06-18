@@ -13,14 +13,17 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .model_loader import load_model
-from .routes.predict import router as predict_router
-from .routes.health  import router as health_router
+from .routes.predict    import router as predict_router
+from .routes.health     import router as health_router
+from .routes.dashboard  import router as dashboard_router
 from ._metrics import REQUESTS_TOTAL, PREDICTIONS_TOTAL
+from . import log_capture
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
 )
+log_capture.setup()
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -41,6 +44,7 @@ app.add_middleware(
 
 app.include_router(predict_router)
 app.include_router(health_router)
+app.include_router(dashboard_router)
 
 
 @app.middleware("http")
