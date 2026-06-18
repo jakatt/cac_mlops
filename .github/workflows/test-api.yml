@@ -25,53 +25,49 @@ jobs:
             echo "=== 1. Healthcheck ==="
             curl -sf --max-time 10 "$API/health" | python3 -m json.tool
 
-            echo "=== 2. Token JWT (admin/changeme) ==="
+            echo "=== 2. Token JWT ==="
             TOKEN=$(curl -sf --max-time 10 -X POST "$API/token" \
               -H "Content-Type: application/x-www-form-urlencoded" \
               -d "username=admin&password=changeme" \
               | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-            echo "Token obtenu (longueur: ${#TOKEN})"
+            echo "Token obtenu longueur ${#TOKEN}"
 
-            echo "=== 3. POST /predict sans token (expect 401) ==="
-            STATUS=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" -X POST "$API/predict" \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD")
-            echo "Status (expect 401): $STATUS"
-            [ "$STATUS" = "401" ] && echo "✅ Auth guard OK" || (echo "❌ Expected 401, got $STATUS" && exit 1)
+            echo "=== 3. /predict sans token (expect 401) ==="
+            STATUS=$(curl -s --max-time 10 -o /dev/null -w "%{http_code}" \
+              -X POST "$API/predict" -H "Content-Type: application/json" -d "$PAYLOAD")
+            [ "$STATUS" = "401" ] && echo "OK Auth guard 401" || (echo "FAIL expected 401 got $STATUS" && exit 1)
 
-            echo "=== 4. POST /predict avec token (expect 200) ==="
+            echo "=== 4. /predict avec token (expect 200) ==="
             HTTP_CODE=$(curl -s --max-time 60 \
-              -o /tmp/predict_resp.json -w "%{http_code}" \
+              -o /tmp/pred.json -w "%{http_code}" \
               -X POST "$API/predict" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $TOKEN" \
               -d "$PAYLOAD")
-            BODY=$(cat /tmp/predict_resp.json 2>/dev/null || echo "(vide)")
-            echo "HTTP: $HTTP_CODE"
-            echo "Body: $BODY"
+            BODY=$(cat /tmp/pred.json 2>/dev/null || echo vide)
+            echo "HTTP=$HTTP_CODE Body=$BODY"
             if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ /predict OK avec JWT"
+              echo "OK prediction reussie"
             else
-              echo "❌ Expected 200, got $HTTP_CODE"
-              echo "==> Logs API:"
-              docker compose logs --tail=20 api
+              echo "FAIL expected 200 got $HTTP_CODE"
+              docker compose logs --tail=30 api
               exit 1
             fi
 
-            echo "=== 5. Rate limit (22 requêtes rapides, expect 429) ==="
+            echo "=== 5. Rate limit (22 requetes, expect 429) ==="
             GOT_429=0
             for i in $(seq 1 22); do
-              S=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" -X POST "$API/predict" \
+              S=$(curl -s --max-time 5 -o /dev/null -w "%{http_code}" \
+                -X POST "$API/predict" \
                 -H "Content-Type: application/json" \
                 -H "Authorization: Bearer $TOKEN" \
                 -d "$PAYLOAD")
               if [ "$S" = "429" ]; then
                 GOT_429=1
-                echo "✅ 429 reçu à la requête $i — rate limiting OK"
+                echo "OK 429 a la requete $i rate limiting actif"
                 break
               fi
             done
-            [ "$GOT_429" = "1" ] || echo "⚠️  Aucun 429 reçu (burst=5 absorbé selon config NGINX)"
+            [ "$GOT_429" = "1" ] || echo "WARN pas de 429 burst=5 absorbe"
 
-            echo ""
-            echo "=== Phase 3 — Tests END-TO-END PASSÉS ✅ ==="
+            echo "=== Phase 3 Tests END-TO-END OK ==="
