@@ -2,18 +2,18 @@
 JWT authentication helpers.
 
 Credentials are read from env vars:
-  API_USERNAME   (default: admin)
-  API_PASSWORD   (default: changeme  — override in production)
-  JWT_SECRET_KEY (default: dev-secret — MUST be overridden in production)
+  API_USERNAME     (default: admin)
+  API_PASSWORD     (default: changeme  — override in production)
+  JWT_SECRET_KEY   (default: dev-secret — MUST be overridden in production)
   JWT_EXPIRE_HOURS (default: 24)
 """
 import os
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 _SECRET_KEY   = os.getenv("JWT_SECRET_KEY",    "dev-secret-change-in-production")
 _ALGORITHM    = "HS256"
@@ -21,11 +21,10 @@ _EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 _USERNAME     = os.getenv("API_USERNAME", "admin")
 _PASSWORD     = os.getenv("API_PASSWORD", "changeme")
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-_oauth2  = OAuth2PasswordBearer(tokenUrl="/token")
+_oauth2 = OAuth2PasswordBearer(tokenUrl="/token")
 
-# Pre-hash the password at startup so we never compare plaintext
-_HASHED_PASSWORD = _pwd_ctx.hash(_PASSWORD)
+# Pre-hash password at startup (bcrypt handles its own salting)
+_HASHED_PASSWORD: bytes = bcrypt.hashpw(_PASSWORD.encode(), bcrypt.gensalt())
 
 
 def create_access_token(subject: str) -> str:
@@ -34,7 +33,7 @@ def create_access_token(subject: str) -> str:
 
 
 def authenticate_user(username: str, password: str) -> bool:
-    return username == _USERNAME and _pwd_ctx.verify(password, _HASHED_PASSWORD)
+    return username == _USERNAME and bcrypt.checkpw(password.encode(), _HASHED_PASSWORD)
 
 
 def get_current_user(token: str = Depends(_oauth2)) -> str:
