@@ -9,11 +9,18 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 import joblib
 import mlflow
 import mlflow.sklearn
+
+# En local : MLflow sur localhost:5001 (5000 réservé AirPlay macOS)
+# En prod  : MLFLOW_TRACKING_URI=http://mlflow:5000 (défini dans docker-compose)
+mlflow.set_tracking_uri(
+    os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
+)
 import numpy as np
 import pandas as pd
 from sklearn import ensemble
