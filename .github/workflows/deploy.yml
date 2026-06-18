@@ -83,20 +83,19 @@ jobs:
             echo "==> Pull des images pré-buildées"
             docker compose pull
 
-            echo "==> Libération des ports (port 80)"
-            for cid in $(docker ps -aq --filter "publish=80"); do
-              echo "  Arrêt conteneur $cid (port 80)"
+            echo "==> Libération du port 8090 (nginx)"
+            for cid in $(docker ps -aq --filter "publish=8090"); do
+              echo "  Arrêt conteneur $cid (port 8090)"
               docker stop "$cid" 2>/dev/null || true
               docker rm "$cid" 2>/dev/null || true
             done
-            ss -tlnp | grep :80 || true
 
             echo "==> Démarrage"
             docker compose up -d
 
-            echo "==> Healthcheck API via nginx:80 (attente max 90s)"
+            echo "==> Healthcheck API via nginx:8090 (attente max 90s)"
             for i in $(seq 1 18); do
-              if curl -sf http://localhost/health > /dev/null 2>&1; then
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
                 echo "API OK après $((i*5))s"
                 break
               fi
