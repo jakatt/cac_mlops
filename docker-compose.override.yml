@@ -12,6 +12,11 @@ services:
       context: .
       dockerfile: services/api/Dockerfile
 
+  prefect:
+    build:
+      context: .
+      dockerfile: services/prefect/server.Dockerfile
+
   prefect-worker:
     build:
       context: .

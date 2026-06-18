@@ -32,6 +32,12 @@ jobs:
             -f services/api/Dockerfile .
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest
 
+      - name: Build + push Prefect server image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-prefect-server:latest \
+            -f services/prefect/server.Dockerfile .
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-prefect-server:latest
+
       - name: Build + push Prefect worker image
         run: |
           docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-prefect-worker:latest \
