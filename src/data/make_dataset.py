@@ -119,7 +119,7 @@ def _engineer(
     # ── drop columns ──────────────────────────────────────────────────────────
     drop_cols = [
         "senc", "larrout", "actp", "manv", "choc", "nbv", "prof", "plan",
-        "Num_Acc", "id_vehicule", "num_veh", "pr", "pr1", "voie", "trajet",
+        "Num_Acc", "id_vehicule", "id_usager", "num_veh", "pr", "pr1", "voie", "trajet",
         "secu2", "secu3", "adr", "v1", "lartpc", "occutc", "v2", "vosp",
         "locp", "etatp", "infra", "obs",
     ]
