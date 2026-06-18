@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # ── data.gouv.fr dataset (ONISR — accidents corporels de la circulation) ──────
 _DATASET_ID = "53698f4ca3a729239d2036df"
-_API_BASE = f"https://www.data.gouv.fr/api/1/datasets/{_DATASET_ID}/resources/"
+_API_BASE = f"https://www.data.gouv.fr/api/1/datasets/{_DATASET_ID}/"
 
 # ── Exact filenames per year (ONISR changes naming convention every year) ─────
 FILENAMES: dict[int, dict[str, str]] = {
@@ -51,21 +51,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _fetch_resource_urls() -> dict[str, str]:
-    """Return {filename: download_url} for all resources in the dataset."""
+    """Return {filename: download_url} for all resources in the dataset.
+
+    Uses the main dataset endpoint (GET /api/1/datasets/{id}/) which returns
+    all resources in a single call — the /resources/ sub-endpoint returns 405.
+    """
+    resp = requests.get(_API_BASE, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
     url_map: dict[str, str] = {}
-    page = 1
-    while True:
-        resp = requests.get(_API_BASE, params={"page": page, "page_size": 100}, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        for resource in data.get("data", []):
-            title = resource.get("title", "").strip()
-            url = resource.get("url", "")
-            if title and url:
-                url_map[title] = url
-        if page >= data.get("total", 1) // 100 + 1:
-            break
-        page += 1
+    for resource in data.get("resources", []):
+        title = resource.get("title", "").strip()
+        url = resource.get("url", "")
+        if title and url:
+            url_map[title] = url
     return url_map
 
 
