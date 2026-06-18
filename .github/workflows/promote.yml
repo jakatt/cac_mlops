@@ -1,14 +1,14 @@
-name: Promote model version to @Production
+name: Promote model to Production
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version du modèle à promouvoir (ex: 6)"
+        description: "Model version to promote"
         required: true
         default: "6"
       model_name:
-        description: "Nom du modèle MLflow"
+        description: "MLflow model name"
         required: true
         default: "rf_accidents"
 
@@ -31,26 +31,20 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
             MODEL="${{ github.event.inputs.model_name }}"
 
-            echo "==> Promotion $MODEL v$VERSION → @Production"
-            docker compose exec -T api python3 -c "
-import mlflow, os
-os.environ.setdefault('MLFLOW_TRACKING_URI', 'http://mlflow:5000')
-c = mlflow.tracking.MlflowClient()
-c.set_registered_model_alias('$MODEL', 'Production', '$VERSION')
-print('OK: $MODEL v$VERSION est maintenant @Production')
-"
-            echo "==> Redemarrage API (charge le nouveau modele)"
+            echo "==> Promoting $MODEL v$VERSION to @Production"
+            docker compose exec -T api python3 -c "import mlflow,os; os.environ.setdefault('MLFLOW_TRACKING_URI','http://mlflow:5000'); c=mlflow.tracking.MlflowClient(); c.set_registered_model_alias('$MODEL','Production','$VERSION'); print('OK: '+str('$MODEL')+' v'+str('$VERSION')+' is @Production')"
+            echo "==> Restarting API to load new model"
             docker compose restart api
 
             echo "==> Healthcheck"
             for i in $(seq 1 12); do
-              if curl -sf --max-time 5 http://localhost:8090/health | grep -q '"model_loaded": true'; then
-                echo "API OK — modele charge"
-                curl -sf --max-time 5 http://localhost:8090/health
+              STATUS=$(curl -sf --max-time 5 http://localhost:8090/health 2>/dev/null || echo '{}')
+              if echo "$STATUS" | grep -q '"model_loaded": true'; then
+                echo "API OK: $STATUS"
                 break
               fi
-              [ $i -eq 12 ] && echo "Timeout healthcheck" && exit 1
+              [ $i -eq 12 ] && echo "Timeout" && exit 1
               sleep 5
             done
 
-            echo "==> Promotion terminee"
+            echo "==> Promotion done"
