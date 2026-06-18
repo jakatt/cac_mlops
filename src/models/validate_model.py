@@ -7,8 +7,8 @@ Usage
 
 Exit codes
 ----------
-  0  candidate is better (or equal) on ≥ 3/4 metrics AND passes all KPI gates
-  1  candidate is worse — do NOT promote
+  0  model passes all KPI thresholds (may or may not have been promoted)
+  1  model fails KPI thresholds or an error occurred
 """
 import argparse
 import logging
@@ -93,7 +93,7 @@ def validate(candidate_run_id: str, promote: bool = False) -> bool:
                 "Candidat inférieur sur %d/%d métriques — promotion bloquée",
                 losses, len(KPI_THRESHOLDS)
             )
-            return False
+            return True  # KPIs OK, just not better than prod — pipeline succeeds
 
     logger.info("✅ Validation OK — candidat prêt pour @Production")
 
