@@ -38,6 +38,15 @@ def _load_year(year: int, raw_dir: Path | None = None) -> tuple[
     df_users   = pd.read_csv(d / fn["usagers"],          sep=";")
     df_veh     = pd.read_csv(d / fn["vehicules"],        sep=";")
 
+    # 2022+ : ONISR renomme Num_Acc → Accident_Id dans le fichier caracteristiques
+    df_caract.rename(columns={"Accident_Id": "Num_Acc"}, inplace=True)
+
+    # 2022+ : certaines colonnes contiennent des espaces insécables (\xa0)
+    # utilisés comme séparateurs de milliers (formatage français) → nettoyage
+    for df in (df_caract, df_places, df_users, df_veh):
+        for col in df.select_dtypes(include="object").columns:
+            df[col] = df[col].astype(str).str.replace("\xa0", "", regex=False).str.strip()
+
     return df_users, df_caract, df_places, df_veh
 
 
@@ -69,7 +78,9 @@ def _engineer(
 
     df_caract["dep"] = df_caract["dep"].astype(str).str.replace("2A", "201").str.replace("2B", "202")
     df_caract["com"] = df_caract["com"].astype(str).str.replace("2A", "201").str.replace("2B", "202")
-    df_caract[["dep", "com", "hour"]] = df_caract[["dep", "com", "hour"]].astype(int)
+    # pd.to_numeric coerce : 'N/C' et autres non-numériques → NaN → fillna(0)
+    for col in ["dep", "com", "hour"]:
+        df_caract[col] = pd.to_numeric(df_caract[col], errors="coerce").fillna(0).astype(int)
 
     df_caract["lat"]  = df_caract["lat"].astype(str).str.replace(",", ".").astype(float)
     df_caract["long"] = df_caract["long"].astype(str).str.replace(",", ".").astype(float)
