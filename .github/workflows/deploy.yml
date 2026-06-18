@@ -30,6 +30,10 @@ jobs:
             echo "==> Pull des données DVC"
             dvc pull --run-cache || true
 
+            echo "==> Nettoyage Docker (espace disque)"
+            docker image prune -f
+            docker builder prune -f
+
             echo "==> Rebuild et redémarrage des services"
             docker compose pull
             docker compose down --remove-orphans
