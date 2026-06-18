@@ -41,6 +41,18 @@ jobs:
 
             echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
 
+            # ── 0. Nettoyage MLflow (libère espace MinIO avant entraînement) ─────
+            echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
+            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py
+
+            echo "==> GC artifacts MinIO (suppression physique des runs effacés)"
+            docker compose run --rm mlflow mlflow gc \
+              --backend-store-uri "postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}" \
+              --experiment-ids 1 || true
+
+            echo "==> Espace disque après nettoyage"
+            df -h /
+
             # ── 1. Pull données DVC (exécuté sur le host, pas dans Docker) ──────
             echo "==> Pull données DVC (toutes les années jusqu'à $YEAR)"
             for y in 2021 2022 2023; do
