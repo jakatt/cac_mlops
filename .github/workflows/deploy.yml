@@ -83,6 +83,14 @@ jobs:
             echo "==> Pull des images pré-buildées"
             docker compose pull
 
+            echo "==> Libération des ports (port 80)"
+            for cid in $(docker ps -aq --filter "publish=80"); do
+              echo "  Arrêt conteneur $cid (port 80)"
+              docker stop "$cid" 2>/dev/null || true
+              docker rm "$cid" 2>/dev/null || true
+            done
+            ss -tlnp | grep :80 || true
+
             echo "==> Démarrage"
             docker compose up -d
 
