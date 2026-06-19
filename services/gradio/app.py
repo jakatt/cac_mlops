@@ -90,7 +90,9 @@ def _get_data() -> pd.DataFrame | None:
 
 def _predict(df: pd.DataFrame) -> np.ndarray:
     model = _get_model()
-    return model.predict(df)
+    # Le modèle a été entraîné avec la colonne 'int' (alias de intersection_type)
+    df_pred = df.rename(columns={"intersection_type": "int"})
+    return model.predict(df_pred)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
