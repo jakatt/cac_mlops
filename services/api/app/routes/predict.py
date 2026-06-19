@@ -1,9 +1,8 @@
 """POST /predict endpoint."""
-import asyncio
 import logging
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from ..schemas.accident import AccidentFeatures, PredictionResponse
 from ..model_loader import get_model, get_model_version
@@ -25,6 +24,7 @@ FEATURE_ORDER = [
 @router.post("/predict", response_model=PredictionResponse, tags=["inference"])
 def predict(
     features: AccidentFeatures,
+    background_tasks: BackgroundTasks,
     _user: str = Depends(get_current_user),
 ) -> PredictionResponse:
     """
@@ -50,13 +50,12 @@ def predict(
     version = get_model_version()
     PREDICTIONS_TOTAL.labels(result=str(prediction)).inc()
 
-    asyncio.ensure_future(
-        prediction_db.log_prediction(
-            features=features.model_dump(by_alias=True),
-            prediction=prediction,
-            probability=round(probability, 4),
-            model_version=version,
-        )
+    background_tasks.add_task(
+        prediction_db.log_prediction,
+        features=features.model_dump(by_alias=True),
+        prediction=prediction,
+        probability=round(probability, 4),
+        model_version=version,
     )
 
     return PredictionResponse(
