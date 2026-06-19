@@ -72,8 +72,9 @@ jobs:
             docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest 2>/dev/null || true
             docker builder prune -af
 
-            echo "==> Suppression des données DVC (non nécessaires au runtime API)"
-            rm -rf data/raw data/preprocessed .dvc/cache || true
+            echo "==> Suppression données brutes DVC (volumineuses, non nécessaires au runtime)"
+            rm -rf data/raw .dvc/cache || true
+            # data/preprocessed est conservé : nécessaire pour le service Gradio (what-if + heatmap)
 
             echo "==> Pull du code"
             git fetch origin main
