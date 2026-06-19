@@ -88,10 +88,19 @@ def _get_data() -> pd.DataFrame | None:
     return None
 
 
+# Colonnes que le schéma MLflow attend en float64 (double)
+_FLOAT_COLS = {
+    "secu1", "victim_age", "catv", "obsm", "motor",
+    "circ", "surf", "situ", "vma", "atm", "col", "lat", "long",
+}
+
 def _predict(df: pd.DataFrame) -> np.ndarray:
     model = _get_model()
-    # Le modèle a été entraîné avec la colonne 'int' (alias de intersection_type)
-    df_pred = df.rename(columns={"intersection_type": "int"})
+    df_pred = df.rename(columns={"intersection_type": "int"}).copy()
+    # Aligner les types avec le schéma MLflow : évite int64 → float64 errors
+    for col in _FLOAT_COLS:
+        if col in df_pred.columns:
+            df_pred[col] = df_pred[col].astype(float)
     return model.predict(df_pred)
 
 
