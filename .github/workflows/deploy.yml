@@ -120,6 +120,11 @@ jobs:
               docker rm "$cid" 2>/dev/null || true
             done
 
+            echo "==> Permissions répertoires Prometheus (UID 65534) + Grafana (UID 472)"
+            mkdir -p /data/prometheus_data /data/grafana_data
+            chown -R 65534:65534 /data/prometheus_data
+            chown -R 472:472 /data/grafana_data
+
             echo "==> Démarrage"
             docker compose up -d
 
