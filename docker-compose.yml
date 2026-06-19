@@ -111,6 +111,27 @@ services:
   # Le scheduling hebdomadaire est assuré par le trigger cron de train.yml (CI).
   # Les flux Prefect (etl_flow, train_flow, retrain_flow) sont prêts dans src/flows/.
 
+  # ── Gradio — Simulateur Sécurité Routière (Bison Futé + Géo Trouvetou) ─────
+  gradio:
+    image: ghcr.io/jakatt/cac-mlops-gradio:latest
+    restart: unless-stopped
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    environment:
+      MLFLOW_TRACKING_URI:    http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GRADIO_MODEL_NAME:      rf_accidents
+      GRADIO_MODEL_ALIAS:     Production
+      GRADIO_DATA_PATH:       data/preprocessed
+      GRADIO_PORT:            "7860"
+    ports:
+      - "7860:7860"   # UI → http://localhost:7860
+    volumes:
+      - ./data:/app/data:ro   # données préprocessées (read-only)
+
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
