@@ -875,35 +875,33 @@ DÉMARRAGE
 ```text
 SERVICE        PORT    RÔLE
 ───────────    ─────   ─────────────────────────────────────────────────
-api            8000    FastAPI — expose POST /predict, GET /health,
-                       GET /metrics (Prometheus)
-                       Charge le modèle depuis MLflow Registry
+api            8080→   FastAPI — POST /predict (JWT requis)
+               8000    GET /health, GET /metrics, POST /token
+               (host)  Charge modèle @Production depuis MLflow Registry
+                       Image : ghcr.io/jakatt/cac-mlops-api:latest
 
-training       —       Service one-shot — exécuté manuellement ou
-                       déclenché par Prefect
-                       Lance ETL → validation → preprocessing → train
-
-mlflow         5001    UI tracking : http://localhost:5001
-                       Compare les runs, gère le Model Registry (v3.1.0)
-                       Aliases (@Production) remplacent les stages dépréciés
-                       Backend : PostgreSQL, artefacts : MinIO (bucket mlflow)
+mlflow         5001→   UI tracking : http://localhost:5001
+               5000    Gère le Model Registry v3.1.0 (alias @Production)
+               (host)  Backend : PostgreSQL, artefacts : MinIO (mlflow bucket)
+                       Image : ghcr.io/jakatt/cac-mlops-mlflow:latest
 
 minio          9000    Stockage local compatible S3
                9001    Console UI MinIO : http://localhost:9001
-                       Simule Scaleway Object Storage en local
-                       Contient les artefacts MLflow (modèles, plots)
+                       Artefacts MLflow (modèles, plots, matrices)
 
 postgresql     5432    Backend MLflow (runs, params, métriques)
                        [Phase 4] logs des prédictions production
 
-prefect        4200    UI orchestration : http://localhost:4200
-                       Déclenche les flows ETL et réentraînement
+nginx          8090→   Reverse proxy devant l'API ✅ Phase 3
+               80      Rate limiting : 20 req/min sur /predict (burst 5 → 429)
+               (host)  Endpoint principal d'accès en production
 
-nginx          80      Reverse proxy devant l'API [Phase 3]
-                       Rate limiting, headers sécurité, auth JWT
+prometheus     9090    Scrape /metrics de l'API [Phase 4] — commenté
+grafana        3000    Dashboards perf + drift [Phase 4] — commenté
 
-prometheus     9090    Scrape /metrics de l'API [Phase 4]
-grafana        3000    Dashboards perf + drift [Phase 4]
+prefect        —       Flows codés dans src/flows/ mais serveur NON déployé
+                       (budget NVMe trop serré ~300 MB d'images)
+                       Scheduling assuré par train.yml (cron GitHub Actions)
 ```
 
 ### Flux de travail quotidien
@@ -967,46 +965,67 @@ API_ENV=development                     API_ENV=production
 
 ## 8. Partie Scaleway — production
 
-### Infrastructure actuelle (Phase 1+2) — scw-jovial-dubinsky DEV1-L
+### Infrastructure actuelle (Phase 3 terminée) — scw-jovial-dubinsky DEV1-L
 
 ```text
-SCALEWAY CLOUD — ÉTAT ACTUEL
+SCALEWAY CLOUD — ÉTAT ACTUEL (Phase 3)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
 │   Serveur dédié : scw-jovial-dubinsky DEV1-L                              │
 │   IP publique   : 51.159.187.132                                           │
 │   User deploy   : /home/deploy/cac_mlops                                  │
 │                                                                            │
-│   docker-compose.yml (4 containers, restart: unless-stopped)              │
+│   docker-compose.yml (5 containers, restart: unless-stopped)              │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  postgresql  :5432    backend MLflow (volume persistant)         │   │
-│   │  minio       :9000/:9001  artefacts MLflow (bucket mlflow)      │   │
+│   │  postgresql  :5432    backend MLflow (bind mount /data/...)      │   │
+│   │  minio       :9000/:9001  artefacts MLflow (bind mount /data/...) │  │
 │   │  mlflow      :5001    http://51.159.187.132:5001  (v3.1.0)      │   │
-│   │  api         :8080    http://51.159.187.132:8080                 │   │
+│   │  api         :8080    http://51.159.187.132:8080  (direct/admin) │   │
+│   │  nginx       :8090    http://51.159.187.132:8090  (entrée prod)  │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Modèle en production : rf_accidents@Production (2021 · v1)              │
-│   KPI actuels : accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593     │
+│   Modèle en production : rf_accidents@Production v6                       │
+│     Entraîné sur : cumul 2021+2022+2023                                   │
+│     Test : {"prediction":0,"probability":0.71} ← vérifié end-to-end      │
+│                                                                            │
+│   DISQUES                                                                  │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  /dev/vda1  NVMe 17 GB → /  (Docker images ~4 GB)    ~94% usé  │   │
+│   │  /dev/sda   Block 19 GB → /data (volumes bind mounts) ~89% usé  │   │
+│   │                                                                  │   │
+│   │  MinIO data  : /data/minio_data  (1.3 GB, bind mount)           │   │
+│   │  Postgres    : /data/postgres_data (bind mount, uid 70)          │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│   ⚠️  NVMe serré — pas de Prefect container ni Prometheus/Grafana         │
+│   pour ne pas dépasser le budget disque avec des images supplémentaires.  │
+│                                                                            │
+│   Autre application sur ce VPS (partagé)                                  │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  Caddy (port 80/443) + 2× uvicorn Python (port 8000/8001)       │   │
+│   │  Qdrant vector DB (Docker, localhost:6333-6334 uniquement)        │   │
+│   │  → ne pas toucher aux images Docker de cette app                 │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Scaleway Object Storage (compatible S3)                                  │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  bucket: cac-mlops-data   → données brutes (DVC remote)         │   │
+│   │  bucket: mlflow           → artefacts MLflow (via MinIO local)   │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Deploy : GitHub Actions deploy.yml → SSH → git pull + docker compose   │
+│   Registry images : ghcr.io/jakatt/cac-mlops-{api,mlflow}:latest         │
+│   Deploy : GitHub Actions deploy.yml → SSH → docker compose               │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 
-### Infrastructure cible (Phase 3+) — Kubernetes
+### Infrastructure cible (Phase 5) — Kubernetes
 
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
-│   Scaleway Kapsule (Kubernetes managé)                                     │
-│   · Ingress NGINX · auto-scaling API (2–10 replicas)                      │
-│   · Pods : api · mlflow · prefect · prometheus · grafana                  │
+│   Scaleway Kapsule (Kubernetes managé) — prévu Phase 5                    │
+│   · Ingress NGINX avec TLS · auto-scaling API (2–10 replicas)            │
+│   · Pods : api · mlflow · prefect-server · prometheus · grafana           │
 │                                                                            │
 │   Scaleway Managed Database (PostgreSQL)                                   │
-│   Scaleway Container Registry (images CI/CD)                               │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1050,69 +1069,89 @@ OBJECTIF : avoir une API fonctionnelle et un pipeline dockerisé
   GET  /metrics         → métriques Prometheus
 ```
 
-### Phase 2 — Microservices, Suivi & Versioning ⏳ EN COURS (deadline: 29/06)
+### Phase 2 — Microservices, Suivi & Versioning ✅ TERMINÉE
 
 ```text
 OBJECTIF : pipeline année-par-année tracé dans DVC + MLflow
 
-  RÉALISÉ ✅ (itération 2021)
-  ──────────────────────────
-  MLflow v3.1.0 (image custom Docker, PostgreSQL backend, MinIO artefacts)
-  Modèle entraîné sur 2021 (54 698 accidents · 28 features)
-    → accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
-    → ⚠️ f1 et recall sous seuils (cible : ≥0.68 / ≥0.65) — à améliorer avec 2022+2023
-  rf_accidents@Production enregistré dans MLflow Registry (alias, MLflow 3.x)
-  API charge le modèle au démarrage : {"status":"ok","model_version":"rf_accidents@Production"}
+  RÉALISÉ ✅
+  ──────────
+  MLflow v3.1.0 (image custom Docker ghcr.io/jakatt/cac-mlops-mlflow:latest)
+    Backend PostgreSQL · Artefacts MinIO (bucket "mlflow") · Aliases @Production
+  3 itérations complètes :
+    v1  data/raw/2021/          → accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
+    v2  cumul_2021_2022/        → amélioration sur 2 ans
+    v6  cumul_2021_2022_2023/   → modèle @Production actuel (27 features, sans id_usager)
+  rf_accidents@Production = v6 → API retourne {"model_version":"rf_accidents@Production"}
   DVC remote : Scaleway Object Storage (s3://cac-mlops-data/dvc)
-  data/raw/2021/ versionnée via DVC
+  data/raw/2021/, data/raw/2022/, data/raw/2023/ versionnées via DVC
 
-  STACK DOCKER ACTUELLE (docker-compose.yml)
-  ──────────────────────────────────────────
-  postgresql  :5432    backend MLflow
-  minio       :9000/:9001  artefacts MLflow (bucket mlflow)
-  mlflow      :5001 (host) → http://localhost:5001  (container interne: 5000)
-  api         :8080 → http://localhost:8080 / http://51.159.187.132:8080
+  NOTE FEATURE CRITIQUE : id_usager supprimé du feature set
+  ──────────────────────────────────────────────────────────
+  Les modèles v1-v4 (entraînés avant le fix) incluaient id_usager (identifiant
+  usager, non généralisant). make_dataset.py a été corrigé pour le supprimer.
+  Les anciens modèles @Production ne fonctionnaient pas avec l'API car le
+  payload /predict ne contient pas id_usager. → v6 corrige ce bug de feature leak.
 
-  À FAIRE (itérations 2022 + 2023)
-  ─────────────────────────────────
-  data/raw/2022/, data/raw/2023/   import + DVC push
-  make_dataset.py --cumul          preprocessing 2021+2022+2023
-  train_model.py                   MLflow run #2 et #3
-  validate_model.py                comparaison avec modèle @Production
-  → objectif : f1≥0.68 · recall≥0.65 · auc≥0.75
-  → si meilleur : set_registered_model_alias("rf_accidents", "Production", version)
-  → 3 runs comparables dans MLflow UI : http://localhost:5001
+  STACK DOCKER (docker-compose.yml)
+  ──────────────────────────────────
+  postgresql  :5432    backend MLflow (bind mount /data/postgres_data en prod)
+  minio       :9000/:9001  artefacts MLflow (bind mount /data/minio_data en prod)
+  mlflow      :5001 (host) → http://51.159.187.132:5001  (container interne: 5000)
+  api         :8080 → http://51.159.187.132:8080  (accès direct / admin)
+
+  validate_model.py — exit codes
+  ───────────────────────────────
+  exit 0 : KPIs OK (modèle promu ou non — "pas meilleur" ≠ échec pipeline)
+  exit 1 : KPIs insuffisants ou erreur
 ```
 
-### Phase 3 — Orchestration & Déploiement (deadline: 27/07)
+### Phase 3 — Orchestration & Déploiement ✅ TERMINÉE
 
 ```text
-OBJECTIF : pipeline automatisé, CI, API sécurisée, Kubernetes
+OBJECTIF : pipeline automatisé, CI, API sécurisée
 
-  À FAIRE
-  ───────
-  orchestration/flows/etl_flow.py        Prefect : ingestion + validation + prep
-  orchestration/flows/training_flow.py   Prefect : entraînement + MLflow + registry
-  orchestration/flows/retrain_flow.py    Prefect : réentraînement sur alerte
-  infrastructure/nginx/nginx.conf        voir sous-section NGINX ci-dessous
-  services/api/auth.py                   JWT (FastAPI OAuth2)
-  .github/workflows/ci.yml               lint → test → build → push Scaleway Registry
-  k8s/api-deployment.yaml
-  k8s/api-hpa.yaml                       auto-scaling
+  RÉALISÉ ✅
+  ──────────
+  services/nginx/nginx.conf              Reverse proxy + rate limiting (voir §NGINX)
+  services/api/app/auth.py               JWT HS256 (python-jose + passlib)
+  services/api/app/routes/auth.py        POST /token (OAuth2PasswordBearer)
+  src/flows/etl_flow.py                  Prefect : téléchargement + preprocessing
+  src/flows/train_flow.py                Prefect : entraînement + MLflow + promotion
+  src/flows/retrain_flow.py              Prefect : réentraînement sur dérive détectée
+  src/scripts/mlflow_cleanup.py          Nettoyage runs anciens + gc artifacts MinIO
+  prefect.yaml                           Configuration déploiements Prefect
 
-  CI GITHUB ACTIONS (ordre des étapes)
-  ─────────────────────────────────────
-  1. flake8 (lint)
-  2. pytest tests/unit/
-  3. pytest tests/integration/
-  4. docker build cac-mlops/api
-  5. docker push scw-registry/cac-mlops/api:sha
-  6. (optionnel) kubectl rollout restart
+  Prefect — statut conteneur
+  ──────────────────────────
+  Les flows Prefect (etl, train, retrain) sont codés et prêts.
+  Le serveur Prefect n'est PAS déployé comme conteneur Docker sur le VPS
+  (budget disque NVMe trop serré : images Prefect ~300 MB+).
+  Remplacement : train.yml (cron lundi 02h00 UTC) assure le scheduling.
+  Déploiement Prefect prévu en Phase 5 (Kubernetes / infra séparée).
+
+  CI GITHUB ACTIONS — 6 workflows
+  ─────────────────────────────────
+  ci.yml           lint (flake8) + pytest sur push/PR
+  deploy.yml       build images → push ghcr.io → SSH deploy → healthcheck
+  train.yml        pipeline complet sur Scaleway (cron lundi 02h00 UTC + manuel)
+  promote.yml      force-promote n'importe quelle version @Production (manuel)
+  test-api.yml     tests end-to-end JWT + /predict + rate limit (manuel)
+  diag.yml         diagnostic serveur complet (disque, Docker, ports) (manuel)
+
+  Registry : ghcr.io/jakatt/cac-mlops-api:latest + ghcr.io/jakatt/cac-mlops-mlflow:latest
+  (GitHub Container Registry — pas Scaleway Container Registry)
+
+  NON FAIT en Phase 3
+  ────────────────────
+  Kubernetes / Scaleway Kapsule : maintenu docker-compose (VPS DEV1-L suffisant)
+  TLS / HTTPS : pas de certificat configuré (accès via IP publique + port 8090)
+  Auto-scaling : N/A sans K8s
 ```
 
-#### NGINX — Reverse proxy & sécurisation de l'API
+#### NGINX — Reverse proxy & sécurisation de l'API ✅ IMPLÉMENTÉ
 
-NGINX s'intercale entre internet et le service FastAPI. Il est le seul point d'entrée réseau exposé publiquement.
+NGINX s'intercale entre internet et le service FastAPI. Il est le seul point d'entrée réseau exposé publiquement pour les prédictions.
 
 ```text
 POURQUOI NGINX DEVANT FASTAPI ?
@@ -1120,59 +1159,72 @@ POURQUOI NGINX DEVANT FASTAPI ?
 FastAPI est un framework applicatif, pas un serveur de production.
 Il ne gère pas nativement :
   → la limitation du débit (rate limiting)
-  → la terminaison TLS (HTTPS)
-  → la compression des réponses
-  → les headers de sécurité HTTP
   → la répartition de charge entre réplicas
 
-NGINX prend en charge tout cela, FastAPI reste focalisé sur la logique.
+NGINX prend en charge cela, FastAPI reste focalisé sur la logique.
+JWT auth est géré côté FastAPI (auth.py) — NGINX ne valide pas les tokens.
 
-FLUX DES REQUÊTES AVEC NGINX
-──────────────────────────────
+FLUX DES REQUÊTES AVEC NGINX (implémentation actuelle)
+────────────────────────────────────────────────────────
 
   Client externe
-       │  HTTPS :443
+       │  HTTP :8090  (port 80 de l'hôte pris par une autre appli Caddy)
        ▼
   ┌─────────────────────────────────────────────────┐
-  │  NGINX  (infrastructure/nginx/nginx.conf)       │
+  │  NGINX  (services/nginx/nginx.conf)             │
+  │  image : nginx:alpine — port container : 80     │
   │                                                 │
-  │  → Terminaison TLS (certificat Let's Encrypt)   │
-  │  → Rate limiting : 10 req/s par IP              │
-  │  → Headers sécurité :                           │
-  │      X-Frame-Options: DENY                      │
-  │      X-Content-Type-Options: nosniff            │
-  │      Strict-Transport-Security                  │
-  │  → Vérification token JWT (Phase 3)             │
-  │  → Compression gzip des réponses JSON           │
-  │  → Logs d'accès structurés (format JSON)        │
+  │  → Rate limiting /predict : 20 req/min par IP   │
+  │       burst=5 nodelay, réponse 429 si dépassé  │
+  │  → server_tokens off (masque version NGINX)     │
+  │  → Proxy vers api:8000 (réseau Docker interne)  │
+  │  → Tous les autres endpoints : sans limite      │
   └──────────────────┬──────────────────────────────┘
-                     │  HTTP :8000 (réseau interne Docker/K8s)
+                     │  HTTP :8000 (réseau Docker interne)
                      ▼
   ┌─────────────────────────────────────────────────┐
-  │  FastAPI  (services/api)                        │
-  │  → Logique métier pure                          │
-  │  → Chargement modèle MLflow                     │
-  │  → POST /predict, GET /health, GET /metrics     │
+  │  FastAPI  (services/api)  — port direct : 8080  │
+  │  → POST /token   : émet JWT (admin login)       │
+  │  → POST /predict : require Bearer JWT → 0/1     │
+  │  → GET  /health  : status + model_version       │
+  │  → GET  /metrics : Prometheus counters          │
   └─────────────────────────────────────────────────┘
 
-CONFIGURATION NGINX ESSENTIELLE (nginx.conf)
-─────────────────────────────────────────────
-  upstream api_backend {
-      server api:8000;           # nom du service Docker
-  }
+CONFIGURATION NGINX RÉELLE (services/nginx/nginx.conf)
+───────────────────────────────────────────────────────
+  limit_req_zone $binary_remote_addr zone=predict_ratelimit:10m rate=20r/m;
+
+  upstream api_backend { server api:8000; }
 
   server {
-      listen 443 ssl;
-      limit_req zone=api_limit burst=20 nodelay;  # rate limiting
-      proxy_pass http://api_backend;
-      add_header X-Frame-Options DENY;
+      listen 80;
+      location = /predict {
+          limit_req zone=predict_ratelimit burst=5 nodelay;
+          limit_req_status 429;
+          proxy_pass http://api_backend;
+      }
+      location / { proxy_pass http://api_backend; }
   }
 
-LOCAL vs PRODUCTION
+AUTHENTIFICATION JWT (services/api/app/auth.py)
+────────────────────────────────────────────────
+  POST /token  (form: username + password)  →  {"access_token": "...", "token_type": "bearer"}
+  POST /predict sans token                  →  HTTP 401 Unauthorized
+  POST /predict avec Bearer token valide    →  {"prediction": 0, "probability": 0.71, ...}
+
+PORTS (VPS Scaleway)
 ────────────────────
-  Local      : NGINX sur port 80 (HTTP, pas de TLS) → http://localhost/predict
-  Scaleway   : NGINX Ingress K8s sur port 443 (HTTPS, TLS Let's Encrypt)
-               → https://api.cac-mlops.fr/predict  (exemple)
+  :8090  → NGINX (entrée principale, rate-limited)
+  :8080  → API directe (admin, healthcheck, bypass NGINX)
+  :5001  → MLflow UI
+  :9001  → MinIO console
+  Port 80/443 : pris par une autre application (Caddy) sur le même VPS
+
+PHASE SUIVANTE (TLS)
+─────────────────────
+  TLS/HTTPS non configuré actuellement (accès via IP + port 8090).
+  Mise en place d'un certificat Let's Encrypt prévue avec le passage K8s
+  ou via Caddy si on reste docker-compose.
 ```
 
 ### Phase 4 — Monitoring & Maintenance (deadline: 28/09)
@@ -1389,7 +1441,7 @@ LIVRABLES DOCUMENTATION (docs/)
 | `noel` | Noël | commits libres, push direct |
 | `main` | — | **pas de commit direct** — uniquement via PR |
 
-### GitHub Actions : deux workflows
+### GitHub Actions : 6 workflows
 
 ```text
 ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
@@ -1399,15 +1451,41 @@ ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
   → la PR ne peut pas merger si ✗
 
 deploy.yml — déclenché sur : push/merge dans main
-  1. SSH vers scw-jovial-dubinsky (deploy@51.159.187.132)
-  2. export PATH → /home/deploy/.local/bin
-  3. cd /home/deploy/cac_mlops
-  4. git fetch origin main && git reset --hard origin/main
-  5. dvc pull (données Scaleway Object Storage)
-  6. docker compose down --remove-orphans
-  7. docker compose up -d --build
-  8. healthcheck : curl http://localhost:8080/health (retry 18×5s = 90s max)
+  1. Build + push images ghcr.io/jakatt/cac-mlops-{api,mlflow}:latest
+  2. SSH → login ghcr.io · arrêt containers
+  3. docker image rm ghcr.io/jakatt/cac-mlops-* (nos images uniquement)
+     ⚠️  PAS docker image prune -af (autre app partage le VPS)
+  4. git reset --hard origin/main
+  5. DOCKER_VOLUMES_PATH=/data ajouté dans .env si absent
+  6. docker compose pull (images pré-buildées)
+  7. Migration volumes nommés → /data bind mounts (one-time, idempotent)
+     Utilise ghcr.io/jakatt/cac-mlops-mlflow:latest pour copier les données
+     (pas alpine — Docker Hub rate limit)
+  8. docker volume rm cac_mlops_minio_data cac_mlops_postgres_data ... || true
+     (supprime anciens volumes nommés après migration, libère NVMe)
+  9. docker compose up -d
+  10. healthcheck : curl http://localhost:8090/health (retry 18×5s = 90s)
   → ✓ ou logs API + exit 1
+
+train.yml — déclenché : cron lundi 02h00 UTC OU workflow_dispatch (year, cumul, promote)
+  0. mlflow_cleanup.py (garde 3 derniers runs, gc artifacts MinIO)
+  1. dvc pull data/raw/{2021,2022,2023}
+  2. make_dataset.py --year N [--cumul]   (dans container api via docker compose run)
+  3. train_model.py --year N [--cumul]    (MLflow run → artefact MinIO)
+  4. validate_model.py --run-id RUN_ID [--promote]
+     exit 0 = KPIs OK (promu ou non) · exit 1 = KPIs insuffisants
+  5. docker compose restart api + healthcheck
+
+promote.yml — workflow_dispatch(version, model_name)
+  Force-promote n'importe quelle version → @Production alias MLflow
+  → utile quand le modèle @Production est cassé (ex: feature leak)
+
+test-api.yml — workflow_dispatch
+  Tests end-to-end sur le serveur : health · token JWT · 401 · 200 /predict · 429 rate limit
+
+diag.yml — workflow_dispatch
+  Diagnostic complet serveur : df, lsblk, docker ps, docker images, docker system df,
+  ports ouverts, compose projects, /data contents + disk usage
 ```
 
 ### Workflow quotidien (sur ta branche)
@@ -1477,97 +1555,83 @@ cac_mlops/
 │
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                         # lint + pytest sur push jacques/noel et PR→main
-│       └── deploy.yml                     # SSH deploy automatique sur merge dans main
+│       ├── ci.yml                         # lint (flake8) + pytest → bloque PR si ✗
+│       ├── deploy.yml                     # build images → push ghcr.io → SSH deploy
+│       ├── train.yml                      # pipeline ETL+train+validate (cron + manuel)
+│       ├── promote.yml                    # force-promote version → @Production
+│       ├── test-api.yml                   # tests end-to-end JWT + /predict + rate limit
+│       └── diag.yml                       # diagnostic complet serveur (disque, Docker)
 │
 ├── data/                                  # ignoré par Git, géré par DVC
-│   ├── raw/                               # données d'entraînement
-│   │   ├── 2021/
-│   │   │   ├── carcteristiques-2021.csv   # faute de frappe ONISR conservée
-│   │   │   ├── lieux-2021.csv
-│   │   │   ├── usagers-2021.csv
-│   │   │   └── vehicules-2021.csv
-│   │   ├── 2022/                          # ajouté en itération 2
-│   │   └── 2023/                          # ajouté en itération 3
-│   ├── production/                        # données de production (pas d'entraînement)
-│   │   └── 2024/
-│   │       ├── Caract_2024.csv            # convention ONISR 2024 : majuscule + underscore
-│   │       ├── Lieux_2024.csv
-│   │       ├── Usagers_2024.csv
-│   │       └── Vehicules_2024.csv
+│   ├── raw/                               # données d'entraînement versionnées DVC
+│   │   ├── 2021.dvc / 2021/               # carcteristiques-2021.csv (faute ONISR)
+│   │   ├── 2022.dvc / 2022/               # carcteristiques-2022.csv (même faute)
+│   │   └── 2023.dvc / 2023/               # caract-2023.csv (abrégé, faute corrigée)
+│   ├── production/                        # données de production (non entraînement)
+│   │   └── 2024/                          # Caract_2024.csv (majuscule + underscore)
 │   └── preprocessed/
-│       ├── 2021/
-│       │   ├── X_train.csv  X_test.csv
-│       │   └── y_train.csv  y_test.csv
-│       ├── cumul_2021_2022/
-│       └── cumul_2021_2023/
+│       ├── 2021/                          # X_train, X_test, y_train, y_test
+│       ├── cumul_2021_2022/               # 2 ans cumulés
+│       └── cumul_2021_2022_2023/          # 3 ans cumulés → modèle @Production
 │
 ├── services/
 │   ├── api/
 │   │   ├── app/
-│   │   │   ├── main.py                    # FastAPI app
+│   │   │   ├── main.py                    # FastAPI app — routers + metrics middleware
+│   │   │   ├── auth.py                    # JWT HS256 (python-jose + passlib)
+│   │   │   ├── model_loader.py            # chargement MLflow @Production au démarrage
+│   │   │   ├── _metrics.py                # Prometheus counters (REQUESTS_TOTAL, etc.)
+│   │   │   ├── log_capture.py             # capture logs Python → structuré
 │   │   │   ├── routes/
-│   │   │   │   ├── predict.py             # POST /predict
-│   │   │   │   └── metrics.py             # GET /metrics [Ph.4]
-│   │   │   ├── schemas/
-│   │   │   │   └── accident.py            # Pydantic — 28 features
-│   │   │   ├── auth.py                    # JWT [Ph.3]
-│   │   │   └── middleware.py              # log prédictions [Ph.4]
+│   │   │   │   ├── auth.py                # POST /token
+│   │   │   │   ├── predict.py             # POST /predict (Bearer JWT requis)
+│   │   │   │   ├── health.py              # GET /health
+│   │   │   │   └── dashboard.py           # GET /metrics (Prometheus)
+│   │   │   └── schemas/
+│   │   │       └── accident.py            # Pydantic — 28 features
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   │
-│   ├── training/
-│   │   ├── train.py                       # ETL + entraînement (paramétré par year)
-│   │   ├── Dockerfile
-│   │   └── requirements.txt
+│   ├── mlflow/
+│   │   └── Dockerfile                     # image custom MLflow + boto3 + psycopg2
 │   │
-│   └── monitoring/                        # Phase 4
-│       ├── drift_detection.py             # Evidently
-│       └── Dockerfile
+│   ├── nginx/
+│   │   └── nginx.conf                     # rate limit 20r/min /predict, proxy → api:8000
+│   │
+│   └── prefect/                           # flows Prefect — serveur NON déployé (budget NVMe)
+│       ├── Dockerfile                     # image si déploiement futur K8s
+│       ├── server.Dockerfile
+│       ├── entrypoint.sh
+│       └── requirements.txt
 │
-├── src/                                   # code existant refactorisé
+├── src/
 │   ├── data/
-│   │   ├── import_raw_data.py             # paramétré : year + source URL
-│   │   ├── make_dataset.py                # paramétré : year
+│   │   ├── import_raw_data.py             # download data.gouv.fr, FILENAMES mapping/année
+│   │   ├── make_dataset.py                # fusion 4 tables, feature engineering, split
 │   │   ├── check_structure.py
-│   │   ├── schema.py                      # schémas Pandera des 4 fichiers ← NOUVEAU
-│   │   ├── schema_validator.py            # 3 niveaux CRITICAL/WARNING/INFO ← NOUVEAU
+│   │   ├── schema.py                      # schémas Pandera (4 fichiers ONISR)
+│   │   ├── schema_validator.py            # 3 niveaux CRITICAL/WARNING/INFO
 │   │   └── normalizer/
-│   │       ├── __init__.py
-│   │       ├── normalize.py               # dispatcher selon année ← NOUVEAU
-│   │       └── schema_2021_plus.py        # no-op pour 2021-2023 ← NOUVEAU
+│   │       └── __init__.py
 │   ├── models/
-│   │   ├── train_model.py
+│   │   ├── train_model.py                 # RandomForest + MLflow tracking + Registry
 │   │   ├── predict_model.py
-│   │   └── validate_model.py             ← NOUVEAU (compare vs run précédent)
-│   └── features/
-│       └── build_features.py
-│
-├── scripts/
-│   └── simulate_production.py             # rejoue data/production/2024/ via POST /predict
-│                                          # ~4 600 req/mois × 12 → logs PostgreSQL Evidently
-│
-├── orchestration/
-│   └── flows/
-│       ├── etl_flow.py                    # Prefect : ingestion + validation + prep
-│       ├── training_flow.py               # Prefect : entraînement + MLflow
-│       ├── retrain_flow.py                # Prefect : réentraînement automatique
-│       └── drift_monitoring_flow.py       # Prefect : batch mensuel Evidently [Phase 4]
-│
-├── infrastructure/
-│   ├── nginx/nginx.conf
-│   ├── prometheus/prometheus.yml
-│   └── grafana/dashboards/
-│
-├── k8s/                                   # Phase 3 : Scaleway Kapsule
-│   ├── api-deployment.yaml
-│   ├── api-service.yaml
-│   └── api-hpa.yaml
+│   │   └── validate_model.py              # compare candidat vs @Production, promote si OK
+│   ├── flows/                             # Prefect flows (codés, pas déployés en container)
+│   │   ├── etl_flow.py                    # download + preprocess
+│   │   ├── train_flow.py                  # train + validate + promote
+│   │   └── retrain_flow.py                # réentraînement sur détection dérive
+│   ├── scripts/
+│   │   └── mlflow_cleanup.py              # garde 3 runs, gc artifacts MinIO avant train
+│   ├── features/
+│   │   └── build_features.py
+│   └── visualization/
+│       └── visualize.py
 │
 ├── tests/
 │   ├── unit/
 │   │   ├── test_preprocessing.py          # make_dataset.py
-│   │   ├── test_schema_validator.py       # validation 3 niveaux ← NOUVEAU
+│   │   ├── test_schema_validator.py       # validation 3 niveaux
 │   │   └── test_predict.py               # predict_model.py
 │   └── integration/
 │       └── test_api.py                    # appels HTTP sur l'API FastAPI
@@ -1575,14 +1639,19 @@ cac_mlops/
 ├── notebooks/
 │   └── 1.0-ldj-initial-data-exploration.ipynb
 │
-├── docker-compose.yml                     # stack locale complète
-├── docker-compose.prod.yml                # surcharge pour Scaleway
-├── .env.example                           # template variables d'env
-├── .dvcconfig                             # remote = Scaleway S3
+├── docker-compose.yml                     # stack locale + prod (5 services actifs)
+├── docker-compose.override.yml            # surcharges locales (ports, volumes)
+├── prefect.yaml                           # configuration Prefect deployments
+├── .env                                   # secrets (gitignore) — JWT_SECRET_KEY, etc.
+├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
 ├── setup.py
 ├── architecture.md                        # ce fichier
 └── README.md
+
+NOTE : pas de docker-compose.prod.yml (un seul compose + .env suffit),
+       pas de k8s/ (Kubernetes non implémenté en Phase 3),
+       pas de infrastructure/ (nginx dans services/nginx/).
 ```
 
 ---
@@ -1612,14 +1681,20 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  CI/CD                     │  GitHub Actions → Scaleway Container Registry │
+│  CI/CD                     │  GitHub Actions → ghcr.io (GitHub Container   │
+│                            │  Registry) — 6 workflows (ci, deploy, train,  │
+│                            │  promote, test-api, diag)                     │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Gateway                   │  NGINX (reverse proxy + auth) [Phase 3]       │
+│  Gateway                   │  NGINX (reverse proxy + rate limit) ✅ Ph.3   │
+│                            │  JWT auth côté FastAPI (auth.py) ✅ Ph.3      │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Monitoring                │  Prometheus + Grafana + Evidently [Phase 4]   │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Cloud                     │  Scaleway Kapsule (K8s) + Object Storage      │
-│                            │  + Managed Database                           │
+│  Cloud actuel              │  Scaleway DEV1-L (docker-compose, 5 services) │
+│                            │  NVMe / + block storage /data (volumes)       │
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Cloud cible (Ph.5)        │  Scaleway Kapsule (K8s) + Object Storage      │
+│                            │  + Managed Database + Prefect server          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Données de production     │  2024 (data.gouv.fr, déjà disponibles)        │
 │  pour monitoring drift     │  Rejoué via scripts/simulate_production.py    │
@@ -1631,5 +1706,9 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Normalisation pré-2019    │  Architecture prévue, non implémentée         │
 │                            │  Extensible si le projet le justifie plus tard│
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Bug feature leak corrigé  │  id_usager supprimé de make_dataset.py        │
+│  (modèles v1–v4 cassés)    │  v6 = modèle @Production sans ce champ        │
+│                            │  Promote manuel via promote.yml si régression │
 └────────────────────────────┴────────────────────────────────────────────────┘
 ```
