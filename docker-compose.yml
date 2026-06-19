@@ -119,7 +119,7 @@ services:
       - "9090:9090"
     volumes:
       - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ${DOCKER_VOLUMES_PATH:-./volumes}/prometheus_data:/prometheus
+      - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -138,12 +138,16 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/api-performance.json
     volumes:
-      - ${DOCKER_VOLUMES_PATH:-./volumes}/grafana_data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 
-# Volumes supprimés — données stockées via bind mounts sur /data (block storage)
+volumes:
+  prometheus_data:   # named volume — Docker gère les permissions (UID 65534)
+  grafana_data:      # named volume — Docker gère les permissions (UID 472)
+
+# MinIO et Postgres utilisent des bind mounts sur /data (block storage Scaleway)
 # DOCKER_VOLUMES_PATH=/data dans .env sur le serveur → block storage (19 GB)
 # En local, DOCKER_VOLUMES_PATH non défini → ./volumes (ignoré par git)
