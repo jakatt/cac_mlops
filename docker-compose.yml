@@ -112,18 +112,37 @@ services:
   # Les flux Prefect (etl_flow, train_flow, retrain_flow) sont prêts dans src/flows/.
 
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
-  # prometheus:
-  #   image: prom/prometheus:latest
-  #   ports:
-  #     - "9090:9090"
-  #   volumes:
-  #     - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${DOCKER_VOLUMES_PATH:-./volumes}/prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    depends_on:
+      - api
 
   # ── Grafana — dashboards [Phase 4] ──────────────────────────────────────────
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   ports:
-  #     - "3000:3000"
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/api-performance.json
+    volumes:
+      - ${DOCKER_VOLUMES_PATH:-./volumes}/grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
 # Volumes supprimés — données stockées via bind mounts sur /data (block storage)
 # DOCKER_VOLUMES_PATH=/data dans .env sur le serveur → block storage (19 GB)

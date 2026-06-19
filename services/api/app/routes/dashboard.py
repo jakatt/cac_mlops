@@ -1,10 +1,12 @@
-"""Master dashboard — GET /dashboard + GET /api/logs."""
+"""Master dashboard — GET /dashboard + GET /api/logs + GET /metrics."""
 import os
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from ..log_capture import get_lines
+from .._metrics import REGISTRY
 
 router = APIRouter()
 
@@ -324,3 +326,9 @@ def dashboard() -> HTMLResponse:
 def api_logs(n: int = 100) -> dict:
     """Derniers N logs de l'API (buffer en mémoire, max 300 lignes)."""
     return {"lines": get_lines(n)}
+
+
+@router.get("/metrics", tags=["observability"], include_in_schema=False)
+def metrics() -> Response:
+    """Prometheus metrics endpoint — scraped by prometheus:9090."""
+    return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)

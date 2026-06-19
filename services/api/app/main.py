@@ -17,8 +17,9 @@ from .routes.predict    import router as predict_router
 from .routes.health     import router as health_router
 from .routes.dashboard  import router as dashboard_router
 from .routes.auth       import router as auth_router
-from ._metrics import REQUESTS_TOTAL, PREDICTIONS_TOTAL
+from ._metrics import REQUESTS_TOTAL, REQUEST_DURATION
 from . import log_capture
+from . import db as prediction_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +61,7 @@ async def metrics_middleware(request: Request, call_next) -> Response:
         method=request.method,
         status=str(response.status_code),
     ).inc()
+    REQUEST_DURATION.labels(endpoint=request.url.path).observe(duration)
 
     return response
 
@@ -68,4 +70,10 @@ async def metrics_middleware(request: Request, call_next) -> Response:
 async def startup() -> None:
     logger.info("Loading model…")
     load_model()
+    await prediction_db.init_db()
     logger.info("API ready")
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await prediction_db.close_db()
