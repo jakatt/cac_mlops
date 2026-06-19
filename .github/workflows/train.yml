@@ -15,6 +15,10 @@ on:
         description: "Cumul depuis 2021 ? (true/false)"
         required: true
         default: "true"
+      algorithm:
+        description: "Algorithme : rf | xgboost | lgbm"
+        required: false
+        default: "rf"
       promote:
         description: "Promouvoir @Production si KPIs OK ? (true/false)"
         required: true
@@ -42,13 +46,14 @@ jobs:
 
             YEAR="${{ github.event.inputs.year || '2022' }}"
             CUMUL="${{ github.event.inputs.cumul || 'true' }}"
+            ALGO="${{ github.event.inputs.algorithm || 'rf' }}"
             PROMOTE="${{ github.event.inputs.promote || 'true' }}"
             SIM_YEAR="${{ github.event.inputs.simulate_year }}"
             if [ -z "$SIM_YEAR" ]; then
               SIM_YEAR=$((YEAR + 1))
             fi
 
-            echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE simulate_year=$SIM_YEAR"
+            echo "==> Paramètres : year=$YEAR cumul=$CUMUL algo=$ALGO promote=$PROMOTE simulate_year=$SIM_YEAR"
 
             # ── 0. Nettoyage MLflow (libère espace MinIO avant entraînement) ─────
             echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
@@ -91,12 +96,12 @@ jobs:
               docker compose run --rm \
                 -v "$(pwd)/data:/app/data" \
                 api \
-                python -m src.models.train_model --year $YEAR --cumul 2>&1 | tee "$TRAIN_LOG"
+                python -m src.models.train_model --year $YEAR --cumul --algorithm $ALGO 2>&1 | tee "$TRAIN_LOG"
             else
               docker compose run --rm \
                 -v "$(pwd)/data:/app/data" \
                 api \
-                python -m src.models.train_model --year $YEAR 2>&1 | tee "$TRAIN_LOG"
+                python -m src.models.train_model --year $YEAR --algorithm $ALGO 2>&1 | tee "$TRAIN_LOG"
             fi
 
             RUN_ID=$(grep "MLflow run_id" "$TRAIN_LOG" | awk '{print $NF}' | tail -1)
@@ -109,13 +114,19 @@ jobs:
             echo "==> run_id = $RUN_ID"
 
             # ── 4. Validation + promotion ─────────────────────────────────────────
-            echo "==> Validation"
+            # MODEL_NAME suit la convention : rf→rf_accidents, xgboost→xgb_accidents, lgbm→lgbm_accidents
+            case "$ALGO" in
+              xgboost) MODEL_NAME="xgb_accidents" ;;
+              lgbm)    MODEL_NAME="lgbm_accidents" ;;
+              *)       MODEL_NAME="rf_accidents" ;;
+            esac
+            echo "==> Validation (model: $MODEL_NAME)"
             if [ "$PROMOTE" = "true" ]; then
               docker compose run --rm api \
-                python -m src.models.validate_model --run-id $RUN_ID --promote
+                python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME --promote
             else
               docker compose run --rm api \
-                python -m src.models.validate_model --run-id $RUN_ID
+                python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME
             fi
 
             # ── 5. Redémarrage API ────────────────────────────────────────────────
