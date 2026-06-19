@@ -138,7 +138,7 @@ Disponibilité historique : 2005 → 2024 (20 années)
   ❌ Ne prouve rien sur l'année N+1    ✅ Prouve que le système est opérationnel
 ```
 
-### Périmètre retenu : 2021 → 2022 → 2023 (entraînement) + 2024 (production)
+### Périmètre retenu : 2021 → 2022 → 2023 (entraînement) + cycle annuel de drift
 
 ```text
 POURQUOI PAS DEPUIS 2005 ?
@@ -153,39 +153,42 @@ Ajouter 2005-2020 nécessiterait 3-4 semaines de travail de normalisation
 qui ne sont pas dans le budget temps du projet.
 La normalization layer est conçue pour l'accueillir plus tard si besoin.
 
-POURQUOI 2021 → 2022 → 2023 (dans cet ordre) ?
-───────────────────────────────────────────────
-Charger les années une par une valide la chaîne complète 3 fois :
-  Itération 1 : 2021 seul  → modèle v1, DVC v1, MLflow run #1
-  Itération 2 : +2022      → modèle v2, DVC v2, MLflow run #2
-  Itération 3 : +2023      → modèle v3, DVC v3, MLflow run #3 ← modèle en PRODUCTION
-
-2024 : DONNÉES DE PRODUCTION (pas d'entraînement)
-──────────────────────────────────────────────────
-Les données 2024 sont disponibles dès maintenant (publiées mai 2025).
-Elles servent à simuler un flux de production réel pour Evidently :
+CYCLE ANNUEL — USE CASE RÉALISTE
+──────────────────────────────────────────────────────────────────────────────
+L'ONISR publie les données de l'année N avec ~2 ans de délai (ex: données
+2022 disponibles en 2024). Le cycle de mise à jour du modèle suit ce rythme :
 
   ┌─────────────────────────────────────────────────────────────────────┐
-  │  RÔLE DE CHAQUE ANNÉE                                               │
+  │  CYCLE DE VIE DU MODÈLE (use case ML Engineer)                      │
   │                                                                     │
-  │  2021        →  entraînement (baseline)     → modèle v1            │
-  │  2021+2022   →  entraînement (enrichi)      → modèle v2            │
-  │  2021+2023   →  entraînement (final)        → modèle v3 = PROD     │
+  │  Année calendaire  Action                           Données drift   │
+  │  ────────────────  ───────────────────────────────  ─────────────── │
+  │  2023 (1ère mise   Entraînement sur 2021            Simulation 2022 │
+  │  en prod)          → Modèle v1 @Production          sur modèle v1   │
+  │                    → Drift check : 2022 vs ref 2021                │
   │                                                                     │
-  │  2024        →  simulation production        ← NOUVEAU              │
-  │               Rejoué mois par mois via POST /predict               │
-  │               Le modèle v3 n'a JAMAIS vu ces données               │
-  │               Evidently compare distribution 2021-2023 vs 2024     │
-  │               → drift RÉEL, pas simulé                             │
+  │  2024              Entraînement sur 2021+2022       Simulation 2023 │
+  │                    → Modèle v2 @Production          sur modèle v2   │
+  │                    → Drift check : 2023 vs ref 2021+2022           │
+  │                                                                     │
+  │  2025              Entraînement sur 2021+2022+2023  Simulation 2024 │
+  │                    → Modèle v3 @Production          sur modèle v3   │
+  │                    → Drift check : 2024 vs ref 2021+2022+2023      │
   └─────────────────────────────────────────────────────────────────────┘
 
-  Script : scripts/simulate_production.py
-  Stratégie : ~55 000 accidents 2024 envoyés en 12 batches mensuels
-  (~4 600 requêtes/mois → loggés PostgreSQL → analysés par Evidently)
+  Principe :
+  • Chaque année, les nouvelles données ONISR (N-2) enrichissent le modèle
+  • Evidently compare les données de l'année suivante vs la référence d'entraînement
+  • Le drift est RÉEL : la référence change à chaque cycle (pas un seuil fixe)
+  • On peut suivre l'évolution du drift d'une année sur l'autre
 
-Quand l'ONISR publiera 2025 (juin 2026), on répètera l'itération 4
-(entraînement sur 2021-2025) et 2026 deviendra les nouvelles données
-de production. Le pipeline ne changera pas d'une ligne.
+  Quand le drift augmente entre deux cycles → le parc automobile / les
+  comportements ont davantage évolué. Quand il diminue → le nouveau modèle
+  a mieux capturé les patterns récents.
+
+  Script : scripts/simulate_production.py --year <N> --api-url http://api:8000
+  Référence drift : data/preprocessed/cumul_2021_{N-1}/X_train.csv (dynamique)
+  Rapport : reports/drift/drift_YYYY-MM.html + JSON → Evidently
 ```
 
 ### Volume des données
@@ -656,42 +659,39 @@ C'est le cœur de la valeur MLOps du projet. Chaque ajout d'année est tracé de
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                   VERSIONING BOUT EN BOUT                                   │
+│                   VERSIONING BOUT EN BOUT — CYCLE ANNUEL                    │
 │                                                                             │
-│   GIT          DVC (données)          MLflow (modèles)                      │
-│   ───          ─────────────          ───────────────                       │
+│   GIT          DVC (données)          MLflow (modèles)     Drift Evidently  │
+│   ───          ─────────────          ───────────────      ───────────────  │
 │                                                                             │
-│   commit       tag: data-v1           run: rf_2021                          │
-│   "feat:       data/raw/2021/         params: n_estimators=100              │
-│    add 2021"   data/preprocessed/     metrics: accuracy=0.72, F1=0.68      │
-│                  2021/                model: rf_accidents @ Staging          │
+│   commit       tag: data-v1           run: rf_2021          drift 2022      │
+│   "feat:       data/raw/2021/         F1=0.68 → @Prod        vs ref 2021   │
+│    train 2021" data/preprocessed/                           → rapport HTML  │
+│                  2021/                                                      │
 │                                                                             │
-│       ↓              ↓                        ↓                             │
+│       ↓              ↓                        ↓                  ↓         │
 │                                                                             │
-│   commit       tag: data-v2           run: rf_2021_2022                     │
-│   "feat:       data/raw/2021-2022/    params: n_estimators=100              │
-│    add 2022"   data/preprocessed/     metrics: accuracy=0.74, F1=0.70      │
-│                  cumul_2021_2022/     model: rf_accidents @ Staging          │
-│                                       compare vs run précédent : +2.7%     │
+│   commit       tag: data-v2           run: rf_2021_2022      drift 2023    │
+│   "feat:       data/raw/2022/         F1=0.70 → @Prod         vs ref       │
+│    train 2022" data/preprocessed/     +2.7% vs v1            2021_2022    │
+│                  cumul_2021_2022/                            → rapport HTML │
 │                                                                             │
-│       ↓              ↓                        ↓                             │
+│       ↓              ↓                        ↓                  ↓         │
 │                                                                             │
-│   commit       tag: data-v3           run: rf_2021_2022_2023                │
-│   "feat:       data/raw/2021-2023/    params: n_estimators=100              │
-│    add 2023"   data/preprocessed/     metrics: accuracy=0.75, F1=0.71      │
-│                  cumul_2021_2023/     model: rf_accidents @ Production      │
-│                                       compare vs run précédent : +1.3%     │
+│   commit       tag: data-v3           run: rf_2021_2023      drift 2024    │
+│   "feat:       data/raw/2023/         F1=0.71 → @Prod         vs ref       │
+│    train 2023" data/preprocessed/     +1.3% vs v2            2021_2023    │
+│                  cumul_2021_2023/                            → rapport HTML │
 │                                                                             │
-│       ↓              ↓                        ↓                             │
+│  → Le drift est comparable d'un cycle à l'autre :                          │
+│    si drift(2024 vs 2021-23) > drift(2023 vs 2021-22)                      │
+│    → les données 2024 s'éloignent davantage du modèle précédent            │
+│    → signal pour accélérer le prochain cycle d'entraînement                │
 │                                                                             │
-│   commit       tag: prod-2024         (pas de run entraînement)             │
-│   "data:       data/production/2024/  2024 = données de production         │
-│    add 2024    Caract_2024.csv        rejoué via simulate_production.py     │
-│    prod data"  Lieux_2024.csv        Evidently compare vs X_train 2021-23  │
-│                Usagers_2024.csv      → drift réel mesuré sur 12 mois       │
-│                Vehicules_2024.csv                                            │
-│                                                                             │
-│  (Quand 2025 sera disponible en juin 2026 → data-v4, run rf_2021_2025)    │
+│  Réentraînement automatique : NON — les labels N+1 n'existent pas encore   │
+│  (ONISR publie avec ~2 ans de délai). L'alerte drift informe le ML Engineer│
+│  qui décide quand déclencher le prochain cycle selon la disponibilité des  │
+│  nouvelles données labellisées.                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1340,15 +1340,27 @@ FLUX EVIDENTLY EN PRODUCTION
 RÉSULTAT PAR SCÉNARIO
 ──────────────────────
   Pas de drift détecté      : rapport loggé, rien ne change
-  Drift WARNING             : alerte Grafana, équipe notifiée,
-                              pas de réentraînement automatique
-  Drift CRITICAL            : réentraînement automatique déclenché
-                              → si nouveau modèle meilleur : déployé
-                              → sinon : alerte manuelle requise
+  Drift WARNING (> 10%)     : log CRITICAL dans train.yml, rapport HTML généré,
+                              ML Engineer informé via les logs CI
+  Drift CRITICAL (> 25%)    : idem — le ML Engineer décide si le prochain
+                              cycle d'entraînement doit être avancé
 
-  Sur 2024, on s'attend à observer un drift progressif sur certaines
-  features (catv, dep, atm) reflétant les évolutions réelles du
-  parc automobile et des comportements entre 2021-2023 et 2024.
+  POURQUOI PAS DE RÉENTRAÎNEMENT AUTOMATIQUE ?
+  ─────────────────────────────────────────────
+  Un réentraînement n'a de sens que si de nouvelles données LABELLISÉES
+  sont disponibles. Or l'ONISR publie les données de l'année N avec ~2 ans
+  de délai. Déclencher un réentraînement sur les mêmes données produirait
+  un modèle identique — sans valeur.
+
+  Le drift Evidently sert d'indicateur avancé : "les données en production
+  s'éloignent de la référence" → signal pour le ML Engineer de planifier
+  le prochain cycle quand les nouvelles données ONISR seront disponibles.
+
+  SUIVI MULTI-CYCLES
+  ──────────────────
+  En comparant drift_share d'une année sur l'autre, on peut mesurer si
+  les évolutions du parc automobile et des comportements accélèrent ou
+  ralentissent, et calibrer la fréquence optimale des cycles d'entraînement.
 ```
 
 #### Prometheus & Grafana — Surveillance des performances
@@ -1467,14 +1479,22 @@ deploy.yml — déclenché sur : push/merge dans main
   10. healthcheck : curl http://localhost:8090/health (retry 18×5s = 90s)
   → ✓ ou logs API + exit 1
 
-train.yml — déclenché : cron lundi 02h00 UTC OU workflow_dispatch (year, cumul, promote)
+train.yml — déclenché : workflow_dispatch (year, cumul, promote, simulate_year)
   0. mlflow_cleanup.py (garde 3 derniers runs, gc artifacts MinIO)
-  1. dvc pull data/raw/{2021,2022,2023}
-  2. make_dataset.py --year N [--cumul]   (dans container api via docker compose run)
-  3. train_model.py --year N [--cumul]    (MLflow run → artefact MinIO)
+  1. dvc pull data/raw/{2021..year}
+  2. make_dataset.py --year N [--cumul]        (preprocessing dans container api)
+  3. train_model.py --year N [--cumul]         (MLflow run → artefact MinIO)
   4. validate_model.py --run-id RUN_ID [--promote]
      exit 0 = KPIs OK (promu ou non) · exit 1 = KPIs insuffisants
-  5. docker compose restart api + healthcheck
+  5. docker compose restart api + healthcheck  (charge le nouveau modèle @Production)
+  6. simulate_production.py --year simulate_year (= year+1 par défaut)
+     → télécharge + préprocess données simulate_year si absentes
+     → rejoue ~55k accidents via POST /predict (api:8000, sans rate limit)
+     → features + prédictions loggées dans PostgreSQL (table predictions)
+  7. drift_detection.py --month YYYY-MM --reference-path cumul_2021_{year}/X_train.csv
+     → compare distributions simulate_year vs référence d'entraînement year
+     → rapport HTML dans reports/drift/drift_YYYY-MM.html
+     → log WARNING si drift_share > 10%, CRITICAL si > 25%
 
 promote.yml — workflow_dispatch(version, model_name)
   Force-promote n'importe quelle version → @Production alias MLflow
@@ -1696,9 +1716,11 @@ NOTE : pas de docker-compose.prod.yml (un seul compose + .env suffit),
 │  Cloud cible (Ph.5)        │  Scaleway Kapsule (K8s) + Object Storage      │
 │                            │  + Managed Database + Prefect server          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Données de production     │  2024 (data.gouv.fr, déjà disponibles)        │
-│  pour monitoring drift     │  Rejoué via scripts/simulate_production.py    │
-│                            │  Evidently compare vs X_train 2021-2023       │
+│  Cycle drift annuel        │  Après chaque entraînement sur année N :      │
+│                            │  simulate_production(year=N+1) → drift check  │
+│                            │  référence = X_train cumul jusqu'à N          │
+│                            │  Pas de réentraînement auto (labels N+1       │
+│                            │  indisponibles — délai ONISR ~2 ans)          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Mapping noms fichiers     │  Dict FILENAMES par année dans                │
 │  (découverte critique)     │  import_raw_data.py — obligatoire dès 2022    │

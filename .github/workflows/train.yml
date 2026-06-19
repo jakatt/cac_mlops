@@ -1,16 +1,16 @@
 name: Train — pipeline on Scaleway
 
 on:
-  # Retrain hebdomadaire : lundi 02h00 UTC
+  # Retrain annuel : lundi 02h00 UTC (déclenché manuellement selon cycle ONISR)
   schedule:
     - cron: '0 2 * * 1'
 
   workflow_dispatch:
     inputs:
       year:
-        description: "Année cible (ex: 2023)"
+        description: "Année cible d'entraînement (ex: 2022 pour modèle 2021+2022)"
         required: true
-        default: "2023"
+        default: "2022"
       cumul:
         description: "Cumul depuis 2021 ? (true/false)"
         required: true
@@ -19,6 +19,10 @@ on:
         description: "Promouvoir @Production si KPIs OK ? (true/false)"
         required: true
         default: "true"
+      simulate_year:
+        description: "Année à rejouer via /predict pour drift (ex: 2023 quand year=2022). Vide = year+1"
+        required: false
+        default: ""
 
 jobs:
   train:
@@ -30,16 +34,21 @@ jobs:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 30m
           script: |
             set -e
             export PATH=$PATH:/home/deploy/.local/bin
             cd ${{ secrets.DEPLOY_DIR }}
 
-            YEAR="${{ github.event.inputs.year || '2023' }}"
+            YEAR="${{ github.event.inputs.year || '2022' }}"
             CUMUL="${{ github.event.inputs.cumul || 'true' }}"
             PROMOTE="${{ github.event.inputs.promote || 'true' }}"
+            SIM_YEAR="${{ github.event.inputs.simulate_year }}"
+            if [ -z "$SIM_YEAR" ]; then
+              SIM_YEAR=$((YEAR + 1))
+            fi
 
-            echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
+            echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE simulate_year=$SIM_YEAR"
 
             # ── 0. Nettoyage MLflow (libère espace MinIO avant entraînement) ─────
             echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
@@ -53,8 +62,8 @@ jobs:
             echo "==> Espace disque après nettoyage"
             df -h /
 
-            # ── 1. Pull données DVC (exécuté sur le host, pas dans Docker) ──────
-            echo "==> Pull données DVC (toutes les années jusqu'à $YEAR)"
+            # ── 1. Pull données DVC (entraînement) ───────────────────────────────
+            echo "==> Pull données DVC (années 2021 → $YEAR)"
             for y in 2021 2022 2023; do
               if [ "$y" -le "$YEAR" ]; then
                 dvc pull data/raw/$y
@@ -110,7 +119,7 @@ jobs:
             fi
 
             # ── 5. Redémarrage API ────────────────────────────────────────────────
-            echo "==> Redémarrage API"
+            echo "==> Redémarrage API (charge le nouveau modèle @Production)"
             docker compose restart api
 
             echo "==> Healthcheck (attente max 60s)"
@@ -127,4 +136,57 @@ jobs:
               sleep 5
             done
 
-            echo "==> Pipeline terminé ✓"
+            # ── 6. Simulation production (données simulate_year sur nouveau modèle) ─
+            echo "==> Simulation production : données $SIM_YEAR jouées sur modèle $YEAR"
+
+            # Télécharger + préprocesser les données de simulation si besoin
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              api \
+              python -m src.data.import_raw_data --year $SIM_YEAR 2>/dev/null || true
+
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              api \
+              python -m src.data.make_dataset --year $SIM_YEAR 2>/dev/null || true
+
+            # Obtenir un token JWT depuis l'API directe (pas de rate limit)
+            TOKEN=$(curl -sf -X POST http://localhost:8080/token \
+              -d "username=${API_USERNAME:-admin}&password=${API_PASSWORD:-changeme}" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+            # Rejouer les données via POST /predict (port 8080, sans rate limit)
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              api \
+              python scripts/simulate_production.py \
+                --year $SIM_YEAR \
+                --api-url http://api:8000 \
+                --token "$TOKEN" \
+                --delay-ms 5
+
+            # ── 7. Détection drift ────────────────────────────────────────────────
+            echo "==> Détection drift : données $SIM_YEAR vs référence entraînement $YEAR"
+
+            # Calculer le chemin de référence selon l'année et le mode cumul
+            if [ "$CUMUL" = "true" ] && [ "$YEAR" -gt "2021" ]; then
+              YEARS_SEQ=$(seq -s _ 2021 $YEAR)
+              REF_PATH="data/preprocessed/cumul_${YEARS_SEQ}/X_train.csv"
+            else
+              REF_PATH="data/preprocessed/${YEAR}/X_train.csv"
+            fi
+            echo "  Référence : $REF_PATH"
+
+            DRIFT_MONTH=$(date +%Y-%m)
+            echo "  Mois analysé : $DRIFT_MONTH (prédictions loggées ce mois)"
+
+            mkdir -p reports/drift
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              -v "$(pwd)/reports:/app/reports" \
+              api \
+              python -m services.monitoring.drift_detection \
+                --month "$DRIFT_MONTH" \
+                --reference-path "$REF_PATH"
+
+            echo "==> Pipeline complet terminé ✓ (train $YEAR → simulate $SIM_YEAR → drift)"

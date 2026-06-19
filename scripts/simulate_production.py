@@ -23,8 +23,8 @@ import requests
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-RAW_2024 = Path("data/production/2024")
-PREPROCESSED_2024 = Path("data/preprocessed/2024")
+def _data_paths(year: int) -> tuple[Path, Path]:
+    return Path(f"data/raw/{year}"), Path(f"data/preprocessed/{year}")
 
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
@@ -44,21 +44,21 @@ def _get_token(api_url: str, username: str, password: str) -> str:
     return resp.json()["access_token"]
 
 
-def _load_production_data() -> pd.DataFrame:
-    """Load preprocessed 2024 data. Downloads + preprocesses if needed."""
-    x_path = PREPROCESSED_2024 / "X_test.csv"
+def _load_production_data(year: int) -> pd.DataFrame:
+    """Load preprocessed data for year. Downloads + preprocesses if needed."""
+    raw_dir, preprocessed_dir = _data_paths(year)
+    x_path = preprocessed_dir / "X_test.csv"
 
     if x_path.exists():
-        logger.info("Loading preprocessed 2024 data from %s", x_path)
+        logger.info("Loading preprocessed %d data from %s", year, x_path)
         return pd.read_csv(x_path)
 
-    # Try raw data
-    if not RAW_2024.exists() or not any(RAW_2024.iterdir()):
-        logger.info("Downloading 2024 raw data from data.gouv.fr…")
-        os.system(f"{sys.executable} -m src.data.import_raw_data --year 2024")
+    if not raw_dir.exists() or not any(raw_dir.iterdir()):
+        logger.info("Downloading %d raw data from data.gouv.fr…", year)
+        os.system(f"{sys.executable} -m src.data.import_raw_data --year {year}")
 
-    logger.info("Preprocessing 2024 data…")
-    os.system(f"{sys.executable} -m src.data.make_dataset --year 2024")
+    logger.info("Preprocessing %d data…", year)
+    os.system(f"{sys.executable} -m src.data.make_dataset --year {year}")
 
     if not x_path.exists():
         logger.error("Preprocessing failed — %s not found", x_path)
@@ -70,11 +70,12 @@ def _load_production_data() -> pd.DataFrame:
 def simulate(
     api_url: str,
     token: str,
+    year: int = 2024,
     month: str | None = None,
     dry_run: bool = False,
     delay_ms: int = 0,
 ) -> dict:
-    df = _load_production_data()
+    df = _load_production_data(year)
 
     # Keep only feature columns (handle missing ones gracefully)
     missing = [c for c in FEATURE_COLS if c not in df.columns]
@@ -141,11 +142,12 @@ def simulate(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Replay 2024 accidents via POST /predict")
+    parser = argparse.ArgumentParser(description="Replay accidents via POST /predict")
     parser.add_argument("--api-url",  default=os.getenv("API_URL", "http://localhost:8090"))
     parser.add_argument("--username", default=os.getenv("API_USERNAME", "admin"))
     parser.add_argument("--password", default=os.getenv("API_PASSWORD", "changeme"))
     parser.add_argument("--token",    default=None, help="JWT token (skips /token call)")
+    parser.add_argument("--year",     type=int, default=2024, help="Année des données à rejouer")
     parser.add_argument("--month",    default=None, help="YYYY-MM filter on 'mois' column")
     parser.add_argument("--dry-run",  action="store_true")
     parser.add_argument("--delay-ms", type=int, default=0, help="ms between requests")
@@ -155,6 +157,7 @@ if __name__ == "__main__":
     result = simulate(
         api_url=args.api_url,
         token=token,
+        year=args.year,
         month=args.month,
         dry_run=args.dry_run,
         delay_ms=args.delay_ms,

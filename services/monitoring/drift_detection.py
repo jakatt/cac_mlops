@@ -60,7 +60,7 @@ def fetch_production_data(year_month: str) -> pd.DataFrame:
         conn.close()
 
 
-def run_drift_report(year_month: str) -> dict:
+def run_drift_report(year_month: str, reference_path: Path | None = None) -> dict:
     """Run Evidently drift report for a given month. Returns summary dict."""
     try:
         from evidently.report import Report
@@ -70,11 +70,12 @@ def run_drift_report(year_month: str) -> dict:
         logger.error("evidently not installed — pip install evidently")
         sys.exit(1)
 
-    if not REFERENCE_PATH.exists():
-        logger.error("Reference dataset not found: %s", REFERENCE_PATH)
+    ref = reference_path or REFERENCE_PATH
+    if not ref.exists():
+        logger.error("Reference dataset not found: %s", ref)
         sys.exit(1)
 
-    reference = pd.read_csv(REFERENCE_PATH)[FEATURE_COLS]
+    reference = pd.read_csv(ref)[FEATURE_COLS]
     production = fetch_production_data(year_month)
 
     if production.empty:
@@ -145,8 +146,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--month", default=_default_month(),
                         help="Month to analyze (YYYY-MM). Defaults to last full month.")
+    parser.add_argument("--reference-path", default=None,
+                        help="Chemin vers X_train.csv de référence. "
+                             "Par défaut: data/preprocessed/cumul_2021_2022_2023/X_train.csv")
     args = parser.parse_args()
 
-    summary = run_drift_report(args.month)
+    ref = Path(args.reference_path) if args.reference_path else None
+    summary = run_drift_report(args.month, reference_path=ref)
     print(json.dumps(summary, indent=2))
     sys.exit(0)
