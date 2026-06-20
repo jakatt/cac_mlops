@@ -180,11 +180,20 @@ def train(
             metrics["accuracy"], metrics["f1"], metrics["auc"], metrics["recall"],
         )
 
+        skops_types: dict[str, list[str]] = {
+            "xgboost": ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
+            "lgbm":    ["lightgbm.basic.Booster", "lightgbm.sklearn.LGBMClassifier"],
+        }
+        log_kwargs = {}
+        if algorithm in skops_types:
+            log_kwargs["skops_trusted_types"] = skops_types[algorithm]
+
         mlflow.sklearn.log_model(
             clf,
             name="model",
             registered_model_name=model_name if register else None,
             input_example=X_train.iloc[:3],
+            **log_kwargs,
         )
         mlflow.set_tag("algorithm",   algorithm)
         mlflow.set_tag("model_name",  model_name)
