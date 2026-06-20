@@ -197,7 +197,11 @@ def train(
 
         skops_types: dict[str, list[str]] = {
             "xgboost": ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
-            "lgbm":    ["lightgbm.basic.Booster", "lightgbm.sklearn.LGBMClassifier"],
+            "lgbm":    [
+                "lightgbm.basic.Booster",
+                "lightgbm.sklearn.LGBMClassifier",
+                "collections.OrderedDict",
+            ],
         }
         log_kwargs = {}
         if algorithm in skops_types:
