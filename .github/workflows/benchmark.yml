@@ -39,28 +39,28 @@ jobs:
             # ── LOGIN ghcr.io ─────────────────────────────────────────────────
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
-            # ── 0. NETTOYAGE NVME EN PREMIER (avant tout pull d'image) ────────
-            # Le NVMe peut etre plein des la fin du run precedent (.dvc/cache)
-            # docker compose pull echoue si pas de place -> cleanup d'abord
+            # ── 0. NETTOYAGE + CONFIG DVC CACHE ──────────────────────────────
             echo ""
-            echo "==> [0/5] Nettoyage NVMe"
+            echo "==> [0/5] Nettoyage + config DVC"
             echo "    Etat avant :"
             df -h /
+
+            # Rediriger le cache DVC vers /data (block storage 74GB, pas le NVMe 17GB)
+            # .dvc/config.local est gitignore -> persiste apres git reset --hard
+            dvc config --local cache.dir /data/dvc_cache
+            echo "    Cache DVC : $(dvc config cache.dir)"
+
+            # Nettoyer residus eventuels sur le NVMe
+            rm -rf .dvc/cache data/raw
 
             docker container prune -f
             docker image prune -f
             docker builder prune -f
             docker network prune -f
 
-            # Tronquer les logs Docker
             for f in /var/lib/docker/containers/*/*-json.log; do
               [ -f "$f" ] && truncate -s 0 "$f"
             done
-
-            # CAUSE RACINE : dvc pull ecrit dans data/raw/ ET .dvc/cache/ sur le NVMe
-            # On ne supprimait que data/raw -> cache restait et saturait le disque
-            echo "    Suppression cache DVC + donnees brutes residuelles"
-            rm -rf .dvc/cache data/raw
 
             find /tmp -maxdepth 2 -type f -mtime +0 -delete 2>/dev/null || true
             journalctl --vacuum-size=200M 2>/dev/null || true

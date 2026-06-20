@@ -1,0 +1,103 @@
+name: Ops — Migrer Docker vers /data (block storage)
+
+# Deplace le repertoire Docker de /var/lib/docker (NVMe 17GB)
+# vers /data/docker (block storage 74GB).
+# Impact : ~5 min de downtime pour tous les services.
+# A lancer UNE SEULE FOIS.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Migration Docker data-root vers /data
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 25m
+          script: |
+            echo "==> Etat AVANT migration"
+            df -h /
+            df -h /data
+            echo ""
+            echo "  Docker actuel :"
+            docker system df
+
+            echo ""
+            echo "==> Arret de tous les conteneurs"
+            cd ${{ secrets.DEPLOY_DIR }}
+            docker compose down || true
+
+            echo ""
+            echo "==> Arret du daemon Docker"
+            sudo systemctl stop docker
+
+            echo ""
+            echo "==> Copie /var/lib/docker -> /data/docker"
+            sudo mkdir -p /data/docker
+            sudo rsync -aH --info=progress2 /var/lib/docker/ /data/docker/
+            echo "  Copie terminee"
+
+            echo ""
+            echo "==> Configuration daemon.json (data-root + log rotation)"
+            sudo tee /etc/docker/daemon.json > /dev/null <<'DAEMON'
+            {
+              "data-root": "/data/docker",
+              "log-driver": "json-file",
+              "log-opts": {
+                "max-size": "20m",
+                "max-file": "3"
+              }
+            }
+            DAEMON
+
+            echo ""
+            echo "==> Demarrage Docker avec nouvelle config"
+            sudo systemctl start docker
+            sleep 5
+            docker info | grep "Docker Root Dir"
+
+            echo ""
+            echo "==> Relance des services"
+            cd ${{ secrets.DEPLOY_DIR }}
+            docker compose up -d
+
+            echo ""
+            echo "==> Suppression de l'ancien /var/lib/docker (liberation NVMe)"
+            sudo rm -rf /var/lib/docker
+            # Lien symbolique pour compatibilite (certains outils cherchent /var/lib/docker)
+            sudo ln -s /data/docker /var/lib/docker
+
+            echo ""
+            echo "==> Etat APRES migration"
+            df -h /
+            df -h /data
+            echo ""
+            echo "  Docker root : $(docker info | grep 'Docker Root Dir')"
+            echo ""
+            docker system df
+
+            echo ""
+            echo "==> Healthcheck services (max 90s)"
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
+                echo "API OK apres $((i*5))s"
+                break
+              fi
+              if [ $i -eq 18 ]; then
+                echo "Timeout healthcheck"
+                docker compose logs --tail=20 api
+                exit 1
+              fi
+              sleep 5
+            done
+
+            echo ""
+            echo "Migration terminee. Docker est maintenant sur /data (74GB)."
+            echo "NVMe libere pour l'OS uniquement."

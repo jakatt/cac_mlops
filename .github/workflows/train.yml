@@ -67,6 +67,10 @@ jobs:
             echo "==> Espace disque après nettoyage"
             df -h /
 
+            # ── 0b. Cache DVC sur /data (block storage) ──────────────────────────
+            echo "==> Config cache DVC vers /data/dvc_cache (block storage)"
+            dvc config --local cache.dir /data/dvc_cache
+
             # ── 1. Pull données DVC (entraînement) ───────────────────────────────
             echo "==> Pull données DVC (années 2021 → $YEAR)"
             for y in 2021 2022 2023; do
