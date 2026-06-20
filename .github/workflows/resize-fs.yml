@@ -38,15 +38,15 @@ jobs:
             case "$FSTYPE" in
               ext4|ext3|ext2)
                 echo "==> resize2fs via docker --privileged (ext4)"
-                docker run --rm --privileged -v /dev:/dev \
-                  alpine:latest \
-                  sh -c "apk add --quiet e2fsprogs e2fsprogs-extra > /dev/null 2>&1 && resize2fs /dev/sda && echo 'resize2fs OK'"
+                docker run --rm --privileged \
+                  debian:12-slim \
+                  sh -c "apt-get update -qq 2>&1 | tail -1 && apt-get install -qq -y --no-install-recommends e2fsprogs 2>&1 | tail -2 && resize2fs /dev/sda && echo 'resize2fs OK'"
                 ;;
               xfs)
                 echo "==> xfs_growfs via docker --privileged (xfs)"
-                docker run --rm --privileged -v /proc:/proc -v /sys:/sys -v /data:/data \
-                  alpine:latest \
-                  sh -c "apk add --quiet xfsprogs > /dev/null 2>&1 && xfs_growfs /data && echo 'xfs_growfs OK'"
+                docker run --rm --privileged -v /data:/data \
+                  debian:12-slim \
+                  sh -c "apt-get update -qq 2>&1 | tail -1 && apt-get install -qq -y --no-install-recommends xfsprogs 2>&1 | tail -2 && xfs_growfs /data && echo 'xfs_growfs OK'"
                 ;;
               *)
                 echo "ERREUR : type de filesystem inconnu : '$FSTYPE'"
