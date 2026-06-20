@@ -1,0 +1,35 @@
+name: Ops — Resize filesystem NVMe
+
+# One-shot : a lancer apres un agrandissement de volume Scaleway
+# Etend la partition + le filesystem pour utiliser tout l'espace disponible
+
+on:
+  workflow_dispatch:
+
+jobs:
+  resize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Resize filesystem sur Scaleway
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            echo "==> Avant resize"
+            df -h /
+            lsblk
+
+            echo "==> Extension partition (growpart)"
+            sudo growpart /dev/vda 1
+
+            echo "==> Extension filesystem (resize2fs)"
+            sudo resize2fs /dev/vda1
+
+            echo "==> Apres resize"
+            df -h /
+            lsblk
