@@ -158,57 +158,56 @@ jobs:
               sleep 5
             done
 
-            # ── 6. Simulation production (données simulate_year sur nouveau modèle) ─
-            echo "==> Simulation production : données $SIM_YEAR jouées sur modèle $YEAR"
+            # ── 6. Simulation production (skip en mode benchmark promote=false) ──
+            if [ "$PROMOTE" = "true" ]; then
+              echo "==> Simulation production : données $SIM_YEAR jouées sur modèle $YEAR"
 
-            # Télécharger + préprocesser les données de simulation si besoin
-            docker compose run --rm \
-              -v "$(pwd)/data:/app/data" \
-              api \
-              python -m src.data.import_raw_data --year $SIM_YEAR 2>/dev/null || true
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.data.import_raw_data --year $SIM_YEAR 2>/dev/null || true
 
-            docker compose run --rm \
-              -v "$(pwd)/data:/app/data" \
-              api \
-              python -m src.data.make_dataset --year $SIM_YEAR 2>/dev/null || true
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.data.make_dataset --year $SIM_YEAR 2>/dev/null || true
 
-            # Obtenir un token JWT depuis l'API directe (pas de rate limit)
-            TOKEN=$(curl -sf -X POST http://localhost:8080/token \
-              -d "username=${API_USERNAME:-admin}&password=${API_PASSWORD:-changeme}" \
-              | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+              TOKEN=$(curl -sf -X POST http://localhost:8080/token \
+                -d "username=${API_USERNAME:-admin}&password=${API_PASSWORD:-changeme}" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-            # Rejouer les données via POST /predict (port 8080, sans rate limit)
-            docker compose run --rm \
-              -v "$(pwd)/data:/app/data" \
-              api \
-              python scripts/simulate_production.py \
-                --year $SIM_YEAR \
-                --api-url http://api:8000 \
-                --token "$TOKEN" \
-                --delay-ms 5
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python scripts/simulate_production.py \
+                  --year $SIM_YEAR \
+                  --api-url http://api:8000 \
+                  --token "$TOKEN" \
+                  --delay-ms 5
 
-            # ── 7. Détection drift ────────────────────────────────────────────────
-            echo "==> Détection drift : données $SIM_YEAR vs référence entraînement $YEAR"
+              # ── 7. Détection drift ──────────────────────────────────────────────
+              echo "==> Détection drift : données $SIM_YEAR vs référence entraînement $YEAR"
 
-            # Calculer le chemin de référence selon l'année et le mode cumul
-            if [ "$CUMUL" = "true" ] && [ "$YEAR" -gt "2021" ]; then
-              YEARS_SEQ=$(seq -s _ 2021 $YEAR)
-              REF_PATH="data/preprocessed/cumul_${YEARS_SEQ}/X_train.csv"
+              if [ "$CUMUL" = "true" ] && [ "$YEAR" -gt "2021" ]; then
+                YEARS_SEQ=$(seq -s _ 2021 $YEAR)
+                REF_PATH="data/preprocessed/cumul_${YEARS_SEQ}/X_train.csv"
+              else
+                REF_PATH="data/preprocessed/${YEAR}/X_train.csv"
+              fi
+              echo "  Référence : $REF_PATH"
+
+              DRIFT_MONTH=$(date +%Y-%m)
+              mkdir -p reports/drift
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                -v "$(pwd)/reports:/app/reports" \
+                api \
+                python -m services.monitoring.drift_detection \
+                  --month "$DRIFT_MONTH" \
+                  --reference-path "$REF_PATH"
+
+              echo "==> Pipeline complet terminé ✓ (train $YEAR → simulate $SIM_YEAR → drift)"
             else
-              REF_PATH="data/preprocessed/${YEAR}/X_train.csv"
+              echo "==> Mode benchmark (promote=false) : simulation + drift ignorés"
+              echo "==> Pipeline benchmark terminé ✓ (train $YEAR — métriques dans MLflow)"
             fi
-            echo "  Référence : $REF_PATH"
-
-            DRIFT_MONTH=$(date +%Y-%m)
-            echo "  Mois analysé : $DRIFT_MONTH (prédictions loggées ce mois)"
-
-            mkdir -p reports/drift
-            docker compose run --rm \
-              -v "$(pwd)/data:/app/data" \
-              -v "$(pwd)/reports:/app/reports" \
-              api \
-              python -m services.monitoring.drift_detection \
-                --month "$DRIFT_MONTH" \
-                --reference-path "$REF_PATH"
-
-            echo "==> Pipeline complet terminé ✓ (train $YEAR → simulate $SIM_YEAR → drift)"
