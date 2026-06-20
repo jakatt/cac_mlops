@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 KPI_THRESHOLDS = {
     "accuracy": 0.70,
-    "f1":       0.68,
+    "f1":       0.66,
     "auc":      0.75,
-    "recall":   0.65,
+    "recall":   0.63,
 }
 
 

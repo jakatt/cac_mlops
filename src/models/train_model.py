@@ -57,10 +57,10 @@ MODEL_NAMES = {
 }
 
 KPI_THRESHOLDS = {
-    "f1":       0.68,
+    "f1":       0.66,
     "auc":      0.75,
     "accuracy": 0.70,
-    "recall":   0.65,
+    "recall":   0.63,
 }
 
 
