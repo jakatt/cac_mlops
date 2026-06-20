@@ -90,6 +90,12 @@ jobs:
             fi
 
             # ── 3. Entraînement ──────────────────────────────────────────────────
+            echo "==> Libération NVMe avant entraînement (conteneurs arrêtés + images dangling)"
+            docker container prune -f
+            docker image prune -f
+            echo "==> Espace NVMe disponible"
+            df -h /
+
             echo "==> Entraînement (dans le conteneur api)"
             TRAIN_LOG=$(mktemp)
             if [ "$CUMUL" = "true" ]; then

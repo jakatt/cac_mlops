@@ -15,6 +15,9 @@ import logging
 import os
 from pathlib import Path
 
+# Silencer les warnings GitPython non bloquants dans les conteneurs sans git
+os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
+
 import mlflow
 import mlflow.sklearn
 
@@ -179,7 +182,7 @@ def train(
 
         mlflow.sklearn.log_model(
             clf,
-            artifact_path="model",
+            name="model",
             registered_model_name=model_name if register else None,
             input_example=X_train.iloc[:3],
         )

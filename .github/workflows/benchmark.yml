@@ -1,0 +1,154 @@
+name: Benchmark — RF vs XGBoost vs LightGBM (3 configs)
+
+# Lance 9 entraînements séquentiels : 3 algos × 3 configs d'années
+# Résultats comparables dans MLflow → expérience accidents_severity
+# Aucune promotion automatique : l'opérateur MLOps (Léon) promeut manuellement le meilleur
+
+on:
+  workflow_dispatch:
+    inputs:
+      promote_winner:
+        description: "Promouvoir le meilleur rf_accidents @Production en fin de benchmark ? (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Benchmark multi-algo sur Scaleway
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 175m
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            echo "════════════════════════════════════════════"
+            echo "  BENCHMARK démarré — 3 algos × 3 configs"
+            echo "  RF / XGBoost / LightGBM"
+            echo "  Années : 2021 | 2021+2022 | 2021+2022+2023"
+            echo "════════════════════════════════════════════"
+
+            # ── 0. Nettoyage initial MLflow ───────────────────────────────────
+            echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
+            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py || true
+
+            echo "==> GC artifacts MinIO"
+            docker compose run --rm mlflow mlflow gc \
+              --backend-store-uri "postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}" \
+              --experiment-ids 1 || true
+
+            # ── 1. Pull toutes les données DVC (une seule fois) ───────────────
+            echo "==> Pull données DVC 2021 → 2023"
+            dvc pull data/raw/2021 || true
+            dvc pull data/raw/2022 || true
+            dvc pull data/raw/2023 || true
+
+            # ── 2. Preprocessing des 3 configs (une seule fois) ───────────────
+            echo "==> Preprocessing config 1 : 2021 seul"
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              api \
+              python -m src.data.make_dataset --year 2021
+
+            echo "==> Preprocessing config 2 : cumul 2021+2022"
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              api \
+              python -m src.data.make_dataset --year 2022 --cumul
+
+            echo "==> Preprocessing config 3 : cumul 2021+2022+2023"
+            docker compose run --rm \
+              -v "$(pwd)/data:/app/data" \
+              api \
+              python -m src.data.make_dataset --year 2023 --cumul
+
+            # ── Résultats accumulés ───────────────────────────────────────────
+            RESULTS=""
+            FAILED=""
+
+            # ── 3. Boucle d'entraînement ──────────────────────────────────────
+            for ALGO in rf xgboost lgbm; do
+              for CONFIG in "2021:false" "2022:true" "2023:true"; do
+                YEAR=$(echo $CONFIG | cut -d: -f1)
+                CUMUL=$(echo $CONFIG | cut -d: -f2)
+
+                echo ""
+                echo "──────────────────────────────────────────"
+                echo "  Training : algo=$ALGO  year=$YEAR  cumul=$CUMUL"
+                echo "──────────────────────────────────────────"
+
+                # Libérer l'espace NVMe entre chaque run
+                docker container prune -f
+                docker image prune -f
+                echo "  NVMe disponible :"
+                df -h / | tail -1
+
+                # Entraînement
+                TRAIN_LOG=$(mktemp)
+                if [ "$CUMUL" = "true" ]; then
+                  docker compose run --rm \
+                    -v "$(pwd)/data:/app/data" \
+                    api \
+                    python -m src.models.train_model \
+                      --year $YEAR --cumul --algorithm $ALGO \
+                    2>&1 | tee "$TRAIN_LOG" || { echo "ECHEC train $ALGO/$YEAR"; FAILED="$FAILED $ALGO/$YEAR"; rm -f "$TRAIN_LOG"; continue; }
+                else
+                  docker compose run --rm \
+                    -v "$(pwd)/data:/app/data" \
+                    api \
+                    python -m src.models.train_model \
+                      --year $YEAR --algorithm $ALGO \
+                    2>&1 | tee "$TRAIN_LOG" || { echo "ECHEC train $ALGO/$YEAR"; FAILED="$FAILED $ALGO/$YEAR"; rm -f "$TRAIN_LOG"; continue; }
+                fi
+
+                RUN_ID=$(grep "MLflow run_id" "$TRAIN_LOG" | awk '{print $NF}' | tail -1)
+                METRICS=$(grep "Metrics —" "$TRAIN_LOG" | tail -1)
+                rm -f "$TRAIN_LOG"
+
+                if [ -z "$RUN_ID" ]; then
+                  echo "  ECHEC : run_id non trouvé"
+                  FAILED="$FAILED $ALGO/$YEAR"
+                  continue
+                fi
+
+                echo "  run_id=$RUN_ID"
+                echo "  $METRICS"
+
+                # Validation (sans promotion)
+                case "$ALGO" in
+                  xgboost) MODEL_NAME="xgb_accidents" ;;
+                  lgbm)    MODEL_NAME="lgbm_accidents" ;;
+                  *)       MODEL_NAME="rf_accidents" ;;
+                esac
+
+                docker compose run --rm api \
+                  python -m src.models.validate_model \
+                    --run-id $RUN_ID --model-name $MODEL_NAME \
+                  || true
+
+                RESULTS="$RESULTS\n  ✅ $ALGO / $YEAR  run=$RUN_ID"
+              done
+            done
+
+            # ── 4. Résumé ─────────────────────────────────────────────────────
+            echo ""
+            echo "════════════════════════════════════════════"
+            echo "  BENCHMARK TERMINÉ"
+            echo "  Runs réussis :"
+            printf "$RESULTS\n"
+            if [ -n "$FAILED" ]; then
+              echo "  Runs échoués : $FAILED"
+            fi
+            echo ""
+            echo "  → Comparaison dans MLflow : http://51.159.187.132:5001"
+            echo "    Expérience : accidents_severity"
+            echo "    Colonnes utiles : algorithm / f1 / auc / accuracy / recall"
+            echo "════════════════════════════════════════════"
