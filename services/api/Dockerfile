@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # project source (for src/ imports)
 COPY src/ src/
 COPY services/api/app/ services/api/app/
+COPY scripts/ scripts/
 
 ENV PYTHONPATH=/app
 ENV PORT=8000
