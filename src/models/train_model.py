@@ -14,6 +14,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 # Silencer les warnings GitPython non bloquants dans les conteneurs sans git
 os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
@@ -31,6 +32,20 @@ from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, recall_scor
 from src.data.import_raw_data import PROJECT_ROOT, TRAINING_YEARS
 
 logger = logging.getLogger(__name__)
+
+_CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yml"
+
+
+def _load_algo_params(algorithm: str) -> dict[str, Any]:
+    """Charge les hyperparamètres depuis config/model_params.yml (blueprint DS)."""
+    if not _CONFIG_PATH.exists():
+        return {}
+    try:
+        import yaml
+        with open(_CONFIG_PATH) as f:
+            return yaml.safe_load(f).get(algorithm, {})
+    except Exception:
+        return {}
 
 EXPERIMENT_NAME = "accidents_severity"
 
@@ -213,6 +228,14 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
+    # Pré-parse pour récupérer l'algorithme et charger le blueprint
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--algorithm", default="rf")
+    algo = pre.parse_known_args()[0].algorithm
+    cfg = _load_algo_params(algo)
+    if cfg:
+        logger.info("Blueprint chargé depuis config/model_params.yml (%s)", algo)
+
     parser = argparse.ArgumentParser(
         description="Entraîne un modèle de gravité accidents sur données ONISR"
     )
@@ -220,11 +243,11 @@ def main() -> None:
     parser.add_argument("--cumul",         action="store_true")
     parser.add_argument("--algorithm",     default="rf", choices=["rf", "xgboost", "lgbm"],
                         help="Algorithme : rf (défaut) | xgboost | lgbm")
-    parser.add_argument("--n-estimators",  type=int,   default=100)
-    parser.add_argument("--max-depth",     type=int,   default=None)
-    parser.add_argument("--learning-rate", type=float, default=0.1,
+    parser.add_argument("--n-estimators",  type=int,   default=cfg.get("n_estimators", 100))
+    parser.add_argument("--max-depth",     type=int,   default=cfg.get("max_depth", None))
+    parser.add_argument("--learning-rate", type=float, default=cfg.get("learning_rate", 0.1),
                         help="Learning rate (xgboost / lgbm uniquement)")
-    parser.add_argument("--num-leaves",    type=int,   default=31,
+    parser.add_argument("--num-leaves",    type=int,   default=cfg.get("num_leaves", 31),
                         help="Nombre de feuilles (lgbm uniquement)")
     parser.add_argument("--no-register",   action="store_true")
     args = parser.parse_args()
