@@ -81,10 +81,11 @@ jobs:
             git reset --hard origin/main
 
             echo "==> Rotation logs Docker (daemon.json — max 20 MB × 3 fichiers)"
+            sudo mkdir -p /etc/docker
             if ! cmp -s infrastructure/docker/daemon.json /etc/docker/daemon.json 2>/dev/null; then
-              sudo cp infrastructure/docker/daemon.json /etc/docker/daemon.json
+              sudo rsync infrastructure/docker/daemon.json /etc/docker/daemon.json
               sudo systemctl reload docker 2>/dev/null || true
-              echo "  daemon.json mis à jour"
+              echo "  daemon.json mis à jour (prendra effet au prochain restart Docker)"
             else
               echo "  daemon.json déjà à jour"
             fi
