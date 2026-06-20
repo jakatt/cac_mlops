@@ -40,7 +40,7 @@ jobs:
                 echo "==> resize2fs via docker --privileged (ext4)"
                 docker run --rm --privileged -v /dev:/dev \
                   alpine:latest \
-                  sh -c "apk add --quiet e2fsprogs > /dev/null 2>&1 && resize2fs /dev/sda && echo 'resize2fs OK'"
+                  sh -c "apk add --quiet e2fsprogs e2fsprogs-extra > /dev/null 2>&1 && resize2fs /dev/sda && echo 'resize2fs OK'"
                 ;;
               xfs)
                 echo "==> xfs_growfs via docker --privileged (xfs)"
