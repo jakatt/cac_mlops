@@ -37,16 +37,20 @@ jobs:
             # alpine + e2fsprogs ou xfsprogs selon le type
             case "$FSTYPE" in
               ext4|ext3|ext2)
-                echo "==> resize2fs via docker --privileged (ext4)"
-                docker run --rm --privileged \
+                # nsenter --all entre dans TOUS les namespaces du host (PID 1 = root)
+                # et utilise le resize2fs DEJA installe sur l'host Ubuntu
+                echo "==> resize2fs via docker --privileged + nsenter (ext4)"
+                docker run --rm --privileged --pid=host \
                   debian:12-slim \
-                  sh -c "apt-get update -qq 2>&1 | tail -1 && apt-get install -qq -y --no-install-recommends e2fsprogs 2>&1 | tail -2 && resize2fs /dev/sda && echo 'resize2fs OK'"
+                  nsenter -t 1 --all -- resize2fs /dev/sda
+                echo "resize2fs OK"
                 ;;
               xfs)
-                echo "==> xfs_growfs via docker --privileged (xfs)"
-                docker run --rm --privileged -v /data:/data \
+                echo "==> xfs_growfs via docker --privileged + nsenter (xfs)"
+                docker run --rm --privileged --pid=host \
                   debian:12-slim \
-                  sh -c "apt-get update -qq 2>&1 | tail -1 && apt-get install -qq -y --no-install-recommends xfsprogs 2>&1 | tail -2 && xfs_growfs /data && echo 'xfs_growfs OK'"
+                  nsenter -t 1 --all -- xfs_growfs /data
+                echo "xfs_growfs OK"
                 ;;
               *)
                 echo "ERREUR : type de filesystem inconnu : '$FSTYPE'"
