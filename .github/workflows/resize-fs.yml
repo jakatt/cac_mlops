@@ -20,16 +20,24 @@ jobs:
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
           command_timeout: 5m
           script: |
-            echo "==> Avant resize"
-            df -h /
+            echo "==> Etat actuel"
+            df -h
+            echo ""
             lsblk
 
-            echo "==> Extension partition (growpart)"
-            sudo growpart /dev/vda 1
+            echo ""
+            echo "==> Extension /data (sda -> 74.5GB, filesystem bloque a 19GB)"
+            # sda est formate directement (pas de partition) -> resize2fs direct
+            sudo resize2fs /dev/sda
+            echo "  /data etendu"
 
-            echo "==> Extension filesystem (resize2fs)"
-            sudo resize2fs /dev/vda1
+            echo ""
+            echo "==> Extension / (vda1 -> 17.6GB, verif si necessaire)"
+            sudo growpart /dev/vda 1 || echo "  vda1 : deja a la bonne taille"
+            sudo resize2fs /dev/vda1 || echo "  vda1 filesystem : deja a la bonne taille"
 
-            echo "==> Apres resize"
-            df -h /
+            echo ""
+            echo "==> Etat apres resize"
+            df -h
+            echo ""
             lsblk
