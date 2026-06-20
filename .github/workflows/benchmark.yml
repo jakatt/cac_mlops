@@ -11,6 +11,9 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    env:
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GHCR_USER:  ${{ github.actor }}
 
     steps:
       - name: Benchmark multi-algo sur Scaleway
@@ -19,16 +22,33 @@ jobs:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          envs:     GHCR_TOKEN,GHCR_USER
           command_timeout: 175m
           script: |
             set -e
             export PATH=$PATH:/home/deploy/.local/bin
             cd ${{ secrets.DEPLOY_DIR }}
 
-            echo "════════════════════════════════════════════"
-            echo "  BENCHMARK — RF / XGBoost / LightGBM"
+            echo "================================================"
+            echo "  BENCHMARK -- RF / XGBoost / LightGBM"
             echo "  3 configs : 2021 | 2021+2022 | 2021+2022+2023"
-            echo "════════════════════════════════════════════"
+            echo "================================================"
+
+            # ── LOGIN ghcr.io (requis pour puller les images) ─────────────────
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # ── S'assurer que tous les services sont up ────────────────────────
+            echo "==> Verification services Docker"
+            docker compose pull --quiet 2>/dev/null || true
+            docker compose up -d
+            echo "    Attente healthcheck MLflow (max 60s)"
+            for i in $(seq 1 12); do
+              if docker compose exec -T mlflow curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+                echo "    MLflow healthy apres $((i*5))s"
+                break
+              fi
+              sleep 5
+            done
 
             # ── 0. NETTOYAGE NVME (avant tout) ───────────────────────────────
             echo ""
@@ -170,7 +190,7 @@ jobs:
             df -h /
 
             echo ""
-            echo "════════════════════════════════════════════"
+            echo "================================================"
             echo "  BENCHMARK TERMINE"
             echo "  Reussis :$RESULTS"
             if [ -n "$FAILED" ]; then
@@ -179,7 +199,7 @@ jobs:
             echo ""
             echo "  Comparer dans MLflow -> experiments -> accidents_severity"
             echo "  Colonnes : algorithm / f1 / auc / accuracy / recall"
-            echo "════════════════════════════════════════════"
+            echo "================================================"
 
             # Echec global si aucun run n'a reussi
             if [ -z "$RESULTS" ]; then
