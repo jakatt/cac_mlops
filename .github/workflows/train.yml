@@ -135,8 +135,9 @@ jobs:
               docker compose run --rm api \
                 python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME --promote
             else
+              # Mode benchmark : rapport KPI sans bloquer le pipeline
               docker compose run --rm api \
-                python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME
+                python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME || true
             fi
 
             # ── 5. Redémarrage API ────────────────────────────────────────────────
