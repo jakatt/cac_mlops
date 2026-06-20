@@ -1,16 +1,11 @@
 name: Benchmark — RF vs XGBoost vs LightGBM (3 configs)
 
 # Lance 9 entraînements séquentiels : 3 algos × 3 configs d'années
-# Résultats comparables dans MLflow → expérience accidents_severity
-# Aucune promotion automatique : l'opérateur MLOps (Léon) promeut manuellement le meilleur
+# Le workflow est autonome : nettoyage NVMe embarqué avant de démarrer
+# Aucune promotion automatique — l'opérateur promeut manuellement le meilleur
 
 on:
   workflow_dispatch:
-    inputs:
-      promote_winner:
-        description: "Promouvoir le meilleur rf_accidents @Production en fin de benchmark ? (true/false)"
-        required: false
-        default: "false"
 
 jobs:
   benchmark:
@@ -31,98 +26,128 @@ jobs:
             cd ${{ secrets.DEPLOY_DIR }}
 
             echo "════════════════════════════════════════════"
-            echo "  BENCHMARK démarré — 3 algos × 3 configs"
-            echo "  RF / XGBoost / LightGBM"
-            echo "  Années : 2021 | 2021+2022 | 2021+2022+2023"
+            echo "  BENCHMARK — RF / XGBoost / LightGBM"
+            echo "  3 configs : 2021 | 2021+2022 | 2021+2022+2023"
             echo "════════════════════════════════════════════"
 
-            # ── 0. Nettoyage initial MLflow ───────────────────────────────────
-            echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
-            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py || true
+            # ── 0. NETTOYAGE NVME (avant tout) ───────────────────────────────
+            echo ""
+            echo "==> [0/5] Nettoyage NVMe"
+            echo "    Etat avant :"
+            df -h /
 
-            echo "==> GC artifacts MinIO"
+            docker container prune -f
+            docker image prune -f
+            docker builder prune -f
+            docker network prune -f
+
+            # Tronquer les logs Docker (principale source de remplissage silencieux)
+            for f in /var/lib/docker/containers/*/*-json.log; do
+              [ -f "$f" ] && truncate -s 0 "$f"
+            done
+
+            find /tmp -maxdepth 2 -type f -mtime +0 -delete 2>/dev/null || true
+            journalctl --vacuum-size=200M 2>/dev/null || true
+
+            echo "    Etat apres nettoyage :"
+            df -h /
+
+            # ── 1. NETTOYAGE MLFLOW (garder 5 runs par modele) ───────────────
+            echo ""
+            echo "==> [1/5] Nettoyage MLflow"
+            docker compose exec -T api \
+              python3 /app/src/scripts/mlflow_cleanup.py 2>/dev/null || true
+
             docker compose run --rm mlflow mlflow gc \
               --backend-store-uri "postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}" \
-              --experiment-ids 1 || true
+              --experiment-ids 1 2>/dev/null || true
 
-            # ── 1. Pull toutes les données DVC (une seule fois) ───────────────
-            echo "==> Pull données DVC 2021 → 2023"
-            dvc pull data/raw/2021 || true
-            dvc pull data/raw/2022 || true
-            dvc pull data/raw/2023 || true
+            # ── 2. DVC PULL (3 annees) ────────────────────────────────────────
+            echo ""
+            echo "==> [2/5] Pull donnees DVC"
+            dvc pull data/raw/2021
+            dvc pull data/raw/2022
+            dvc pull data/raw/2023
+            echo "    NVMe apres pull :"
+            df -h / | tail -1
 
-            # ── 2. Preprocessing des 3 configs (une seule fois) ───────────────
-            echo "==> Preprocessing config 1 : 2021 seul"
+            # ── 3. PREPROCESSING (3 configs) ─────────────────────────────────
+            echo ""
+            echo "==> [3/5] Preprocessing"
+
+            echo "  config 1/3 : annee 2021 seule"
             docker compose run --rm \
               -v "$(pwd)/data:/app/data" \
-              api \
-              python -m src.data.make_dataset --year 2021
+              api python -m src.data.make_dataset --year 2021
 
-            echo "==> Preprocessing config 2 : cumul 2021+2022"
+            echo "  config 2/3 : cumul 2021+2022"
             docker compose run --rm \
               -v "$(pwd)/data:/app/data" \
-              api \
-              python -m src.data.make_dataset --year 2022 --cumul
+              api python -m src.data.make_dataset --year 2022 --cumul
 
-            echo "==> Preprocessing config 3 : cumul 2021+2022+2023"
+            echo "  config 3/3 : cumul 2021+2022+2023"
             docker compose run --rm \
               -v "$(pwd)/data:/app/data" \
-              api \
-              python -m src.data.make_dataset --year 2023 --cumul
+              api python -m src.data.make_dataset --year 2023 --cumul
 
-            # ── Résultats accumulés ───────────────────────────────────────────
+            # Supprimer donnees brutes apres preprocessing (volumineuses, inutiles pour train)
+            echo "  Suppression data/raw apres preprocessing"
+            rm -rf data/raw
+            docker container prune -f
+            echo "    NVMe apres suppression raw :"
+            df -h / | tail -1
+
+            # ── 4. ENTRAINEMENTS (9 runs) ─────────────────────────────────────
+            echo ""
+            echo "==> [4/5] Entrainements (9 runs)"
+
             RESULTS=""
             FAILED=""
 
-            # ── 3. Boucle d'entraînement ──────────────────────────────────────
             for ALGO in rf xgboost lgbm; do
               for CONFIG in "2021:false" "2022:true" "2023:true"; do
                 YEAR=$(echo $CONFIG | cut -d: -f1)
                 CUMUL=$(echo $CONFIG | cut -d: -f2)
 
                 echo ""
-                echo "──────────────────────────────────────────"
-                echo "  Training : algo=$ALGO  year=$YEAR  cumul=$CUMUL"
-                echo "──────────────────────────────────────────"
+                echo "  --- $ALGO / annee=$YEAR / cumul=$CUMUL ---"
 
-                # Libérer l'espace NVMe entre chaque run
+                # Nettoyage leger entre runs
                 docker container prune -f
-                docker image prune -f
-                echo "  NVMe disponible :"
                 df -h / | tail -1
 
-                # Entraînement
+                # Entrainement
                 TRAIN_LOG=$(mktemp)
                 if [ "$CUMUL" = "true" ]; then
                   docker compose run --rm \
                     -v "$(pwd)/data:/app/data" \
-                    api \
-                    python -m src.models.train_model \
+                    api python -m src.models.train_model \
                       --year $YEAR --cumul --algorithm $ALGO \
-                    2>&1 | tee "$TRAIN_LOG" || { echo "ECHEC train $ALGO/$YEAR"; FAILED="$FAILED $ALGO/$YEAR"; rm -f "$TRAIN_LOG"; continue; }
+                    2>&1 | tee "$TRAIN_LOG" \
+                    || { echo "  ECHEC train $ALGO/$YEAR"; FAILED="$FAILED $ALGO-$YEAR"; rm -f "$TRAIN_LOG"; continue; }
                 else
                   docker compose run --rm \
                     -v "$(pwd)/data:/app/data" \
-                    api \
-                    python -m src.models.train_model \
+                    api python -m src.models.train_model \
                       --year $YEAR --algorithm $ALGO \
-                    2>&1 | tee "$TRAIN_LOG" || { echo "ECHEC train $ALGO/$YEAR"; FAILED="$FAILED $ALGO/$YEAR"; rm -f "$TRAIN_LOG"; continue; }
+                    2>&1 | tee "$TRAIN_LOG" \
+                    || { echo "  ECHEC train $ALGO/$YEAR"; FAILED="$FAILED $ALGO-$YEAR"; rm -f "$TRAIN_LOG"; continue; }
                 fi
 
                 RUN_ID=$(grep "MLflow run_id" "$TRAIN_LOG" | awk '{print $NF}' | tail -1)
-                METRICS=$(grep "Metrics —" "$TRAIN_LOG" | tail -1)
+                METRICS=$(grep "Metrics" "$TRAIN_LOG" | tail -1)
                 rm -f "$TRAIN_LOG"
 
                 if [ -z "$RUN_ID" ]; then
-                  echo "  ECHEC : run_id non trouvé"
-                  FAILED="$FAILED $ALGO/$YEAR"
+                  echo "  ECHEC : run_id non trouve"
+                  FAILED="$FAILED $ALGO-$YEAR"
                   continue
                 fi
 
-                echo "  run_id=$RUN_ID"
+                echo "  OK : run_id=$RUN_ID"
                 echo "  $METRICS"
 
-                # Validation (sans promotion)
+                # Validation sans promotion
                 case "$ALGO" in
                   xgboost) MODEL_NAME="xgb_accidents" ;;
                   lgbm)    MODEL_NAME="lgbm_accidents" ;;
@@ -132,23 +157,32 @@ jobs:
                 docker compose run --rm api \
                   python -m src.models.validate_model \
                     --run-id $RUN_ID --model-name $MODEL_NAME \
-                  || true
+                  2>/dev/null || true
 
-                RESULTS="$RESULTS\n  ✅ $ALGO / $YEAR  run=$RUN_ID"
+                RESULTS="$RESULTS $ALGO/$YEAR"
               done
             done
 
-            # ── 4. Résumé ─────────────────────────────────────────────────────
+            # ── 5. RESUME ─────────────────────────────────────────────────────
+            echo ""
+            echo "==> [5/5] Resume"
+            echo "    NVMe final :"
+            df -h /
+
             echo ""
             echo "════════════════════════════════════════════"
-            echo "  BENCHMARK TERMINÉ"
-            echo "  Runs réussis :"
-            printf "$RESULTS\n"
+            echo "  BENCHMARK TERMINE"
+            echo "  Reussis :$RESULTS"
             if [ -n "$FAILED" ]; then
-              echo "  Runs échoués : $FAILED"
+              echo "  Echoues :$FAILED"
             fi
             echo ""
-            echo "  → Comparaison dans MLflow : http://51.159.187.132:5001"
-            echo "    Expérience : accidents_severity"
-            echo "    Colonnes utiles : algorithm / f1 / auc / accuracy / recall"
+            echo "  Comparer dans MLflow -> experiments -> accidents_severity"
+            echo "  Colonnes : algorithm / f1 / auc / accuracy / recall"
             echo "════════════════════════════════════════════"
+
+            # Echec global si aucun run n'a reussi
+            if [ -z "$RESULTS" ]; then
+              echo "ERREUR : aucun run reussi"
+              exit 1
+            fi
