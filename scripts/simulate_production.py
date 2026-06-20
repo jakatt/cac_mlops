@@ -74,6 +74,7 @@ def simulate(
     month: str | None = None,
     dry_run: bool = False,
     delay_ms: int = 0,
+    max_rows: int | None = None,
 ) -> dict:
     df = _load_production_data(year)
 
@@ -94,6 +95,10 @@ def simulate(
         target_month = int(month.split("-")[1])
         df = df[df["mois"] == target_month].copy()
         logger.info("Filtered to month %02d: %d rows", target_month, len(df))
+
+    if max_rows and len(df) > max_rows:
+        df = df.sample(n=max_rows, random_state=42)
+        logger.info("Sampled %d rows (max_rows limit)", max_rows)
 
     if df.empty:
         logger.warning("No rows to send")
@@ -151,6 +156,8 @@ if __name__ == "__main__":
     parser.add_argument("--month",    default=None, help="YYYY-MM filter on 'mois' column")
     parser.add_argument("--dry-run",  action="store_true")
     parser.add_argument("--delay-ms", type=int, default=0, help="ms between requests")
+    parser.add_argument("--max-rows", type=int, default=None,
+                        help="Limite le nombre de lignes envoyées (sample aléatoire)")
     args = parser.parse_args()
 
     token = args.token or _get_token(args.api_url, args.username, args.password)
@@ -161,5 +168,6 @@ if __name__ == "__main__":
         month=args.month,
         dry_run=args.dry_run,
         delay_ms=args.delay_ms,
+        max_rows=args.max_rows,
     )
     sys.exit(0 if result.get("errors", 0) == 0 else 1)

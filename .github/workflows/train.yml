@@ -183,7 +183,8 @@ jobs:
                   --year $SIM_YEAR \
                   --api-url http://api:8000 \
                   --token "$TOKEN" \
-                  --delay-ms 5
+                  --max-rows 3000 \
+                  --delay-ms 0
 
               # ── 7. Détection drift ──────────────────────────────────────────────
               echo "==> Détection drift : données $SIM_YEAR vs référence entraînement $YEAR"
