@@ -1,7 +1,7 @@
 name: Ops — Resize filesystem NVMe
 
 # One-shot : a lancer apres un agrandissement de volume Scaleway
-# Etend la partition + le filesystem pour utiliser tout l'espace disponible
+# Detecte le type de filesystem (ext4 ou xfs) et utilise l'outil adapte
 
 on:
   workflow_dispatch:
@@ -18,26 +18,51 @@ jobs:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
-          command_timeout: 5m
+          command_timeout: 8m
           script: |
+            set -e
+
             echo "==> Etat actuel"
             df -h
             echo ""
-            lsblk
+            lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT
+            echo ""
+
+            # ── /data (sda) ───────────────────────────────────────────────────
+            echo "==> Extension /data"
+            echo "    Device : $(lsblk -no SIZE /dev/sda | head -1) disponibles"
+            echo "    Filesystem :"
+            FSTYPE=$(lsblk -no FSTYPE /dev/sda 2>/dev/null || blkid -o value -s TYPE /dev/sda 2>/dev/null || echo "unknown")
+            echo "    Type = $FSTYPE"
+
+            case "$FSTYPE" in
+              ext4|ext3|ext2)
+                echo "    -> resize2fs (ext)"
+                sudo resize2fs /dev/sda
+                ;;
+              xfs)
+                echo "    -> xfs_growfs (xfs)"
+                sudo xfs_growfs /data
+                ;;
+              *)
+                echo "    ERREUR : type de filesystem inconnu : $FSTYPE"
+                echo "    Contenu blkid :"
+                sudo blkid /dev/sda
+                exit 1
+                ;;
+            esac
 
             echo ""
-            echo "==> Extension /data (sda -> 74.5GB, filesystem bloque a 19GB)"
-            # sda est formate directement (pas de partition) -> resize2fs direct
-            sudo resize2fs /dev/sda
-            echo "  /data etendu"
+            echo "==> /data apres resize :"
+            df -h /data
 
+            # ── / (vda1) — optionnel, erreurs ignorees ─────────────────────────
             echo ""
-            echo "==> Extension / (vda1 -> 17.6GB, verif si necessaire)"
+            echo "==> Extension / (vda1, si necessaire)"
             sudo growpart /dev/vda 1 || echo "  vda1 : deja a la bonne taille"
             sudo resize2fs /dev/vda1 || echo "  vda1 filesystem : deja a la bonne taille"
 
             echo ""
-            echo "==> Etat apres resize"
+            echo "==> Etat final"
             df -h
-            echo ""
-            lsblk
+            lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT
