@@ -3,6 +3,9 @@ name: Ops — Resize filesystem NVMe
 # One-shot : a lancer apres un agrandissement de volume Scaleway
 # Utilise docker run --privileged pour contourner les restrictions sudo sur resize2fs
 # (l'utilisateur deploy n'a pas NOPASSWD pour resize2fs mais peut lancer docker)
+#
+# Pour ext4 monte : on utilise EXT4_IOC_RESIZE_FS via ioctl sur le mount point
+# (resize2fs /dev/sda echoue avec EBUSY sur un device monte)
 
 on:
   workflow_dispatch:
@@ -28,33 +31,43 @@ jobs:
             echo ""
             lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT
 
-            # Detection du type de filesystem sur sda
             FSTYPE=$(lsblk -no FSTYPE /dev/sda 2>/dev/null | head -1)
             echo ""
-            echo "==> /dev/sda : device=$(lsblk -no SIZE /dev/sda | head -1), type=$FSTYPE"
+            echo "==> /dev/sda : $(lsblk -no SIZE /dev/sda | head -1), type=$FSTYPE"
 
-            # Resize via container Docker privilegie (pas de sudo requis)
-            # alpine + e2fsprogs ou xfsprogs selon le type
             case "$FSTYPE" in
               ext4|ext3|ext2)
-                # nsenter --all entre dans TOUS les namespaces du host (PID 1 = root)
-                # et utilise le resize2fs DEJA installe sur l'host Ubuntu
-                echo "==> resize2fs via docker --privileged + nsenter (ext4)"
-                docker run --rm --privileged --pid=host \
-                  debian:12-slim \
-                  nsenter -t 1 --all -- resize2fs /dev/sda
-                echo "resize2fs OK"
+                echo "==> EXT4_IOC_RESIZE_FS via docker --privileged + Python ioctl"
+                docker run --rm --privileged \
+                  -v /data:/data \
+                  python:3-slim \
+                  python3 -c "
+            import fcntl, os, struct, sys
+            try:
+                with open('/sys/class/block/sda/size') as f:
+                    sectors = int(f.read().strip())
+                st = os.statvfs('/data')
+                block_size = st.f_bsize
+                new_blocks = (sectors * 512) // block_size
+                gb = sectors * 512 // 1073741824
+                print(f'Cible: {gb} GB | {new_blocks} blocs de {block_size}B')
+                fd = os.open('/data', os.O_RDONLY)
+                fcntl.ioctl(fd, 0x40086610, struct.pack('Q', new_blocks))
+                os.close(fd)
+                print('SUCCESS: resize ext4 OK')
+            except Exception as e:
+                print(f'ERREUR: {e}', file=sys.stderr)
+                sys.exit(1)
+            "
                 ;;
               xfs)
-                echo "==> xfs_growfs via docker --privileged + nsenter (xfs)"
-                docker run --rm --privileged --pid=host \
+                echo "==> xfs_growfs via docker --privileged"
+                docker run --rm --privileged -v /data:/data \
                   debian:12-slim \
-                  nsenter -t 1 --all -- xfs_growfs /data
-                echo "xfs_growfs OK"
+                  sh -c "apt-get install -qq -y --no-install-recommends xfsprogs 2>&1 | tail -1 && xfs_growfs /data"
                 ;;
               *)
-                echo "ERREUR : type de filesystem inconnu : '$FSTYPE'"
-                docker run --rm --privileged -v /dev:/dev alpine:latest blkid /dev/sda
+                echo "ERREUR : type inconnu : '$FSTYPE'"
                 exit 1
                 ;;
             esac
