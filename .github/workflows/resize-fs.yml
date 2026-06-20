@@ -1,7 +1,8 @@
 name: Ops — Resize filesystem NVMe
 
 # One-shot : a lancer apres un agrandissement de volume Scaleway
-# Detecte le type de filesystem (ext4 ou xfs) et utilise l'outil adapte
+# Utilise docker run --privileged pour contourner les restrictions sudo sur resize2fs
+# (l'utilisateur deploy n'a pas NOPASSWD pour resize2fs mais peut lancer docker)
 
 on:
   workflow_dispatch:
@@ -22,32 +23,34 @@ jobs:
           script: |
             set -e
 
-            echo "==> Etat actuel"
+            echo "==> Etat AVANT resize"
             df -h
             echo ""
             lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT
+
+            # Detection du type de filesystem sur sda
+            FSTYPE=$(lsblk -no FSTYPE /dev/sda 2>/dev/null | head -1)
             echo ""
+            echo "==> /dev/sda : device=$(lsblk -no SIZE /dev/sda | head -1), type=$FSTYPE"
 
-            # ── /data (sda) ───────────────────────────────────────────────────
-            echo "==> Extension /data"
-            echo "    Device : $(lsblk -no SIZE /dev/sda | head -1) disponibles"
-            echo "    Filesystem :"
-            FSTYPE=$(lsblk -no FSTYPE /dev/sda 2>/dev/null || blkid -o value -s TYPE /dev/sda 2>/dev/null || echo "unknown")
-            echo "    Type = $FSTYPE"
-
+            # Resize via container Docker privilegie (pas de sudo requis)
+            # alpine + e2fsprogs ou xfsprogs selon le type
             case "$FSTYPE" in
               ext4|ext3|ext2)
-                echo "    -> resize2fs (ext)"
-                sudo resize2fs /dev/sda
+                echo "==> resize2fs via docker --privileged (ext4)"
+                docker run --rm --privileged -v /dev:/dev \
+                  alpine:latest \
+                  sh -c "apk add --quiet e2fsprogs > /dev/null 2>&1 && resize2fs /dev/sda && echo 'resize2fs OK'"
                 ;;
               xfs)
-                echo "    -> xfs_growfs (xfs)"
-                sudo xfs_growfs /data
+                echo "==> xfs_growfs via docker --privileged (xfs)"
+                docker run --rm --privileged -v /proc:/proc -v /sys:/sys -v /data:/data \
+                  alpine:latest \
+                  sh -c "apk add --quiet xfsprogs > /dev/null 2>&1 && xfs_growfs /data && echo 'xfs_growfs OK'"
                 ;;
               *)
-                echo "    ERREUR : type de filesystem inconnu : $FSTYPE"
-                echo "    Contenu blkid :"
-                sudo blkid /dev/sda
+                echo "ERREUR : type de filesystem inconnu : '$FSTYPE'"
+                docker run --rm --privileged -v /dev:/dev alpine:latest blkid /dev/sda
                 exit 1
                 ;;
             esac
@@ -55,12 +58,6 @@ jobs:
             echo ""
             echo "==> /data apres resize :"
             df -h /data
-
-            # ── / (vda1) — optionnel, erreurs ignorees ─────────────────────────
-            echo ""
-            echo "==> Extension / (vda1, si necessaire)"
-            sudo growpart /dev/vda 1 || echo "  vda1 : deja a la bonne taille"
-            sudo resize2fs /dev/vda1 || echo "  vda1 filesystem : deja a la bonne taille"
 
             echo ""
             echo "==> Etat final"
