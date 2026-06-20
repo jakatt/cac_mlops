@@ -80,6 +80,15 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            echo "==> Rotation logs Docker (daemon.json — max 20 MB × 3 fichiers)"
+            if ! cmp -s infrastructure/docker/daemon.json /etc/docker/daemon.json 2>/dev/null; then
+              sudo cp infrastructure/docker/daemon.json /etc/docker/daemon.json
+              sudo systemctl reload docker 2>/dev/null || true
+              echo "  daemon.json mis à jour"
+            else
+              echo "  daemon.json déjà à jour"
+            fi
+
             echo "==> Configuration DOCKER_VOLUMES_PATH → block storage /data"
             grep -q "DOCKER_VOLUMES_PATH" .env 2>/dev/null || echo "DOCKER_VOLUMES_PATH=/data" >> .env
 
