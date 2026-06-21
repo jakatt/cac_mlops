@@ -65,6 +65,8 @@ jobs:
 
             echo "==> Arrêt des conteneurs (libère les images)"
             docker compose down --remove-orphans || true
+            # Force-suppression des conteneurs résiduels (au cas où compose down aurait été incomplet)
+            docker ps -aq --filter "name=cac_mlops-" | xargs -r docker rm -f 2>/dev/null || true
 
             echo "==> Nettoyage des images cac-mlops uniquement (protege les autres applis du VPS)"
             docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest 2>/dev/null || true
@@ -126,8 +128,9 @@ jobs:
               fi
             fi
 
-            echo "==> Suppression volumes nommés obsolètes (données déjà sur /data bind mounts)"
-            docker volume rm cac_mlops_minio_data cac_mlops_postgres_data cac_mlops_prefect_data 2>/dev/null || true
+            echo "==> Suppression volumes nommés obsolètes (minio+pg migrés vers /data bind mounts)"
+            docker volume rm cac_mlops_minio_data cac_mlops_postgres_data 2>/dev/null || true
+            # cac_mlops_prefect_data conservé : volume nommé Docker contenant l'état SQLite Prefect
             echo "==> NVMe après nettoyage volumes"
             df -h /
 
