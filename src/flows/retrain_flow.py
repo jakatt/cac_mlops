@@ -1,8 +1,10 @@
 """
 Retrain flow — full pipeline: ETL + train + validate + promote.
 
-Scheduled weekly (Monday 02:00 Europe/Paris) via prefect.yaml.
-Can also be triggered manually from the Prefect UI.
+Triggered manually from the Prefect UI when new ONISR data is available
+(typically once per year, ~June N+2 for year N data).
+The GitHub Actions train.yml handles the same pipeline including simulation
+and drift detection — use that for the complete end-to-end run.
 """
 import logging
 

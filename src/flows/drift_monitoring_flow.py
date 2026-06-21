@@ -1,8 +1,11 @@
 """
-Drift monitoring flow — monthly Evidently report on production predictions.
+Drift monitoring flow — Evidently report comparing production predictions
+vs X_train reference.
 
-Scheduled: first day of each month at 03:00 UTC via prefect.yaml.
-Can be triggered manually: prefect deployment run drift-monitoring-flow/monthly
+Triggered manually after simulate_production.py has populated the
+predictions table (or automatically at the end of the retrain pipeline).
+No cron schedule : drift is checked once per retrain cycle (annual),
+not monthly, since we have no real continuous production traffic.
 """
 import json
 import logging
