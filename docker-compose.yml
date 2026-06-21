@@ -116,10 +116,11 @@ services:
     volumes:
       - prefect_data:/root/.prefect
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
       interval: 15s
       timeout: 10s
       retries: 10
+      start_period: 30s
 
   # ── Prefect worker — exécute les flows (image api = toutes les dépendances ML)
   prefect-worker:
