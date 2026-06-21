@@ -106,10 +106,45 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Prefect server + worker — déployés en Phase 5 (K8s) ────────────────────
-  # Disk budget trop serré sur DEV1-S pour y ajouter des images Prefect (~300MB+).
-  # Le scheduling hebdomadaire est assuré par le trigger cron de train.yml (CI).
-  # Les flux Prefect (etl_flow, train_flow, retrain_flow) sont prêts dans src/flows/.
+  # ── Prefect server — UI orchestration [Phase 3] ─────────────────────────────
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    restart: unless-stopped
+    command: prefect server start --host 0.0.0.0 --port 4200
+    ports:
+      - "4200:4200"
+    volumes:
+      - prefect_data:/root/.prefect
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ── Prefect worker — exécute les flows (image api = toutes les dépendances ML)
+  prefect-worker:
+    image: ghcr.io/jakatt/cac-mlops-api:latest
+    restart: unless-stopped
+    command: >
+      sh -c "prefect work-pool create default-process-pool --type process 2>/dev/null || true
+             && prefect worker start --pool default-process-pool"
+    environment:
+      PREFECT_API_URL:        http://prefect-server:4200/api
+      MLFLOW_TRACKING_URI:    http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
+      POSTGRES_USER:          ${POSTGRES_USER:-mlops}
+      POSTGRES_PASSWORD:      ${POSTGRES_PASSWORD:-mlops}
+      POSTGRES_DB:            ${POSTGRES_DB:-mlops}
+      POSTGRES_HOST:          postgresql
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
 
   # ── Gradio — Simulateur Sécurité Routière (Bison Futé + Géo Trouvetou) ─────
   gradio:
@@ -168,6 +203,7 @@ services:
 volumes:
   prometheus_data:   # named volume — Docker gère les permissions (UID 65534)
   grafana_data:      # named volume — Docker gère les permissions (UID 472)
+  prefect_data:      # named volume — SQLite Prefect + config
 
 # MinIO et Postgres utilisent des bind mounts sur /data (block storage Scaleway)
 # DOCKER_VOLUMES_PATH=/data dans .env sur le serveur → block storage (19 GB)

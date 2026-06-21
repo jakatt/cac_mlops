@@ -5,16 +5,18 @@ Scheduled: first day of each month at 03:00 UTC via prefect.yaml.
 Can be triggered manually: prefect deployment run drift-monitoring-flow/monthly
 """
 import json
+import logging
 from datetime import datetime, timezone
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, task
 
 from services.monitoring.drift_detection import run_drift_report, _default_month
+
+logger = logging.getLogger(__name__)
 
 
 @task(name="run-evidently-report")
 def drift_report_task(year_month: str) -> dict:
-    logger = get_run_logger()
     logger.info("Running Evidently drift report for %s", year_month)
     summary = run_drift_report(year_month)
     logger.info("Report summary: %s", json.dumps(summary))
@@ -24,7 +26,6 @@ def drift_report_task(year_month: str) -> dict:
 @task(name="check-drift-threshold")
 def check_threshold_task(summary: dict) -> str:
     """Returns severity: OK / WARNING / CRITICAL."""
-    logger = get_run_logger()
     share = summary.get("drift_share", 0.0)
 
     if share > 0.25:
@@ -54,8 +55,6 @@ def drift_monitoring_flow(year_month: str | None = None) -> dict:
 
     Returns summary dict with drift metrics.
     """
-    logger = get_run_logger()
-
     if year_month is None:
         year_month = _default_month()
 
@@ -67,8 +66,7 @@ def drift_monitoring_flow(year_month: str | None = None) -> dict:
 
     if level == "CRITICAL":
         logger.warning(
-            "CRITICAL drift detected — consider triggering retrain_flow manually "
-            "or via the Prefect UI (retrain-flow deployment)"
+            "CRITICAL drift detected — trigger retrain-flow via Prefect UI"
         )
     elif level == "WARNING":
         logger.warning("WARNING drift detected — monitoring closely")

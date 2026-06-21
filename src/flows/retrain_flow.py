@@ -4,10 +4,14 @@ Retrain flow — full pipeline: ETL + train + validate + promote.
 Scheduled weekly (Monday 02:00 Europe/Paris) via prefect.yaml.
 Can also be triggered manually from the Prefect UI.
 """
-from prefect import flow, get_run_logger
+import logging
+
+from prefect import flow
 
 from src.flows.etl_flow import etl_flow
 from src.flows.train_flow import train_flow
+
+logger = logging.getLogger(__name__)
 
 
 @flow(name="retrain-flow", log_prints=True)
@@ -17,7 +21,6 @@ def retrain_flow(year: int = 2023, cumul: bool = True) -> bool:
 
     Returns True if the new model was promoted to @Production.
     """
-    logger = get_run_logger()
     logger.info("Starting weekly retrain for year=%d cumul=%s", year, cumul)
 
     etl_flow(year=year, cumul=cumul)

@@ -42,3 +42,13 @@ deployments:
       - cron: "0 2 * * 1"
         timezone: "Europe/Paris"
         active: true
+
+  # ── Drift monitoring — 1er de chaque mois à 03:00 Paris ──────────────────────
+  - name: drift-monthly
+    entrypoint: src/flows/drift_monitoring_flow.py:drift_monitoring_flow
+    work_pool:
+      name: default-process-pool
+    schedules:
+      - cron: "0 3 1 * *"
+        timezone: "Europe/Paris"
+        active: true
