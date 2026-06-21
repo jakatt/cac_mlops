@@ -104,11 +104,13 @@ jobs:
             TRAIN_LOG=$(mktemp)
             if [ "$CUMUL" = "true" ]; then
               docker compose run --rm \
+                -e MLFLOW_RUN_MODE=official \
                 -v "$(pwd)/data:/app/data" \
                 api \
                 python -m src.models.train_model --year $YEAR --cumul --algorithm $ALGO 2>&1 | tee "$TRAIN_LOG"
             else
               docker compose run --rm \
+                -e MLFLOW_RUN_MODE=official \
                 -v "$(pwd)/data:/app/data" \
                 api \
                 python -m src.models.train_model --year $YEAR --algorithm $ALGO 2>&1 | tee "$TRAIN_LOG"
