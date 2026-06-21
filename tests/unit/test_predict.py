@@ -19,7 +19,14 @@ def client():
         patch("services.api.app.model_loader._model_version", "rf_accidents/Production"),
     ):
         from services.api.app.main import app
-        yield TestClient(app)
+        from services.api.app.auth import get_current_user
+
+        # Bypass JWT auth — unit tests focus on prediction logic, not auth
+        app.dependency_overrides[get_current_user] = lambda: "test_user"
+        try:
+            yield TestClient(app)
+        finally:
+            app.dependency_overrides.clear()
 
 
 VALID_PAYLOAD = {
