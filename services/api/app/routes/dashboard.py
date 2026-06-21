@@ -1,12 +1,15 @@
 """Master dashboard — GET /dashboard + GET /api/logs + GET /metrics."""
 import os
+from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from ..log_capture import get_lines
-from .._metrics import REGISTRY
+from .._metrics import REGISTRY, update_drift_metrics_from_file
+
+_REPORTS_PATH = Path("/app/reports")
 
 router = APIRouter()
 
@@ -331,4 +334,5 @@ def api_logs(n: int = 100) -> dict:
 @router.get("/metrics", tags=["observability"], include_in_schema=False)
 def metrics() -> Response:
     """Prometheus metrics endpoint — scraped by prometheus:9090."""
+    update_drift_metrics_from_file(_REPORTS_PATH)
     return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)

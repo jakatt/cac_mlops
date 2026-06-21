@@ -113,6 +113,13 @@ def run_drift_report(year_month: str, reference_path: Path | None = None) -> dic
         if info.get("drift_detected", False)
     ]
 
+    level = "CRITICAL" if share > 0.25 else ("WARNING" if share > 0.10 else "OK")
+
+    feature_scores = {
+        col: round(info.get("drift_score", 0.0), 4)
+        for col, info in col_drift.items()
+    }
+
     summary = {
         "month": year_month,
         "rows": len(production),
@@ -121,10 +128,16 @@ def run_drift_report(year_month: str, reference_path: Path | None = None) -> dic
         "drifted_count": drifted,
         "total_features": total,
         "drift_share": round(share, 3),
+        "level": level,
+        "timestamp": datetime.now(timezone.utc).timestamp(),
+        "feature_scores": feature_scores,
         "html_report": str(html_path),
     }
 
-    level = "CRITICAL" if share > 0.25 else ("WARNING" if share > 0.10 else "OK")
+    latest_path = REPORTS_DIR / "latest_summary.json"
+    with open(latest_path, "w") as f:
+        json.dump(summary, f)
+
     logger.info(
         "Drift %s — %d/%d features drifted (share=%.1f%%) for %s",
         level, drifted, total, share * 100, year_month,
