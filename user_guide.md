@@ -225,7 +225,58 @@ ssh deploy@51.159.187.132 \
 
 ---
 
-## 3. Vérifier le drift
+## 3. Cycle ponctuel — nouveau modèle DS (hors cycle ONISR)
+
+> **Cas d'usage** : un DS a validé de nouveaux hyperparamètres en local (meilleur F1, AUC…) et ouvre une PR. On ne dispose pas de nouvelles données ONISR — on ré-entraîne sur le **même jeu de données**, avec le nouveau blueprint.
+
+### Prérequis
+
+- La PR du DS est mergée sur `main` (blueprint à jour dans `config/model_params.yml`)
+- Les données de l'année en cours sont déjà dans DVC (inutile de les re-puller si `dvc pull` a déjà été fait)
+
+### Déclencher le pipeline
+
+Via **GitHub Actions** → `Train — pipeline on Scaleway` → `Run workflow` :
+
+| Paramètre | Valeur | Remarque |
+|---|---|---|
+| `year` | `2023` *(ou l'année courante)* | Même année que le modèle @Production actuel |
+| `cumul` | `true` | Même périmètre que le modèle à remplacer |
+| `algorithm` | `lgbm` *(ou ce que le DS a validé)* | Issu de `config/model_params.yml` |
+| `promote` | `true` | Promotion automatique si KPI gate passe |
+| `simulate_year` | *(vide)* | Laissé vide → year+1 (drift sur données existantes) |
+
+```bash
+# Via CLI
+gh workflow run train.yml --ref main \
+  -f year=2023 -f cumul=true -f algorithm=lgbm \
+  -f promote=true
+```
+
+### Ce qui se passe
+
+1. Entraînement sur les mêmes données (déjà sur le VPS, pas de `dvc pull` si `dvc pull` fait récemment)
+2. KPI gate (F1 ≥ 0.66, AUC ≥ 0.75…) — **si FAILED** : l'ancien @Production reste actif, rien ne change en prod
+3. Si PASSED : nouvelle version enregistrée dans MLflow Registry → @Production → API redémarrée automatiquement
+4. Vérification :
+
+```bash
+curl -s http://51.159.187.132:8090/health | python3 -m json.tool
+# → { "status": "ok", "model_version": "lgbm_accidents/8" }  ← version incrémentée
+```
+
+### Différences vs cycle ONISR annuel
+
+| | Cycle ONISR | Cycle DS ponctuel |
+|---|---|---|
+| Déclencheur | Nouvelle publication ONISR | PR DS avec meilleurs hyperparamètres |
+| `year` | Nouvelle année (ex: 2024) | Année courante (ex: 2023) |
+| Données | Nouvelles (dvc pull requis) | Identiques (déjà présentes) |
+| Fréquence | 1×/an | À la demande |
+
+---
+
+## 4. Vérifier le drift
 
 Le drift est calculé automatiquement à la fin de chaque `train.yml`. Pour le lancer manuellement :
 
@@ -254,7 +305,7 @@ Seuils :
 
 ---
 
-## 4. Promouvoir ou rollback un modèle
+## 5. Promouvoir ou rollback un modèle
 
 MLflow Model Registry : [http://51.159.187.132:5001/#/models](http://51.159.187.132:5001/#/models)
 
@@ -282,7 +333,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose restart api"
 
 ---
 
-## 5. Monitoring Grafana
+## 6. Monitoring Grafana
 
 Dashboard **API Performance** : [http://51.159.187.132:3000](http://51.159.187.132:3000)
 
@@ -307,7 +358,7 @@ api_predictions_total{result="1"} / ignoring(result) sum(api_predictions_total)
 
 ---
 
-## 6. Administration VPS
+## 7. Administration VPS
 
 ```bash
 # Accès SSH
@@ -353,7 +404,7 @@ docker compose restart prefect-server   # si UI inaccessible
 
 ---
 
-## 7. Dépannage
+## 8. Dépannage
 
 | Symptôme | Cause probable | Action |
 |---|---|---|
