@@ -106,13 +106,12 @@ info "  ✓ postgres_data + minio_data supprimés (via container — contourne l
 # ─────────────────────────────────────────────────────────────────────────────
 info ""
 info "Phase C — Nettoyage données locales..."
-run "rm -rf ${DEPLOY_DIR}/data/raw"
-info "  ✓ data/raw/ supprimé  (re-pull DVC au prochain training)"
-run "rm -rf ${DEPLOY_DIR}/data/preprocessed"
-info "  ✓ data/preprocessed/ supprimé"
-run "rm -f  ${DEPLOY_DIR}/src/models/trained_model.joblib"
+# data/raw/ conservé localement (DVC remote S3 intact, dvc pull rapide en démo)
+run "docker run --rm -v ${DEPLOY_DIR}/data:/mnt alpine rm -rf /mnt/preprocessed"
+info "  ✓ data/preprocessed/ supprimé (via container)"
+run "docker run --rm -v ${DEPLOY_DIR}/src/models:/mnt alpine rm -f /mnt/trained_model.joblib"
 info "  ✓ src/models/trained_model.joblib supprimé"
-run "rm -rf ${DEPLOY_DIR}/reports/drift && mkdir -p ${DEPLOY_DIR}/reports/drift"
+run "docker run --rm -v ${DEPLOY_DIR}/reports:/mnt alpine sh -c 'rm -rf /mnt/drift && mkdir -p /mnt/drift'"
 info "  ✓ reports/drift/ vidé"
 
 # ─────────────────────────────────────────────────────────────────────────────
