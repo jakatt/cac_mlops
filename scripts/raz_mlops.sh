@@ -192,8 +192,8 @@ sleep 45
 PREFECT_OK=false
 for attempt in 1 2 3; do
   info "  Tentative ${attempt}/3 — prefect deploy --all..."
-  if docker compose exec -T prefect-worker \
-      sh -c "cd /app && prefect deploy --all --no-prompt" 2>&1; then
+  if printf 'n\nn\nn\nn\n' | docker compose exec -T prefect-worker \
+      sh -c "cd /app && prefect deploy --all" 2>&1; then
     info "  ✓ Deployments Prefect enregistrés (etl, train, retrain-annual, drift-check)"
     PREFECT_OK=true
     break
