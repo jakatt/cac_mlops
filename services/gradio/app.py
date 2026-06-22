@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 import gradio as gr
+import joblib
 import mlflow
 import mlflow.pyfunc
 import numpy as np
@@ -36,10 +37,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 # ── Configuration ────────────────────────────────────────────────────────────
-MLFLOW_URI   = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
-MODEL_NAME   = os.getenv("GRADIO_MODEL_NAME",    "rf_accidents")
-MODEL_ALIAS  = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
-DATA_ROOT    = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
+MLFLOW_URI       = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
+MODEL_NAME       = os.getenv("GRADIO_MODEL_NAME",    "rf_accidents")
+MODEL_ALIAS      = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
+LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH",     "")
+DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
 NAVY         = "#143B5E"
 GREEN_CEREMA = "#1B5E3B"
 
@@ -59,10 +61,15 @@ _df_full = None   # features + grav réelle (heatmap)
 def _get_model():
     global _model
     if _model is None:
-        mlflow.set_tracking_uri(MLFLOW_URI)
-        uri = f"models:/{MODEL_NAME}@{MODEL_ALIAS}"
-        logger.info("Loading model %s", uri)
-        _model = mlflow.pyfunc.load_model(uri)
+        local = Path(LOCAL_MODEL_PATH) if LOCAL_MODEL_PATH else None
+        if local and local.exists():
+            logger.info("Loading model from local path %s", local)
+            _model = joblib.load(local)
+        else:
+            mlflow.set_tracking_uri(MLFLOW_URI)
+            uri = f"models:/{MODEL_NAME}@{MODEL_ALIAS}"
+            logger.info("Loading model %s", uri)
+            _model = mlflow.pyfunc.load_model(uri)
     return _model
 
 
@@ -72,6 +79,7 @@ def _get_data() -> pd.DataFrame | None:
     if _df is not None:
         return _df
     candidates = [
+        DATA_ROOT / "X_test.csv",                          # K8s flat layout (initContainer)
         DATA_ROOT / "cumul_2021_2022_2023" / "X_test.csv",
         DATA_ROOT / "cumul_2021_2022" / "X_test.csv",
         DATA_ROOT / "2023" / "X_test.csv",
@@ -96,6 +104,8 @@ def _get_data_with_labels() -> pd.DataFrame | None:
     if _df_full is not None:
         return _df_full
     candidates = [
+        (DATA_ROOT / "X_test.csv",                           # K8s flat layout (initContainer)
+         DATA_ROOT / "y_test.csv"),
         (DATA_ROOT / "cumul_2021_2022_2023" / "X_test.csv",
          DATA_ROOT / "cumul_2021_2022_2023" / "y_test.csv"),
         (DATA_ROOT / "cumul_2021_2022" / "X_test.csv",

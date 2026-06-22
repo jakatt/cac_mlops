@@ -116,6 +116,35 @@ jobs:
                 --endpoint-url https://s3.fr-par.scw.cloud
             echo "Modele uploade vers s3://cac-mlops-data/k8s-model/trained_model.joblib"
 
+            echo "Upload donnees Gradio (X_test + y_test) vers S3..."
+            for PPATH in \
+              /data/cac_mlops/data/preprocessed/cumul_2021_2022_2023 \
+              /data/cac_mlops/data/preprocessed/cumul_2021_2022 \
+              /data/cac_mlops/data/preprocessed/2023 \
+              /data/cac_mlops/data/preprocessed/2022; do
+              if [ -f "$PPATH/X_test.csv" ] && [ -f "$PPATH/y_test.csv" ]; then
+                echo "  Source: $PPATH"
+                docker run --rm \
+                  -e AWS_ACCESS_KEY_ID=$SCW_ACCESS_KEY \
+                  -e AWS_SECRET_ACCESS_KEY=$SCW_SECRET_KEY \
+                  -e AWS_DEFAULT_REGION=fr-par \
+                  -v "$PPATH:/csvdata:ro" \
+                  amazon/aws-cli s3 cp /csvdata/X_test.csv \
+                    s3://cac-mlops-data/k8s-gradio-data/X_test.csv \
+                    --endpoint-url https://s3.fr-par.scw.cloud
+                docker run --rm \
+                  -e AWS_ACCESS_KEY_ID=$SCW_ACCESS_KEY \
+                  -e AWS_SECRET_ACCESS_KEY=$SCW_SECRET_KEY \
+                  -e AWS_DEFAULT_REGION=fr-par \
+                  -v "$PPATH:/csvdata:ro" \
+                  amazon/aws-cli s3 cp /csvdata/y_test.csv \
+                    s3://cac-mlops-data/k8s-gradio-data/y_test.csv \
+                    --endpoint-url https://s3.fr-par.scw.cloud
+                echo "Donnees Gradio uploadees depuis $PPATH"
+                break
+              fi
+            done
+
       # ── 6. Créer le namespace + les secrets ───────────────────────────────
       - name: Namespace + Secrets
         run: |
@@ -153,7 +182,7 @@ jobs:
         run: |
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
-          for dir in api mlflow nginx prefect prometheus grafana; do
+          for dir in api mlflow nginx prefect prometheus grafana gradio; do
             kubectl apply -f k8s/$dir/
           done
 
@@ -199,6 +228,8 @@ jobs:
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
           PREFECT_LB=$(kubectl get svc prefect-server -n cac-mlops \
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          GRADIO_LB=$(kubectl get svc gradio -n cac-mlops \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
 
           echo ""
           echo "=== URLs ==="
@@ -206,6 +237,7 @@ jobs:
           echo "  API docs : http://$NGINX_LB/docs"
           echo "  Grafana  : http://$GRAFANA_LB:3000  (admin/admin)"
           echo "  Prefect  : http://$PREFECT_LB:4200"
+          echo "  Gradio   : http://$GRADIO_LB:7860"
           echo "  MLflow   : kubectl port-forward svc/mlflow 5000:5000 -n cac-mlops"
 
           echo ""
