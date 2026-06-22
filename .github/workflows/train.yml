@@ -1,10 +1,9 @@
 name: Train — pipeline on Scaleway
 
 on:
-  # Retrain annuel : lundi 02h00 UTC (déclenché manuellement selon cycle ONISR)
-  schedule:
-    - cron: '0 2 * * 1'
-
+  # Déclenchement manuel uniquement :
+  # - cycle annuel ONISR (nouvelles données disponibles ~mai-juin)
+  # - modèle ad-hoc fourni par un DS
   workflow_dispatch:
     inputs:
       year:
