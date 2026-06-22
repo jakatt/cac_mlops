@@ -5,6 +5,10 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-scaleway
+  cancel-in-progress: true   # garde uniquement le deploy du dernier commit
+
 permissions:
   contents: read
   packages: write   # push vers ghcr.io
