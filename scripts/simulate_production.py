@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from src.data.import_raw_data import download_year as _download_raw
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def _load_production_data(year: int) -> pd.DataFrame:
 
     if not raw_dir.exists() or not any(raw_dir.iterdir()):
         logger.info("Downloading %d raw data from data.gouv.fr…", year)
-        os.system(f"{sys.executable} -m src.data.import_raw_data --year {year}")
+        _download_raw(year, base_dir=raw_dir)  # force into data/raw/{year} quel que soit le type d'année
 
     logger.info("Preprocessing %d data…", year)
     os.system(f"{sys.executable} -m src.data.make_dataset --year {year}")
