@@ -82,10 +82,30 @@ jobs:
           script: |
             set -e
             MODEL=/data/cac_mlops/src/models/trained_model.joblib
+            mkdir -p /data/cac_mlops/src/models
+
             if [ ! -f "$MODEL" ]; then
-              echo "⚠️  Modèle introuvable sur le VPS : $MODEL"
-              exit 1
+              echo "Export modele depuis MLflow @Production..."
+              cat > /tmp/export_model.py << 'PYEOF'
+            import mlflow, joblib, os
+            mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
+            for name in ["lgbm_accidents", "rf_accidents"]:
+                try:
+                    model = mlflow.sklearn.load_model("models:/" + name + "@Production")
+                    joblib.dump(model, "/tmp/trained_model.joblib")
+                    print("OK: " + name + "@Production exported")
+                    break
+                except Exception as e:
+                    print("skip " + name + ": " + str(e))
+            PYEOF
+              docker cp /tmp/export_model.py api:/tmp/export_model.py
+              docker exec api python3 /tmp/export_model.py
+              docker cp api:/tmp/trained_model.joblib "$MODEL"
+              echo "Modele exporte vers $MODEL"
+            else
+              echo "Modele deja present : $MODEL"
             fi
+
             docker run --rm \
               -e AWS_ACCESS_KEY_ID=$SCW_ACCESS_KEY \
               -e AWS_SECRET_ACCESS_KEY=$SCW_SECRET_KEY \
@@ -94,7 +114,7 @@ jobs:
               amazon/aws-cli s3 cp /models/trained_model.joblib \
                 s3://cac-mlops-data/k8s-model/trained_model.joblib \
                 --endpoint-url https://s3.fr-par.scw.cloud
-            echo "✓ Modèle uploadé → s3://cac-mlops-data/k8s-model/trained_model.joblib"
+            echo "Modele uploade vers s3://cac-mlops-data/k8s-model/trained_model.joblib"
 
       # ── 6. Créer le namespace + les secrets ───────────────────────────────
       - name: Namespace + Secrets
