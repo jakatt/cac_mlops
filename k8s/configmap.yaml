@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cac-mlops-config
+  namespace: cac-mlops
+data:
+  # MLflow — K8s mlflow pod pour tracking des runs K8s
+  MLFLOW_TRACKING_URI:    "http://mlflow:5000"
+  MLFLOW_S3_ENDPOINT_URL: "https://s3.fr-par.scw.cloud"
+  MLFLOW_MODEL_NAME:      "lgbm_accidents"
+  MLFLOW_MODEL_STAGE:     "Production"
+  # Modèle chargé depuis le fichier joblib (déposé par initContainer depuis S3)
+  LOCAL_MODEL_PATH:       "/app/model/trained_model.joblib"
+  # Prefect
+  PREFECT_API_URL:        "http://prefect-server:4200/api"
+  # PostgreSQL (pour le worker Prefect — drift detection)
+  POSTGRES_HOST:          "51.159.187.132"
+  POSTGRES_USER:          "mlops"
+  POSTGRES_DB:            "mlops"

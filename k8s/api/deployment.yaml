@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: cac-mlops
+  labels:
+    app: api
+spec:
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      initContainers:
+      - name: fetch-model
+        image: amazon/aws-cli:latest
+        command:
+        - sh
+        - -c
+        - |
+          aws s3 cp s3://cac-mlops-data/k8s-model/trained_model.joblib \
+            /app/model/trained_model.joblib \
+            --endpoint-url https://s3.fr-par.scw.cloud
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: s3-creds
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: s3-creds
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_DEFAULT_REGION
+          value: fr-par
+        volumeMounts:
+        - name: model-volume
+          mountPath: /app/model
+
+      containers:
+      - name: api
+        image: ghcr.io/jakatt/cac-mlops-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: cac-mlops-config
+        env:
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-creds
+              key: JWT_SECRET_KEY
+        - name: API_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: app-creds
+              key: API_USERNAME
+        - name: API_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-creds
+              key: API_PASSWORD
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: s3-creds
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: s3-creds
+              key: AWS_SECRET_ACCESS_KEY
+        volumeMounts:
+        - name: model-volume
+          mountPath: /app/model
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 20
+
+      volumes:
+      - name: model-volume
+        emptyDir: {}

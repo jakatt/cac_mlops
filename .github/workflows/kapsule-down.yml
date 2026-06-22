@@ -1,0 +1,58 @@
+name: Kapsule — Stop (supprime node pool)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  kapsule-down:
+    runs-on: ubuntu-latest
+    env:
+      SCW_ACCESS_KEY:    ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY:    ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORG_ID }}
+      CLUSTER_ID:        ${{ secrets.KAPSULE_CLUSTER_ID }}
+
+    steps:
+      - name: Installer scw CLI
+        run: |
+          curl -s https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      # ── Supprimer le namespace K8s (libère les ressources proprement) ─────
+      - name: Récupérer kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          scw k8s kubeconfig get $CLUSTER_ID > ~/.kube/config
+
+      - name: Supprimer namespace cac-mlops
+        run: |
+          kubectl delete namespace cac-mlops --ignore-not-found=true
+          echo "✓ Namespace supprimé (pods + services + LBs libérés)"
+
+      # ── Supprimer tous les node pools (arrêt facturation) ─────────────────
+      - name: Supprimer node pools
+        run: |
+          POOL_IDS=$(scw k8s pool list cluster-id=$CLUSTER_ID -o json \
+            | python3 -c "import sys,json; [print(p['id']) for p in json.load(sys.stdin)]")
+
+          if [ -z "$POOL_IDS" ]; then
+            echo "Aucun node pool actif — rien à faire"
+            exit 0
+          fi
+
+          for POOL_ID in $POOL_IDS; do
+            echo "Suppression pool $POOL_ID..."
+            scw k8s pool delete cluster-id=$CLUSTER_ID $POOL_ID
+          done
+
+          echo "✓ Node pools supprimés — facturation arrêtée"
+          echo "  Control plane Kapsule conservé (gratuit)"
+
+      # ── Vérification finale ────────────────────────────────────────────────
+      - name: Vérification
+        run: |
+          echo "=== Node pools restants ==="
+          scw k8s pool list cluster-id=$CLUSTER_ID
+          echo ""
+          echo "✓ Kapsule DOWN — plus aucune facturation nodes/LB"
