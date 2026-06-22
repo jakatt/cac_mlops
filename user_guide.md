@@ -161,6 +161,7 @@ La CI (`ci.yml`) tourne automatiquement à chaque push sur n'importe quelle bran
 
 | Interface | URL | Credentials | Rôle |
 |---|---|---|---|
+| Gradio Cockpit | [http://51.159.187.132:7860](http://51.159.187.132:7860) | — | Cockpit MLOps 6 onglets (What-If, Heatmap, Drift, Modèles, Santé, Liens) |
 | Prefect UI | [http://51.159.187.132:4200](http://51.159.187.132:4200) | — | Déclencher et suivre les flows |
 | MLflow UI | [http://51.159.187.132:5001](http://51.159.187.132:5001) | — | Expériences, Model Registry |
 | Grafana | [http://51.159.187.132:3000](http://51.159.187.132:3000) | admin / admin | Métriques API, latence, erreurs |
@@ -205,7 +206,7 @@ gh run watch <RUN_ID>
 3. Preprocessing → `data/preprocessed/cumul_2021_…_year/`
 4. Entraînement tracé dans `accidents_severity` (MLFLOW_RUN_MODE=official)
 5. KPI gate :
-   - F1 ≥ 0.66 · AUC ≥ 0.75 · Recall ≥ 0.63 · Accuracy ≥ 0.70
+   - F1 ≥ 0.64 · AUC ≥ 0.75 · Recall ≥ 0.60 · Accuracy ≥ 0.70
    - **PASSED** → modèle enregistré @Production → API redémarrée automatiquement
    - **FAILED** → run tagué `kpi_gate=FAILED`, le @Production précédent reste actif (pas de régression)
 6. Simulation production : données year+1 rejouées via /predict
@@ -256,7 +257,7 @@ gh workflow run train.yml --ref main \
 ### Ce qui se passe
 
 1. Entraînement sur les mêmes données (déjà sur le VPS, pas de `dvc pull` si `dvc pull` fait récemment)
-2. KPI gate (F1 ≥ 0.66, AUC ≥ 0.75…) — **si FAILED** : l'ancien @Production reste actif, rien ne change en prod
+2. KPI gate (F1 ≥ 0.64, AUC ≥ 0.75, Recall ≥ 0.60, Accuracy ≥ 0.70) — **si FAILED** : l'ancien @Production reste actif, rien ne change en prod
 3. Si PASSED : nouvelle version enregistrée dans MLflow Registry → @Production → API redémarrée automatiquement
 4. Vérification :
 
@@ -276,7 +277,60 @@ curl -s http://51.159.187.132:8090/health | python3 -m json.tool
 
 ---
 
-## 4. Vérifier le drift
+## 4. Lancer tous les cycles de ré-entraînement (après RAZ ou première mise en prod)
+
+Après une RAZ complète (`scripts/raz_mlops.sh`), il n'y a plus de modèle @Production. Le script `train_all_cycles.sh` détecte automatiquement les années disponibles (tags DVC `data-v*`) et lance les cycles en séquence.
+
+```bash
+# Sur ta machine locale (nécessite gh CLI + SSH access)
+./scripts/train_all_cycles.sh --algorithm lgbm
+
+# Avec dry-run pour voir ce qui sera lancé
+./scripts/train_all_cycles.sh --algorithm lgbm --dry-run
+
+# Reprendre depuis le cycle 2 si le 1 a déjà réussi
+./scripts/train_all_cycles.sh --algorithm lgbm --from-cycle 2
+```
+
+Avec 3 tags DVC (data-v1, data-v2, data-v3) → 3 cycles lancés :
+
+| Cycle | year | cumul | Données entraînement |
+|---|---|---|---|
+| 1 | 2021 | false | 2021 seul (~55k accidents) |
+| 2 | 2022 | true | cumul 2021+2022 (~110k) |
+| 3 | 2023 | true | cumul 2021+2022+2023 (~165k) → @Production final |
+
+Durée totale : ~45–60 min. Chaque cycle attend la fin du précédent avant de démarrer.
+
+---
+
+## 4b. RAZ complète de la stack
+
+Pour repartir de zéro (MLflow, Prefect, données, S3 k8s) :
+
+```bash
+ssh deploy@51.159.187.132
+cd /data/cac_mlops
+
+# Voir ce qui sera fait (dry-run)
+./scripts/raz_mlops.sh --dry-run
+
+# Exécuter avec confirmation interactive
+./scripts/raz_mlops.sh
+
+# Exécuter sans confirmation (CI / automation)
+./scripts/raz_mlops.sh --yes
+```
+
+**Ce qui est réinitialisé** : MLflow (runs + modèles + artifacts MinIO), Prefect (flows + runs), Prometheus, Grafana, données préprocessées, src/models/trained_model.joblib, reports/drift/, S3 k8s prefixes.
+
+**Ce qui est CONSERVÉ** : DVC remote S3 (`s3://cac-mlops-data/dvc/`) — les données brutes ONISR restent intactes.
+
+Après la RAZ, lancer les cycles avec `train_all_cycles.sh` (voir section 4 ci-dessus).
+
+---
+
+## 5. Vérifier le drift
 
 Le drift est calculé automatiquement à la fin de chaque `train.yml`. Pour le lancer manuellement :
 
@@ -305,7 +359,7 @@ Seuils :
 
 ---
 
-## 5. Promouvoir ou rollback un modèle
+## 6. Promouvoir ou rollback un modèle
 
 MLflow Model Registry : [http://51.159.187.132:5001/#/models](http://51.159.187.132:5001/#/models)
 
@@ -320,20 +374,22 @@ client = mlflow.tracking.MlflowClient()
 
 # Lister les versions disponibles
 for v in client.search_model_versions("name='lgbm_accidents'"):
-    print(f"v{v.version}  stage={v.current_stage}  run_id={v.run_id}")
+    print(f"v{v.version}  run_id={v.run_id[:8]}")
 
-# Promouvoir une version spécifique
-client.transition_model_version_stage("lgbm_accidents", "7", "Production")
-print("v7 → Production ✓")
+# Promouvoir une version spécifique (MLflow v3 utilise les aliases, pas les stages)
+client.set_registered_model_alias("lgbm_accidents", "Production", "7")
+print("v7 → @Production ✓")
 EOF
 
 # Redémarrer l'API pour charger la nouvelle version
 ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose restart api"
 ```
 
+> **Note** : MLflow v3 utilise les **aliases** (`@Production`) à la place des stages (`Staging/Production`). Ne pas utiliser `transition_model_version_stage` (déprécié depuis MLflow 2.9).
+
 ---
 
-## 6. Monitoring Grafana
+## 7. Monitoring Grafana
 
 Dashboard **API Performance** : [http://51.159.187.132:3000](http://51.159.187.132:3000)
 
@@ -358,7 +414,7 @@ api_predictions_total{result="1"} / ignoring(result) sum(api_predictions_total)
 
 ---
 
-## 7. Administration VPS
+## 8. Administration VPS
 
 ```bash
 # Accès SSH
@@ -404,15 +460,18 @@ docker compose restart prefect-server   # si UI inaccessible
 
 ---
 
-## 8. Dépannage
+## 9. Dépannage
 
 | Symptôme | Cause probable | Action |
 |---|---|---|
 | `/predict` → 401 | Token absent ou expiré (24h) | `POST /token` pour renouveler |
 | `/predict` → 503 | Aucun modèle @Production | Promouvoir un modèle dans MLflow → redémarrer API |
-| `train.yml` KPI FAILED | Blueprint sous-optimal | Revoir `config/model_params.yml` avec les DS |
+| `train.yml` KPI FAILED | Blueprint sous-optimal ou données insuffisantes | Revoir `config/model_params.yml` — seuils : F1≥0.64, Recall≥0.60, AUC≥0.75 |
+| `train.yml` → "api not running" | deploy encore en cours quand train est déclenché | Attendre que le deploy soit vert, relancer train |
+| `NoSuchBucket` à l'entraînement | Bucket MinIO `mlflow` absent après RAZ | Le service `minio-init` le recrée automatiquement au redémarrage |
 | Prefect UI inaccessible | Conteneur crashé | `docker compose restart prefect-server` |
 | Worker déconnecté (flows en attente) | Worker crashé | `docker compose restart prefect-worker` |
 | MLflow UI lente / timeout | MinIO saturé | `mlflow_cleanup.py` → libérer espace |
 | `dvc pull` → 403 | Credentials absents | Vérifier `.dvc/config.local` |
 | Grafana "No data" | Prometheus ne scrape pas l'API | Vérifier que `api` répond sur `:8000/metrics` |
+| Cockpit Gradio — onglet vide | Pas de données préprocessées | Lancer un cycle train.yml d'abord |

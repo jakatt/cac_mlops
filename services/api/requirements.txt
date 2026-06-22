@@ -15,5 +15,7 @@ python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
 python-multipart>=0.0.9
 asyncpg>=0.29.0
+psycopg2-binary>=2.9.0
 PyYAML>=6.0
 prefect>=3.0
+evidently>=0.4.0

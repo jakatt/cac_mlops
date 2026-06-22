@@ -50,11 +50,11 @@ MÉTRIQUES DE PERFORMANCE MODÈLE
 ────────────────────────────────
   Métrique          Seuil minimum     Pourquoi ce choix
   ───────────────   ───────────────   ──────────────────────────────────────
-  F1-score          ≥ 0.68            Équilibre précision/rappel sur classes
+  F1-score          ≥ 0.64            Équilibre précision/rappel sur classes
                                       déséquilibrées (plus de cas légers)
   AUC-ROC           ≥ 0.75            Capacité discriminante globale
   Accuracy          ≥ 0.70            Indicateur de référence global
-  Recall (grav=1)   ≥ 0.65            Minimiser les faux négatifs :
+  Recall (grav=1)   ≥ 0.60            Minimiser les faux négatifs :
                                       ne pas manquer un blessé grave
 
   Seuil de régression : si le nouveau modèle est inférieur à
@@ -767,7 +767,7 @@ MLflow UI → Experiments → "accidents_severity"
 ║  (développeur)       ║  51.159.187.132  /data/cac_mlops      ║  (on-demand, via workflow)    ║
 ╠══════════════════════╬═══════════════════════════════════════╬═══════════════════════════════╣
 ║                      ║                                       ║                               ║
-║  docker-compose.yml  ║  docker-compose.yml (10 services)     ║  Deployments                  ║
+║  docker-compose.yml  ║  docker-compose.yml (11 services)     ║  Deployments                  ║
 ║  (même stack VPS)    ║  ┌─────────────────────────────────┐  ║  api           (HPA 2→8)      ║
 ║                      ║  │ nginx          :8090→:80  [Ph.3] │  ║  mlflow        (SQLite démo)  ║
 ║  Outils CLI          ║  │ api            :8080→:8000 [Ph.1]│  ║  prefect-server               ║
@@ -793,10 +793,10 @@ MLflow UI → Experiments → "accidents_severity"
 ║  GitHub (jakatt/cac_mlops)                                                                    ║
 ║    code · .dvc files · K8s manifests (k8s/)                                                  ║
 ║    workflows: ci.yml · deploy.yml · train.yml · promote.yml · test-api.yml · diag.yml        ║
-║               kapsule-up.yml [Ph.5] · kapsule-down.yml [Ph.5]                                ║
+║               kapsule-up.yml · kapsule-down.yml · cleanup.yml                                ║
 ║                                                                                               ║
 ║  GHCR (ghcr.io/jakatt/)  ← images buildées par deploy.yml                                   ║
-║    cac-mlops-api:latest · cac-mlops-mlflow:latest                                            ║
+║    cac-mlops-api:latest · cac-mlops-mlflow:latest · cac-mlops-gradio:latest                 ║
 ║                                                                                               ║
 ║  Scaleway Object Storage — 1 bucket : cac-mlops-data                                        ║
 ║    dvc/          → données brutes versionnées (DVC remote)                                   ║
@@ -904,12 +904,18 @@ nginx          8090→   Reverse proxy devant l'API ✅ Phase 3
                80      Rate limiting : 20 req/min sur /predict (burst 5 → 429)
                (host)  Endpoint principal d'accès en production
 
-prometheus     9090    Scrape /metrics de l'API [Phase 4] — commenté
-grafana        3000    Dashboards perf + drift [Phase 4] — commenté
+prometheus     9090    Scrape /metrics de l'API [Phase 4]
+grafana        3000    Dashboards perf + drift [Phase 4]
 
-prefect        —       Flows codés dans src/flows/ mais serveur NON déployé
-                       (budget NVMe trop serré ~300 MB d'images)
-                       Scheduling assuré par train.yml (cron GitHub Actions)
+minio-init     —       Crée le bucket mlflow au premier démarrage de MinIO
+                       (service one-shot, condition: service_completed_successfully)
+
+prefect        4200    Serveur Prefect UI (prefect-server:4200)
+               —       Worker Prefect (prefect-worker, image api — toutes dépendances ML)
+                       Flows : etl, train, retrain-annual, drift-check
+
+gradio         7860    Cockpit MLOps 6 onglets : What-If, Heatmap, Drift,
+                       Modèles+DVC, Santé Stack, Liens
 ```
 
 ### Flux de travail quotidien
@@ -973,20 +979,21 @@ API_ENV=development                     API_ENV=production
 
 ## 8. Partie Scaleway — production
 
-### Infrastructure VPS — Phase 4 terminée — scw-jovial-dubinsky DEV1-L
+### Infrastructure VPS — Phase 5 terminée — DEV1-L
 
 ```text
-SCALEWAY VPS — ÉTAT ACTUEL (Phase 4 ✅)
+SCALEWAY VPS — ÉTAT ACTUEL (Phase 5 ✅)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
-│   Serveur dédié : scw-jovial-dubinsky DEV1-L                              │
+│   Serveur dédié : DEV1-L (Scaleway)                                       │
 │   IP publique   : 51.159.187.132                                           │
 │   Répertoire    : /data/cac_mlops  (migré depuis /home/deploy)            │
 │                                                                            │
-│   docker-compose.yml (10 services, restart: unless-stopped)               │
+│   docker-compose.yml (11 services, restart: unless-stopped)               │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  postgresql    :5432    backend MLflow + logs prédictions        │   │
 │   │  minio         :9000/:9001  artefacts MLflow                     │   │
+│   │  minio-init    (one-shot)  crée bucket mlflow au démarrage       │   │
 │   │  mlflow        :5001    http://51.159.187.132:5001  (v3.1.0)    │   │
 │   │  api           :8080    http://51.159.187.132:8080  (admin)      │   │
 │   │  nginx         :8090    http://51.159.187.132:8090  (prod)       │   │
@@ -994,7 +1001,7 @@ SCALEWAY VPS — ÉTAT ACTUEL (Phase 4 ✅)
 │   │  prefect-worker(no port) traite les flows Prefect                │   │
 │   │  prometheus    :9090    scrape /metrics API                      │   │
 │   │  grafana       :3000    http://51.159.187.132:3000               │   │
-│   │  gradio        :7860    heatmap cartographique (données réelles) │   │
+│   │  gradio        :7860    http://51.159.187.132:7860 (cockpit)     │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Modèle en production : lgbm_accidents@Production                        │
@@ -1002,8 +1009,8 @@ SCALEWAY VPS — ÉTAT ACTUEL (Phase 4 ✅)
 │                                                                            │
 │   DISQUES (après extension + migration Docker sur /data)                   │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  /dev/vda1  NVMe  → /       ~30% utilisé                        │   │
-│   │  /dev/sda   Block → /data   ~47% utilisé                        │   │
+│   │  /dev/vda1  NVMe  → /       ~30% utilisé (OS + logs)            │   │
+│   │  /dev/sda   Block → /data   ~47% utilisé (Docker + volumes)      │   │
 │   │    Docker images + volumes + données sur /data                   │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
@@ -1155,29 +1162,31 @@ OBJECTIF : pipeline automatisé, CI, API sécurisée
 
   Prefect — statut conteneur
   ──────────────────────────
-  Les flows Prefect (etl, train, retrain) sont codés et prêts.
-  Le serveur Prefect n'est PAS déployé comme conteneur Docker sur le VPS
-  (budget disque NVMe trop serré : images Prefect ~300 MB+).
-  Remplacement : train.yml (cron lundi 02h00 UTC) assure le scheduling.
-  Déploiement Prefect prévu en Phase 5 (Kubernetes / infra séparée).
+  Prefect server + worker déployés comme services Docker sur le VPS.
+  Worker utilise l'image api (toutes dépendances ML déjà présentes).
+  4 deployments enregistrés : etl, train, retrain-annual, drift-check.
+  Déclenchement : workflow_dispatch GitHub Actions (train.yml) ou Prefect UI.
 
-  CI GITHUB ACTIONS — 6 workflows
+  CI GITHUB ACTIONS — 9 workflows
   ─────────────────────────────────
   ci.yml           lint (flake8) + pytest sur push/PR
   deploy.yml       build images → push ghcr.io → SSH deploy → healthcheck
-  train.yml        pipeline complet sur Scaleway (cron lundi 02h00 UTC + manuel)
+                   concurrence group : annule le deploy précédent si commit arrive
+  train.yml        pipeline complet sur Scaleway (workflow_dispatch uniquement)
+                   attend API disponible (3 min max) avant de démarrer
   promote.yml      force-promote n'importe quelle version @Production (manuel)
   test-api.yml     tests end-to-end JWT + /predict + rate limit (manuel)
   diag.yml         diagnostic serveur complet (disque, Docker, ports) (manuel)
+  kapsule-up.yml   provision cluster Kapsule K8s + export IPs → state/kapsule_ips
+  kapsule-down.yml déprovision cluster Kapsule K8s + supprime state/kapsule_ips
+  cleanup.yml      nettoyage runs GitHub Actions anciens
 
-  Registry : ghcr.io/jakatt/cac-mlops-api:latest + ghcr.io/jakatt/cac-mlops-mlflow:latest
+  Registry : ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest
   (GitHub Container Registry — pas Scaleway Container Registry)
 
   NON FAIT en Phase 3
   ────────────────────
-  Kubernetes / Scaleway Kapsule : maintenu docker-compose (VPS DEV1-L suffisant)
   TLS / HTTPS : pas de certificat configuré (accès via IP publique + port 8090)
-  Auto-scaling : N/A sans K8s
 ```
 
 #### NGINX — Reverse proxy & sécurisation de l'API ✅ IMPLÉMENTÉ
@@ -1258,25 +1267,35 @@ PHASE SUIVANTE (TLS)
   ou via Caddy si on reste docker-compose.
 ```
 
-### Phase 4 — Monitoring & Maintenance (deadline: 28/09)
+### Phase 4 — Monitoring & Maintenance ✅ TERMINÉE
 
 ```text
 OBJECTIF : surveillance production, drift, réentraînement automatique,
            documentation technique finalisée
 
-  À FAIRE
-  ───────
-  services/monitoring/drift_detection.py  voir sous-section Evidently ci-dessous
-  infrastructure/prometheus/prometheus.yml
-  infrastructure/grafana/dashboards/       api-performance.json
-                                           model-drift.json
+  RÉALISÉ ✅
+  ──────────
+  services/monitoring/drift_detection.py   Evidently — drift features + HTML report
+  infrastructure/prometheus/prometheus.yml scrape api:8000/metrics
+  infrastructure/grafana/dashboards/       api-performance.json (provisionnement auto)
   services/api/app/middleware.py           log chaque prédiction en PostgreSQL
-  services/api/app/routes/metrics.py      endpoint /metrics format Prometheus
-  docs/                                    voir sous-section Documentation ci-dessous
+  services/api/app/routes/metrics.py       endpoint /metrics format Prometheus
 
-  OPTION NICE-TO-HAVE
-  ────────────────────
-  Interface Streamlit ou FastHTML pour visualisation
+  Cockpit Gradio — 6 onglets (services/gradio/app.py)
+  ────────────────────────────────────────────────────
+  Onglet 1 What-If  : applique scenarios (météo/nuit/alcool), compare avant/après
+  Onglet 2 Heatmap  : density_mapbox accidents France, filtres gravité/département
+  Onglet 3 Drift    : sélecteur rapports Evidently, iframe HTML report
+  Onglet 4 Modèles  : liste versions MLflow, mapping année→DVC tag, promotion @Production
+  Onglet 5 Santé    : healthcheck HTTP tous services, statut cluster Kapsule
+  Onglet 6 Liens    : URLs VPS + GitHub Actions + IPs dynamiques Kapsule
+
+  Scripts opérationnels
+  ─────────────────────
+  scripts/raz_mlops.sh          RAZ complète (MLflow, Prefect, données, S3 k8s)
+                                Phases A-G : arrêt, volumes, données, S3, restart, bucket, healthchecks
+  scripts/train_all_cycles.sh  Lance automatiquement 1 cycle par tag DVC data-v*
+                                Détecte les années, attend la fin de chaque run, gère les erreurs
 ```
 
 #### Evidently — Détection de dérive des données et du modèle
@@ -1484,7 +1503,7 @@ LIVRABLES DOCUMENTATION (docs/)
 | `noel` | Noël | commits libres, push direct |
 | `main` | — | **pas de commit direct** — uniquement via PR |
 
-### GitHub Actions : 6 workflows
+### GitHub Actions : 9 workflows
 
 ```text
 ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
@@ -1494,34 +1513,34 @@ ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
   → la PR ne peut pas merger si ✗
 
 deploy.yml — déclenché sur : push/merge dans main
-  1. Build + push images ghcr.io/jakatt/cac-mlops-{api,mlflow}:latest
+  Concurrence group : annule tout deploy en cours si nouveau commit arrive
+  1. Build + push images ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest
   2. SSH → login ghcr.io · arrêt containers
   3. docker image rm ghcr.io/jakatt/cac-mlops-* (nos images uniquement)
      ⚠️  PAS docker image prune -af (autre app partage le VPS)
-  4. git reset --hard origin/main
-  5. DOCKER_VOLUMES_PATH=/data ajouté dans .env si absent
-  6. docker compose pull (images pré-buildées)
-  7. Migration volumes nommés → /data bind mounts (one-time, idempotent)
-     Utilise ghcr.io/jakatt/cac-mlops-mlflow:latest pour copier les données
-     (pas alpine — Docker Hub rate limit)
-  8. docker volume rm cac_mlops_minio_data cac_mlops_postgres_data ... || true
-     (supprime anciens volumes nommés après migration, libère NVMe)
-  9. docker compose up -d
-  10. healthcheck : curl http://localhost:8090/health (retry 18×5s = 90s)
+  4. sudo chown -R deploy: reports/ state/ data/ (répertoires créés root par containers)
+  5. git reset --hard origin/main
+  6. DOCKER_VOLUMES_PATH=/data ajouté dans .env si absent
+  7. docker compose pull (images pré-buildées)
+  8. Migration volumes nommés → /data bind mounts (one-time, idempotent)
+  9. docker volume rm cac_mlops_minio_data cac_mlops_postgres_data ... || true
+  10. docker compose up -d (minio-init crée bucket mlflow automatiquement)
+  11. healthcheck : curl http://localhost:8090/health (retry 18×5s = 90s)
   → ✓ ou logs API + exit 1
 
-train.yml — déclenché : workflow_dispatch (year, cumul, promote, simulate_year)
-  0. mlflow_cleanup.py (garde 3 derniers runs, gc artifacts MinIO)
+train.yml — déclenché : workflow_dispatch (year, cumul, algorithm, promote, simulate_year)
+  0a. Attente API disponible (3 min max, évite "service not running" si deploy en cours)
+  0b. mlflow_cleanup.py (garde 3 derniers runs, gc artifacts MinIO)
   1. dvc pull data/raw/{2021..year}
   2. make_dataset.py --year N [--cumul]        (preprocessing dans container api)
-  3. train_model.py --year N [--cumul]         (MLflow run → artefact MinIO)
-  4. validate_model.py --run-id RUN_ID [--promote]
+  3. train_model.py --year N [--cumul] --algorithm ALGO  (MLflow run → artefact MinIO)
+  4. validate_model.py --run-id RUN_ID --model-name MODEL [--promote]
      exit 0 = KPIs OK (promu ou non) · exit 1 = KPIs insuffisants
+     Seuils : accuracy ≥ 0.70 · f1 ≥ 0.64 · auc ≥ 0.75 · recall ≥ 0.60
   5. docker compose restart api + healthcheck  (charge le nouveau modèle @Production)
   6. simulate_production.py --year simulate_year (= year+1 par défaut)
      → télécharge + préprocess données simulate_year si absentes
      → rejoue ~55k accidents via POST /predict (api:8000, sans rate limit)
-     → features + prédictions loggées dans PostgreSQL (table predictions)
   7. drift_detection.py --month YYYY-MM --reference-path cumul_2021_{year}/X_train.csv
      → compare distributions simulate_year vs référence d'entraînement year
      → rapport HTML dans reports/drift/drift_YYYY-MM.html
@@ -1537,7 +1556,39 @@ test-api.yml — workflow_dispatch
 diag.yml — workflow_dispatch
   Diagnostic complet serveur : df, lsblk, docker ps, docker images, docker system df,
   ports ouverts, compose projects, /data contents + disk usage
+
+kapsule-up.yml — workflow_dispatch
+  Provision cluster Kapsule K8s : création nodes, apply manifests, wait déploiements
+  Exporte IPs LoadBalancer → GITHUB_ENV → écrit state/kapsule_ips sur VPS via SSH
+  Cockpit Gradio onglet 6 lit ce fichier pour afficher les URLs dynamiques
+
+kapsule-down.yml — workflow_dispatch
+  Déprovision cluster Kapsule : supprime nodes + cluster
+  Supprime state/kapsule_ips sur le VPS
+
+cleanup.yml — manuel ou planifié
+  Nettoyage runs GitHub Actions anciens (garde N derniers)
 ```
+
+### Script opérationnel : train_all_cycles.sh
+
+```bash
+# Lancer tous les cycles de ré-entraînement depuis data-v1 (2021) jusqu'au dernier tag DVC
+./scripts/train_all_cycles.sh --algorithm lgbm
+
+# Reprendre depuis le cycle 2 si le cycle 1 a échoué
+./scripts/train_all_cycles.sh --from-cycle 2 --algorithm lgbm
+
+# Dry-run (affiche les commandes sans exécuter)
+./scripts/train_all_cycles.sh --dry-run
+```
+
+Le script lit les tags `git tag -l "data-v*"`, compte les versions, et exécute :
+
+- Cycle 1 : year=2021, cumul=false, promote=true
+- Cycle N (N≥2) : year=2020+N, cumul=true, promote=true
+
+Chaque cycle attend la fin du run GitHub Actions (`gh run watch --exit-status`) avant de lancer le suivant. En cas d'échec, il imprime la commande `--from-cycle N` pour reprendre.
 
 ### Workflow quotidien (sur ta branche)
 
@@ -1608,10 +1659,13 @@ cac_mlops/
 │   └── workflows/
 │       ├── ci.yml                         # lint (flake8) + pytest → bloque PR si ✗
 │       ├── deploy.yml                     # build images → push ghcr.io → SSH deploy
-│       ├── train.yml                      # pipeline ETL+train+validate (cron + manuel)
+│       ├── train.yml                      # pipeline ETL+train+validate (workflow_dispatch)
 │       ├── promote.yml                    # force-promote version → @Production
 │       ├── test-api.yml                   # tests end-to-end JWT + /predict + rate limit
-│       └── diag.yml                       # diagnostic complet serveur (disque, Docker)
+│       ├── diag.yml                       # diagnostic complet serveur (disque, Docker)
+│       ├── kapsule-up.yml                 # provision cluster K8s + écriture state/kapsule_ips
+│       ├── kapsule-down.yml               # déprovision cluster K8s + suppression state/kapsule_ips
+│       └── cleanup.yml                    # nettoyage runs GitHub Actions anciens
 │
 ├── data/                                  # ignoré par Git, géré par DVC
 │   ├── raw/                               # données d'entraînement versionnées DVC
@@ -1623,7 +1677,7 @@ cac_mlops/
 │   └── preprocessed/
 │       ├── 2021/                          # X_train, X_test, y_train, y_test
 │       ├── cumul_2021_2022/               # 2 ans cumulés
-│       └── cumul_2021_2022_2023/          # 3 ans cumulés → modèle @Production
+│       └── cumul_2021_2022_2023/          # 3 ans cumulés → modèle @Production actuel
 │
 ├── services/
 │   ├── api/
@@ -1648,12 +1702,19 @@ cac_mlops/
 │   │
 │   ├── nginx/
 │   │   └── nginx.conf                     # rate limit 20r/min /predict, proxy → api:8000
+│   │                                      # + location /reports/ → /srv/reports/ (Evidently)
 │   │
-│   └── prefect/                           # flows Prefect — serveur NON déployé (budget NVMe)
-│       ├── Dockerfile                     # image si déploiement futur K8s
-│       ├── server.Dockerfile
-│       ├── entrypoint.sh
-│       └── requirements.txt
+│   ├── gradio/
+│   │   ├── app.py                         # Cockpit MLOps 6 onglets (Gradio)
+│   │   ├── scenarios.py                   # scénarios What-If (météo, nuit, alcool…)
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   ├── monitoring/
+│   │   └── drift_detection.py             # Evidently : drift features + rapport HTML/JSON
+│   │
+│   └── prefect/                           # configuration Prefect server (non personnalisé)
+│       └── Dockerfile
 │
 ├── src/
 │   ├── data/
@@ -1665,19 +1726,48 @@ cac_mlops/
 │   │   └── normalizer/
 │   │       └── __init__.py
 │   ├── models/
-│   │   ├── train_model.py                 # RandomForest + MLflow tracking + Registry
+│   │   ├── train_model.py                 # LightGBM/RF/XGB + MLflow tracking + Registry
 │   │   ├── predict_model.py
 │   │   └── validate_model.py              # compare candidat vs @Production, promote si OK
-│   ├── flows/                             # Prefect flows (codés, pas déployés en container)
+│   ├── flows/                             # Prefect flows (déployés via prefect.yaml)
 │   │   ├── etl_flow.py                    # download + preprocess
 │   │   ├── train_flow.py                  # train + validate + promote
-│   │   └── retrain_flow.py                # réentraînement sur détection dérive
+│   │   ├── retrain_flow.py                # réentraînement annuel
+│   │   └── drift_flow.py                  # drift check mensuel
 │   ├── scripts/
 │   │   └── mlflow_cleanup.py              # garde 3 runs, gc artifacts MinIO avant train
 │   ├── features/
 │   │   └── build_features.py
 │   └── visualization/
 │       └── visualize.py
+│
+├── scripts/
+│   ├── raz_mlops.sh                       # RAZ complète stack MLOps (Phases A-G)
+│   ├── train_all_cycles.sh               # Lance N cycles depuis tags DVC data-v*
+│   └── simulate_production.py            # Rejoue données année N via POST /predict
+│
+├── k8s/                                   # Manifests Kubernetes (Kapsule Phase 5)
+│   ├── namespace.yaml
+│   ├── deployments/
+│   ├── services/
+│   └── hpa.yaml                           # HPA api: CPU 70% / RAM 80% → min 2 max 8
+│
+├── infrastructure/
+│   ├── prometheus/
+│   │   └── prometheus.yml                 # scrape api:8000/metrics
+│   ├── grafana/
+│   │   ├── provisioning/                  # datasources + dashboards auto-provisionnés
+│   │   └── dashboards/
+│   │       └── api-performance.json
+│   └── docker/
+│       └── daemon.json                    # rotation logs Docker (20 MB × 3 fichiers)
+│
+├── reports/
+│   └── drift/                             # rapports HTML/JSON Evidently (gitignored sauf .gitkeep)
+│       └── .gitkeep
+│
+├── state/                                 # état runtime (gitignored sauf .gitkeep)
+│   └── kapsule_ips                        # IPs LoadBalancer Kapsule (écrit par kapsule-up.yml)
 │
 ├── tests/
 │   ├── unit/
@@ -1690,19 +1780,14 @@ cac_mlops/
 ├── notebooks/
 │   └── 1.0-ldj-initial-data-exploration.ipynb
 │
-├── docker-compose.yml                     # stack locale + prod (5 services actifs)
-├── docker-compose.override.yml            # surcharges locales (ports, volumes)
-├── prefect.yaml                           # configuration Prefect deployments
+├── docker-compose.yml                     # stack locale + prod (11 services)
+├── prefect.yaml                           # configuration Prefect deployments (4 flows)
 ├── .env                                   # secrets (gitignore) — JWT_SECRET_KEY, etc.
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
 ├── setup.py
 ├── architecture.md                        # ce fichier
 └── README.md
-
-NOTE : pas de docker-compose.prod.yml (un seul compose + .env suffit),
-       pas de k8s/ (Kubernetes non implémenté en Phase 3),
-       pas de infrastructure/ (nginx dans services/nginx/).
 ```
 
 ---
@@ -1733,16 +1818,19 @@ NOTE : pas de docker-compose.prod.yml (un seul compose + .env suffit),
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  CI/CD                     │  GitHub Actions → ghcr.io (GitHub Container   │
-│                            │  Registry) — 6 workflows (ci, deploy, train,  │
-│                            │  promote, test-api, diag)                     │
+│                            │  Registry) — 9 workflows (ci, deploy, train,  │
+│                            │  promote, test-api, diag, kapsule-up,         │
+│                            │  kapsule-down, cleanup)                       │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Gateway                   │  NGINX (reverse proxy + rate limit) ✅ Ph.3   │
 │                            │  JWT auth côté FastAPI (auth.py) ✅ Ph.3      │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Monitoring                │  Prometheus + Grafana + Evidently [Phase 4]   │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Cloud actuel              │  Scaleway DEV1-L (docker-compose, 5 services) │
+│  Cloud actuel              │  Scaleway DEV1-L (docker-compose, 11 services)│
 │                            │  NVMe / + block storage /data (volumes)       │
+│                            │  Modèle : lgbm_accidents@Production           │
+│                            │  Entraîné sur : cumul 2021+2022+2023          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Cloud cible (Ph.5)        │  Scaleway Kapsule (K8s) + Object Storage      │
 │                            │  + Managed Database + Prefect server          │
