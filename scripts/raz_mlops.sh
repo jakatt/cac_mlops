@@ -123,6 +123,13 @@ info "Phase D — Nettoyage S3 Scaleway (préfixes k8s)..."
 SCW_AK="${SCW_ACCESS_KEY:-}"
 SCW_SK="${SCW_SECRET_KEY:-}"
 
+# Fallback : lire depuis .dvc/config.local (déjà présent sur le VPS, gitignored)
+if [ -z "$SCW_AK" ] && [ -f "${DEPLOY_DIR}/.dvc/config.local" ]; then
+  SCW_AK=$(grep 'access_key_id'     "${DEPLOY_DIR}/.dvc/config.local" | awk '{print $3}')
+  SCW_SK=$(grep 'secret_access_key' "${DEPLOY_DIR}/.dvc/config.local" | awk '{print $3}')
+  [ -n "$SCW_AK" ] && info "  Credentials SCW lus depuis .dvc/config.local"
+fi
+
 if [ -n "$SCW_AK" ] && [ -n "$SCW_SK" ]; then
   for PREFIX in k8s-model k8s-gradio-data mlflow-k8s; do
     info "  Suppression s3://${SCW_BUCKET}/${PREFIX}/..."
