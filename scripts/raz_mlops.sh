@@ -185,11 +185,12 @@ for i in $(seq 1 12); do
 done
 
 docker run --rm \
+  --entrypoint /bin/sh \
   --network "$(basename "$DEPLOY_DIR")_default" \
   minio/mc:latest \
-  sh -c "mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} && \
-         mc mb local/mlflow --ignore-existing && \
-         echo 'Bucket mlflow créé'" \
+  -c "mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} && \
+      mc mb local/mlflow --ignore-existing && \
+      echo 'Bucket mlflow créé'" \
   && info "  ✓ Bucket MinIO 'mlflow' prêt" \
   || warn "  ⚠ Création bucket échouée — le service minio-init le créera au prochain redémarrage"
 

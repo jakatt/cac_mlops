@@ -54,9 +54,26 @@ jobs:
 
             echo "==> Paramètres : year=$YEAR cumul=$CUMUL algo=$ALGO promote=$PROMOTE simulate_year=$SIM_YEAR"
 
-            # ── 0. Nettoyage MLflow (libère espace MinIO avant entraînement) ─────
+            # ── 0. Vérification que l'API est disponible (max 3 min) ─────────────
+            echo "==> Attente API disponible (max 3 min)..."
+            for i in $(seq 1 36); do
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
+                echo "  API OK après $((i*5))s"
+                break
+              fi
+              if [ "$i" -eq 36 ]; then
+                echo "ERREUR : API non disponible après 3 min"
+                docker compose ps
+                docker compose logs --tail=30 api
+                exit 1
+              fi
+              echo "  [$((i*5))s] Attente API..."
+              sleep 5
+            done
+
+            # ── 0b. Nettoyage MLflow (libère espace MinIO avant entraînement) ────
             echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
-            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py
+            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py || true
 
             echo "==> GC artifacts MinIO (suppression physique des runs effacés)"
             docker compose run --rm mlflow mlflow gc \
