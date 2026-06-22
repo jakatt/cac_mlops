@@ -75,7 +75,7 @@ def run_drift_report(year_month: str, reference_path: Path | None = None) -> dic
         logger.error("Reference dataset not found: %s", ref)
         sys.exit(1)
 
-    reference = pd.read_csv(ref)[FEATURE_COLS]
+    reference = pd.read_csv(ref).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
     production = fetch_production_data(year_month)
 
     if production.empty:
