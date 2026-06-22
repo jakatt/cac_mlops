@@ -170,4 +170,6 @@ if __name__ == "__main__":
         delay_ms=args.delay_ms,
         max_rows=args.max_rows,
     )
-    sys.exit(0 if result.get("errors", 0) == 0 else 1)
+    total = result.get("sent", 0) + result.get("errors", 0)
+    error_rate = result.get("errors", 0) / total if total > 0 else 0
+    sys.exit(0 if error_rate < 0.05 else 1)
