@@ -43,7 +43,7 @@ jobs:
 
           for POOL_ID in $POOL_IDS; do
             echo "Suppression pool $POOL_ID..."
-            scw k8s pool delete cluster-id=$CLUSTER_ID $POOL_ID
+            scw k8s pool delete $POOL_ID
           done
 
           echo "✓ Node pools supprimés — facturation arrêtée"
