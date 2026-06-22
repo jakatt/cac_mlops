@@ -185,14 +185,30 @@ wait_url "Prefect" "http://localhost:4200/api/health"
 # ─────────────────────────────────────────────────────────────────────────────
 info ""
 info "Phase G — Re-enregistrement deployments Prefect..."
-# Attendre que le worker soit connecté au work-pool
-sleep 20
+# Attendre que le worker ait créé le work-pool (fait au démarrage du container)
+info "  Attente worker Prefect (45s)..."
+sleep 45
 
-docker compose exec -T prefect-worker \
-  sh -c "cd /app && prefect deploy --all --no-prompt" \
-  && info "  ✓ Deployments Prefect enregistrés (etl, train, retrain-annual, drift-check)" \
-  || warn "  ⚠ prefect deploy --all a échoué — relancer manuellement :"
-  # docker compose exec prefect-worker sh -c "cd /app && prefect deploy --all"
+PREFECT_OK=false
+for attempt in 1 2 3; do
+  info "  Tentative ${attempt}/3 — prefect deploy --all..."
+  if docker compose exec -T prefect-worker \
+      sh -c "cd /app && prefect deploy --all --no-prompt" 2>&1; then
+    info "  ✓ Deployments Prefect enregistrés (etl, train, retrain-annual, drift-check)"
+    PREFECT_OK=true
+    break
+  fi
+  if [ "$attempt" -lt 3 ]; then
+    warn "  ⚠ Échec tentative ${attempt} — nouvel essai dans 20s..."
+    sleep 20
+  fi
+done
+
+if ! $PREFECT_OK; then
+  warn "  ⚠ prefect deploy --all a échoué après 3 tentatives"
+  warn "  Relancer manuellement :"
+  warn "    docker compose exec prefect-worker sh -c 'cd /app && prefect deploy --all'"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fin
