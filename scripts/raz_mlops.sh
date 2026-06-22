@@ -108,11 +108,13 @@ info ""
 info "Phase C — Nettoyage données locales..."
 # data/raw/ conservé localement (DVC remote S3 intact, dvc pull rapide en démo)
 run "docker run --rm -v ${DEPLOY_DIR}/data:/mnt alpine rm -rf /mnt/preprocessed"
-info "  ✓ data/preprocessed/ supprimé (via container)"
+run "mkdir -p ${DEPLOY_DIR}/data/preprocessed"
+info "  ✓ data/preprocessed/ supprimé (répertoire recréé avec le bon owner)"
 run "docker run --rm -v ${DEPLOY_DIR}/src/models:/mnt alpine rm -f /mnt/trained_model.joblib"
 info "  ✓ src/models/trained_model.joblib supprimé"
-run "docker run --rm -v ${DEPLOY_DIR}/reports:/mnt alpine sh -c 'rm -rf /mnt/drift && mkdir -p /mnt/drift'"
-info "  ✓ reports/drift/ vidé"
+run "docker run --rm -v ${DEPLOY_DIR}/reports:/mnt alpine rm -rf /mnt/drift"
+run "mkdir -p ${DEPLOY_DIR}/reports/drift"
+info "  ✓ reports/drift/ vidé (répertoire recréé avec le bon owner)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase D — Nettoyage S3 Scaleway (préfixes K8s uniquement — DVC conservé)
