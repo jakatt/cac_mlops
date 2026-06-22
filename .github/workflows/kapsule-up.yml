@@ -6,7 +6,7 @@ on:
       node_type:
         description: "Type de nœud Kapsule"
         required: false
-        default: "GP1-S"
+        default: "BASIC3-X2C-8G"
       node_count:
         description: "Nombre de nœuds"
         required: false
