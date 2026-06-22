@@ -166,6 +166,34 @@ docker compose up -d
 info "  ✓ Stack démarrée"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase E.5 — Création du bucket mlflow dans MinIO (vidé à la Phase B)
+# ─────────────────────────────────────────────────────────────────────────────
+info ""
+info "Phase E.5 — Création bucket MinIO 'mlflow'..."
+info "  Attente MinIO healthy (max 60s)..."
+for i in $(seq 1 12); do
+  if docker compose exec -T minio mc ready local > /dev/null 2>&1 || \
+     curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+    info "  ✓ MinIO ready (${i}×5s)"
+    break
+  fi
+  if [ "$i" -eq 12 ]; then
+    warn "  ⚠ MinIO non disponible après 60s — bucket à créer manuellement :"
+    warn "    docker compose exec minio mc mb local/mlflow --ignore-existing"
+  fi
+  sleep 5
+done
+
+docker run --rm \
+  --network "$(basename "$DEPLOY_DIR")_default" \
+  minio/mc:latest \
+  sh -c "mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} && \
+         mc mb local/mlflow --ignore-existing && \
+         echo 'Bucket mlflow créé'" \
+  && info "  ✓ Bucket MinIO 'mlflow' prêt" \
+  || warn "  ⚠ Création bucket échouée — le service minio-init le créera au prochain redémarrage"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Phase F — Healthchecks (max 5 min par service)
 # ─────────────────────────────────────────────────────────────────────────────
 info ""
