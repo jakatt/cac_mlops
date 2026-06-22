@@ -75,8 +75,11 @@ jobs:
             docker builder prune -af
 
             echo "==> Suppression données brutes DVC (volumineuses, non nécessaires au runtime)"
-            rm -rf data/raw .dvc/cache || true
+            sudo rm -rf data/raw .dvc/cache 2>/dev/null || true
             # data/preprocessed est conservé : nécessaire pour le service Gradio (what-if + heatmap)
+
+            echo "==> Correction ownership (répertoires créés par containers root lors de la RAZ)"
+            sudo chown -R $(whoami): reports/ state/ data/ 2>/dev/null || true
 
             echo "==> Pull du code"
             git fetch origin main
