@@ -243,3 +243,27 @@ jobs:
           echo ""
           echo "=== HPA ==="
           kubectl get hpa -n cac-mlops
+
+          # Export pour l'étape suivante (SSH → state/kapsule_ips)
+          echo "NGINX_LB=$NGINX_LB"     >> $GITHUB_ENV
+          echo "GRAFANA_LB=$GRAFANA_LB" >> $GITHUB_ENV
+          echo "PREFECT_LB=$PREFECT_LB" >> $GITHUB_ENV
+          echo "GRADIO_LB=$GRADIO_LB"   >> $GITHUB_ENV
+
+      # ── 12. Écrire les IPs dans state/kapsule_ips (cockpit Gradio) ────────
+      - name: Écrire IPs dans state/kapsule_ips
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            mkdir -p /data/cac_mlops/state
+            cat > /data/cac_mlops/state/kapsule_ips << 'STATEEOF'
+            NGINX_LB=${{ env.NGINX_LB }}
+            GRAFANA_LB=${{ env.GRAFANA_LB }}
+            PREFECT_LB=${{ env.PREFECT_LB }}
+            GRADIO_LB=${{ env.GRADIO_LB }}
+            STATEEOF
+            echo "✓ state/kapsule_ips écrit"
+            cat /data/cac_mlops/state/kapsule_ips

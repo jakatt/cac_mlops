@@ -13,6 +13,8 @@ jobs:
       CLUSTER_ID:        ${{ secrets.KAPSULE_CLUSTER_ID }}
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Installer scw CLI
         run: |
           curl -s https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | bash
@@ -56,3 +58,14 @@ jobs:
           scw k8s pool list cluster-id=$CLUSTER_ID
           echo ""
           echo "✓ Kapsule DOWN — plus aucune facturation nodes/LB"
+
+      # ── Nettoyer state/kapsule_ips sur le VPS (cockpit Gradio) ───────────
+      - name: Supprimer state/kapsule_ips
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            rm -f /data/cac_mlops/state/kapsule_ips
+            echo "✓ state/kapsule_ips supprimé — cockpit Gradio affichera Kapsule DOWN"

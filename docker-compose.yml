@@ -101,6 +101,7 @@ services:
       - "8090:80"   # production entry point (rate-limited) — port 80 on host taken by system service
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./reports:/srv/reports:ro   # Evidently drift reports (HTML statique)
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/health"]
       interval: 15s
@@ -153,7 +154,7 @@ services:
       mlflow:
         condition: service_healthy
 
-  # ── Gradio — Simulateur Sécurité Routière (Bison Futé + Géo Trouvetou) ─────
+  # ── Gradio — Cockpit MLOps (6 onglets) ──────────────────────────────────────
   gradio:
     image: ghcr.io/jakatt/cac-mlops-gradio:latest
     restart: unless-stopped
@@ -167,12 +168,19 @@ services:
       AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
       GRADIO_MODEL_NAME:      rf_accidents
       GRADIO_MODEL_ALIAS:     Production
-      GRADIO_DATA_PATH:       data/preprocessed
+      GRADIO_DATA_PATH:       /app/data/preprocessed
       GRADIO_PORT:            "7860"
+      # Cockpit onglets 3-6
+      VPS_IP:                 ${VPS_IP:-51.159.187.132}
+      GITHUB_REPO:            ${GITHUB_REPO:-jakatt/cac_mlops}
+      REPORTS_PATH:           /app/reports/drift
+      KAPSULE_STATE:          /app/state/kapsule_ips
     ports:
       - "7860:7860"   # UI → http://localhost:7860
     volumes:
-      - ./data:/app/data:ro   # données préprocessées (read-only)
+      - ./data:/app/data:ro        # données préprocessées (read-only)
+      - ./reports:/app/reports:ro  # rapports Evidently (read-only)
+      - ./state:/app/state:ro      # IPs Kapsule dynamiques (read-only)
 
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   prometheus:
