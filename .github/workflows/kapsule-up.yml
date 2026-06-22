@@ -83,10 +83,11 @@ jobs:
             set -e
             MODEL=/data/cac_mlops/src/models/trained_model.joblib
             mkdir -p /data/cac_mlops/src/models
+            cd /data/cac_mlops
 
             if [ ! -f "$MODEL" ]; then
-              echo "Export modele depuis MLflow @Production..."
-              cat > /tmp/export_model.py << 'PYEOF'
+              echo "Export modele depuis MLflow @Production via docker compose..."
+              docker compose exec -T api python3 - << 'PYEOF'
             import mlflow, joblib, os
             mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
             for name in ["lgbm_accidents", "rf_accidents"]:
@@ -98,9 +99,8 @@ jobs:
                 except Exception as e:
                     print("skip " + name + ": " + str(e))
             PYEOF
-              docker cp /tmp/export_model.py api:/tmp/export_model.py
-              docker exec api python3 /tmp/export_model.py
-              docker cp api:/tmp/trained_model.joblib "$MODEL"
+              API_ID=$(docker compose ps -q api)
+              docker cp "$API_ID":/tmp/trained_model.joblib "$MODEL"
               echo "Modele exporte vers $MODEL"
             else
               echo "Modele deja present : $MODEL"
