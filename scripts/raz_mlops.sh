@@ -98,10 +98,8 @@ run "docker compose down -v --remove-orphans"
 # ─────────────────────────────────────────────────────────────────────────────
 info ""
 info "Phase B — Suppression bind mounts PostgreSQL + MinIO..."
-run "rm -rf ${VOLUMES_PATH}/postgres_data"
-info "  ✓ postgres_data supprimé (MLflow DB + schéma Prefect)"
-run "rm -rf ${VOLUMES_PATH}/minio_data"
-info "  ✓ minio_data supprimé (artefacts MLflow)"
+run "docker run --rm -v ${VOLUMES_PATH}:/mnt alpine rm -rf /mnt/postgres_data /mnt/minio_data"
+info "  ✓ postgres_data + minio_data supprimés (via container — contourne les droits root)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase C — Nettoyage données locales
