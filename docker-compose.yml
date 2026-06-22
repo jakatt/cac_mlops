@@ -129,9 +129,12 @@ services:
   prefect-worker:
     image: ghcr.io/jakatt/cac-mlops-api:latest
     restart: unless-stopped
-    command: >
-      sh -c "prefect work-pool create default-process-pool --type process 2>/dev/null || true
-             && prefect worker start --pool default-process-pool"
+    command:
+      - sh
+      - -c
+      - |
+        prefect work-pool create default-process-pool --type process 2>/dev/null || true
+        prefect worker start --pool default-process-pool
     environment:
       PREFECT_API_URL:        http://prefect-server:4200/api
       MLFLOW_TRACKING_URI:    http://mlflow:5000
