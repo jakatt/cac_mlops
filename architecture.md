@@ -760,42 +760,50 @@ MLflow UI → Experiments → "accidents_severity"
 ## 6. Vue d'ensemble de l'architecture
 
 ```text
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                         ARCHITECTURE GLOBALE                                ║
-╠═══════════════════════════════════╦════════════════════════════════════════╣
-║      ENVIRONNEMENT LOCAL          ║       ENVIRONNEMENT SCALEWAY            ║
-║  (Jacques + collègue)             ║       (Cloud Production)                ║
-╠═══════════════════════════════════╬════════════════════════════════════════╣
-║                                   ║                                        ║
-║  docker-compose.yml               ║  Scaleway Kapsule (Kubernetes)         ║
-║  ┌─────────────────────────────┐  ║  ┌──────────────────────────────────┐  ║
-║  │  api        :8000           │  ║  │  Deployment: api  (N replicas)   │  ║
-║  │  training   (no port)       │  ║  │  Deployment: mlflow              │  ║
-║  │  mlflow     :5001 (host)    │  ║  │  Deployment: prefect             │  ║
-║  │  minio      :9000/:9001     │  ║  │  Deployment: prometheus          │  ║
-║  │  postgresql :5432           │  ║  │  Deployment: grafana             │  ║
-║  │  prefect    :4200           │  ║  │  Ingress: nginx                  │  ║
-║  │  nginx      :80             │  ║  └──────────────────────────────────┘  ║
-║  │  prometheus :9090  [Ph.4]   │  ║                                        ║
-║  │  grafana    :3000  [Ph.4]   │  ║  Scaleway Managed Database             ║
-║  └─────────────────────────────┘  ║  ┌──────────────────────────────────┐  ║
-║                                   ║  │  PostgreSQL                      │  ║
-║  Stockage local                   ║  │  → backend MLflow                │  ║
-║  ┌─────────────────────────────┐  ║  │  → logs prédictions [Ph.4]       │  ║
-║  │  data/     ← DVC pull       │  ║  └──────────────────────────────────┘  ║
-║  └─────────────────────────────┘  ║                                        ║
-║                                   ║  Scaleway Object Storage (S3)          ║
-║  Outils hors Docker               ║  ┌──────────────────────────────────┐  ║
-║  ┌─────────────────────────────┐  ║  │  bucket: cac-mlops-data          │  ║
-║  │  pytest  flake8  dvc  git   │  ║  │  → données brutes (DVC remote)   │  ║
-║  └─────────────────────────────┘  ║  │  bucket: cac-mlops-mlflow        │  ║
-║                                   ║  │  → artefacts MLflow              │  ║
-║                                   ║  └──────────────────────────────────┘  ║
-╠═══════════════════════════════════╩════════════════════════════════════════╣
-║                         PARTAGÉ ENTRE LES DEUX                              ║
-║  GitHub  → code, .dvc files, CI config, K8s manifests                       ║
-║  Scaleway Object Storage → données (DVC) + artefacts MLflow                 ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                         ARCHITECTURE GLOBALE — Phase 5                                       ║
+╠══════════════════════╦═══════════════════════════════════════╦═══════════════════════════════╣
+║  DEV LOCAL           ║  VPS SCALEWAY — Ph.1-4                ║  KAPSULE K8s — Ph.5           ║
+║  (développeur)       ║  51.159.187.132  /data/cac_mlops      ║  (on-demand, via workflow)    ║
+╠══════════════════════╬═══════════════════════════════════════╬═══════════════════════════════╣
+║                      ║                                       ║                               ║
+║  docker-compose.yml  ║  docker-compose.yml (10 services)     ║  Deployments                  ║
+║  (même stack VPS)    ║  ┌─────────────────────────────────┐  ║  api           (HPA 2→8)      ║
+║                      ║  │ nginx          :8090→:80  [Ph.3] │  ║  mlflow        (SQLite démo)  ║
+║  Outils CLI          ║  │ api            :8080→:8000 [Ph.1]│  ║  prefect-server               ║
+║  pytest  flake8      ║  │ training       (no port)  [Ph.1] │  ║  prefect-worker               ║
+║  dvc  git            ║  │ mlflow         :5001→:5000 [Ph.2]│  ║  prometheus                   ║
+║  kubectl  kind       ║  │ minio          :9000/:9001 [Ph.2]│  ║  grafana                      ║
+║  (dry-run manifests) ║  │ postgresql     :5432       [Ph.2]│  ║                               ║
+║                      ║  │ prefect-server :4200       [Ph.2]│  ║  Services LoadBalancer LB-S   ║
+║  Stockage local      ║  │ prefect-worker (no port)   [Ph.2]│  ║  nginx    :80  → API publique ║
+║  data/ ← DVC pull   ║  │ prometheus     :9090       [Ph.4]│  ║  prefect  :4200 → UI Prefect  ║
+║                      ║  │ grafana        :3000       [Ph.4]│  ║  grafana  :3000 → Dashboards  ║
+║                      ║  │ gradio         :7860       [Ph.4]│  ║                               ║
+║                      ║  └─────────────────────────────────┘  ║  HPA api                      ║
+║                      ║                                       ║  CPU 70% / RAM 80%            ║
+║                      ║  Drift (Prefect flow — batch mensuel) ║  min 2 → max 8 pods           ║
+║                      ║  → reports/drift/latest_summary.json  ║                               ║
+║                      ║  → métriques Prometheus (6 Gauges)    ║  initContainer api            ║
+║                      ║  → rapports HTML /app/reports/        ║  S3 → /app/model/trained_     ║
+║                      ║                                       ║  model.joblib au démarrage    ║
+╠══════════════════════╩═══════════════════════════════════════╩═══════════════════════════════╣
+║                                     PARTAGÉ                                                   ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════╣
+║  GitHub (jakatt/cac_mlops)                                                                    ║
+║    code · .dvc files · K8s manifests (k8s/)                                                  ║
+║    workflows: ci.yml · deploy.yml · train.yml · promote.yml · test-api.yml · diag.yml        ║
+║               kapsule-up.yml [Ph.5] · kapsule-down.yml [Ph.5]                                ║
+║                                                                                               ║
+║  GHCR (ghcr.io/jakatt/)  ← images buildées par deploy.yml                                   ║
+║    cac-mlops-api:latest · cac-mlops-mlflow:latest                                            ║
+║                                                                                               ║
+║  Scaleway Object Storage — 1 bucket : cac-mlops-data                                        ║
+║    dvc/          → données brutes versionnées (DVC remote)                                   ║
+║    k8s-model/    → trained_model.joblib pour initContainer K8s [Ph.5]                        ║
+║    mlflow-k8s/   → artefacts MLflow dans Kapsule [Ph.5]                                      ║
+║  MinIO (VPS)     → artefacts MLflow dans docker-compose (Ph.1-4)                             ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ### Flux de données de bout en bout
@@ -965,67 +973,90 @@ API_ENV=development                     API_ENV=production
 
 ## 8. Partie Scaleway — production
 
-### Infrastructure actuelle (Phase 3 terminée) — scw-jovial-dubinsky DEV1-L
+### Infrastructure VPS — Phase 4 terminée — scw-jovial-dubinsky DEV1-L
 
 ```text
-SCALEWAY CLOUD — ÉTAT ACTUEL (Phase 3)
+SCALEWAY VPS — ÉTAT ACTUEL (Phase 4 ✅)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
 │   Serveur dédié : scw-jovial-dubinsky DEV1-L                              │
 │   IP publique   : 51.159.187.132                                           │
-│   User deploy   : /home/deploy/cac_mlops                                  │
+│   Répertoire    : /data/cac_mlops  (migré depuis /home/deploy)            │
 │                                                                            │
-│   docker-compose.yml (5 containers, restart: unless-stopped)              │
+│   docker-compose.yml (10 services, restart: unless-stopped)               │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  postgresql  :5432    backend MLflow (bind mount /data/...)      │   │
-│   │  minio       :9000/:9001  artefacts MLflow (bind mount /data/...) │  │
-│   │  mlflow      :5001    http://51.159.187.132:5001  (v3.1.0)      │   │
-│   │  api         :8080    http://51.159.187.132:8080  (direct/admin) │   │
-│   │  nginx       :8090    http://51.159.187.132:8090  (entrée prod)  │   │
+│   │  postgresql    :5432    backend MLflow + logs prédictions        │   │
+│   │  minio         :9000/:9001  artefacts MLflow                     │   │
+│   │  mlflow        :5001    http://51.159.187.132:5001  (v3.1.0)    │   │
+│   │  api           :8080    http://51.159.187.132:8080  (admin)      │   │
+│   │  nginx         :8090    http://51.159.187.132:8090  (prod)       │   │
+│   │  prefect-server:4200    http://51.159.187.132:4200               │   │
+│   │  prefect-worker(no port) traite les flows Prefect                │   │
+│   │  prometheus    :9090    scrape /metrics API                      │   │
+│   │  grafana       :3000    http://51.159.187.132:3000               │   │
+│   │  gradio        :7860    heatmap cartographique (données réelles) │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Modèle en production : rf_accidents@Production v6                       │
-│     Entraîné sur : cumul 2021+2022+2023                                   │
-│     Test : {"prediction":0,"probability":0.71} ← vérifié end-to-end      │
+│   Modèle en production : lgbm_accidents@Production                        │
+│     Entraîné sur : cumul 2021+2022+2023 (LightGBM, benchmark gagnant)    │
 │                                                                            │
-│   DISQUES                                                                  │
+│   DISQUES (après extension + migration Docker sur /data)                   │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  /dev/vda1  NVMe 17 GB → /  (Docker images ~4 GB)    ~94% usé  │   │
-│   │  /dev/sda   Block 19 GB → /data (volumes bind mounts) ~89% usé  │   │
-│   │                                                                  │   │
-│   │  MinIO data  : /data/minio_data  (1.3 GB, bind mount)           │   │
-│   │  Postgres    : /data/postgres_data (bind mount, uid 70)          │   │
+│   │  /dev/vda1  NVMe  → /       ~30% utilisé                        │   │
+│   │  /dev/sda   Block → /data   ~47% utilisé                        │   │
+│   │    Docker images + volumes + données sur /data                   │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
-│   ⚠️  NVMe serré — pas de Prefect container ni Prometheus/Grafana         │
-│   pour ne pas dépasser le budget disque avec des images supplémentaires.  │
 │                                                                            │
-│   Autre application sur ce VPS (partagé)                                  │
+│   Autre application sur ce VPS (partagé — NE PAS TOUCHER)                 │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  Caddy (port 80/443) + 2× uvicorn Python (port 8000/8001)       │   │
 │   │  Qdrant vector DB (Docker, localhost:6333-6334 uniquement)        │   │
-│   │  → ne pas toucher aux images Docker de cette app                 │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Scaleway Object Storage (compatible S3)                                  │
+│   Scaleway Object Storage — bucket: cac-mlops-data                        │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  bucket: cac-mlops-data   → données brutes (DVC remote)         │   │
-│   │  bucket: mlflow           → artefacts MLflow (via MinIO local)   │   │
+│   │  dvc/        → données brutes versionnées (DVC remote)           │   │
+│   │  k8s-model/  → trained_model.joblib (pour initContainer K8s)     │   │
+│   │  mlflow-k8s/ → artefacts MLflow dans Kapsule                     │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
+│   MinIO (VPS) → artefacts MLflow (docker-compose)                         │
 │                                                                            │
-│   Registry images : ghcr.io/jakatt/cac-mlops-{api,mlflow}:latest         │
+│   Images : ghcr.io/jakatt/cac-mlops-{api,mlflow}:latest                  │
 │   Deploy : GitHub Actions deploy.yml → SSH → docker compose               │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 
-### Infrastructure cible (Phase 5) — Kubernetes
+### Infrastructure Kubernetes — Phase 5 ✅ TERMINÉE
 
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
-│   Scaleway Kapsule (Kubernetes managé) — prévu Phase 5                    │
-│   · Ingress NGINX avec TLS · auto-scaling API (2–10 replicas)            │
-│   · Pods : api · mlflow · prefect-server · prometheus · grafana           │
+│   Scaleway Kapsule — cluster: cac-mlops (Kubernetes 1.35.3)               │
+│   Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB)   │
+│   Activé à la demande via kapsule-up.yml / kapsule-down.yml               │
 │                                                                            │
-│   Scaleway Managed Database (PostgreSQL)                                   │
+│   Deployments (namespace: cac-mlops)                                       │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  api             initContainer fetch S3 → /app/model/            │   │
+│   │                  HPA: CPU 70% / RAM 80% / min 2 → max 8 pods    │   │
+│   │  mlflow          SQLite emptyDir + artefacts s3://cac-mlops-data │   │
+│   │  prefect-server  PREFECT_UI_API_URL patchée post-deploy          │   │
+│   │  prefect-worker                                                  │   │
+│   │  prometheus      scrape api:8000/metrics                         │   │
+│   │  grafana         dashboards provisionnés via ConfigMaps           │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Services LoadBalancer LB-S (≈ €0.01/h chacun, facturés à l'usage)      │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  nginx    :80   → API publique (rate-limit identique VPS)        │   │
+│   │  prefect  :4200 → UI Prefect                                     │   │
+│   │  grafana  :3000 → Dashboards                                     │   │
+│   │  mlflow   : port-forward uniquement (kubectl, pas de LB)         │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Secrets K8s (injectés par kapsule-up.yml depuis GitHub Secrets)         │
+│   s3-creds : AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY                    │
+│   app-creds: JWT_SECRET_KEY · API_USERNAME · API_PASSWORD                 │
+│              POSTGRES_PASSWORD                                             │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```

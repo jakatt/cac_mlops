@@ -42,9 +42,9 @@ jobs:
             zone=fr-par-1
 
       # ── 3. Attendre que les nœuds soient ready ────────────────────────────
-      - name: Attendre nœuds ready (max 8 min)
+      - name: Attendre nœuds ready (max 15 min)
         run: |
-          for i in $(seq 1 48); do
+          for i in $(seq 1 90); do
             STATUS=$(scw k8s pool list cluster-id=$CLUSTER_ID -o json \
               | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[-1]['status'] if d else 'none')")
             echo "  [$((i*10))s] status=$STATUS"
@@ -52,8 +52,13 @@ jobs:
               echo "✓ Nœuds ready"
               break
             fi
-            if [ $i -eq 48 ]; then
-              echo "✗ Timeout 8 min"
+            # warning = nœuds partiellement disponibles — on continue après 5 min
+            if [ "$STATUS" = "warning" ] && [ $i -ge 30 ]; then
+              echo "⚠️  Pool warning après ${i}×10s — on continue (nœuds partiellement disponibles)"
+              break
+            fi
+            if [ $i -eq 90 ]; then
+              echo "✗ Timeout 15 min — status=$STATUS"
               exit 1
             fi
             sleep 10
