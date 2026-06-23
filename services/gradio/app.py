@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -315,21 +316,33 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
         if not versions:
             return pd.DataFrame({"Info": ["Aucun modèle enregistré — lancez le premier cycle Train."]}), []
 
+        # Resolve @Production alias once via dedicated API (plus fiable que v.aliases)
+        try:
+            prod_v = client.get_model_version_by_alias(MODEL_NAME, "Production")
+            prod_version = prod_v.version
+        except Exception:
+            prod_version = None
+
         rows, choices = [], []
         for v in sorted(versions, key=lambda x: int(x.version)):
             try:
                 run  = client.get_run(v.run_id)
                 p, m = run.data.params, run.data.metrics
-                year  = p.get("year",      "?")
-                cumul = p.get("cumul",     "false")
+                # train_model.py log "years" (liste) pas "year" (singulier)
+                years_raw = p.get("years", None)
+                if years_raw:
+                    year_nums = re.findall(r'\d{4}', str(years_raw))
+                    year  = str(max(int(y) for y in year_nums)) if year_nums else "?"
+                    cumul = "true" if len(year_nums) > 1 else "false"
+                else:
+                    year, cumul = "?", "false"
                 algo  = p.get("algorithm", "lgbm")
                 f1    = round(m.get("f1_score", m.get("f1",  0)), 4)
                 auc   = round(m.get("roc_auc",  m.get("auc", 0)), 4)
             except Exception:
                 year, cumul, algo, f1, auc = "?", "false", "?", 0.0, 0.0
 
-            aliases = getattr(v, "aliases", [])
-            is_prod = "Production" in aliases
+            is_prod = (v.version == prod_version)
             rows.append({
                 "Version":    v.version,
                 "DVC Data":   _dvc_tag(year, cumul),
