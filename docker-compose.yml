@@ -160,8 +160,12 @@ services:
       POSTGRES_PASSWORD:      ${POSTGRES_PASSWORD:-mlops}
       POSTGRES_DB:            ${POSTGRES_DB:-mlops}
       POSTGRES_HOST:          postgresql
+      API_URL:                http://api:8000
+      API_USERNAME:           ${API_USERNAME:-admin}
+      API_PASSWORD:           ${API_PASSWORD:-changeme}
     volumes:
       - ./data:/app/data
+      - ./reports:/app/reports
     depends_on:
       prefect-server:
         condition: service_healthy
