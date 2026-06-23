@@ -10,49 +10,44 @@ Cycle sequence (3 DVC tags):
 """
 import logging
 import os
-import subprocess
+import time
 
+import requests as _req
 from prefect import flow, task
 
+from src.data.import_raw_data import TRAINING_YEARS
 from src.flows.drift_monitoring_flow import drift_monitoring_flow
 from src.flows.etl_flow import etl_flow
 from src.flows.train_flow import train_flow
 
 logger = logging.getLogger(__name__)
 
-BASE_YEAR = 2021
-
 
 @task(name="detect-dvc-cycles")
 def detect_cycles_task() -> list[tuple[int, bool]]:
-    """Return ordered list of (year, cumul) pairs from git DVC tags data-v1, data-v2, ..."""
-    result = subprocess.run(
-        ["git", "tag", "-l", "data-v*"],
-        capture_output=True, text=True, check=True,
-    )
-    tags = sorted(t for t in result.stdout.strip().split("\n") if t.startswith("data-v"))
-    if not tags:
-        raise RuntimeError("No DVC data tags found (expected data-v1, data-v2, ...)")
-
-    cycles = [(BASE_YEAR + i - 1, i > 1) for i, _ in enumerate(tags, start=1)]
+    """Return ordered (year, cumul) pairs from TRAINING_YEARS — single source of truth."""
+    years = sorted(TRAINING_YEARS)
+    cycles = [(y, i > 0) for i, y in enumerate(years)]
     logger.info("Detected %d cycles: %s", len(cycles), cycles)
     return cycles
 
 
 @task(name="restart-api")
 def restart_api_task() -> None:
-    """Restart the API container so it loads the newly promoted @Production model."""
-    result = subprocess.run(
-        ["docker", "compose", "restart", "api"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        logger.warning("docker compose restart api failed: %s", result.stderr)
+    """Restart the API container via Docker SDK so it loads the new @Production model."""
+    try:
+        import docker
+        client = docker.from_env()
+        containers = client.containers.list(filters={"name": "cac_mlops-api-1"})
+        if not containers:
+            logger.warning("API container not found — skipping restart")
+            return
+        containers[0].restart(timeout=30)
+        logger.info("API container restarted — waiting for healthcheck...")
+    except Exception as exc:
+        logger.warning("Docker restart failed (%s) — continuing anyway", exc)
         return
-    logger.info("API restarted — waiting for healthcheck...")
 
-    import time
-    import requests as _req
     api_url = os.getenv("API_URL", "http://api:8000")
     for _ in range(12):  # max 60s
         try:

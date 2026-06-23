@@ -166,7 +166,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports
-      - ./.git:/app/.git:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       prefect-server:
         condition: service_healthy
