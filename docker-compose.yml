@@ -166,6 +166,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports
+      - ./.git:/app/.git:ro
     depends_on:
       prefect-server:
         condition: service_healthy
