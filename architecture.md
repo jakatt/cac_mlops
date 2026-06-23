@@ -69,7 +69,9 @@ MÉTRIQUES API (production)
   Latence p95 /predict    < 300 ms        Prometheus
   Taux d'erreur HTTP 5xx  < 1%            Prometheus
   Disponibilité           > 99.5%         Grafana uptime
-  Volume prédictions/j    suivi hebdo     Grafana (drift détection)
+  Volume prédictions       suivi par      Grafana (drift détection)
+                           cycle de       simulate_production.py
+                           simulation     (~3 000 req/cycle)
 
 MÉTRIQUES PIPELINE
 ──────────────────
@@ -78,7 +80,21 @@ MÉTRIQUES PIPELINE
   Validation schéma (CRITICAL)    0 erreur autorisée — stop immédiat
   Taux NaN par colonne            < 30% — sinon WARNING loggé
   Volume annuel accidents         40 000 – 90 000 — sinon WARNING
-  Durée run entraînement          < 30 min — sinon alerte opérationnelle
+  Durée run entraînement          < 30 min (1 algo) — ~90 min en mode
+                                  benchmark 3 algos — sinon alerte
+  Dérive données (Evidently)      share > 10% → WARNING
+                                  share > 25% → CRITICAL
+                                  (drift_detection.py, rapport HTML)
+
+MÉTRIQUES K8s — KAPSULE (Phase 5)
+──────────────────────────────────
+  Métrique                        Seuil alerte    Outil de mesure
+  ─────────────────────────────   ─────────────   ───────────────
+  Disponibilité pods API          ≥ 1 pod Ready   kubectl / Kapsule UI
+  Redémarrages pods (CrashLoop)   0 — sinon alerte immédiate
+  HPA — nb réplicas API           1 – 3 (selon charge)
+  Latence LB Kapsule /predict     < 300 ms        Prometheus (K8s)
+  Nodes actifs (coût)             0 hors soutenance — kapsule-down
 ```
 
 ### Ce que le projet démontre
