@@ -59,7 +59,8 @@ MÉTRIQUES DE PERFORMANCE MODÈLE
 
   Seuil de régression : si le nouveau modèle est inférieur à
   ces seuils OU inférieur au modèle en production sur ≥ 2 métriques
-  → déploiement bloqué, alerte, modèle précédent reste actif.
+  → promotion @Production ignorée (tag kpi_gate=FAILED dans MLflow),
+    pipeline continue sans interruption, modèle précédent reste actif.
 
 MÉTRIQUES API (production)
 ──────────────────────────
@@ -368,7 +369,7 @@ FILENAMES = {
  ────────────────────────────────
  Métriques : accuracy, F1, AUC-ROC, precision, recall
  Comparaison avec version précédente dans MLflow
- Si dégradation > seuil : WARNING → déploiement bloqué
+ Si dégradation > seuil : tag kpi_gate=FAILED → promotion ignorée, pipeline continue
       │
       ▼
  [ÉTAPE 9] DÉPLOIEMENT (si validation OK)
