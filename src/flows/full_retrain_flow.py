@@ -1,12 +1,12 @@
 """
 Full retrain flow — chains all training cycles from scratch.
 Auto-detects available data versions from git DVC tags (data-v1, data-v2, ...).
-Uses the champion algorithm from @Production for every cycle.
+Benchmarks RF / XGBoost / LGBM each cycle, promotes the champion.
 
 Cycle sequence (3 DVC tags):
-  Cycle 1 : year=2021 cumul=false → train → (no drift, no prior reference)
-  Cycle 2 : year=2022 cumul=true  → train → simulate 2023 → drift 2023-06
-  Cycle 3 : year=2023 cumul=true  → train → simulate 2024 → drift 2024-06
+  Cycle 1 : year=2021 cumul=false → benchmark → promote champion
+  Cycle 2 : year=2022 cumul=true  → benchmark → promote champion → restart API → simulate 2023 → drift 2023-06
+  Cycle 3 : year=2023 cumul=true  → benchmark → promote champion → restart API → simulate 2024 → drift 2024-06
 """
 import logging
 import os
@@ -37,6 +37,32 @@ def detect_cycles_task() -> list[tuple[int, bool]]:
     cycles = [(BASE_YEAR + i - 1, i > 1) for i, _ in enumerate(tags, start=1)]
     logger.info("Detected %d cycles: %s", len(cycles), cycles)
     return cycles
+
+
+@task(name="restart-api")
+def restart_api_task() -> None:
+    """Restart the API container so it loads the newly promoted @Production model."""
+    result = subprocess.run(
+        ["docker", "compose", "restart", "api"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        logger.warning("docker compose restart api failed: %s", result.stderr)
+        return
+    logger.info("API restarted — waiting for healthcheck...")
+
+    import time
+    import requests as _req
+    api_url = os.getenv("API_URL", "http://api:8000")
+    for _ in range(12):  # max 60s
+        try:
+            if _req.get(f"{api_url}/health", timeout=3).status_code == 200:
+                logger.info("API ready")
+                return
+        except Exception:
+            pass
+        time.sleep(5)
+    logger.warning("API healthcheck timeout — continuing anyway")
 
 
 @task(name="simulate-predictions", retries=1, retry_delay_seconds=60)
@@ -90,6 +116,7 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
 
         if i > 0:
             sim_month = f"{sim_year}-06"
+            restart_api_task()
             simulate_task(sim_year=sim_year, sim_month=sim_month, max_rows=max_sim_rows)
             drift_monitoring_flow(year_month=sim_month)
 
