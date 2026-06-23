@@ -11,6 +11,7 @@ COPY services/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # project source (for src/ imports)
+COPY .dvc/config .dvc/config
 COPY src/ src/
 COPY services/api/app/ services/api/app/
 COPY services/monitoring/ services/monitoring/

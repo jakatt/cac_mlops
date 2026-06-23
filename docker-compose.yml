@@ -163,6 +163,8 @@ services:
       API_USERNAME:           ${API_USERNAME:-admin}
       API_PASSWORD:           ${API_PASSWORD:-changeme}
       MLFLOW_RUN_MODE:        official
+      SCW_ACCESS_KEY_ID:      ${SCW_ACCESS_KEY_ID}
+      SCW_SECRET_ACCESS_KEY:  ${SCW_SECRET_ACCESS_KEY}
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports

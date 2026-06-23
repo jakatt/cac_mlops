@@ -1,0 +1,22 @@
+# Credentials — ne jamais inclure dans les images Docker
+.dvc/config.local
+.env
+.env.*
+!.env.example
+
+# Données locales (montées en volume sur VPS)
+data/
+volumes/
+
+# Dev artifacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Git
+.git/

@@ -885,14 +885,42 @@ PRÉREQUIS
   Docker Desktop
   Git
   Python 3.11+ (pour DVC et outils hors Docker)
-  DVC : pip install dvc[s3]
+  DVC : pip install dvc[s3]     ← inclus dans requirements.txt
 
 DÉMARRAGE
 ──────────
   git clone <repo>
-  cp .env.example .env.local
-  dvc pull                      ← récupère les données depuis Scaleway S3
+  cp .env.example .env          ← renseigner SCW_ACCESS_KEY_ID + SCW_SECRET_ACCESS_KEY
+  dvc pull                      ← récupère les données depuis Scaleway S3 (même hash que VPS)
   docker-compose up -d          ← lance toute la stack locale
+```
+
+### Synchronisation des données DS ↔ VPS
+
+```text
+FLUX DE DONNÉES — SOURCE DE VÉRITÉ UNIQUE
+──────────────────────────────────────────
+  data.gouv.fr (ONISR)
+        │  téléchargement par ETL Prefect (VPS uniquement)
+        ▼
+  VPS  data/raw/{year}/
+        │  dvc add --no-commit + dvc push (tâche dvc-push dans etl_flow)
+        ▼
+  Scaleway Object Storage  s3://cac-mlops-data/dvc   ← remote DVC partagé
+        │  dvc pull
+        ▼
+  DS local  data/raw/{year}/    ← fichiers identiques bit-à-bit au VPS
+
+PRINCIPE
+  • Seul le VPS télécharge depuis ONISR (via Prefect etl_flow)
+  • Après chaque ETL, les données sont poussées sur Scaleway S3
+  • Le DS fait dvc pull pour avoir exactement les mêmes données
+  • Les hyperparamètres optimisés localement sont garantis pertinents pour le VPS
+
+CREDENTIALS DVC (ne jamais commiter)
+  .dvc/config         → remote URL + ${SCW_ACCESS_KEY_ID} (committable)
+  .dvc/config.local   → credentials réels du DS (gitignore)
+  .env sur VPS        → SCW_ACCESS_KEY_ID + SCW_SECRET_ACCESS_KEY (injecté dans prefect-worker)
 ```
 
 ### Services Docker Compose locaux et leurs rôles
