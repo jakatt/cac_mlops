@@ -1,9 +1,13 @@
 """
 Training flow — benchmark RF / XGBoost / LGBM, promote the champion.
 
-Each cycle trains all 3 algorithms on the same data. The algorithm with the
-best f1 among those passing all KPI thresholds is promoted to @Production.
-Non-winners lose their @Production alias to ensure exactly one family is active.
+Each cycle trains all 3 algorithms on the same data. Promotion requires:
+  1. Passer tous les seuils KPI minimaux (quality gate)
+  2. Être le meilleur sur f1 parmi les qualifiés
+  3. Dépasser @Production d'au moins MIN_IMPROVEMENT sur f1 (évite les swaps sur bruit)
+
+Si aucun algo ne progresse suffisamment vs @Production → @Production inchangé.
+Si aucun @Production n'existe encore → le meilleur qualifié est promu directement.
 """
 import logging
 import os
@@ -19,8 +23,27 @@ logger = logging.getLogger(__name__)
 
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
-ALGORITHMS    = list(MODEL_NAMES.keys())   # ["rf", "xgboost", "lgbm"]
+ALGORITHMS     = list(MODEL_NAMES.keys())   # ["rf", "xgboost", "lgbm"]
 PRIMARY_METRIC = "f1"
+MIN_IMPROVEMENT = 0.01  # +1 point absolu minimum sur f1 pour remplacer @Production
+
+
+def _get_production_score(client: mlflow.MlflowClient) -> float | None:
+    """Return the PRIMARY_METRIC of the current @Production model (any family), or None."""
+    for model_name in MODEL_NAMES.values():
+        try:
+            mv = client.get_model_version_by_alias(model_name, "Production")
+            run = client.get_run(mv.run_id)
+            val = run.data.metrics.get(PRIMARY_METRIC)
+            if val is not None:
+                logger.info(
+                    "@Production actuel : %s v%s  %s=%.4f",
+                    model_name, mv.version, PRIMARY_METRIC, val,
+                )
+                return float(val)
+        except Exception:
+            continue
+    return None
 
 
 @task(name="train-model")
@@ -41,11 +64,14 @@ def get_metrics_task(run_id: str) -> dict[str, float]:
 @task(name="select-champion")
 def select_champion_task(all_metrics: dict[str, dict[str, float]]) -> str | None:
     """
-    Return algorithm with best PRIMARY_METRIC among those passing all KPI thresholds.
-    Returns None if no algorithm meets the minimum quality gate.
+    Sélectionne le champion en 3 étapes :
+      1. Filtre les algos passant tous les seuils KPI
+      2. Retient le meilleur sur PRIMARY_METRIC
+      3. Vérifie qu'il dépasse @Production d'au moins MIN_IMPROVEMENT
+    Retourne None si aucun algo ne justifie un changement de @Production.
     """
+    # ── Étape 1 : quality gate ────────────────────────────────────────────────
     passing: dict[str, float] = {}
-
     for algo, metrics in all_metrics.items():
         fails = [k for k, thr in KPI_THRESHOLDS.items() if metrics.get(k, 0.0) < thr]
         if fails:
@@ -66,11 +92,36 @@ def select_champion_task(all_metrics: dict[str, dict[str, float]]) -> str | None
         logger.warning("Aucun algorithme n'a passé les seuils KPI — @Production inchangé")
         return None
 
+    # ── Étape 2 : meilleur qualifié ───────────────────────────────────────────
     champion = max(passing, key=lambda a: passing[a])
+    champion_score = passing[champion]
     others = {a: f"{v:.4f}" for a, v in passing.items() if a != champion}
     logger.info(
-        "Champion : %s  %s=%.4f  (autres qualifiés : %s)",
-        champion, PRIMARY_METRIC, passing[champion], others or "aucun",
+        "Meilleur qualifié : %s  %s=%.4f  (autres : %s)",
+        champion, PRIMARY_METRIC, champion_score, others or "aucun",
+    )
+
+    # ── Étape 3 : seuil delta vs @Production ──────────────────────────────────
+    client = mlflow.tracking.MlflowClient()
+    prod_score = _get_production_score(client)
+
+    if prod_score is None:
+        logger.info("Pas de @Production existant — %s promu directement", champion)
+        return champion
+
+    improvement = champion_score - prod_score
+    if improvement < MIN_IMPROVEMENT:
+        logger.info(
+            "Champion %s (%s=%.4f) insuffisant vs @Production (%.4f) "
+            "— delta=+%.4f < seuil=+%.2f — @Production inchangé",
+            champion, PRIMARY_METRIC, champion_score, prod_score,
+            improvement, MIN_IMPROVEMENT,
+        )
+        return None
+
+    logger.info(
+        "Champion %s dépasse @Production de +%.4f (seuil +%.2f) — promotion validée",
+        champion, improvement, MIN_IMPROVEMENT,
     )
     return champion
 
@@ -94,14 +145,13 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     client.set_registered_model_alias(model_name, "Production", version)
     logger.info("@Production → %s v%s", model_name, version)
 
-    # Clear @Production from losing families
     for algo, other_model in MODEL_NAMES.items():
         if algo != champion:
             try:
                 client.delete_registered_model_alias(other_model, "Production")
                 logger.info("Cleared @Production from %s", other_model)
             except Exception:
-                pass  # no Production alias on this family — normal
+                pass
 
     return True
 
@@ -109,20 +159,17 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
 @flow(name="train-flow", log_prints=True)
 def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> bool:
     """
-    Benchmark RF / XGBoost / LGBM on the same data.
-    Promote the algorithm with the best f1 among those passing all KPI thresholds.
-    Exactly one model family holds @Production at any time.
-    Returns True if a model was promoted.
+    Benchmark RF / XGBoost / LGBM sur les mêmes données.
+    Promotion en 3 conditions : seuils KPI + meilleur f1 + delta > MIN_IMPROVEMENT vs @Production.
+    Retourne True si un modèle a été promu @Production.
     """
     years = [y for y in TRAINING_YEARS if y <= year] if cumul else [year]
     logger.info("Benchmark : years=%s  algorithms=%s", years, ALGORITHMS)
 
-    # Train all 3 sequentially (fair comparison — same resources)
     run_ids: dict[str, str] = {}
     for algo in ALGORITHMS:
         run_ids[algo] = train_task(years, algorithm=algo)
 
-    # Retrieve metrics from MLflow
     all_metrics: dict[str, dict[str, float]] = {
         algo: get_metrics_task(run_id) for algo, run_id in run_ids.items()
     }
