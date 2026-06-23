@@ -70,7 +70,7 @@ deployments:
     work_pool:
       name: default-process-pool
     parameters:
-      max_sim_rows: 100
+      max_sim_rows: 2000
 
   # ── Reset (RAZ) — vide la table predictions + rapports drift ─────────────────
   # À lancer avant full-retrain pour repartir d'un état propre.

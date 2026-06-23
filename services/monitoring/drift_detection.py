@@ -19,14 +19,28 @@ import psycopg2
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-REFERENCE_PATH = Path("data/preprocessed/cumul_2021_2022_2023/X_train.csv")
+REFERENCE_DIR  = Path("data/preprocessed/cumul_2021_2022_2023")
 REPORTS_DIR    = Path("reports/drift")
 
+# lat/long exclus : géographie déjà couverte par dep (Wasserstein 1D sur
+# coordonnées brutes n'est pas géographiquement interprétable)
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
     "lum", "dep", "com", "agg_", "intersection_type", "atm", "col",
-    "lat", "long", "hour", "nb_victim", "nb_vehicules",
+    "hour", "nb_victim", "nb_vehicules",
+]
+
+# Features catégorielles — Evidently utilise Chi² au lieu de Wasserstein
+# → barplots par catégorie, test statistiquement adapté aux codes discrets
+CATEGORICAL_COLS = [
+    "place", "catu", "sexe", "secu1", "catv", "obsm", "motor",
+    "catr", "circ", "surf", "situ", "lum", "dep", "com", "agg_",
+    "intersection_type", "atm", "col",
+]
+NUMERICAL_COLS = [
+    "year_acc", "victim_age", "vma", "jour", "mois",
+    "hour", "nb_victim", "nb_vehicules",
 ]
 
 
@@ -60,7 +74,7 @@ def fetch_production_data(year_month: str) -> pd.DataFrame:
         conn.close()
 
 
-def run_drift_report(year_month: str, reference_path: Path | None = None) -> dict:
+def run_drift_report(year_month: str, reference_path: Path | str | None = None) -> dict:
     """Run Evidently drift report for a given month. Returns summary dict."""
     try:
         from evidently.report import Report
@@ -70,25 +84,49 @@ def run_drift_report(year_month: str, reference_path: Path | None = None) -> dic
         logger.error("evidently not installed — pip install evidently")
         sys.exit(1)
 
-    ref = reference_path or REFERENCE_PATH
-    if not ref.exists():
-        logger.error("Reference dataset not found: %s", ref)
+    from evidently import ColumnMapping
+
+    ref_dir = reference_path or REFERENCE_DIR
+    x_path  = Path(ref_dir) / "X_train.csv"
+    y_path  = Path(ref_dir) / "y_train.csv"
+    if not x_path.exists():
+        logger.error("Reference dataset not found: %s", x_path)
         sys.exit(1)
 
-    reference = pd.read_csv(ref).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
+    reference = pd.read_csv(x_path).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
+    if y_path.exists():
+        y_train = pd.read_csv(y_path)
+        # Colonne cible : "grav" ou première colonne de y_train
+        target_col = "grav" if "grav" in y_train.columns else y_train.columns[0]
+        reference["prediction"] = y_train[target_col].values
+
     production = fetch_production_data(year_month)
 
     if production.empty:
         logger.warning("No production data for %s — skipping drift check", year_month)
         return {"month": year_month, "rows": 0, "drift_detected": False, "drifted_features": []}
 
-    production = production[FEATURE_COLS]
+    production = production[FEATURE_COLS + (["prediction"] if "prediction" in production.columns else [])]
+
+    column_mapping = ColumnMapping(
+        categorical_features=CATEGORICAL_COLS,
+        numerical_features=NUMERICAL_COLS,
+        prediction="prediction" if "prediction" in reference.columns else None,
+    )
+
+    from evidently.metrics import ColumnDriftMetric
+    extra_metrics = (
+        [ColumnDriftMetric("prediction")]
+        if "prediction" in reference.columns
+        else []
+    )
 
     report = Report(metrics=[
         DataDriftPreset(),
         DatasetDriftMetric(),
+        *extra_metrics,
     ])
-    report.run(reference_data=reference, current_data=production)
+    report.run(reference_data=reference, current_data=production, column_mapping=column_mapping)
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     html_path = REPORTS_DIR / f"drift_{year_month}.html"
@@ -160,8 +198,8 @@ if __name__ == "__main__":
     parser.add_argument("--month", default=_default_month(),
                         help="Month to analyze (YYYY-MM). Defaults to last full month.")
     parser.add_argument("--reference-path", default=None,
-                        help="Chemin vers X_train.csv de référence. "
-                             "Par défaut: data/preprocessed/cumul_2021_2022_2023/X_train.csv")
+                        help="Répertoire contenant X_train.csv + y_train.csv. "
+                             "Par défaut: data/preprocessed/cumul_2021_2022_2023/")
     args = parser.parse_args()
 
     ref = Path(args.reference_path) if args.reference_path else None
