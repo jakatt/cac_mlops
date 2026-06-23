@@ -9,6 +9,7 @@ Each cycle trains all 3 algorithms on the same data. Promotion requires:
 Si aucun algo ne progresse suffisamment vs @Production → @Production inchangé.
 Si aucun @Production n'existe encore → le meilleur qualifié est promu directement.
 """
+import gc
 import logging
 import os
 
@@ -169,6 +170,7 @@ def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> bo
     run_ids: dict[str, str] = {}
     for algo in ALGORITHMS:
         run_ids[algo] = train_task(years, algorithm=algo)
+        gc.collect()
 
     all_metrics: dict[str, dict[str, float]] = {
         algo: get_metrics_task(run_id, algorithm=algo) for algo, run_id in run_ids.items()

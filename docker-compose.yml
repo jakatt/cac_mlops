@@ -192,6 +192,7 @@ services:
       GRADIO_PORT:            "7860"
       # Cockpit onglets 3-6
       VPS_IP:                 ${VPS_IP:-51.159.187.132}
+      VPS_TAILSCALE_IP:       ${VPS_TAILSCALE_IP:-}
       GITHUB_REPO:            ${GITHUB_REPO:-jakatt/cac_mlops}
       REPORTS_PATH:           /app/reports/drift
       KAPSULE_STATE:          /app/state/kapsule_ips

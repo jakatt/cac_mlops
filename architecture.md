@@ -1031,22 +1031,23 @@ SCALEWAY VPS — ÉTAT ACTUEL (Phase 5 ✅)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
 │   Serveur dédié : DEV1-L (Scaleway)                                       │
-│   IP publique   : 51.159.187.132                                           │
+│   IP publique   : 51.159.187.132   (exposée uniquement sur port 8090)     │
+│   IP Tailscale  : 100.117.99.62    (ports admin, tailnet uniquement)      │
 │   Répertoire    : /data/cac_mlops  (migré depuis /home/deploy)            │
 │                                                                            │
 │   docker-compose.yml (11 services, restart: unless-stopped)               │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  postgresql    :5432    backend MLflow + logs prédictions        │   │
-│   │  minio         :9000/:9001  artefacts MLflow                     │   │
+│   │  postgresql    :5432    interne Docker uniquement                │   │
+│   │  minio         :9000/:9001  http://100.117.99.62:9001 (Tailscale)│   │
 │   │  minio-init    (one-shot)  crée bucket mlflow au démarrage       │   │
-│   │  mlflow        :5001    http://51.159.187.132:5001  (v3.1.0)    │   │
-│   │  api           :8080    http://51.159.187.132:8080  (admin)      │   │
-│   │  nginx         :8090    http://51.159.187.132:8090  (prod)       │   │
-│   │  prefect-server:4200    http://51.159.187.132:4200               │   │
+│   │  mlflow        :5001    http://100.117.99.62:5001   (Tailscale) │   │
+│   │  api           :8080    http://100.117.99.62:8080   (Tailscale) │   │
+│   │  nginx         :8090    http://51.159.187.132:8090  (PUBLIC)     │   │
+│   │  prefect-server:4200    http://100.117.99.62:4200   (Tailscale) │   │
 │   │  prefect-worker(no port) traite les flows Prefect                │   │
-│   │  prometheus    :9090    scrape /metrics API                      │   │
-│   │  grafana       :3000    http://51.159.187.132:3000               │   │
-│   │  gradio        :7860    http://51.159.187.132:7860 (cockpit)     │   │
+│   │  prometheus    :9090    http://100.117.99.62:9090   (Tailscale) │   │
+│   │  grafana       :3000    http://100.117.99.62:3000   (Tailscale) │   │
+│   │  gradio        :7860    http://100.117.99.62:7860   (Tailscale) │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Modèle en production : lgbm_accidents@Production                        │
@@ -1077,9 +1078,55 @@ SCALEWAY VPS — ÉTAT ACTUEL (Phase 5 ✅)
 │   Deploy : GitHub Actions deploy.yml → SSH → docker compose               │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Sécurité réseau — Tailscale VPN
+
+```text
+MODÈLE D'ACCÈS — DEUX NIVEAUX
+┌────────────────────────────────────────────────────────────────────────────┐
+│                                                                            │
+│  ACCÈS PUBLIC (internet)                                                   │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │  http://51.159.187.132:8090/predict   → NGINX (rate-limited)    │    │
+│  │  http://51.159.187.132:8090/health                               │    │
+│  │  http://51.159.187.132:8090/reports/drift/*  (drift HTML)        │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                            │
+│  ACCÈS ÉQUIPE — Tailscale VPN uniquement (100.117.99.62)                 │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │  MLflow     http://100.117.99.62:5001                            │    │
+│  │  Grafana    http://100.117.99.62:3000                            │    │
+│  │  Prefect    http://100.117.99.62:4200                            │    │
+│  │  API admin  http://100.117.99.62:8080/docs                       │    │
+│  │  MinIO      http://100.117.99.62:9001                            │    │
+│  │  Prometheus http://100.117.99.62:9090                            │    │
+│  │  Gradio     http://100.117.99.62:7860                            │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                            │
+│  MÉCANISME                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │  1. Tailscale mesh VPN → IP privée 100.x.x.x sur chaque machine  │    │
+│  │  2. Docker bind : ${VPS_TAILSCALE_IP:-127.0.0.1}:PORT:PORT      │    │
+│  │     → ports admin invisibles depuis internet                      │    │
+│  │  3. UFW : allow in on tailscale0 (toute l'équipe tailnet)        │    │
+│  │     + allow 22/80/443/8090 depuis internet                        │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                            │
+│  ONBOARDING COLLÈGUE                                                       │
+│  ┌──────────────────────────────────────────────────────────────────┐    │
+│  │  1. Installer Tailscale (tailscale.com/download) — compte GitHub  │    │
+│  │  2. Admin approuve son appareil → console.tailscale.com           │    │
+│  │  3. Accès immédiat aux URLs Tailscale ci-dessus                   │    │
+│  │  4. .env local : MLFLOW_TRACKING_URI=http://100.117.99.62:5001   │    │
+│  └──────────────────────────────────────────────────────────────────┘    │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+```
 
 ### Infrastructure Kubernetes — Phase 5 ✅ TERMINÉE
 
+```text
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
 │   Scaleway Kapsule — cluster: cac-mlops (Kubernetes 1.35.3)               │

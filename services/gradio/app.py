@@ -45,6 +45,7 @@ LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH",     "")
 DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
 REPORTS_PATH     = Path(os.getenv("REPORTS_PATH",    "/app/reports/drift"))
 VPS_IP           = os.getenv("VPS_IP",               "51.159.187.132")
+VPS_TAILSCALE_IP = os.getenv("VPS_TAILSCALE_IP",     "") or VPS_IP
 GITHUB_REPO      = os.getenv("GITHUB_REPO",          "jakatt/cac_mlops")
 KAPSULE_STATE    = Path(os.getenv("KAPSULE_STATE",   "/app/state/kapsule_ips"))
 
@@ -508,14 +509,16 @@ def build_links_html() -> str:
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:680px;color:{SLATE};">
 
   <p style="{hs}">Stack VPS — Phases 1-4</p>
+  <p style="margin:-6px 0 10px;font-size:0.78em;color:{MUTED};">Ports admin accessibles via Tailscale VPN uniquement &mdash; API publique sur 8090.</p>
   <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;border-radius:4px;">
-    <tr><th style="{th}">Service</th><th style="{th}">URL</th></tr>
-    <tr><td style="{td}">MLflow</td>        <td style="{tda}"><a href="http://{VPS_IP}:5001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:5001</a></td></tr>
-    <tr><td style="{td}">Grafana</td>       <td style="{tda}"><a href="http://{VPS_IP}:3000" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:3000</a></td></tr>
-    <tr><td style="{td}">Prefect</td>       <td style="{tda}"><a href="http://{VPS_IP}:4200" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:4200</a></td></tr>
-    <tr><td style="{td}">API Swagger</td>   <td style="{tda}"><a href="http://{VPS_IP}:8080/docs" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:8080/docs</a></td></tr>
-    <tr><td style="{td}">MinIO Console</td> <td style="{tda}"><a href="http://{VPS_IP}:9001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:9001</a></td></tr>
-    <tr><td style="{td}">Prometheus</td>    <td style="{tda}"><a href="http://{VPS_IP}:9090" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:9090</a></td></tr>
+    <tr><th style="{th}">Service</th><th style="{th}">URL (Tailscale)</th></tr>
+    <tr><td style="{td}">MLflow</td>        <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:5001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:5001</a></td></tr>
+    <tr><td style="{td}">Grafana</td>       <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:3000" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:3000</a></td></tr>
+    <tr><td style="{td}">Prefect</td>       <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:4200" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:4200</a></td></tr>
+    <tr><td style="{td}">API Swagger</td>   <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:8080/docs" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:8080/docs</a></td></tr>
+    <tr><td style="{td}">MinIO Console</td> <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9001</a></td></tr>
+    <tr><td style="{td}">Prometheus</td>    <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9090" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9090</a></td></tr>
+    <tr><td style="{td}">API publique (NGINX)</td> <td style="{tda}"><a href="http://{VPS_IP}:8090/predict" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:8090/predict</a></td></tr>
   </table>
 
   <p style="{hs}">Kapsule K8s — Phase 5</p>
