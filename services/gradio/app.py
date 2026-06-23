@@ -2,14 +2,14 @@
 Cockpit MLOps — Interface Gradio (6 onglets)
 
 Onglets métier (data users) :
-  1. Scénarios What-If    (Sylvie Ferrand / Bison Futé)
-  2. Carte Points Noirs   (Marc Durand / Géo Trouvetou)
+  1. What-if        (Sylvie Ferrand / Bison Futé)
+  2. Points Noirs   (Marc Durand / Geo Trouvetou)
 
 Onglets MLOps (Léon — MLOps lead) :
-  3. Drift — Evidently    rapports HTML par mois
-  4. Modèles — MLflow     tableau runs + DVC lineage + promote @Production
-  5. Santé Stack          health checks VPS + Kapsule K8s
-  6. Liens                navigation vers tous les outils
+  3. Drift          rapports Evidently par mois
+  4. Modèles        tableau runs + DVC lineage + promote @Production
+  5. Healthcheck    état services VPS + Kapsule K8s
+  6. Liens          navigation vers tous les outils
 """
 from __future__ import annotations
 
@@ -46,8 +46,10 @@ VPS_IP           = os.getenv("VPS_IP",               "51.159.187.132")
 GITHUB_REPO      = os.getenv("GITHUB_REPO",          "jakatt/cac_mlops")
 KAPSULE_STATE    = Path(os.getenv("KAPSULE_STATE",   "/app/state/kapsule_ips"))
 
-NAVY        = "#143B5E"
-GREEN_CEREMA = "#1B5E3B"
+NAVY  = "#143B5E"
+SLATE = "#374151"
+MUTED = "#6B7280"
+BLUE2 = "#2E86AB"
 
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
@@ -143,13 +145,13 @@ def _predict(df: pd.DataFrame) -> np.ndarray:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Scénarios What-If
+# TAB 1 — What-If
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_whatif(scenario_key: str, sample_size: int) -> tuple:
     df = _get_data()
     if df is None:
-        return None, "❌ Données non disponibles. Vérifiez que le volume `data/` est monté."
+        return None, "Donnees non disponibles. Verifiez que le volume data/ est monte."
 
     if len(df) > sample_size:
         df = df.sample(sample_size, random_state=42).reset_index(drop=True)
@@ -157,25 +159,25 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
     try:
         df_orig, df_mod, n_rows = apply_scenario(df, scenario_key)
     except Exception as exc:
-        return None, f"❌ Erreur scénario : {exc}"
+        return None, f"Erreur scenario : {exc}"
 
     if n_rows == 0:
-        return None, "⚠️ Aucun accident ne correspond au filtre du scénario sur cet échantillon."
+        return None, "Aucun accident ne correspond au filtre du scenario sur cet echantillon."
 
     try:
         pred_avant = _predict(df_orig)
         pred_apres = _predict(df_mod)
     except Exception as exc:
-        return None, f"❌ Erreur de prédiction (modèle chargé ?)\n{exc}"
+        return None, f"Erreur de prediction (modele charge ?)\n{exc}"
 
     pct_avant = float(pred_avant.mean() * 100)
     pct_apres = float(pred_apres.mean() * 100)
     delta     = pct_apres - pct_avant
     scenario  = SCENARIOS[scenario_key]
 
-    categories  = ["Situation réelle", "Scénario simulé"]
+    categories  = ["Situation reelle", "Scenario simule"]
     values      = [pct_avant, pct_apres]
-    bar_colors  = [NAVY, "#2E86AB"]
+    bar_colors  = [NAVY, BLUE2]
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=categories, y=values,
@@ -188,45 +190,47 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
     fig.add_annotation(
         x=0.5, y=max(values) * 1.15,
         xref="paper", yref="y",
-        text=f"Δ = {delta:+.1f} pts  {'▼' if delta < 0 else '▲'}",
+        text=f"delta = {delta:+.1f} pts  {'v' if delta < 0 else '^'}",
         showarrow=False,
-        font=dict(size=16, color=arrow_color, family="Arial Black"),
+        font=dict(size=15, color=arrow_color, family="Inter, Segoe UI, sans-serif"),
     )
     fig.update_layout(
-        title=dict(text=scenario["label"], font=dict(size=14, color=NAVY)),
-        yaxis=dict(title="% d'accidents graves prédit", range=[0, max(values) * 1.35]),
+        title=dict(text=scenario["label"], font=dict(size=13, color=NAVY, family="Inter, Segoe UI, sans-serif")),
+        yaxis=dict(title="% d'accidents graves predit", range=[0, max(values) * 1.35],
+                   gridcolor="#F0F2F5", tickfont=dict(color=SLATE)),
+        xaxis=dict(tickfont=dict(color=SLATE)),
         plot_bgcolor="white", paper_bgcolor="white",
-        showlegend=False, height=420,
+        showlegend=False, height=400,
         margin=dict(t=60, b=40, l=60, r=40),
+        font=dict(family="Inter, Segoe UI, sans-serif"),
     )
 
-    sens = "amélioration" if delta < 0 else "détérioration"
-    icon = "✅" if delta < 0 else "⚠️"
+    sens = "amelioration" if delta < 0 else "deterioration"
     stats = f"""
-### {icon} Résultats — {scenario['label']}
+### Resultats — {scenario['label']}
 
 | Indicateur | Valeur |
 |---|---|
-| Accidents analysés | **{n_rows:,}** |
+| Accidents analyses | **{n_rows:,}** |
 | Contexte | *{scenario['context_label']}* |
-| Gravité réelle | **{pct_avant:.1f}%** |
-| Gravité scénario | **{pct_apres:.1f}%** |
+| Gravite reelle | **{pct_avant:.1f}%** |
+| Gravite scenario | **{pct_apres:.1f}%** |
 | Delta | **{delta:+.1f} points** |
-| Interprétation | **{sens.upper()} de {abs(delta):.1f} pts** |
+| Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
 
-> ⚠️ *Projection prédictive, non causale.*
+*Projection predictive, non causale.*
 """
     return fig, stats
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Carte des Points Noirs
+# TAB 2 — Points Noirs
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_heatmap(min_grav_pct: float, min_accidents: int, filter_catr: list[int], sample_size: int) -> tuple:
     df = _get_data_with_labels()
     if df is None:
-        return None, pd.DataFrame({"Erreur": ["Données non disponibles"]}), ""
+        return None, pd.DataFrame({"Erreur": ["Donnees non disponibles"]}), ""
 
     if len(df) > sample_size:
         df = df.sample(sample_size, random_state=42).reset_index(drop=True)
@@ -235,7 +239,7 @@ def run_heatmap(min_grav_pct: float, min_accidents: int, filter_catr: list[int],
         df = df[df["catr"].isin(filter_catr)].copy()
 
     if df.empty:
-        return None, pd.DataFrame(), "⚠️ Aucun accident après filtrage."
+        return None, pd.DataFrame(), "Aucun accident apres filtrage."
 
     df = df[df["lat"].between(41.0, 51.5) & df["long"].between(-5.5, 9.5)].copy()
     df["lat_r"] = (df["lat"] * 200).round() / 200
@@ -252,31 +256,36 @@ def run_heatmap(min_grav_pct: float, min_accidents: int, filter_catr: list[int],
     ].copy()
 
     if agg_filtered.empty:
-        return None, pd.DataFrame(), "⚠️ Aucune zone ne correspond aux critères. Réduisez les seuils."
+        return None, pd.DataFrame(), "Aucune zone ne correspond aux criteres. Reduisez les seuils."
 
     fig = px.density_mapbox(
         agg_filtered, lat="lat_r", lon="lon_r", z="pct_graves",
         radius=18, center={"lat": 46.5, "lon": 2.5}, zoom=5,
         mapbox_style="carto-positron", color_continuous_scale="YlOrRd",
         range_color=[min_grav_pct / 100, 1.0],
-        title="Carte de chaleur — Zones à risque élevé (gravité réelle ONISR)",
+        title="Zones a risque eleve — gravite reelle ONISR",
         labels={"pct_graves": "% graves"},
         hover_data={"nb_accidents": True, "lat_r": ":.4f", "lon_r": ":.4f"},
     )
-    fig.update_layout(height=550, margin={"r": 0, "t": 45, "l": 0, "b": 0},
-                      coloraxis_colorbar=dict(title="% graves", tickformat=".0%"))
+    fig.update_layout(
+        height=550,
+        margin={"r": 0, "t": 45, "l": 0, "b": 0},
+        coloraxis_colorbar=dict(title="% graves", tickformat=".0%"),
+        font=dict(family="Inter, Segoe UI, sans-serif"),
+        title_font=dict(color=NAVY, size=13),
+    )
 
     top10 = agg_filtered.nlargest(10, "pct_graves").copy().reset_index(drop=True)
     top10["pct_graves"] = (top10["pct_graves"] * 100).round(1)
-    top10.columns = ["Latitude", "Longitude", "Nb accidents", "% graves réel"]
+    top10.columns = ["Latitude", "Longitude", "Nb accidents", "% graves reel"]
     top10.index += 1
 
-    stats = f"**{len(agg_filtered):,} zones** répondent aux critères sur {len(df):,} accidents réels analysés."
+    stats = f"**{len(agg_filtered):,} zones** repondent aux criteres sur {len(df):,} accidents reels analyses."
     return fig, top10, stats
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Drift Reports (Evidently)
+# TAB 3 — Drift
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _list_drift_reports() -> list[str]:
@@ -287,11 +296,11 @@ def _list_drift_reports() -> list[str]:
 
 def load_drift_report(report_name: str) -> str:
     if not report_name:
-        return "<p style='color:gray;padding:30px;font-size:1.1em;'>Aucun rapport disponible — lancez au moins 2 cycles de training (cycle 2 génère le premier rapport).</p>"
+        return "<p style='color:#6B7280;padding:30px;font-size:0.95em;font-family:Inter,Segoe UI,sans-serif;'>Aucun rapport disponible — lancez au moins 2 cycles de training.</p>"
     report_url = f"http://{VPS_IP}:8090/reports/drift/{report_name}"
     return (
         f'<iframe src="{report_url}" width="100%" height="820px" '
-        f'frameborder="0" style="border:none;border-radius:8px;"></iframe>'
+        f'frameborder="0" style="border:none;border-radius:4px;"></iframe>'
     )
 
 
@@ -314,9 +323,8 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
         client = mlflow.tracking.MlflowClient()
         versions = client.search_model_versions(f"name='{MODEL_NAME}'")
         if not versions:
-            return pd.DataFrame({"Info": ["Aucun modèle enregistré — lancez le premier cycle Train."]}), []
+            return pd.DataFrame({"Info": ["Aucun modele enregistre — lancez le premier cycle Train."]}), []
 
-        # Resolve @Production alias once via dedicated API (plus fiable que v.aliases)
         try:
             prod_v = client.get_model_version_by_alias(MODEL_NAME, "Production")
             prod_version = prod_v.version
@@ -328,7 +336,6 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
             try:
                 run  = client.get_run(v.run_id)
                 p, m = run.data.params, run.data.metrics
-                # train_model.py log "years" (liste) pas "year" (singulier)
                 years_raw = p.get("years", None)
                 if years_raw:
                     year_nums = re.findall(r'\d{4}', str(years_raw))
@@ -346,11 +353,11 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
             rows.append({
                 "Version":    v.version,
                 "DVC Data":   _dvc_tag(year, cumul),
-                "Année":      year,
+                "Annee":      year,
                 "Algo":       algo,
                 "F1":         f1,
                 "AUC":        auc,
-                "Production": "✅" if is_prod else "",
+                "Production": "oui" if is_prod else "",
             })
             choices.append(v.version)
 
@@ -366,18 +373,18 @@ def refresh_models():
 
 def promote_version(version: str) -> str:
     if not version:
-        return "⚠️ Sélectionnez une version à promouvoir."
+        return "Selectionnez une version a promouvoir."
     try:
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
         client.set_registered_model_alias(MODEL_NAME, "Production", int(version))
-        return f"✅ Modèle **v{version}** promu **@Production** — redémarrez l'API pour charger le nouveau modèle."
+        return f"Version v{version} promue @Production. Redemarrez l'API pour charger le nouveau modele."
     except Exception as e:
-        return f"❌ Erreur : {e}"
+        return f"Erreur : {e}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — Santé Stack
+# TAB 5 — Healthcheck
 # ══════════════════════════════════════════════════════════════════════════════
 
 _VPS_SERVICES = {
@@ -393,14 +400,14 @@ _VPS_SERVICES = {
 def _check_url(url: str, timeout: int = 3) -> str:
     try:
         r = requests.get(url, timeout=timeout)
-        return "🟢 UP" if r.status_code < 400 else f"🔴 HTTP {r.status_code}"
+        return "OK" if r.status_code < 400 else f"HTTP {r.status_code}"
     except Exception:
-        return "🔴 DOWN"
+        return "Inactif"
 
 
 def _kapsule_status() -> dict:
     if not KAPSULE_STATE.exists():
-        return {"Service": "Kapsule K8s", "Status": "⚫ DOWN — pas de facturation nodes"}
+        return {"Service": "Kapsule K8s", "Status": "Inactif"}
 
     ips = {}
     for line in KAPSULE_STATE.read_text().splitlines():
@@ -410,10 +417,10 @@ def _kapsule_status() -> dict:
 
     nginx_ip = ips.get("NGINX_LB", "")
     if not nginx_ip or nginx_ip == "pending":
-        return {"Service": "Kapsule K8s", "Status": "🟡 IP en attente (kapsule-up en cours ?)"}
+        return {"Service": "Kapsule K8s", "Status": "En attente"}
 
     status = _check_url(f"http://{nginx_ip}/health", timeout=5)
-    label = status.replace("UP", f"UP — nginx: {nginx_ip}")
+    label = f"OK — nginx: {nginx_ip}" if status == "OK" else status
     return {"Service": "Kapsule K8s", "Status": label}
 
 
@@ -429,7 +436,7 @@ def check_health() -> pd.DataFrame:
 
 def _kapsule_links_html() -> str:
     if not KAPSULE_STATE.exists():
-        return "<p style='color:#888;margin:0;'>Kapsule DOWN — aucune IP disponible</p>"
+        return f"<p style='color:{MUTED};margin:0;font-family:Inter,Segoe UI,sans-serif;'>Kapsule inactif — aucune IP disponible</p>"
 
     ips = {}
     for line in KAPSULE_STATE.read_text().splitlines():
@@ -447,44 +454,51 @@ def _kapsule_links_html() -> str:
     for key, label, port in defs:
         ip = ips.get(key, "")
         if ip and ip != "pending":
-            rows += f'<tr><td style="padding:5px 14px;">{label}</td><td style="padding:5px 14px;"><a href="http://{ip}{port}" target="_blank">http://{ip}{port}</a></td></tr>'
+            rows += (
+                f'<tr>'
+                f'<td style="padding:5px 16px;color:{SLATE};">{label}</td>'
+                f'<td style="padding:5px 16px;"><a href="http://{ip}{port}" target="_blank" '
+                f'style="color:{NAVY};text-decoration:none;">http://{ip}{port}</a></td>'
+                f'</tr>'
+            )
 
-    return f'<table style="border-collapse:collapse;">{rows}</table>' if rows else "<p style='color:#888;'>IPs non disponibles</p>"
+    return f'<table style="border-collapse:collapse;font-family:Inter,Segoe UI,sans-serif;">{rows}</table>' if rows else f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
 
 def build_links_html() -> str:
     kapsule_html = _kapsule_links_html()
-    td  = f"padding:6px 16px; color:{NAVY};"
-    tdr = "padding:6px 16px;"
-    th  = f"padding:8px 16px; background:#EEF2F7; text-align:left; color:{NAVY};"
+    th  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;"
+    td  = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
+    tda = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
+    hs  = f"color:{NAVY};font-size:0.9rem;font-weight:600;margin:24px 0 10px;letter-spacing:0.2px;text-transform:uppercase;"
     return f"""
-<div style="padding:20px; font-family:'Segoe UI',sans-serif; max-width:700px;">
+<div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:680px;color:{SLATE};">
 
-  <h2 style="color:{NAVY};">🖥️ Stack VPS — Phase 1-4</h2>
-  <table style="border-collapse:collapse; width:100%;">
+  <p style="{hs}">Stack VPS — Phases 1-4</p>
+  <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;border-radius:4px;">
     <tr><th style="{th}">Service</th><th style="{th}">URL</th></tr>
-    <tr><td style="{td}">MLflow</td>        <td style="{tdr}"><a href="http://{VPS_IP}:5001" target="_blank">http://{VPS_IP}:5001</a></td></tr>
-    <tr><td style="{td}">Grafana</td>       <td style="{tdr}"><a href="http://{VPS_IP}:3000" target="_blank">http://{VPS_IP}:3000</a></td></tr>
-    <tr><td style="{td}">Prefect</td>       <td style="{tdr}"><a href="http://{VPS_IP}:4200" target="_blank">http://{VPS_IP}:4200</a></td></tr>
-    <tr><td style="{td}">API Swagger</td>   <td style="{tdr}"><a href="http://{VPS_IP}:8080/docs" target="_blank">http://{VPS_IP}:8080/docs</a></td></tr>
-    <tr><td style="{td}">MinIO Console</td> <td style="{tdr}"><a href="http://{VPS_IP}:9001" target="_blank">http://{VPS_IP}:9001</a></td></tr>
-    <tr><td style="{td}">Prometheus</td>    <td style="{tdr}"><a href="http://{VPS_IP}:9090" target="_blank">http://{VPS_IP}:9090</a></td></tr>
+    <tr><td style="{td}">MLflow</td>        <td style="{tda}"><a href="http://{VPS_IP}:5001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:5001</a></td></tr>
+    <tr><td style="{td}">Grafana</td>       <td style="{tda}"><a href="http://{VPS_IP}:3000" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:3000</a></td></tr>
+    <tr><td style="{td}">Prefect</td>       <td style="{tda}"><a href="http://{VPS_IP}:4200" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:4200</a></td></tr>
+    <tr><td style="{td}">API Swagger</td>   <td style="{tda}"><a href="http://{VPS_IP}:8080/docs" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:8080/docs</a></td></tr>
+    <tr><td style="{td}">MinIO Console</td> <td style="{tda}"><a href="http://{VPS_IP}:9001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:9001</a></td></tr>
+    <tr><td style="{td}">Prometheus</td>    <td style="{tda}"><a href="http://{VPS_IP}:9090" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:9090</a></td></tr>
   </table>
 
-  <h2 style="color:{NAVY}; margin-top:28px;">☸️ Kapsule K8s — Phase 5</h2>
+  <p style="{hs}">Kapsule K8s — Phase 5</p>
   {kapsule_html}
-  <p style="margin-top:8px; font-size:0.85em; color:#555;">
-    ▶ <a href="https://github.com/{GITHUB_REPO}/actions/workflows/kapsule-up.yml" target="_blank">Kapsule Start</a>
-    &nbsp;|&nbsp;
-    ⏹ <a href="https://github.com/{GITHUB_REPO}/actions/workflows/kapsule-down.yml" target="_blank">Kapsule Stop</a>
+  <p style="margin-top:8px;font-size:0.82em;color:{MUTED};">
+    <a href="https://github.com/{GITHUB_REPO}/actions/workflows/kapsule-up.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Demarrer Kapsule</a>
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    <a href="https://github.com/{GITHUB_REPO}/actions/workflows/kapsule-down.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Arreter Kapsule</a>
   </p>
 
-  <h2 style="color:{NAVY}; margin-top:28px;">🐙 GitHub</h2>
-  <table style="border-collapse:collapse; width:100%;">
+  <p style="{hs}">GitHub</p>
+  <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;">
     <tr><th style="{th}">Lien</th><th style="{th}">URL</th></tr>
-    <tr><td style="{td}">GitHub Actions</td> <td style="{tdr}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank">github.com/{GITHUB_REPO}/actions</a></td></tr>
-    <tr><td style="{td}">Train workflow</td> <td style="{tdr}"><a href="https://github.com/{GITHUB_REPO}/actions/workflows/train.yml" target="_blank">Train — pipeline on Scaleway</a></td></tr>
-    <tr><td style="{td}">DVC Data Tags</td>  <td style="{tdr}"><a href="https://github.com/{GITHUB_REPO}/tags" target="_blank">github.com/{GITHUB_REPO}/tags</a></td></tr>
+    <tr><td style="{td}">GitHub Actions</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/actions</a></td></tr>
+    <tr><td style="{td}">Train workflow</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions/workflows/train.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Train — pipeline Scaleway</a></td></tr>
+    <tr><td style="{td}">DVC Data Tags</td>  <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/tags" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/tags</a></td></tr>
   </table>
 
 </div>
@@ -496,91 +510,170 @@ def build_links_html() -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 SCENARIO_CHOICES = [(v["label"], k) for k, v in SCENARIOS.items()]
-CATR_CHOICES = [(1, "Autoroute"), (2, "Route nationale"), (3, "Route départementale"), (4, "Voie communale")]
+CATR_CHOICES = [(1, "Autoroute"), (2, "Route nationale"), (3, "Route departementale"), (4, "Voie communale")]
 
 CSS = """
-h1 { color: #143B5E; }
-.gradio-container { font-family: 'Segoe UI', sans-serif; }
-.tab-nav button { font-weight: 600; }
+/* Typography */
+.gradio-container {
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: #F9FAFB;
+    color: #374151;
+}
+
+/* Headers */
+h1 {
+    color: #143B5E;
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    border-bottom: 1px solid #E5E7EB;
+    padding-bottom: 10px;
+    margin-bottom: 4px;
+}
+h2 { color: #143B5E; font-size: 1rem; font-weight: 600; }
+h3 {
+    color: #143B5E;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 14px;
+}
+h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
+
+/* Tabs */
+.tab-nav button {
+    font-size: 0.83rem;
+    font-weight: 500;
+    color: #6B7280;
+    padding: 8px 18px;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+}
+.tab-nav button.selected {
+    color: #143B5E;
+    font-weight: 600;
+    border-bottom: 2px solid #143B5E;
+}
+
+/* Buttons */
+.gr-button-primary {
+    background: #143B5E !important;
+    border: none !important;
+    border-radius: 3px !important;
+    font-size: 0.83rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.2px !important;
+}
+.gr-button-secondary, button.secondary {
+    background: white !important;
+    border: 1px solid #D1D5DB !important;
+    color: #374151 !important;
+    border-radius: 3px !important;
+    font-size: 0.83rem !important;
+}
+
+/* Inputs */
+input, select, textarea {
+    font-family: 'Inter', 'Segoe UI', sans-serif !important;
+    font-size: 0.85rem !important;
+    border-radius: 3px !important;
+    border-color: #D1D5DB !important;
+}
+label { font-size: 0.82rem !important; color: #374151 !important; font-weight: 500 !important; }
+
+/* Dataframe */
+table th {
+    background: #F3F4F6 !important;
+    color: #143B5E !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.4px !important;
+}
+table td { font-size: 0.83rem !important; color: #374151 !important; }
+
+/* Hide footer */
+footer { display: none !important; }
 """
 
-with gr.Blocks(title="Cockpit MLOps — Sécurité Routière", css=CSS, theme=gr.themes.Base()) as demo:
+with gr.Blocks(title="Cockpit MLOps — Securite Routiere", css=CSS, theme=gr.themes.Base()) as demo:
 
-    gr.Markdown(f"""
-# Cockpit MLOps — Sécurité Routière
-Outil de simulation, monitoring et gouvernance basé sur le modèle ONISR.
+    gr.Markdown("""
+# Cockpit MLOps — Securite Routiere
+Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 """)
 
     with gr.Tabs():
 
         # ── Onglet 1 : What-If ───────────────────────────────────────────────
-        with gr.Tab("🚦 Scénarios What-If — Sylvie Ferrand"):
-            gr.Markdown("### Simuler l'impact d'une mesure de sécurité routière")
+        with gr.Tab("What-if"):
+            gr.Markdown("### Simulation de l'impact d'une mesure de securite routiere")
             with gr.Row():
                 with gr.Column(scale=1, min_width=300):
-                    scenario_dd = gr.Dropdown(choices=SCENARIO_CHOICES, value=SCENARIO_CHOICES[0][1], label="Scénario à simuler")
-                    sample_sl   = gr.Slider(minimum=2000, maximum=30000, step=1000, value=10000, label="Taille de l'échantillon")
-                    run_btn     = gr.Button("▶ Lancer l'analyse", variant="primary", size="lg")
-                    stats_md    = gr.Markdown(value="*Résultats apparaîtront ici après l'analyse.*")
+                    scenario_dd = gr.Dropdown(choices=SCENARIO_CHOICES, value=SCENARIO_CHOICES[0][1], label="Scenario")
+                    sample_sl   = gr.Slider(minimum=2000, maximum=30000, step=1000, value=10000, label="Taille echantillon")
+                    run_btn     = gr.Button("Lancer l'analyse", variant="primary", size="lg")
+                    stats_md    = gr.Markdown(value="*Les resultats s'afficheront ici apres l'analyse.*")
                 with gr.Column(scale=2):
-                    chart_out = gr.Plot(label="Comparaison gravité réelle vs scénario")
+                    chart_out = gr.Plot(label="Gravite reelle vs scenario simule")
             run_btn.click(fn=run_whatif, inputs=[scenario_dd, sample_sl], outputs=[chart_out, stats_md])
 
-        # ── Onglet 2 : Heatmap ───────────────────────────────────────────────
-        with gr.Tab("🗺️ Points Noirs — Marc Durand"):
-            gr.Markdown("### Carte de chaleur des zones à risque élevé")
+        # ── Onglet 2 : Points Noirs ──────────────────────────────────────────
+        with gr.Tab("Points Noirs"):
+            gr.Markdown("### Carte de chaleur des zones a risque eleve")
             with gr.Row():
                 with gr.Column(scale=1, min_width=280):
                     grav_sl  = gr.Slider(minimum=10, maximum=80, step=5, value=40, label="Seuil minimum % graves")
                     acc_sl   = gr.Slider(minimum=1, maximum=15, step=1, value=3,  label="Nb minimum accidents / zone")
                     catr_cb  = gr.CheckboxGroup(choices=[(label, val) for val, label in CATR_CHOICES], value=[], label="Type de route (vide = tous)")
-                    samp_sl2 = gr.Slider(minimum=5000, maximum=50000, step=5000, value=20000, label="Taille de l'échantillon")
-                    map_btn  = gr.Button("🗺 Générer la carte", variant="primary", size="lg")
+                    samp_sl2 = gr.Slider(minimum=5000, maximum=50000, step=5000, value=20000, label="Taille echantillon")
+                    map_btn  = gr.Button("Generer la carte", variant="primary", size="lg")
                     stats_map = gr.Markdown()
                 with gr.Column(scale=2):
-                    map_out = gr.Plot(label="Carte de chaleur — France")
-            top_table = gr.Dataframe(label="Top 10 zones à risque", headers=["Latitude", "Longitude", "Nb accidents", "% graves réel"], interactive=False)
+                    map_out = gr.Plot(label="Zones a risque — France")
+            top_table = gr.Dataframe(label="Top 10 zones", headers=["Latitude", "Longitude", "Nb accidents", "% graves reel"], interactive=False)
             map_btn.click(fn=run_heatmap, inputs=[grav_sl, acc_sl, catr_cb, samp_sl2], outputs=[map_out, top_table, stats_map])
 
         # ── Onglet 3 : Drift ─────────────────────────────────────────────────
-        with gr.Tab("📊 Drift — Evidently"):
-            gr.Markdown("### Rapports de drift par cycle (disponibles à partir du cycle 2)")
+        with gr.Tab("Drift"):
+            gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
             with gr.Row():
                 drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
                                             value=(_list_drift_reports() or [None])[0])
-                drift_refresh = gr.Button("🔄 Rafraîchir", scale=1)
+                drift_refresh = gr.Button("Rafraichir", scale=1)
             drift_iframe = gr.HTML(value=load_drift_report((_list_drift_reports() or [None])[0]))
             drift_dd.change(fn=load_drift_report, inputs=drift_dd, outputs=drift_iframe)
             drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
 
-        # ── Onglet 4 : Modèles + DVC ─────────────────────────────────────────
-        with gr.Tab("🤖 Modèles — MLflow + DVC"):
-            gr.Markdown("### Versions du modèle, métriques et lineage données")
+        # ── Onglet 4 : Modèles ───────────────────────────────────────────────
+        with gr.Tab("Modeles"):
+            gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
             with gr.Row():
-                models_refresh = gr.Button("🔄 Rafraîchir", scale=1)
+                models_refresh = gr.Button("Rafraichir", scale=1)
 
             _init_df, _init_choices = _load_models_data()
             models_table = gr.Dataframe(
                 value=_init_df,
-                label="Versions enregistrées",
+                label="Versions MLflow",
                 interactive=False,
             )
 
-            gr.Markdown("#### Promouvoir une version @Production")
+            gr.Markdown("#### Promouvoir une version en Production")
             with gr.Row():
                 promote_dd  = gr.Dropdown(choices=_init_choices,
                                           value=_init_choices[-1] if _init_choices else None,
-                                          label="Version à promouvoir", scale=2)
-                promote_btn = gr.Button("🚀 Promouvoir @Production", variant="primary", scale=1)
+                                          label="Version", scale=2)
+                promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
             promote_result = gr.Markdown()
 
             models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
             promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
 
-        # ── Onglet 5 : Santé Stack ────────────────────────────────────────────
-        with gr.Tab("🩺 Santé Stack"):
-            gr.Markdown("### État en temps réel des services VPS + Kapsule K8s")
-            health_refresh = gr.Button("🔄 Vérifier maintenant", variant="primary")
+        # ── Onglet 5 : Healthcheck ───────────────────────────────────────────
+        with gr.Tab("Healthcheck"):
+            gr.Markdown("### Etat des services VPS et Kapsule K8s")
+            health_refresh = gr.Button("Verifier maintenant", variant="primary")
             health_table   = gr.Dataframe(
                 value=check_health(),
                 label="Services",
@@ -588,15 +681,15 @@ Outil de simulation, monitoring et gouvernance basé sur le modèle ONISR.
             )
             health_refresh.click(fn=check_health, outputs=health_table)
 
-        # ── Onglet 6 : Liens ──────────────────────────────────────────────────
-        with gr.Tab("🔗 Liens"):
-            links_refresh = gr.Button("🔄 Rafraîchir les IPs Kapsule")
+        # ── Onglet 6 : Liens ─────────────────────────────────────────────────
+        with gr.Tab("Liens"):
+            links_refresh = gr.Button("Rafraichir les IPs Kapsule")
             links_html    = gr.HTML(value=build_links_html())
             links_refresh.click(fn=build_links_html, outputs=links_html)
 
-    gr.Markdown(f"""
+    gr.Markdown("""
 ---
-*Modèle : LightGBM entraîné sur données ONISR 2021–2023*
+*LightGBM — donnees ONISR 2021-2023*
 """)
 
 
