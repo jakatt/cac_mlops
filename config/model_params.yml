@@ -1,0 +1,23 @@
+# Hyperparamètres optimaux par algorithme
+# Définis par les DS après expérimentation locale, versionné dans git.
+# Ces valeurs sont le "blueprint" transmis au VPS pour le réentraînement.
+#
+# Workflow DS :
+#   1. Expérimenter localement (MLflow tracking)
+#   2. Fixer les meilleurs params ici
+#   3. git commit + PR → main → train.yml les lit automatiquement
+
+rf:
+  n_estimators: 200
+  max_depth: null       # null = illimité (meilleure perf RF en général)
+
+xgboost:
+  n_estimators: 300
+  max_depth: 5
+  learning_rate: 0.05
+
+lgbm:
+  n_estimators: 300
+  max_depth: -1         # -1 = illimité (contrôlé par num_leaves)
+  num_leaves: 63
+  learning_rate: 0.05

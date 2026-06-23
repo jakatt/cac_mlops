@@ -1,348 +1,477 @@
-# Guide collaborateur — MLOps Accidents Routiers
+# Guide d'exploitation — MLOps Accidents Routiers
 
-Système MLOps de prédiction de gravité d'accidents (données ONISR 2021-2023, drift simulé sur 2024).
-Stack : FastAPI · MLflow · DVC · scikit-learn · Docker Compose · Scaleway Object Storage.
-
----
-
-## Pré-requis (Mac)
-
-| Outil | Version min | Vérification |
-| --- | --- | --- |
-| Python | 3.11+ | `python3 --version` |
-| Git | — | `git --version` |
-| Docker Desktop | — | `docker info` |
+Système de prédiction de gravité d'accidents routiers (données ONISR).
+Stack : FastAPI · MLflow · DVC · Prefect · Evidently · Prometheus · Grafana · Docker Compose · Scaleway.
 
 ---
 
-## 1. Setup initial
+## Section 1 — Data Scientist
+
+> **Périmètre** : développer un modèle en local, tracer les expériences dans MLflow, valider les hyperparamètres, et soumettre un *blueprint* via PR. La mise en production est gérée par le MLOps Lead.
+
+---
+
+## 1. Setup initial (une seule fois)
 
 ```bash
-# 1. Cloner le dépôt
-git clone git@github.com:<org>/cac_mlops.git
+git clone git@github.com:jakatt/cac_mlops.git
 cd cac_mlops
 
-# 2. Aller sur ta branche de développement
-git checkout noel   # ou jacques selon qui tu es
-
-# 3. Créer et activer le venv
 python3 -m venv my_env
 source my_env/bin/activate
 
-# 4. Installer les dépendances (incluant DVC)
 pip install -r requirements.txt
 pip install "dvc[s3]>=3.0"
-
-# 5. Installer le package local en mode éditable
 pip install -e .
+
+cp .env.example .env
 ```
 
----
-
-## 2. Données — DVC
-
-Les données brutes ne sont **pas dans Git**. Elles sont versionnées par DVC et stockées dans Scaleway Object Storage.
-
-### Configurer les credentials Scaleway (à faire une seule fois)
-
-Demande à Jacques ses identifiants Scaleway (access key + secret key), puis :
+### Credentials DVC (accès aux données brutes sur Scaleway)
 
 ```bash
-# Crée le fichier de credentials LOCAL (jamais commis)
 dvc remote modify --local scaleway access_key_id     <ACCESS_KEY>
 dvc remote modify --local scaleway secret_access_key <SECRET_KEY>
 ```
 
-Cela écrit dans `.dvc/config.local` (listé dans `.gitignore` — ne jamais commiter ce fichier).
-
-### Télécharger les données
-
-```bash
-# Télécharge les données trackées par DVC (données 2021 pour l'instant)
-dvc pull
-
-# Vérification
-ls data/raw/2021/
-# → carcteristiques-2021.csv  lieux-2021.csv  usagers-2021.csv  vehicules-2021.csv
-```
-
-> **Note** : l'Object Storage Scaleway est facturé au Go stocké, pas à l'heure —
-> `dvc pull` fonctionne même quand l'instance serveur est éteinte.
+Ces credentials vont dans `.dvc/config.local` — **ce fichier est gitignored, ne jamais le commiter.**
 
 ---
 
-## 3. Pipeline données complet
+## 2. Tracer les expériences dans MLflow
 
-### Étape 1 — Télécharger les données brutes ONISR
+Les runs locaux remontent sur le **MLflow partagé du VPS** via un tunnel SSH. Tout le monde voit les mêmes expériences sans avoir à maintenir un MLflow local.
+
+### Ouvrir le tunnel (une fois par session)
 
 ```bash
-# Télécharge une année depuis data.gouv.fr
-python -m src.data.import_raw_data --year 2021
-python -m src.data.import_raw_data --year 2022
+ssh -L 5001:localhost:5001 \
+    -L 9000:localhost:9000 \
+    -L 9001:localhost:9001 \
+    deploy@51.159.187.132 -N &
+```
+
+Le `.env` est pré-configuré pour ce mode (`MLFLOW_TRACKING_URI=http://localhost:5001`).
+MLflow UI accessible à : **[http://localhost:5001](http://localhost:5001)** (ou <http://51.159.187.132:5001> sans tunnel).
+
+### Lancer une expérience
+
+```bash
+# Télécharger les données si nécessaire
 python -m src.data.import_raw_data --year 2023
 
-# Données de production (2024, non utilisées pour l'entraînement)
-python -m src.data.import_raw_data --year 2024
-```
-
-Les fichiers arrivent dans `data/raw/{year}/`. Les noms de fichiers ONISR **changent chaque année**
-(typo, abréviation, casse différente) — c'est géré automatiquement par le dictionnaire `FILENAMES`
-dans `src/data/import_raw_data.py`.
-
-### Étape 2 — Valider le schéma
-
-```bash
-python -m src.data.schema_validator --year 2021
-# Résultat : OK / WARNING (continue) / CRITICAL (stop — ne pas entraîner)
-```
-
-### Étape 3 — Preprocessing
-
-```bash
-# Une seule année
-python -m src.data.make_dataset --year 2021
-
-# Cumul 2021+2022+2023 (recommandé pour l'entraînement)
+# Preprocessing (cumul 2021+2022+2023)
 python -m src.data.make_dataset --year 2023 --cumul
+
+# Entraînement — run tracé dans MLflow (expérience "accidents_severity_explore")
+python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
+  --n-estimators 500 --num-leaves 63
 ```
 
-Sortie dans `data/preprocessed/cumul_2021_2022_2023/` :
-`X_train.csv`, `X_test.csv`, `y_train.csv`, `y_test.csv`
+Par défaut `MLFLOW_RUN_MODE=explore` → les runs vont dans `accidents_severity_explore`.
+Seul le pipeline CI (`train.yml`) écrit dans `accidents_severity` (expérience officielle).
 
-### Étape 4 — Entraîner le modèle
+### Comparer les runs
 
-```bash
-# Lance MLflow (voir section Docker ci-dessous) avant d'entraîner
-python -m src.models.train_model
-```
+Dans MLflow UI → onglet **Experiments** → `accidents_severity_explore` :
 
-Le run est tracké dans MLflow (`http://localhost:5000`). Le modèle est enregistré dans le
-**Model Registry** sous `rf_accidents/Staging` si les KPI passent :
-
-- F1 ≥ 0.68 · AUC ≥ 0.75 · Recall ≥ 0.65
+- Trier par F1 / AUC / Recall pour identifier les meilleures configurations
+- Aucun run de cette expérience n'est enregistré dans le Model Registry (séparation explore / officiel)
 
 ---
 
-## 4. Tests
+## 3. Workflow Git
+
+```text
+main  ────────────────────────────────────────────────────────────►
+             ▲
+             │  PR (CI automatique : lint + 38 tests)
+  branche  ──┘
+  → expériences MLflow → config/model_params.yml → commit → PR
+```
+
+Règle : **pas de commit direct sur `main`**. Toujours passer par une PR depuis sa branche.
 
 ```bash
-# Tous les tests unitaires (25/25 doivent passer)
+git checkout -b jacques          # créer sa branche (une fois)
+git checkout jacques             # reprendre sa branche
+
+# ... développement et expériences MLflow ...
+
+# Quand les hyperparamètres sont satisfaisants → mettre à jour le blueprint
+vim config/model_params.yml
+
+git add config/model_params.yml
+git commit -m "feat: lgbm n_estimators=500 num_leaves=63 — f1=0.713 auc=0.791"
+git push origin jacques
+
+# Ouvrir une PR sur GitHub → le MLOps Lead déclenche l'entraînement officiel
+```
+
+---
+
+## 4. Soumettre un blueprint (hyperparamètres validés)
+
+`config/model_params.yml` contient les hyperparamètres que le pipeline officiel utilisera.
+Format attendu :
+
+```yaml
+# config/model_params.yml
+lgbm:
+  n_estimators: 500
+  num_leaves: 63
+  max_depth: -1
+  learning_rate: 0.05
+
+rf:
+  n_estimators: 200
+  max_depth: 20
+```
+
+Une fois la PR mergée sur `main`, le MLOps Lead déclenche `train.yml` avec l'algorithme correspondant.
+
+---
+
+## 5. Tests locaux
+
+```bash
+# 38 tests unitaires (pas de Docker requis)
 pytest tests/unit/ -v
 
 # Avec couverture
 pytest tests/unit/ --cov=src --cov=services --cov-report=term-missing
 
-# Tests d'intégration (nécessite Docker Compose démarré)
+# Tests d'intégration (Docker Compose requis)
 RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v
 ```
 
----
-
-## 5. Services Docker (développement local)
-
-```bash
-# Démarrer PostgreSQL + MinIO + MLflow + API FastAPI
-docker compose up -d
-
-# Vérifier que tout est sain
-docker compose ps
-```
-
-| Service | URL | Credentials |
-| --- | --- | --- |
-| MLflow UI | <http://localhost:5000> | — |
-| MinIO console | <http://localhost:9001> | minioadmin / minioadmin |
-| API FastAPI | <http://localhost:8080/docs> | — |
-
-```bash
-# Arrêter
-docker compose down
-
-# Arrêter ET supprimer les volumes (reset complet)
-docker compose down -v
-```
-
-### Tester l'API manuellement
-
-```bash
-curl -s -X POST http://localhost:8080/predict \
-  -H "Content-Type: application/json" \
-  -d @src/models/test_features.json | python3 -m json.tool
-```
+La CI (`ci.yml`) tourne automatiquement à chaque push sur n'importe quelle branche.
 
 ---
 
-## 6. Serveur Scaleway (production)
+---
 
-Le serveur est un **DEV1-L** (`scw-jovial-dubinsky`). Il est **arrêté par défaut** pour
-économiser — démarre-le uniquement quand tu en as besoin.
+## Section 2 — MLOps Lead
 
-### Connexion SSH
+> **Périmètre** : déclencher les entraînements officiels, promouvoir en production, gérer la mise à jour annuelle lors des nouvelles publications ONISR, surveiller la stack.
+
+---
+
+## 1. Interfaces disponibles
+
+| Interface | URL | Credentials | Rôle |
+|---|---|---|---|
+| Gradio Cockpit | [http://51.159.187.132:7860](http://51.159.187.132:7860) | — | Cockpit MLOps 6 onglets (What-If, Heatmap, Drift, Modèles, Santé, Liens) |
+| Prefect UI | [http://51.159.187.132:4200](http://51.159.187.132:4200) | — | Déclencher et suivre les flows |
+| MLflow UI | [http://51.159.187.132:5001](http://51.159.187.132:5001) | — | Expériences, Model Registry |
+| Grafana | [http://51.159.187.132:3000](http://51.159.187.132:3000) | admin / admin | Métriques API, latence, erreurs |
+| Prometheus | [http://51.159.187.132:9090](http://51.159.187.132:9090) | — | PromQL, métriques brutes |
+| API Swagger | [http://51.159.187.132:8090/docs](http://51.159.187.132:8090/docs) | — | Tests manuels /predict |
+| MinIO Console | [http://51.159.187.132:9001](http://51.159.187.132:9001) | minioadmin / minioadmin | Artefacts MLflow |
+
+---
+
+## 2. Cycle annuel ONISR
+
+Les données ONISR sont publiées **une fois par an** (environ juin N+2 pour l'année N).
+C'est le seul événement qui justifie un ré-entraînement — mêmes données = même modèle.
+
+### Déclencher le pipeline d'entraînement
+
+Via **GitHub Actions** → `Train — pipeline on Scaleway` → `Run workflow` :
+
+| Paramètre | Valeur typique | Description |
+|---|---|---|
+| `year` | `2024` | Dernière année ONISR disponible |
+| `cumul` | `true` | Entraîne sur 2021+…+year (recommandé) |
+| `algorithm` | `lgbm` | Algorithme validé dans `config/model_params.yml` |
+| `promote` | `true` | Promouvoir @Production si KPI gate passe |
+| `simulate_year` | *(vide)* | Laissé vide → year+1 utilisé pour simulation drift |
 
 ```bash
-# Demande l'IP publique actuelle à Jacques (change à chaque démarrage si pas d'IP fixe)
-ssh root@<IP_SERVEUR>
+# Via CLI
+gh workflow run train.yml --ref main \
+  -f year=2024 -f cumul=true -f algorithm=lgbm \
+  -f promote=true
+
+# Suivre l'exécution (~10–15 min)
+gh run list --workflow=train.yml --limit 3
+gh run watch <RUN_ID>
 ```
 
-### Démarrer / arrêter le serveur
+### Ce que fait le pipeline (automatiquement)
 
-Depuis la console Scaleway (<https://console.scaleway.com>) ou avec le CLI :
+1. Nettoyage MLflow — conservation des 3 derniers runs, GC MinIO
+2. Pull données DVC : années 2021 → year
+3. Preprocessing → `data/preprocessed/cumul_2021_…_year/`
+4. Entraînement tracé dans `accidents_severity` (MLFLOW_RUN_MODE=official)
+5. KPI gate :
+   - F1 ≥ 0.64 · AUC ≥ 0.75 · Recall ≥ 0.60 · Accuracy ≥ 0.70
+   - **PASSED** → modèle enregistré @Production → API redémarrée automatiquement
+   - **FAILED** → run tagué `kpi_gate=FAILED`, le @Production précédent reste actif (pas de régression)
+6. Simulation production : données year+1 rejouées via /predict
+7. Rapport drift Evidently : données year+1 vs référence entraînement year
 
-```bash
-scw instance server start <SERVER_ID>
-scw instance server stop <SERVER_ID>
-```
-
-> **Attention** : l'instance est facturée à l'heure tant qu'elle est **démarrée**.
-> Le **stockage block** (disque) est facturé en continu même serveur éteint.
-> L'**Object Storage** (bucket DVC) est facturé au Go stocké — toujours disponible.
-
-### Structure du serveur
-
-Le projet est déployé via Docker Compose, même configuration qu'en local.
+### Vérifier le résultat
 
 ```bash
-# Une fois connecté
-cd /home/deploy/cac_mlops   # ou le chemin donné par Jacques
-docker compose ps
-docker compose logs mlflow
-```
+# Healthcheck + version modèle active
+curl -s http://51.159.187.132:8090/health | python3 -m json.tool
+# → { "status": "ok", "model_version": "lgbm_accidents/7" }
 
-### Synchroniser les données (DVC)
-
-```bash
-# Depuis ton Mac — pousser de nouvelles données versionnées
-dvc push
-
-# Depuis le serveur — récupérer les données
-dvc pull
+# Rapport drift (sur le VPS)
+ssh deploy@51.159.187.132 \
+  "cat /data/cac_mlops/reports/drift/drift_$(date +%Y-%m).json"
 ```
 
 ---
 
-## 7. Structure du projet
+## 3. Cycle ponctuel — nouveau modèle DS (hors cycle ONISR)
 
-```text
-cac_mlops/
-├── src/
-│   ├── data/
-│   │   ├── import_raw_data.py    # téléchargement data.gouv.fr
-│   │   ├── schema.py             # schémas Pandera (4 fichiers ONISR)
-│   │   ├── schema_validator.py   # 3 niveaux : CRITICAL / WARNING / OK
-│   │   └── make_dataset.py       # preprocessing → 28 features
-│   └── models/
-│       ├── train_model.py        # entraînement + MLflow tracking
-│       └── test_features.json    # exemple de requête API
-├── services/api/                 # FastAPI (POST /predict, GET /health)
-├── tests/
-│   ├── unit/                     # 25 tests — pipeline, schéma, API
-│   └── integration/              # tests API avec Docker
-├── data/
-│   ├── raw/{year}/               # données brutes ONISR (gitignored, DVC)
-│   ├── preprocessed/             # X/y train/test (gitignored, DVC)
-│   └── production/2024/          # données drift monitoring (gitignored)
-├── docker-compose.yml            # PostgreSQL + MinIO + MLflow + API
-├── .dvc/config                   # remote DVC → Scaleway (commis)
-├── .dvc/config.local             # credentials (gitignored — NE JAMAIS COMMITER)
-├── data_dictionary.md            # description des 28 features
-└── architecture.md               # architecture complète du système
+> **Cas d'usage** : un DS a validé de nouveaux hyperparamètres en local (meilleur F1, AUC…) et ouvre une PR. On ne dispose pas de nouvelles données ONISR — on ré-entraîne sur le **même jeu de données**, avec le nouveau blueprint.
+
+### Prérequis
+
+- La PR du DS est mergée sur `main` (blueprint à jour dans `config/model_params.yml`)
+- Les données de l'année en cours sont déjà dans DVC (inutile de les re-puller si `dvc pull` a déjà été fait)
+
+### Déclencher le pipeline
+
+Via **GitHub Actions** → `Train — pipeline on Scaleway` → `Run workflow` :
+
+| Paramètre | Valeur | Remarque |
+|---|---|---|
+| `year` | `2023` *(ou l'année courante)* | Même année que le modèle @Production actuel |
+| `cumul` | `true` | Même périmètre que le modèle à remplacer |
+| `algorithm` | `lgbm` *(ou ce que le DS a validé)* | Issu de `config/model_params.yml` |
+| `promote` | `true` | Promotion automatique si KPI gate passe |
+| `simulate_year` | *(vide)* | Laissé vide → year+1 (drift sur données existantes) |
+
+```bash
+# Via CLI
+gh workflow run train.yml --ref main \
+  -f year=2023 -f cumul=true -f algorithm=lgbm \
+  -f promote=true
+```
+
+### Ce qui se passe
+
+1. Entraînement sur les mêmes données (déjà sur le VPS, pas de `dvc pull` si `dvc pull` fait récemment)
+2. KPI gate (F1 ≥ 0.64, AUC ≥ 0.75, Recall ≥ 0.60, Accuracy ≥ 0.70) — **si FAILED** : l'ancien @Production reste actif, rien ne change en prod
+3. Si PASSED : nouvelle version enregistrée dans MLflow Registry → @Production → API redémarrée automatiquement
+4. Vérification :
+
+```bash
+curl -s http://51.159.187.132:8090/health | python3 -m json.tool
+# → { "status": "ok", "model_version": "lgbm_accidents/8" }  ← version incrémentée
+```
+
+### Différences vs cycle ONISR annuel
+
+| | Cycle ONISR | Cycle DS ponctuel |
+|---|---|---|
+| Déclencheur | Nouvelle publication ONISR | PR DS avec meilleurs hyperparamètres |
+| `year` | Nouvelle année (ex: 2024) | Année courante (ex: 2023) |
+| Données | Nouvelles (dvc pull requis) | Identiques (déjà présentes) |
+| Fréquence | 1×/an | À la demande |
+
+---
+
+## 4. Lancer tous les cycles de ré-entraînement (après RAZ ou première mise en prod)
+
+Après une RAZ complète (`scripts/raz_mlops.sh`), il n'y a plus de modèle @Production. Le script `train_all_cycles.sh` détecte automatiquement les années disponibles (tags DVC `data-v*`) et lance les cycles en séquence.
+
+```bash
+# Sur ta machine locale (nécessite gh CLI + SSH access)
+./scripts/train_all_cycles.sh --algorithm lgbm
+
+# Avec dry-run pour voir ce qui sera lancé
+./scripts/train_all_cycles.sh --algorithm lgbm --dry-run
+
+# Reprendre depuis le cycle 2 si le 1 a déjà réussi
+./scripts/train_all_cycles.sh --algorithm lgbm --from-cycle 2
+```
+
+Avec 3 tags DVC (data-v1, data-v2, data-v3) → 3 cycles lancés :
+
+| Cycle | year | cumul | Données entraînement |
+|---|---|---|---|
+| 1 | 2021 | false | 2021 seul (~55k accidents) |
+| 2 | 2022 | true | cumul 2021+2022 (~110k) |
+| 3 | 2023 | true | cumul 2021+2022+2023 (~165k) → @Production final |
+
+Durée totale : ~45–60 min. Chaque cycle attend la fin du précédent avant de démarrer.
+
+---
+
+## 4b. RAZ complète de la stack
+
+Pour repartir de zéro (MLflow, Prefect, données, S3 k8s) :
+
+```bash
+ssh deploy@51.159.187.132
+cd /data/cac_mlops
+
+# Voir ce qui sera fait (dry-run)
+./scripts/raz_mlops.sh --dry-run
+
+# Exécuter avec confirmation interactive
+./scripts/raz_mlops.sh
+
+# Exécuter sans confirmation (CI / automation)
+./scripts/raz_mlops.sh --yes
+```
+
+**Ce qui est réinitialisé** : MLflow (runs + modèles + artifacts MinIO), Prefect (flows + runs), Prometheus, Grafana, données préprocessées, src/models/trained_model.joblib, reports/drift/, S3 k8s prefixes.
+
+**Ce qui est CONSERVÉ** : DVC remote S3 (`s3://cac-mlops-data/dvc/`) — les données brutes ONISR restent intactes.
+
+Après la RAZ, lancer les cycles avec `train_all_cycles.sh` (voir section 4 ci-dessus).
+
+---
+
+## 5. Vérifier le drift
+
+Le drift est calculé automatiquement à la fin de chaque `train.yml`. Pour le lancer manuellement :
+
+**Via Prefect UI** : [http://51.159.187.132:4200](http://51.159.187.132:4200) → Deployments → `drift-check` → Quick run
+
+**Via CLI sur le VPS** :
+
+```bash
+ssh deploy@51.159.187.132
+cd /data/cac_mlops
+
+docker compose run --rm \
+  -v "$(pwd)/data:/app/data" \
+  -v "$(pwd)/reports:/app/reports" \
+  api \
+  python -m services.monitoring.drift_detection --month 2025-06
+```
+
+Seuils :
+
+| Drift share | Niveau | Action |
+|---|---|---|
+| < 10 % | OK | Rien à faire |
+| 10–25 % | WARNING | Surveiller — pas de ré-entraînement si pas de nouvelles données |
+| > 25 % | CRITICAL | Ré-entraîner dès que les prochaines données ONISR sont disponibles |
+
+---
+
+## 6. Promouvoir ou rollback un modèle
+
+MLflow Model Registry : [http://51.159.187.132:5001/#/models](http://51.159.187.132:5001/#/models)
+
+**Promouvoir manuellement une version @Production** (si `promote=false` ou rollback) :
+
+```bash
+# Depuis un poste avec le tunnel SSH actif, ou directement sur le VPS
+python3 - <<'EOF'
+import mlflow
+mlflow.set_tracking_uri("http://51.159.187.132:5001")
+client = mlflow.tracking.MlflowClient()
+
+# Lister les versions disponibles
+for v in client.search_model_versions("name='lgbm_accidents'"):
+    print(f"v{v.version}  run_id={v.run_id[:8]}")
+
+# Promouvoir une version spécifique (MLflow v3 utilise les aliases, pas les stages)
+client.set_registered_model_alias("lgbm_accidents", "Production", "7")
+print("v7 → @Production ✓")
+EOF
+
+# Redémarrer l'API pour charger la nouvelle version
+ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose restart api"
+```
+
+> **Note** : MLflow v3 utilise les **aliases** (`@Production`) à la place des stages (`Staging/Production`). Ne pas utiliser `transition_model_version_stage` (déprécié depuis MLflow 2.9).
+
+---
+
+## 7. Monitoring Grafana
+
+Dashboard **API Performance** : [http://51.159.187.132:3000](http://51.159.187.132:3000)
+
+| Panel | Seuil d'alerte |
+|---|---|
+| Latence p95 | > 500 ms → investiguer |
+| Taux erreurs 5xx | > 1 % → vérifier logs API |
+| Distribution prédictions | Dérive vers 0 ou 1 → possible drift amont |
+
+Requêtes PromQL utiles ([http://51.159.187.132:9090](http://51.159.187.132:9090)) :
+
+```promql
+# Débit /predict
+rate(api_requests_total{endpoint="/predict"}[5m])
+
+# Latence p95
+histogram_quantile(0.95, rate(api_request_duration_seconds_bucket[5m]))
+
+# Ratio prédictions graves
+api_predictions_total{result="1"} / ignoring(result) sum(api_predictions_total)
 ```
 
 ---
 
-## 8. Workflow Git
-
-```text
-  jacques ──┐
-             ├──► PR ──► main ──► deploy automatique Scaleway
-  noel    ──┘
-```
-
-### Règles
-
-| Branche | Qui | Usage |
-| --- | --- | --- |
-| `jacques` | Jacques | développement personnel |
-| `noel` | Noël | développement personnel |
-| `main` | — | versions stables uniquement — **pas de commit direct** |
-
-- Les fichiers `*.dvc` **doivent être commis** dans Git (pointeurs, pas données)
-- `.dvc/config.local` ne doit **jamais** être commis
-
-### Workflow quotidien (ta branche)
+## 8. Administration VPS
 
 ```bash
-git checkout noel
-git pull origin noel        # récupère les dernières modifs de ta branche
+# Accès SSH
+ssh deploy@51.159.187.132
 
-# ... travail ...
+# État des conteneurs
+cd /data/cac_mlops && docker compose ps
 
-git add src/...
-git add data/raw/2023.dvc   # si tu as ajouté des données à DVC
-git commit -m "feat: ..."
-dvc push                    # pousse les données sur Scaleway
-git push origin noel
+# Logs API en temps réel
+docker compose logs -f api
+
+# Logs Prefect worker
+docker compose logs -f prefect-worker
+
+# Espace disque
+df -h / /data
+
+# Diagnostic rapide (workflow GitHub Actions)
+gh workflow run diag.yml --ref main
 ```
 
-### Publier une version sur main (PR)
+**Redémarrer un service** :
 
 ```bash
-# 1. Sur GitHub : ouvre une Pull Request   noel → main  (ou jacques → main)
-#    Les tests CI tournent automatiquement — la PR ne peut merger que si ✅
-
-# 2. Merge la PR sur GitHub (bouton "Merge pull request")
-
-# 3. Le workflow deploy.yml se déclenche automatiquement sur le serveur :
-#    git pull → dvc pull → docker compose up → healthcheck API
+ssh deploy@51.159.187.132
+cd /data/cac_mlops
+docker compose restart api              # recharge le modèle @Production
+docker compose restart prefect-worker   # reconnecte le worker au server
+docker compose restart prefect-server   # si UI inaccessible
 ```
 
-### Récupérer le travail de l'autre
-
-```bash
-# Si Jacques a mergé des choses sur main que tu veux intégrer dans noel
-git checkout noel
-git fetch origin
-git merge origin/main       # ou git rebase origin/main
-```
-
----
-
-## 9. Secrets GitHub à configurer (une seule fois)
-
-Pour que le déploiement automatique fonctionne, ajoute ces secrets dans
-**GitHub → Settings → Secrets and variables → Actions** :
+### Secrets GitHub Actions
 
 | Secret | Valeur |
-| --- | --- |
-| `SCALEWAY_HOST` | IP publique du serveur Scaleway |
-| `SCALEWAY_USER` | `root` (ou `deploy`) |
-| `SCALEWAY_SSH_KEY` | Clé SSH privée (contenu de `~/.ssh/id_ed25519`) |
-| `DEPLOY_DIR` | Chemin du projet sur le serveur (ex: `/home/deploy/cac_mlops`) |
+|---|---|
+| `SCALEWAY_HOST` | `51.159.187.132` |
+| `SCALEWAY_USER` | `deploy` |
+| `SCALEWAY_SSH_KEY` | Clé privée SSH |
+| `DEPLOY_DIR` | `/data/cac_mlops` |
+| `JWT_SECRET_KEY` | Secret JWT production |
+| `API_USERNAME` / `API_PASSWORD` | Credentials API |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Credentials MinIO |
 
 ---
 
-## 10. Variables d'environnement
+## 9. Dépannage
 
-Pas de fichier `.env` obligatoire en local — les valeurs par défaut du `docker-compose.yml` suffisent.
-Pour surcharger, crée un fichier `.env` à la racine :
-
-```bash
-POSTGRES_USER=mlops
-POSTGRES_PASSWORD=mlops
-POSTGRES_DB=mlops
-MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=minioadmin
-MLFLOW_TRACKING_URI=http://localhost:5000
-```
-
----
-
-## 11. Dépannage rapide
-
-| Symptôme | Cause probable | Solution |
-| --- | --- | --- |
-| `dvc pull` échoue avec 403 | Credentials manquants | Vérifier `.dvc/config.local` |
-| `pytest` ImportError sur `services.api` | Package non installé | `pip install -e .` |
-| `docker compose up` — mlflow crashe | MinIO pas encore prêt | `docker compose restart mlflow` après 30 s |
-| API renvoie 503 | Modèle non chargé (MLflow vide) | Entraîner le modèle ou placer un `.joblib` dans `src/models/` |
-| `carcteristiques-2021.csv` introuvable | DVC non pull ou mauvais dossier | `dvc pull` puis vérifier `data/raw/2021/` |
+| Symptôme | Cause probable | Action |
+|---|---|---|
+| `/predict` → 401 | Token absent ou expiré (24h) | `POST /token` pour renouveler |
+| `/predict` → 503 | Aucun modèle @Production | Promouvoir un modèle dans MLflow → redémarrer API |
+| `train.yml` KPI FAILED | Blueprint sous-optimal ou données insuffisantes | Revoir `config/model_params.yml` — seuils : F1≥0.64, Recall≥0.60, AUC≥0.75 |
+| `train.yml` → "api not running" | deploy encore en cours quand train est déclenché | Attendre que le deploy soit vert, relancer train |
+| `NoSuchBucket` à l'entraînement | Bucket MinIO `mlflow` absent après RAZ | Le service `minio-init` le recrée automatiquement au redémarrage |
+| Prefect UI inaccessible | Conteneur crashé | `docker compose restart prefect-server` |
+| Worker déconnecté (flows en attente) | Worker crashé | `docker compose restart prefect-worker` |
+| MLflow UI lente / timeout | MinIO saturé | `mlflow_cleanup.py` → libérer espace |
+| `dvc pull` → 403 | Credentials absents | Vérifier `.dvc/config.local` |
+| Grafana "No data" | Prometheus ne scrape pas l'API | Vérifier que `api` répond sur `:8000/metrics` |
+| Cockpit Gradio — onglet vide | Pas de données préprocessées | Lancer un cycle train.yml d'abord |

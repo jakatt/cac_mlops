@@ -1,16 +1,19 @@
 """
 Training flow — train, validate, and optionally promote a model to @Production.
 """
-from prefect import flow, task, get_run_logger
+import logging
+
+from prefect import flow, task
 
 from src.data.import_raw_data import TRAINING_YEARS
 from src.models.train_model import train
 from src.models.validate_model import validate
 
+logger = logging.getLogger(__name__)
+
 
 @task(name="train-model")
 def train_task(years: list[int]) -> str:
-    logger = get_run_logger()
     logger.info("Training on years: %s", years)
     _metrics, run_id = train(years=years, register=True)
     logger.info("Training complete — run_id=%s", run_id)
@@ -19,7 +22,6 @@ def train_task(years: list[int]) -> str:
 
 @task(name="validate-and-promote")
 def validate_task(run_id: str, promote: bool = True) -> bool:
-    logger = get_run_logger()
     ok = validate(run_id, promote=promote)
     if ok and promote:
         logger.info("Model promoted to @Production")

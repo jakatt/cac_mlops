@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gradio
+  namespace: cac-mlops
+  labels:
+    app: gradio
+  annotations:
+    service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
+spec:
+  type: LoadBalancer
+  selector:
+    app: gradio
+  ports:
+  - port: 7860
+    targetPort: 7860
+    protocol: TCP

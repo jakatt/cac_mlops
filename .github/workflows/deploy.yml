@@ -5,6 +5,10 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-scaleway
+  cancel-in-progress: true   # garde uniquement le deploy du dernier commit
+
 permissions:
   contents: read
   packages: write   # push vers ghcr.io
@@ -31,6 +35,12 @@ jobs:
           docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest \
             -f services/api/Dockerfile .
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest
+
+      - name: Build + push Gradio image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest \
+            -f services/gradio/Dockerfile .
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest
 
 
   # ── Job 2 : deploy SSH sur Scaleway ────────────────────────────────────────
@@ -59,30 +69,55 @@ jobs:
 
             echo "==> Arrêt des conteneurs (libère les images)"
             docker compose down --remove-orphans || true
+            # Force-suppression des conteneurs résiduels (au cas où compose down aurait été incomplet)
+            docker ps -aq --filter "name=cac_mlops-" | xargs -r docker rm -f 2>/dev/null || true
 
-            echo "==> Nettoyage des anciennes images et du cache builder"
-            docker image prune -af
+            echo "==> Nettoyage des images cac-mlops uniquement (protege les autres applis du VPS)"
+            docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest 2>/dev/null || true
+            docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest 2>/dev/null || true
+            docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest 2>/dev/null || true
             docker builder prune -af
 
-            echo "==> Suppression des données DVC (non nécessaires au runtime API)"
-            rm -rf data/raw data/preprocessed .dvc/cache || true
+            echo "==> Suppression données brutes DVC (volumineuses, non nécessaires au runtime)"
+            sudo rm -rf data/raw .dvc/cache 2>/dev/null || true
+            # data/preprocessed est conservé : nécessaire pour le service Gradio (what-if + heatmap)
+
+            echo "==> Correction ownership (répertoires créés par containers root lors de la RAZ)"
+            sudo chown -R $(whoami): reports/ state/ data/ 2>/dev/null || true
 
             echo "==> Pull du code"
             git fetch origin main
             git reset --hard origin/main
 
+            echo "==> Rotation logs Docker (daemon.json — max 20 MB × 3 fichiers)"
+            sudo mkdir -p /etc/docker
+            if ! cmp -s infrastructure/docker/daemon.json /etc/docker/daemon.json 2>/dev/null; then
+              sudo rsync infrastructure/docker/daemon.json /etc/docker/daemon.json
+              sudo systemctl reload docker 2>/dev/null || true
+              echo "  daemon.json mis à jour (prendra effet au prochain restart Docker)"
+            else
+              echo "  daemon.json déjà à jour"
+            fi
+
             echo "==> Configuration DOCKER_VOLUMES_PATH → block storage /data"
             grep -q "DOCKER_VOLUMES_PATH" .env 2>/dev/null || echo "DOCKER_VOLUMES_PATH=/data" >> .env
 
-            echo "==> Migration volumes Docker → /data (one-time, idempotent)"
+            echo "==> Espace disque disponible"
+            df -h /
+
+            echo "==> Pull des images pré-buildées"
+            docker compose pull
+
+            echo "==> Migration volumes Docker → /data (one-time, idempotent, utilise notre image)"
+            MLFLOW_IMG="ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest"
             MINIO_VOL=$(docker volume ls --format '{{.Name}}' | grep minio_data | head -1)
             PG_VOL=$(docker volume ls --format '{{.Name}}' | grep postgres_data | head -1)
 
             if [ -n "$MINIO_VOL" ]; then
-              MINIO_EMPTY=$(docker run --rm -v /data/minio_data:/check alpine sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
+              MINIO_EMPTY=$(docker run --rm -v /data/minio_data:/check "$MLFLOW_IMG" sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
               if [ "$MINIO_EMPTY" = "0" ]; then
                 echo "  Copie $MINIO_VOL → /data/minio_data"
-                docker run --rm -v "${MINIO_VOL}:/source" -v /data/minio_data:/dest alpine cp -a /source/. /dest/
+                docker run --rm -v "${MINIO_VOL}:/source" -v /data/minio_data:/dest "$MLFLOW_IMG" cp -a /source/. /dest/
                 echo "  minio_data migré"
               else
                 echo "  /data/minio_data déjà peuplé, skip"
@@ -90,21 +125,21 @@ jobs:
             fi
 
             if [ -n "$PG_VOL" ]; then
-              PG_EMPTY=$(docker run --rm -v /data/postgres_data:/check alpine sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
+              PG_EMPTY=$(docker run --rm -v /data/postgres_data:/check "$MLFLOW_IMG" sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
               if [ "$PG_EMPTY" = "0" ]; then
                 echo "  Copie $PG_VOL → /data/postgres_data"
-                docker run --rm -v "${PG_VOL}:/source" -v /data/postgres_data:/dest alpine cp -a /source/. /dest/
+                docker run --rm -v "${PG_VOL}:/source" -v /data/postgres_data:/dest "$MLFLOW_IMG" cp -a /source/. /dest/
                 echo "  postgres_data migré"
               else
                 echo "  /data/postgres_data déjà peuplé, skip"
               fi
             fi
 
-            echo "==> Espace disque disponible"
+            echo "==> Suppression volumes nommés obsolètes (minio+pg migrés vers /data bind mounts)"
+            docker volume rm cac_mlops_minio_data cac_mlops_postgres_data 2>/dev/null || true
+            # cac_mlops_prefect_data conservé : volume nommé Docker contenant l'état SQLite Prefect
+            echo "==> NVMe après nettoyage volumes"
             df -h /
-
-            echo "==> Pull des images pré-buildées"
-            docker compose pull
 
             echo "==> Libération du port 8090 (nginx)"
             for cid in $(docker ps -aq --filter "publish=8090"); do
@@ -131,5 +166,22 @@ jobs:
               echo "  attente... ($((i*5))s)"
               sleep 5
             done
+
+            echo "==> Enregistrement des flows Prefect (attente Prefect server max 60s)"
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:4200/api/health > /dev/null 2>&1; then
+                echo "  Prefect server OK après $((i*5))s"
+                break
+              fi
+              if [ $i -eq 12 ]; then
+                echo "  Prefect server non disponible — skip deploy flows (non bloquant)"
+              fi
+              sleep 5
+            done
+
+            docker compose exec -T prefect-worker \
+              sh -c "prefect deploy --all" \
+              && echo "  Flows Prefect enregistrés ✓" \
+              || echo "  Prefect deploy échoué — relancer manuellement si besoin"
 
             echo "==> Deploy OK"

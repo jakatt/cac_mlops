@@ -1,13 +1,14 @@
 """POST /predict endpoint."""
 import logging
 
-import numpy as np
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from ..schemas.accident import AccidentFeatures, PredictionResponse
 from ..model_loader import get_model, get_model_version
 from ..auth import get_current_user
+from .._metrics import PREDICTIONS_TOTAL
+from .. import db as prediction_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ FEATURE_ORDER = [
 @router.post("/predict", response_model=PredictionResponse, tags=["inference"])
 def predict(
     features: AccidentFeatures,
+    background_tasks: BackgroundTasks,
     _user: str = Depends(get_current_user),
 ) -> PredictionResponse:
     """
@@ -45,8 +47,19 @@ def predict(
         logger.exception("Prediction failed")
         raise HTTPException(status_code=500, detail=f"Prediction error: {exc}") from exc
 
+    version = get_model_version()
+    PREDICTIONS_TOTAL.labels(result=str(prediction)).inc()
+
+    background_tasks.add_task(
+        prediction_db.log_prediction,
+        features=features.model_dump(by_alias=True),
+        prediction=prediction,
+        probability=round(probability, 4),
+        model_version=version,
+    )
+
     return PredictionResponse(
         prediction=prediction,
         probability=round(probability, 4),
-        model_version=get_model_version(),
+        model_version=version,
     )

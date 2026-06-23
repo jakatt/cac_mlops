@@ -1,0 +1,163 @@
+name: Maintenance — Nettoyage NVMe
+
+# Objectif : garder le NVMe sous 70% d'occupation
+# Sources de remplissage : Docker overlay + build cache + logs conteneurs + MLflow temp
+#
+# Planification : dimanche 03h00 UTC (trafic nul)
+# Déclenchement manuel : avec option "aggressif" pour aller plus loin
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Dimanche 03h00 UTC
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Mode : normal (dangling) | agressif (+ logs + tmp)"
+        required: false
+        default: "agressif"
+        type: choice
+        options:
+          - normal
+          - agressif
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Nettoyage NVMe sur Scaleway
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 25m
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            MODE="${{ github.event.inputs.mode || 'agressif' }}"
+            echo "════════════════════════════════════════════"
+            echo "  NETTOYAGE NVMe — mode=$MODE"
+            echo "════════════════════════════════════════════"
+
+            # ── AVANT ────────────────────────────────────────────────────────
+            echo ""
+            echo "==> Occupation AVANT nettoyage"
+            df -h /
+            echo ""
+            echo "==> Détail Docker"
+            docker system df
+
+            FREE_BEFORE=$(df / --output=avail -k | tail -1)
+
+            # ── 1. Conteneurs arrêtés ─────────────────────────────────────────
+            echo ""
+            echo "==> [1/6] Suppression conteneurs arrêtés"
+            docker container prune -f
+
+            # ── 2. Images dangling (jamais -a : autre appli sur le VPS) ───────
+            echo ""
+            echo "==> [2/6] Suppression images dangling (sans tag)"
+            docker image prune -f
+
+            # ── 3. Build cache ────────────────────────────────────────────────
+            echo ""
+            echo "==> [3/6] Suppression build cache Docker"
+            docker builder prune -f
+
+            # ── 4. Réseaux inutilisés ─────────────────────────────────────────
+            echo ""
+            echo "==> [4/6] Suppression réseaux inutilisés"
+            docker network prune -f
+
+            # ── 5. Volumes orphelins (exclut les bind mounts /data) ───────────
+            echo ""
+            echo "==> [5/6] Suppression volumes Docker orphelins"
+            docker volume prune -f
+
+            # ── 6. Logs des conteneurs en cours (seulement si agressif) ───────
+            echo ""
+            echo "==> [6/6] Logs conteneurs"
+            if [ "$MODE" = "agressif" ]; then
+              echo "  Troncature des logs Docker conteneurs (mode agressif)"
+              # Truncate JSON logs — safe car Docker re-ouvre le fd
+              TOTAL_LOG_KB=0
+              for f in /var/lib/docker/containers/*/*-json.log; do
+                [ -f "$f" ] || continue
+                SIZE=$(du -k "$f" | cut -f1)
+                TOTAL_LOG_KB=$((TOTAL_LOG_KB + SIZE))
+                truncate -s 0 "$f"
+              done
+              echo "  Logs tronqués : ${TOTAL_LOG_KB} KB récupérés"
+            else
+              echo "  Skipped en mode normal (relancer en mode 'agressif' pour tronquer)"
+            fi
+
+            # ── 7. MLflow : suppression anciens runs ──────────────────────────
+            echo ""
+            echo "==> [Extra] Nettoyage MLflow (conservation 5 runs par modèle)"
+            docker compose exec -T api \
+              python3 /app/src/scripts/mlflow_cleanup.py 2>/dev/null || \
+              echo "  mlflow_cleanup.py non disponible ou API arrêtée — skip"
+
+            echo "==> GC artifacts MinIO (suppression physique des runs effacés)"
+            docker compose run --rm mlflow mlflow gc \
+              --backend-store-uri "postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}" \
+              --experiment-ids 1 2>/dev/null || echo "  mlflow gc : erreur ignorée"
+
+            # ── 8. /tmp fichiers > 24h (si agressif) ─────────────────────────
+            if [ "$MODE" = "agressif" ]; then
+              echo ""
+              echo "==> [Extra] Nettoyage /tmp (fichiers > 24h)"
+              find /tmp -maxdepth 2 -type f -mtime +0 -delete 2>/dev/null || true
+              find /tmp -maxdepth 2 -type d -empty -delete 2>/dev/null || true
+            fi
+
+            # ── 9. Journal système ────────────────────────────────────────────
+            if [ "$MODE" = "agressif" ]; then
+              echo ""
+              echo "==> [Extra] Rotation journald (limite 200 MB)"
+              journalctl --vacuum-size=200M 2>/dev/null || true
+            fi
+
+            # ── 10. pip cache dans le conteneur api ───────────────────────────
+            if [ "$MODE" = "agressif" ]; then
+              echo ""
+              echo "==> [Extra] Pip cache (conteneur api)"
+              docker compose exec -T api pip cache purge 2>/dev/null || true
+            fi
+
+            # ── APRÈS ─────────────────────────────────────────────────────────
+            echo ""
+            echo "==> Occupation APRÈS nettoyage"
+            df -h /
+            echo ""
+            echo "==> Détail Docker après"
+            docker system df
+
+            FREE_AFTER=$(df / --output=avail -k | tail -1)
+            FREED=$(( (FREE_AFTER - FREE_BEFORE) / 1024 ))
+
+            echo ""
+            echo "════════════════════════════════════════════"
+            echo "  NETTOYAGE TERMINÉ"
+            printf "  Espace récupéré : %d MB\n" "$FREED"
+            echo "  NVMe disponible  : $(df -h / | tail -1 | awk '{print $4}')"
+            echo "════════════════════════════════════════════"
+
+            # Alerte si NVMe encore > 80%
+            USED_PCT=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+            if [ "$USED_PCT" -gt 80 ]; then
+              echo ""
+              echo "⚠️  ATTENTION : NVMe encore à ${USED_PCT}% après nettoyage"
+              echo "   Actions supplémentaires recommandées :"
+              echo "   - Réduire n_estimators RF (modèle trop volumineux)"
+              echo "   - Supprimer data/raw/* (reconstruit via DVC pull)"
+              echo "   - Augmenter le block storage /data"
+            else
+              echo "✅ NVMe à ${USED_PCT}% — OK"
+            fi

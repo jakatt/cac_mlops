@@ -1,0 +1,269 @@
+name: Kapsule — Start (crée node pool + déploie)
+
+on:
+  workflow_dispatch:
+    inputs:
+      node_type:
+        description: "Type de nœud Kapsule"
+        required: false
+        default: "BASIC3-X2C-8G"
+      node_count:
+        description: "Nombre de nœuds"
+        required: false
+        default: "2"
+
+jobs:
+  kapsule-up:
+    runs-on: ubuntu-latest
+    env:
+      SCW_ACCESS_KEY:    ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY:    ${{ secrets.SCW_SECRET_KEY }}
+      SCW_DEFAULT_ORGANIZATION_ID: ${{ secrets.SCW_DEFAULT_ORG_ID }}
+      CLUSTER_ID:        ${{ secrets.KAPSULE_CLUSTER_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── 1. CLI Scaleway ────────────────────────────────────────────────────
+      - name: Installer scw CLI
+        run: |
+          curl -s https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | bash
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      # ── 2. Créer le node pool ──────────────────────────────────────────────
+      - name: Créer node pool Kapsule
+        run: |
+          scw k8s pool create \
+            cluster-id=$CLUSTER_ID \
+            name=main \
+            size=${{ inputs.node_count || '2' }} \
+            node-type=${{ inputs.node_type || 'GP1-S' }} \
+            zone=fr-par-1
+
+      # ── 3. Attendre que les nœuds soient ready ────────────────────────────
+      - name: Attendre nœuds ready (max 15 min)
+        run: |
+          for i in $(seq 1 90); do
+            STATUS=$(scw k8s pool list cluster-id=$CLUSTER_ID -o json \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[-1]['status'] if d else 'none')")
+            echo "  [$((i*10))s] status=$STATUS"
+            if [ "$STATUS" = "ready" ]; then
+              echo "✓ Nœuds ready"
+              break
+            fi
+            # warning = nœuds partiellement disponibles — on continue après 5 min
+            if [ "$STATUS" = "warning" ] && [ $i -ge 30 ]; then
+              echo "⚠️  Pool warning après ${i}×10s — on continue (nœuds partiellement disponibles)"
+              break
+            fi
+            if [ $i -eq 90 ]; then
+              echo "✗ Timeout 15 min — status=$STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      # ── 4. Récupérer le kubeconfig ─────────────────────────────────────────
+      - name: Récupérer kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          scw k8s kubeconfig get $CLUSTER_ID > ~/.kube/config
+          kubectl cluster-info
+
+      # ── 5. Upload du modèle vers Scaleway S3 (depuis le VPS) ──────────────
+      - name: Upload modèle → Scaleway S3
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          envs:     SCW_ACCESS_KEY,SCW_SECRET_KEY
+          script: |
+            set -e
+            MODEL=/data/cac_mlops/src/models/trained_model.joblib
+            mkdir -p /data/cac_mlops/src/models
+            cd /data/cac_mlops
+
+            if [ ! -f "$MODEL" ]; then
+              echo "Export modele depuis MLflow @Production via docker compose..."
+              docker compose exec -T api python3 - << 'PYEOF'
+            import mlflow, joblib, os
+            mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
+            for name in ["lgbm_accidents", "rf_accidents"]:
+                try:
+                    model = mlflow.sklearn.load_model("models:/" + name + "@Production")
+                    joblib.dump(model, "/tmp/trained_model.joblib")
+                    print("OK: " + name + "@Production exported")
+                    break
+                except Exception as e:
+                    print("skip " + name + ": " + str(e))
+            PYEOF
+              API_ID=$(docker compose ps -q api)
+              docker cp "$API_ID":/tmp/trained_model.joblib "$MODEL"
+              echo "Modele exporte vers $MODEL"
+            else
+              echo "Modele deja present : $MODEL"
+            fi
+
+            docker run --rm \
+              -e AWS_ACCESS_KEY_ID=$SCW_ACCESS_KEY \
+              -e AWS_SECRET_ACCESS_KEY=$SCW_SECRET_KEY \
+              -e AWS_DEFAULT_REGION=fr-par \
+              -v /data/cac_mlops/src/models:/models \
+              amazon/aws-cli s3 cp /models/trained_model.joblib \
+                s3://cac-mlops-data/k8s-model/trained_model.joblib \
+                --endpoint-url https://s3.fr-par.scw.cloud
+            echo "Modele uploade vers s3://cac-mlops-data/k8s-model/trained_model.joblib"
+
+            echo "Upload donnees Gradio (X_test + y_test) vers S3..."
+            for PPATH in \
+              /data/cac_mlops/data/preprocessed/cumul_2021_2022_2023 \
+              /data/cac_mlops/data/preprocessed/cumul_2021_2022 \
+              /data/cac_mlops/data/preprocessed/2023 \
+              /data/cac_mlops/data/preprocessed/2022; do
+              if [ -f "$PPATH/X_test.csv" ] && [ -f "$PPATH/y_test.csv" ]; then
+                echo "  Source: $PPATH"
+                docker run --rm \
+                  -e AWS_ACCESS_KEY_ID=$SCW_ACCESS_KEY \
+                  -e AWS_SECRET_ACCESS_KEY=$SCW_SECRET_KEY \
+                  -e AWS_DEFAULT_REGION=fr-par \
+                  -v "$PPATH:/csvdata:ro" \
+                  amazon/aws-cli s3 cp /csvdata/X_test.csv \
+                    s3://cac-mlops-data/k8s-gradio-data/X_test.csv \
+                    --endpoint-url https://s3.fr-par.scw.cloud
+                docker run --rm \
+                  -e AWS_ACCESS_KEY_ID=$SCW_ACCESS_KEY \
+                  -e AWS_SECRET_ACCESS_KEY=$SCW_SECRET_KEY \
+                  -e AWS_DEFAULT_REGION=fr-par \
+                  -v "$PPATH:/csvdata:ro" \
+                  amazon/aws-cli s3 cp /csvdata/y_test.csv \
+                    s3://cac-mlops-data/k8s-gradio-data/y_test.csv \
+                    --endpoint-url https://s3.fr-par.scw.cloud
+                echo "Donnees Gradio uploadees depuis $PPATH"
+                break
+              fi
+            done
+
+      # ── 6. Créer le namespace + les secrets ───────────────────────────────
+      - name: Namespace + Secrets
+        run: |
+          kubectl create namespace cac-mlops --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic s3-creds \
+            --from-literal=AWS_ACCESS_KEY_ID=${{ secrets.SCW_ACCESS_KEY }} \
+            --from-literal=AWS_SECRET_ACCESS_KEY=${{ secrets.SCW_SECRET_KEY }} \
+            -n cac-mlops --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic app-creds \
+            --from-literal=JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }} \
+            --from-literal=API_USERNAME=${{ secrets.API_USERNAME }} \
+            --from-literal=API_PASSWORD=${{ secrets.API_PASSWORD }} \
+            --from-literal=POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            -n cac-mlops --dry-run=client -o yaml | kubectl apply -f -
+
+      # ── 7. ConfigMaps Grafana (depuis les fichiers du repo) ───────────────
+      - name: ConfigMaps Grafana
+        run: |
+          kubectl create configmap grafana-provisioning-datasources \
+            --from-file=infrastructure/grafana/provisioning/datasources/ \
+            -n cac-mlops --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create configmap grafana-provisioning-dashboards \
+            --from-file=infrastructure/grafana/provisioning/dashboards/ \
+            -n cac-mlops --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create configmap grafana-dashboards \
+            --from-file=infrastructure/grafana/dashboards/ \
+            -n cac-mlops --dry-run=client -o yaml | kubectl apply -f -
+
+      # ── 8. Appliquer tous les manifests ───────────────────────────────────
+      - name: kubectl apply manifests
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmap.yaml
+          for dir in api mlflow nginx prefect prometheus grafana gradio; do
+            kubectl apply -f k8s/$dir/
+          done
+
+      # ── 9. Patcher PREFECT_UI_API_URL avec l'IP du LB Prefect ────────────
+      - name: Patcher Prefect UI URL
+        run: |
+          echo "Attente IP LoadBalancer prefect-server (max 3 min)..."
+          for i in $(seq 1 18); do
+            PREFECT_LB=$(kubectl get svc prefect-server -n cac-mlops \
+              -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            if [ -n "$PREFECT_LB" ]; then
+              echo "✓ Prefect LB IP: $PREFECT_LB"
+              kubectl set env deployment/prefect-server \
+                -n cac-mlops \
+                PREFECT_UI_API_URL=http://$PREFECT_LB:4200/api
+              break
+            fi
+            echo "  [$((i*10))s] en attente..."
+            sleep 10
+          done
+
+      # ── 10. Attendre que l'API soit ready ─────────────────────────────────
+      - name: Attendre API ready
+        run: |
+          kubectl wait deployment api \
+            -n cac-mlops \
+            --for=condition=available \
+            --timeout=300s
+
+      # ── 11. Résumé ────────────────────────────────────────────────────────
+      - name: Résumé du déploiement
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n cac-mlops
+
+          echo ""
+          echo "=== Services (LoadBalancer IPs) ==="
+          kubectl get svc -n cac-mlops
+
+          NGINX_LB=$(kubectl get svc nginx -n cac-mlops \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          GRAFANA_LB=$(kubectl get svc grafana -n cac-mlops \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          PREFECT_LB=$(kubectl get svc prefect-server -n cac-mlops \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+          GRADIO_LB=$(kubectl get svc gradio -n cac-mlops \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+
+          echo ""
+          echo "=== URLs ==="
+          echo "  API      : http://$NGINX_LB/health"
+          echo "  API docs : http://$NGINX_LB/docs"
+          echo "  Grafana  : http://$GRAFANA_LB:3000  (admin/admin)"
+          echo "  Prefect  : http://$PREFECT_LB:4200"
+          echo "  Gradio   : http://$GRADIO_LB:7860"
+          echo "  MLflow   : kubectl port-forward svc/mlflow 5000:5000 -n cac-mlops"
+
+          echo ""
+          echo "=== HPA ==="
+          kubectl get hpa -n cac-mlops
+
+          # Export pour l'étape suivante (SSH → state/kapsule_ips)
+          echo "NGINX_LB=$NGINX_LB"     >> $GITHUB_ENV
+          echo "GRAFANA_LB=$GRAFANA_LB" >> $GITHUB_ENV
+          echo "PREFECT_LB=$PREFECT_LB" >> $GITHUB_ENV
+          echo "GRADIO_LB=$GRADIO_LB"   >> $GITHUB_ENV
+
+      # ── 12. Écrire les IPs dans state/kapsule_ips (cockpit Gradio) ────────
+      - name: Écrire IPs dans state/kapsule_ips
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            mkdir -p /data/cac_mlops/state
+            cat > /data/cac_mlops/state/kapsule_ips << 'STATEEOF'
+            NGINX_LB=${{ env.NGINX_LB }}
+            GRAFANA_LB=${{ env.GRAFANA_LB }}
+            PREFECT_LB=${{ env.PREFECT_LB }}
+            GRADIO_LB=${{ env.GRADIO_LB }}
+            STATEEOF
+            echo "✓ state/kapsule_ips écrit"
+            cat /data/cac_mlops/state/kapsule_ips

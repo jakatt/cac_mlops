@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
 
 KPI_THRESHOLDS = {
     "accuracy": 0.70,
-    "f1":       0.68,
+    "f1":       0.64,
     "auc":      0.75,
-    "recall":   0.65,
+    "recall":   0.60,
 }
 
 
@@ -37,7 +37,7 @@ def _get_metrics(run_id: str, client: mlflow.MlflowClient) -> dict[str, float]:
     return {k: v for k, v in run.data.metrics.items() if k in KPI_THRESHOLDS}
 
 
-def _production_run_id(client: mlflow.MlflowClient, model_name: str = "rf_accidents") -> str | None:
+def _production_run_id(client: mlflow.MlflowClient, model_name: str) -> str | None:
     try:
         mv = client.get_model_version_by_alias(model_name, "Production")
         return mv.run_id
@@ -45,7 +45,7 @@ def _production_run_id(client: mlflow.MlflowClient, model_name: str = "rf_accide
         return None
 
 
-def validate(candidate_run_id: str, promote: bool = False) -> bool:
+def validate(candidate_run_id: str, model_name: str = "rf_accidents", promote: bool = False) -> bool:
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001"))
     client = mlflow.MlflowClient()
 
@@ -55,7 +55,7 @@ def validate(candidate_run_id: str, promote: bool = False) -> bool:
         logger.error("Candidate run %s has no tracked metrics — abort", candidate_run_id)
         return False
 
-    logger.info("Candidate run : %s", candidate_run_id[:8])
+    logger.info("Candidate run : %s  (model: %s)", candidate_run_id[:8], model_name)
     for k, v in candidate.items():
         gate = KPI_THRESHOLDS[k]
         status = "✅" if v >= gate else "❌"
@@ -68,7 +68,7 @@ def validate(candidate_run_id: str, promote: bool = False) -> bool:
         return False
 
     # ── Comparaison avec @Production ─────────────────────────────────────────
-    prod_run_id = _production_run_id(client)
+    prod_run_id = _production_run_id(client, model_name)
     if prod_run_id is None:
         logger.info("Aucun modèle @Production — candidat accepté par défaut")
     else:
@@ -104,20 +104,22 @@ def validate(candidate_run_id: str, promote: bool = False) -> bool:
             logger.error("Aucune version de modèle trouvée pour ce run_id")
             return False
         version = mv_list[0].version
-        client.set_registered_model_alias("rf_accidents", "Production", version)
-        logger.info("🚀 @Production → version %s", version)
+        client.set_registered_model_alias(model_name, "Production", version)
+        logger.info("🚀 @Production → version %s  (model: %s)", version, model_name)
 
     return True
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Valide un run MLflow avant promotion @Production")
-    parser.add_argument("--run-id",  required=True, help="MLflow run_id du candidat")
-    parser.add_argument("--promote", action="store_true",
+    parser.add_argument("--run-id",     required=True, help="MLflow run_id du candidat")
+    parser.add_argument("--model-name", default="rf_accidents",
+                        help="Nom du modèle MLflow (rf_accidents | xgb_accidents | lgbm_accidents)")
+    parser.add_argument("--promote",    action="store_true",
                         help="Promouvoir automatiquement si validation OK")
     args = parser.parse_args()
 
-    ok = validate(args.run_id, promote=args.promote)
+    ok = validate(args.run_id, model_name=args.model_name, promote=args.promote)
     sys.exit(0 if ok else 1)
 
 

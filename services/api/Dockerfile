@@ -13,6 +13,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # project source (for src/ imports)
 COPY src/ src/
 COPY services/api/app/ services/api/app/
+COPY services/monitoring/ services/monitoring/
+COPY services/__init__.py services/__init__.py
+COPY scripts/ scripts/
+COPY config/ config/
+COPY prefect.yaml .
 
 ENV PYTHONPATH=/app
 ENV PORT=8000

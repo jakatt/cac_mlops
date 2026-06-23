@@ -30,15 +30,20 @@ deployments:
       cumul: true
       promote: true
 
-  # ── Retrain — scheduled every Monday 02:00 Paris time ────────────────────────
-  - name: retrain-weekly
+  # ── Retrain annuel — déclenché manuellement quand les données ONISR de l'année N
+  # sont disponibles (~juin de l'année N+2). Pas de cron : réentraîner sur les
+  # mêmes données produirait un modèle identique.
+  - name: retrain-annual
     entrypoint: src/flows/retrain_flow.py:retrain_flow
     work_pool:
       name: default-process-pool
     parameters:
       year: 2023
       cumul: true
-    schedules:
-      - cron: "0 2 * * 1"
-        timezone: "Europe/Paris"
-        active: true
+
+  # ── Drift — déclenché manuellement après simulate_production.py
+  # (ou via train.yml qui gère simulation + drift en une passe)
+  - name: drift-check
+    entrypoint: src/flows/drift_monitoring_flow.py:drift_monitoring_flow
+    work_pool:
+      name: default-process-pool

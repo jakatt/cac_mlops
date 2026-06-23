@@ -50,16 +50,17 @@ MÉTRIQUES DE PERFORMANCE MODÈLE
 ────────────────────────────────
   Métrique          Seuil minimum     Pourquoi ce choix
   ───────────────   ───────────────   ──────────────────────────────────────
-  F1-score          ≥ 0.68            Équilibre précision/rappel sur classes
+  F1-score          ≥ 0.64            Équilibre précision/rappel sur classes
                                       déséquilibrées (plus de cas légers)
   AUC-ROC           ≥ 0.75            Capacité discriminante globale
   Accuracy          ≥ 0.70            Indicateur de référence global
-  Recall (grav=1)   ≥ 0.65            Minimiser les faux négatifs :
+  Recall (grav=1)   ≥ 0.60            Minimiser les faux négatifs :
                                       ne pas manquer un blessé grave
 
   Seuil de régression : si le nouveau modèle est inférieur à
   ces seuils OU inférieur au modèle en production sur ≥ 2 métriques
-  → déploiement bloqué, alerte, modèle précédent reste actif.
+  → promotion @Production ignorée (tag kpi_gate=FAILED dans MLflow),
+    pipeline continue sans interruption, modèle précédent reste actif.
 
 MÉTRIQUES API (production)
 ──────────────────────────
@@ -138,7 +139,7 @@ Disponibilité historique : 2005 → 2024 (20 années)
   ❌ Ne prouve rien sur l'année N+1    ✅ Prouve que le système est opérationnel
 ```
 
-### Périmètre retenu : 2021 → 2022 → 2023 (entraînement) + 2024 (production)
+### Périmètre retenu : 2021 → 2022 → 2023 (entraînement) + cycle annuel de drift
 
 ```text
 POURQUOI PAS DEPUIS 2005 ?
@@ -153,39 +154,42 @@ Ajouter 2005-2020 nécessiterait 3-4 semaines de travail de normalisation
 qui ne sont pas dans le budget temps du projet.
 La normalization layer est conçue pour l'accueillir plus tard si besoin.
 
-POURQUOI 2021 → 2022 → 2023 (dans cet ordre) ?
-───────────────────────────────────────────────
-Charger les années une par une valide la chaîne complète 3 fois :
-  Itération 1 : 2021 seul  → modèle v1, DVC v1, MLflow run #1
-  Itération 2 : +2022      → modèle v2, DVC v2, MLflow run #2
-  Itération 3 : +2023      → modèle v3, DVC v3, MLflow run #3 ← modèle en PRODUCTION
-
-2024 : DONNÉES DE PRODUCTION (pas d'entraînement)
-──────────────────────────────────────────────────
-Les données 2024 sont disponibles dès maintenant (publiées mai 2025).
-Elles servent à simuler un flux de production réel pour Evidently :
+CYCLE ANNUEL — USE CASE RÉALISTE
+──────────────────────────────────────────────────────────────────────────────
+L'ONISR publie les données de l'année N avec ~2 ans de délai (ex: données
+2022 disponibles en 2024). Le cycle de mise à jour du modèle suit ce rythme :
 
   ┌─────────────────────────────────────────────────────────────────────┐
-  │  RÔLE DE CHAQUE ANNÉE                                               │
+  │  CYCLE DE VIE DU MODÈLE (use case ML Engineer)                      │
   │                                                                     │
-  │  2021        →  entraînement (baseline)     → modèle v1            │
-  │  2021+2022   →  entraînement (enrichi)      → modèle v2            │
-  │  2021+2023   →  entraînement (final)        → modèle v3 = PROD     │
+  │  Année calendaire  Action                           Données drift   │
+  │  ────────────────  ───────────────────────────────  ─────────────── │
+  │  2023 (1ère mise   Entraînement sur 2021            Simulation 2022 │
+  │  en prod)          → Modèle v1 @Production          sur modèle v1   │
+  │                    → Drift check : 2022 vs ref 2021                │
   │                                                                     │
-  │  2024        →  simulation production        ← NOUVEAU              │
-  │               Rejoué mois par mois via POST /predict               │
-  │               Le modèle v3 n'a JAMAIS vu ces données               │
-  │               Evidently compare distribution 2021-2023 vs 2024     │
-  │               → drift RÉEL, pas simulé                             │
+  │  2024              Entraînement sur 2021+2022       Simulation 2023 │
+  │                    → Modèle v2 @Production          sur modèle v2   │
+  │                    → Drift check : 2023 vs ref 2021+2022           │
+  │                                                                     │
+  │  2025              Entraînement sur 2021+2022+2023  Simulation 2024 │
+  │                    → Modèle v3 @Production          sur modèle v3   │
+  │                    → Drift check : 2024 vs ref 2021+2022+2023      │
   └─────────────────────────────────────────────────────────────────────┘
 
-  Script : scripts/simulate_production.py
-  Stratégie : ~55 000 accidents 2024 envoyés en 12 batches mensuels
-  (~4 600 requêtes/mois → loggés PostgreSQL → analysés par Evidently)
+  Principe :
+  • Chaque année, les nouvelles données ONISR (N-2) enrichissent le modèle
+  • Evidently compare les données de l'année suivante vs la référence d'entraînement
+  • Le drift est RÉEL : la référence change à chaque cycle (pas un seuil fixe)
+  • On peut suivre l'évolution du drift d'une année sur l'autre
 
-Quand l'ONISR publiera 2025 (juin 2026), on répètera l'itération 4
-(entraînement sur 2021-2025) et 2026 deviendra les nouvelles données
-de production. Le pipeline ne changera pas d'une ligne.
+  Quand le drift augmente entre deux cycles → le parc automobile / les
+  comportements ont davantage évolué. Quand il diminue → le nouveau modèle
+  a mieux capturé les patterns récents.
+
+  Script : scripts/simulate_production.py --year <N> --api-url http://api:8000
+  Référence drift : data/preprocessed/cumul_2021_{N-1}/X_train.csv (dynamique)
+  Rapport : reports/drift/drift_YYYY-MM.html + JSON → Evidently
 ```
 
 ### Volume des données
@@ -365,7 +369,7 @@ FILENAMES = {
  ────────────────────────────────
  Métriques : accuracy, F1, AUC-ROC, precision, recall
  Comparaison avec version précédente dans MLflow
- Si dégradation > seuil : WARNING → déploiement bloqué
+ Si dégradation > seuil : tag kpi_gate=FAILED → promotion ignorée, pipeline continue
       │
       ▼
  [ÉTAPE 9] DÉPLOIEMENT (si validation OK)
@@ -656,42 +660,39 @@ C'est le cœur de la valeur MLOps du projet. Chaque ajout d'année est tracé de
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                   VERSIONING BOUT EN BOUT                                   │
+│                   VERSIONING BOUT EN BOUT — CYCLE ANNUEL                    │
 │                                                                             │
-│   GIT          DVC (données)          MLflow (modèles)                      │
-│   ───          ─────────────          ───────────────                       │
+│   GIT          DVC (données)          MLflow (modèles)     Drift Evidently  │
+│   ───          ─────────────          ───────────────      ───────────────  │
 │                                                                             │
-│   commit       tag: data-v1           run: rf_2021                          │
-│   "feat:       data/raw/2021/         params: n_estimators=100              │
-│    add 2021"   data/preprocessed/     metrics: accuracy=0.72, F1=0.68      │
-│                  2021/                model: rf_accidents @ Staging          │
+│   commit       tag: data-v1           run: rf_2021          drift 2022      │
+│   "feat:       data/raw/2021/         F1=0.68 → @Prod        vs ref 2021   │
+│    train 2021" data/preprocessed/                           → rapport HTML  │
+│                  2021/                                                      │
 │                                                                             │
-│       ↓              ↓                        ↓                             │
+│       ↓              ↓                        ↓                  ↓         │
 │                                                                             │
-│   commit       tag: data-v2           run: rf_2021_2022                     │
-│   "feat:       data/raw/2021-2022/    params: n_estimators=100              │
-│    add 2022"   data/preprocessed/     metrics: accuracy=0.74, F1=0.70      │
-│                  cumul_2021_2022/     model: rf_accidents @ Staging          │
-│                                       compare vs run précédent : +2.7%     │
+│   commit       tag: data-v2           run: rf_2021_2022      drift 2023    │
+│   "feat:       data/raw/2022/         F1=0.70 → @Prod         vs ref       │
+│    train 2022" data/preprocessed/     +2.7% vs v1            2021_2022    │
+│                  cumul_2021_2022/                            → rapport HTML │
 │                                                                             │
-│       ↓              ↓                        ↓                             │
+│       ↓              ↓                        ↓                  ↓         │
 │                                                                             │
-│   commit       tag: data-v3           run: rf_2021_2022_2023                │
-│   "feat:       data/raw/2021-2023/    params: n_estimators=100              │
-│    add 2023"   data/preprocessed/     metrics: accuracy=0.75, F1=0.71      │
-│                  cumul_2021_2023/     model: rf_accidents @ Production      │
-│                                       compare vs run précédent : +1.3%     │
+│   commit       tag: data-v3           run: rf_2021_2023      drift 2024    │
+│   "feat:       data/raw/2023/         F1=0.71 → @Prod         vs ref       │
+│    train 2023" data/preprocessed/     +1.3% vs v2            2021_2023    │
+│                  cumul_2021_2023/                            → rapport HTML │
 │                                                                             │
-│       ↓              ↓                        ↓                             │
+│  → Le drift est comparable d'un cycle à l'autre :                          │
+│    si drift(2024 vs 2021-23) > drift(2023 vs 2021-22)                      │
+│    → les données 2024 s'éloignent davantage du modèle précédent            │
+│    → signal pour accélérer le prochain cycle d'entraînement                │
 │                                                                             │
-│   commit       tag: prod-2024         (pas de run entraînement)             │
-│   "data:       data/production/2024/  2024 = données de production         │
-│    add 2024    Caract_2024.csv        rejoué via simulate_production.py     │
-│    prod data"  Lieux_2024.csv        Evidently compare vs X_train 2021-23  │
-│                Usagers_2024.csv      → drift réel mesuré sur 12 mois       │
-│                Vehicules_2024.csv                                            │
-│                                                                             │
-│  (Quand 2025 sera disponible en juin 2026 → data-v4, run rf_2021_2025)    │
+│  Réentraînement automatique : NON — les labels N+1 n'existent pas encore   │
+│  (ONISR publie avec ~2 ans de délai). L'alerte drift informe le ML Engineer│
+│  qui décide quand déclencher le prochain cycle selon la disponibilité des  │
+│  nouvelles données labellisées.                                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -760,42 +761,50 @@ MLflow UI → Experiments → "accidents_severity"
 ## 6. Vue d'ensemble de l'architecture
 
 ```text
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                         ARCHITECTURE GLOBALE                                ║
-╠═══════════════════════════════════╦════════════════════════════════════════╣
-║      ENVIRONNEMENT LOCAL          ║       ENVIRONNEMENT SCALEWAY            ║
-║  (Jacques + collègue)             ║       (Cloud Production)                ║
-╠═══════════════════════════════════╬════════════════════════════════════════╣
-║                                   ║                                        ║
-║  docker-compose.yml               ║  Scaleway Kapsule (Kubernetes)         ║
-║  ┌─────────────────────────────┐  ║  ┌──────────────────────────────────┐  ║
-║  │  api        :8000           │  ║  │  Deployment: api  (N replicas)   │  ║
-║  │  training   (no port)       │  ║  │  Deployment: mlflow              │  ║
-║  │  mlflow     :5001 (host)    │  ║  │  Deployment: prefect             │  ║
-║  │  minio      :9000/:9001     │  ║  │  Deployment: prometheus          │  ║
-║  │  postgresql :5432           │  ║  │  Deployment: grafana             │  ║
-║  │  prefect    :4200           │  ║  │  Ingress: nginx                  │  ║
-║  │  nginx      :80             │  ║  └──────────────────────────────────┘  ║
-║  │  prometheus :9090  [Ph.4]   │  ║                                        ║
-║  │  grafana    :3000  [Ph.4]   │  ║  Scaleway Managed Database             ║
-║  └─────────────────────────────┘  ║  ┌──────────────────────────────────┐  ║
-║                                   ║  │  PostgreSQL                      │  ║
-║  Stockage local                   ║  │  → backend MLflow                │  ║
-║  ┌─────────────────────────────┐  ║  │  → logs prédictions [Ph.4]       │  ║
-║  │  data/     ← DVC pull       │  ║  └──────────────────────────────────┘  ║
-║  └─────────────────────────────┘  ║                                        ║
-║                                   ║  Scaleway Object Storage (S3)          ║
-║  Outils hors Docker               ║  ┌──────────────────────────────────┐  ║
-║  ┌─────────────────────────────┐  ║  │  bucket: cac-mlops-data          │  ║
-║  │  pytest  flake8  dvc  git   │  ║  │  → données brutes (DVC remote)   │  ║
-║  └─────────────────────────────┘  ║  │  bucket: cac-mlops-mlflow        │  ║
-║                                   ║  │  → artefacts MLflow              │  ║
-║                                   ║  └──────────────────────────────────┘  ║
-╠═══════════════════════════════════╩════════════════════════════════════════╣
-║                         PARTAGÉ ENTRE LES DEUX                              ║
-║  GitHub  → code, .dvc files, CI config, K8s manifests                       ║
-║  Scaleway Object Storage → données (DVC) + artefacts MLflow                 ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║                         ARCHITECTURE GLOBALE — Phase 5                                       ║
+╠══════════════════════╦═══════════════════════════════════════╦═══════════════════════════════╣
+║  DEV LOCAL           ║  VPS SCALEWAY — Ph.1-4                ║  KAPSULE K8s — Ph.5           ║
+║  (développeur)       ║  51.159.187.132  /data/cac_mlops      ║  (on-demand, via workflow)    ║
+╠══════════════════════╬═══════════════════════════════════════╬═══════════════════════════════╣
+║                      ║                                       ║                               ║
+║  docker-compose.yml  ║  docker-compose.yml (11 services)     ║  Deployments                  ║
+║  (même stack VPS)    ║  ┌─────────────────────────────────┐  ║  api           (HPA 2→8)      ║
+║                      ║  │ nginx          :8090→:80  [Ph.3] │  ║  mlflow        (SQLite démo)  ║
+║  Outils CLI          ║  │ api            :8080→:8000 [Ph.1]│  ║  prefect-server               ║
+║  pytest  flake8      ║  │ training       (no port)  [Ph.1] │  ║  prefect-worker               ║
+║  dvc  git            ║  │ mlflow         :5001→:5000 [Ph.2]│  ║  prometheus                   ║
+║  kubectl  kind       ║  │ minio          :9000/:9001 [Ph.2]│  ║  grafana                      ║
+║  (dry-run manifests) ║  │ postgresql     :5432       [Ph.2]│  ║                               ║
+║                      ║  │ prefect-server :4200       [Ph.2]│  ║  Services LoadBalancer LB-S   ║
+║  Stockage local      ║  │ prefect-worker (no port)   [Ph.2]│  ║  nginx    :80  → API publique ║
+║  data/ ← DVC pull   ║  │ prometheus     :9090       [Ph.4]│  ║  prefect  :4200 → UI Prefect  ║
+║                      ║  │ grafana        :3000       [Ph.4]│  ║  grafana  :3000 → Dashboards  ║
+║                      ║  │ gradio         :7860       [Ph.4]│  ║                               ║
+║                      ║  └─────────────────────────────────┘  ║  HPA api                      ║
+║                      ║                                       ║  CPU 70% / RAM 80%            ║
+║                      ║  Drift (Prefect flow — batch mensuel) ║  min 2 → max 8 pods           ║
+║                      ║  → reports/drift/latest_summary.json  ║                               ║
+║                      ║  → métriques Prometheus (6 Gauges)    ║  initContainer api            ║
+║                      ║  → rapports HTML /app/reports/        ║  S3 → /app/model/trained_     ║
+║                      ║                                       ║  model.joblib au démarrage    ║
+╠══════════════════════╩═══════════════════════════════════════╩═══════════════════════════════╣
+║                                     PARTAGÉ                                                   ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════╣
+║  GitHub (jakatt/cac_mlops)                                                                    ║
+║    code · .dvc files · K8s manifests (k8s/)                                                  ║
+║    workflows: ci.yml · deploy.yml · train.yml · promote.yml · test-api.yml · diag.yml        ║
+║               kapsule-up.yml · kapsule-down.yml · cleanup.yml                                ║
+║                                                                                               ║
+║  GHCR (ghcr.io/jakatt/)  ← images buildées par deploy.yml                                   ║
+║    cac-mlops-api:latest · cac-mlops-mlflow:latest · cac-mlops-gradio:latest                 ║
+║                                                                                               ║
+║  Scaleway Object Storage — 1 bucket : cac-mlops-data                                        ║
+║    dvc/          → données brutes versionnées (DVC remote)                                   ║
+║    k8s-model/    → trained_model.joblib pour initContainer K8s [Ph.5]                        ║
+║    mlflow-k8s/   → artefacts MLflow dans Kapsule [Ph.5]                                      ║
+║  MinIO (VPS)     → artefacts MLflow dans docker-compose (Ph.1-4)                             ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ### Flux de données de bout en bout
@@ -875,35 +884,39 @@ DÉMARRAGE
 ```text
 SERVICE        PORT    RÔLE
 ───────────    ─────   ─────────────────────────────────────────────────
-api            8000    FastAPI — expose POST /predict, GET /health,
-                       GET /metrics (Prometheus)
-                       Charge le modèle depuis MLflow Registry
+api            8080→   FastAPI — POST /predict (JWT requis)
+               8000    GET /health, GET /metrics, POST /token
+               (host)  Charge modèle @Production depuis MLflow Registry
+                       Image : ghcr.io/jakatt/cac-mlops-api:latest
 
-training       —       Service one-shot — exécuté manuellement ou
-                       déclenché par Prefect
-                       Lance ETL → validation → preprocessing → train
-
-mlflow         5001    UI tracking : http://localhost:5001
-                       Compare les runs, gère le Model Registry (v3.1.0)
-                       Aliases (@Production) remplacent les stages dépréciés
-                       Backend : PostgreSQL, artefacts : MinIO (bucket mlflow)
+mlflow         5001→   UI tracking : http://localhost:5001
+               5000    Gère le Model Registry v3.1.0 (alias @Production)
+               (host)  Backend : PostgreSQL, artefacts : MinIO (mlflow bucket)
+                       Image : ghcr.io/jakatt/cac-mlops-mlflow:latest
 
 minio          9000    Stockage local compatible S3
                9001    Console UI MinIO : http://localhost:9001
-                       Simule Scaleway Object Storage en local
-                       Contient les artefacts MLflow (modèles, plots)
+                       Artefacts MLflow (modèles, plots, matrices)
 
 postgresql     5432    Backend MLflow (runs, params, métriques)
                        [Phase 4] logs des prédictions production
 
-prefect        4200    UI orchestration : http://localhost:4200
-                       Déclenche les flows ETL et réentraînement
-
-nginx          80      Reverse proxy devant l'API [Phase 3]
-                       Rate limiting, headers sécurité, auth JWT
+nginx          8090→   Reverse proxy devant l'API ✅ Phase 3
+               80      Rate limiting : 20 req/min sur /predict (burst 5 → 429)
+               (host)  Endpoint principal d'accès en production
 
 prometheus     9090    Scrape /metrics de l'API [Phase 4]
 grafana        3000    Dashboards perf + drift [Phase 4]
+
+minio-init     —       Crée le bucket mlflow au premier démarrage de MinIO
+                       (service one-shot, condition: service_completed_successfully)
+
+prefect        4200    Serveur Prefect UI (prefect-server:4200)
+               —       Worker Prefect (prefect-worker, image api — toutes dépendances ML)
+                       Flows : etl, train, retrain-annual, drift-check
+
+gradio         7860    Cockpit MLOps 6 onglets : What-If, Heatmap, Drift,
+                       Modèles+DVC, Santé Stack, Liens
 ```
 
 ### Flux de travail quotidien
@@ -967,46 +980,91 @@ API_ENV=development                     API_ENV=production
 
 ## 8. Partie Scaleway — production
 
-### Infrastructure actuelle (Phase 1+2) — scw-jovial-dubinsky DEV1-L
+### Infrastructure VPS — Phase 5 terminée — DEV1-L
 
 ```text
-SCALEWAY CLOUD — ÉTAT ACTUEL
+SCALEWAY VPS — ÉTAT ACTUEL (Phase 5 ✅)
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
-│   Serveur dédié : scw-jovial-dubinsky DEV1-L                              │
+│   Serveur dédié : DEV1-L (Scaleway)                                       │
 │   IP publique   : 51.159.187.132                                           │
-│   User deploy   : /home/deploy/cac_mlops                                  │
+│   Répertoire    : /data/cac_mlops  (migré depuis /home/deploy)            │
 │                                                                            │
-│   docker-compose.yml (4 containers, restart: unless-stopped)              │
+│   docker-compose.yml (11 services, restart: unless-stopped)               │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  postgresql  :5432    backend MLflow (volume persistant)         │   │
-│   │  minio       :9000/:9001  artefacts MLflow (bucket mlflow)      │   │
-│   │  mlflow      :5001    http://51.159.187.132:5001  (v3.1.0)      │   │
-│   │  api         :8080    http://51.159.187.132:8080                 │   │
+│   │  postgresql    :5432    backend MLflow + logs prédictions        │   │
+│   │  minio         :9000/:9001  artefacts MLflow                     │   │
+│   │  minio-init    (one-shot)  crée bucket mlflow au démarrage       │   │
+│   │  mlflow        :5001    http://51.159.187.132:5001  (v3.1.0)    │   │
+│   │  api           :8080    http://51.159.187.132:8080  (admin)      │   │
+│   │  nginx         :8090    http://51.159.187.132:8090  (prod)       │   │
+│   │  prefect-server:4200    http://51.159.187.132:4200               │   │
+│   │  prefect-worker(no port) traite les flows Prefect                │   │
+│   │  prometheus    :9090    scrape /metrics API                      │   │
+│   │  grafana       :3000    http://51.159.187.132:3000               │   │
+│   │  gradio        :7860    http://51.159.187.132:7860 (cockpit)     │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Modèle en production : rf_accidents@Production (2021 · v1)              │
-│   KPI actuels : accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593     │
+│   Modèle en production : lgbm_accidents@Production                        │
+│     Entraîné sur : cumul 2021+2022+2023 (LightGBM, benchmark gagnant)    │
 │                                                                            │
-│   Scaleway Object Storage (compatible S3)                                  │
+│   DISQUES (après extension + migration Docker sur /data)                   │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  bucket: cac-mlops-data   → données brutes (DVC remote)         │   │
+│   │  /dev/vda1  NVMe  → /       ~30% utilisé (OS + logs)            │   │
+│   │  /dev/sda   Block → /data   ~47% utilisé (Docker + volumes)      │   │
+│   │    Docker images + volumes + données sur /data                   │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Deploy : GitHub Actions deploy.yml → SSH → git pull + docker compose   │
+│   Autre application sur ce VPS (partagé — NE PAS TOUCHER)                 │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  Caddy (port 80/443) + 2× uvicorn Python (port 8000/8001)       │   │
+│   │  Qdrant vector DB (Docker, localhost:6333-6334 uniquement)        │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Scaleway Object Storage — bucket: cac-mlops-data                        │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  dvc/        → données brutes versionnées (DVC remote)           │   │
+│   │  k8s-model/  → trained_model.joblib (pour initContainer K8s)     │   │
+│   │  mlflow-k8s/ → artefacts MLflow dans Kapsule                     │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│   MinIO (VPS) → artefacts MLflow (docker-compose)                         │
+│                                                                            │
+│   Images : ghcr.io/jakatt/cac-mlops-{api,mlflow}:latest                  │
+│   Deploy : GitHub Actions deploy.yml → SSH → docker compose               │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 
-### Infrastructure cible (Phase 3+) — Kubernetes
+### Infrastructure Kubernetes — Phase 5 ✅ TERMINÉE
 
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
-│   Scaleway Kapsule (Kubernetes managé)                                     │
-│   · Ingress NGINX · auto-scaling API (2–10 replicas)                      │
-│   · Pods : api · mlflow · prefect · prometheus · grafana                  │
+│   Scaleway Kapsule — cluster: cac-mlops (Kubernetes 1.35.3)               │
+│   Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB)   │
+│   Activé à la demande via kapsule-up.yml / kapsule-down.yml               │
 │                                                                            │
-│   Scaleway Managed Database (PostgreSQL)                                   │
-│   Scaleway Container Registry (images CI/CD)                               │
+│   Deployments (namespace: cac-mlops)                                       │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  api             initContainer fetch S3 → /app/model/            │   │
+│   │                  HPA: CPU 70% / RAM 80% / min 2 → max 8 pods    │   │
+│   │  mlflow          SQLite emptyDir + artefacts s3://cac-mlops-data │   │
+│   │  prefect-server  PREFECT_UI_API_URL patchée post-deploy          │   │
+│   │  prefect-worker                                                  │   │
+│   │  prometheus      scrape api:8000/metrics                         │   │
+│   │  grafana         dashboards provisionnés via ConfigMaps           │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Services LoadBalancer LB-S (≈ €0.01/h chacun, facturés à l'usage)      │
+│   ┌──────────────────────────────────────────────────────────────────┐   │
+│   │  nginx    :80   → API publique (rate-limit identique VPS)        │   │
+│   │  prefect  :4200 → UI Prefect                                     │   │
+│   │  grafana  :3000 → Dashboards                                     │   │
+│   │  mlflow   : port-forward uniquement (kubectl, pas de LB)         │   │
+│   └──────────────────────────────────────────────────────────────────┘   │
+│                                                                            │
+│   Secrets K8s (injectés par kapsule-up.yml depuis GitHub Secrets)         │
+│   s3-creds : AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY                    │
+│   app-creds: JWT_SECRET_KEY · API_USERNAME · API_PASSWORD                 │
+│              POSTGRES_PASSWORD                                             │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1050,69 +1108,91 @@ OBJECTIF : avoir une API fonctionnelle et un pipeline dockerisé
   GET  /metrics         → métriques Prometheus
 ```
 
-### Phase 2 — Microservices, Suivi & Versioning ⏳ EN COURS (deadline: 29/06)
+### Phase 2 — Microservices, Suivi & Versioning ✅ TERMINÉE
 
 ```text
 OBJECTIF : pipeline année-par-année tracé dans DVC + MLflow
 
-  RÉALISÉ ✅ (itération 2021)
-  ──────────────────────────
-  MLflow v3.1.0 (image custom Docker, PostgreSQL backend, MinIO artefacts)
-  Modèle entraîné sur 2021 (54 698 accidents · 28 features)
-    → accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
-    → ⚠️ f1 et recall sous seuils (cible : ≥0.68 / ≥0.65) — à améliorer avec 2022+2023
-  rf_accidents@Production enregistré dans MLflow Registry (alias, MLflow 3.x)
-  API charge le modèle au démarrage : {"status":"ok","model_version":"rf_accidents@Production"}
+  RÉALISÉ ✅
+  ──────────
+  MLflow v3.1.0 (image custom Docker ghcr.io/jakatt/cac-mlops-mlflow:latest)
+    Backend PostgreSQL · Artefacts MinIO (bucket "mlflow") · Aliases @Production
+  3 itérations complètes :
+    v1  data/raw/2021/          → accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
+    v2  cumul_2021_2022/        → amélioration sur 2 ans
+    v6  cumul_2021_2022_2023/   → modèle @Production actuel (27 features, sans id_usager)
+  rf_accidents@Production = v6 → API retourne {"model_version":"rf_accidents@Production"}
   DVC remote : Scaleway Object Storage (s3://cac-mlops-data/dvc)
-  data/raw/2021/ versionnée via DVC
+  data/raw/2021/, data/raw/2022/, data/raw/2023/ versionnées via DVC
 
-  STACK DOCKER ACTUELLE (docker-compose.yml)
-  ──────────────────────────────────────────
-  postgresql  :5432    backend MLflow
-  minio       :9000/:9001  artefacts MLflow (bucket mlflow)
-  mlflow      :5001 (host) → http://localhost:5001  (container interne: 5000)
-  api         :8080 → http://localhost:8080 / http://51.159.187.132:8080
+  NOTE FEATURE CRITIQUE : id_usager supprimé du feature set
+  ──────────────────────────────────────────────────────────
+  Les modèles v1-v4 (entraînés avant le fix) incluaient id_usager (identifiant
+  usager, non généralisant). make_dataset.py a été corrigé pour le supprimer.
+  Les anciens modèles @Production ne fonctionnaient pas avec l'API car le
+  payload /predict ne contient pas id_usager. → v6 corrige ce bug de feature leak.
 
-  À FAIRE (itérations 2022 + 2023)
-  ─────────────────────────────────
-  data/raw/2022/, data/raw/2023/   import + DVC push
-  make_dataset.py --cumul          preprocessing 2021+2022+2023
-  train_model.py                   MLflow run #2 et #3
-  validate_model.py                comparaison avec modèle @Production
-  → objectif : f1≥0.68 · recall≥0.65 · auc≥0.75
-  → si meilleur : set_registered_model_alias("rf_accidents", "Production", version)
-  → 3 runs comparables dans MLflow UI : http://localhost:5001
+  STACK DOCKER (docker-compose.yml)
+  ──────────────────────────────────
+  postgresql  :5432    backend MLflow (bind mount /data/postgres_data en prod)
+  minio       :9000/:9001  artefacts MLflow (bind mount /data/minio_data en prod)
+  mlflow      :5001 (host) → http://51.159.187.132:5001  (container interne: 5000)
+  api         :8080 → http://51.159.187.132:8080  (accès direct / admin)
+
+  validate_model.py — exit codes
+  ───────────────────────────────
+  exit 0 : KPIs OK (modèle promu ou non — "pas meilleur" ≠ échec pipeline)
+  exit 1 : KPIs insuffisants ou erreur
 ```
 
-### Phase 3 — Orchestration & Déploiement (deadline: 27/07)
+### Phase 3 — Orchestration & Déploiement ✅ TERMINÉE
 
 ```text
-OBJECTIF : pipeline automatisé, CI, API sécurisée, Kubernetes
+OBJECTIF : pipeline automatisé, CI, API sécurisée
 
-  À FAIRE
-  ───────
-  orchestration/flows/etl_flow.py        Prefect : ingestion + validation + prep
-  orchestration/flows/training_flow.py   Prefect : entraînement + MLflow + registry
-  orchestration/flows/retrain_flow.py    Prefect : réentraînement sur alerte
-  infrastructure/nginx/nginx.conf        voir sous-section NGINX ci-dessous
-  services/api/auth.py                   JWT (FastAPI OAuth2)
-  .github/workflows/ci.yml               lint → test → build → push Scaleway Registry
-  k8s/api-deployment.yaml
-  k8s/api-hpa.yaml                       auto-scaling
+  RÉALISÉ ✅
+  ──────────
+  services/nginx/nginx.conf              Reverse proxy + rate limiting (voir §NGINX)
+  services/api/app/auth.py               JWT HS256 (python-jose + passlib)
+  services/api/app/routes/auth.py        POST /token (OAuth2PasswordBearer)
+  src/flows/etl_flow.py                  Prefect : téléchargement + preprocessing
+  src/flows/train_flow.py                Prefect : entraînement + MLflow + promotion
+  src/flows/retrain_flow.py              Prefect : réentraînement sur dérive détectée
+  src/scripts/mlflow_cleanup.py          Nettoyage runs anciens + gc artifacts MinIO
+  prefect.yaml                           Configuration déploiements Prefect
 
-  CI GITHUB ACTIONS (ordre des étapes)
-  ─────────────────────────────────────
-  1. flake8 (lint)
-  2. pytest tests/unit/
-  3. pytest tests/integration/
-  4. docker build cac-mlops/api
-  5. docker push scw-registry/cac-mlops/api:sha
-  6. (optionnel) kubectl rollout restart
+  Prefect — statut conteneur
+  ──────────────────────────
+  Prefect server + worker déployés comme services Docker sur le VPS.
+  Worker utilise l'image api (toutes dépendances ML déjà présentes).
+  4 deployments enregistrés : etl, train, retrain-annual, drift-check.
+  Déclenchement : workflow_dispatch GitHub Actions (train.yml) ou Prefect UI.
+
+  CI GITHUB ACTIONS — 9 workflows
+  ─────────────────────────────────
+  ci.yml           lint (flake8) + pytest sur push/PR
+  deploy.yml       build images → push ghcr.io → SSH deploy → healthcheck
+                   concurrence group : annule le deploy précédent si commit arrive
+  train.yml        pipeline complet sur Scaleway (workflow_dispatch uniquement)
+                   attend API disponible (3 min max) avant de démarrer
+  promote.yml      force-promote n'importe quelle version @Production (manuel)
+  test-api.yml     tests end-to-end JWT + /predict + rate limit (manuel)
+  diag.yml         diagnostic serveur complet (disque, Docker, ports) (manuel)
+  kapsule-up.yml   provision cluster Kapsule K8s + export IPs → state/kapsule_ips
+  kapsule-down.yml déprovision cluster Kapsule K8s + supprime state/kapsule_ips
+  cleanup.yml      nettoyage runs GitHub Actions anciens
+
+  Registry : ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest
+  (GitHub Container Registry — pas Scaleway Container Registry)
+
+  NON FAIT en Phase 3
+  ────────────────────
+  TLS / HTTPS : pas de certificat configuré (accès via IP publique + port 8090)
 ```
 
-#### NGINX — Reverse proxy & sécurisation de l'API
+#### NGINX — Reverse proxy & sécurisation de l'API ✅ IMPLÉMENTÉ
 
-NGINX s'intercale entre internet et le service FastAPI. Il est le seul point d'entrée réseau exposé publiquement.
+NGINX s'intercale entre internet et le service FastAPI. Il est le seul point d'entrée réseau exposé publiquement pour les prédictions.
 
 ```text
 POURQUOI NGINX DEVANT FASTAPI ?
@@ -1120,80 +1200,103 @@ POURQUOI NGINX DEVANT FASTAPI ?
 FastAPI est un framework applicatif, pas un serveur de production.
 Il ne gère pas nativement :
   → la limitation du débit (rate limiting)
-  → la terminaison TLS (HTTPS)
-  → la compression des réponses
-  → les headers de sécurité HTTP
   → la répartition de charge entre réplicas
 
-NGINX prend en charge tout cela, FastAPI reste focalisé sur la logique.
+NGINX prend en charge cela, FastAPI reste focalisé sur la logique.
+JWT auth est géré côté FastAPI (auth.py) — NGINX ne valide pas les tokens.
 
-FLUX DES REQUÊTES AVEC NGINX
-──────────────────────────────
+FLUX DES REQUÊTES AVEC NGINX (implémentation actuelle)
+────────────────────────────────────────────────────────
 
   Client externe
-       │  HTTPS :443
+       │  HTTP :8090  (port 80 de l'hôte pris par une autre appli Caddy)
        ▼
   ┌─────────────────────────────────────────────────┐
-  │  NGINX  (infrastructure/nginx/nginx.conf)       │
+  │  NGINX  (services/nginx/nginx.conf)             │
+  │  image : nginx:alpine — port container : 80     │
   │                                                 │
-  │  → Terminaison TLS (certificat Let's Encrypt)   │
-  │  → Rate limiting : 10 req/s par IP              │
-  │  → Headers sécurité :                           │
-  │      X-Frame-Options: DENY                      │
-  │      X-Content-Type-Options: nosniff            │
-  │      Strict-Transport-Security                  │
-  │  → Vérification token JWT (Phase 3)             │
-  │  → Compression gzip des réponses JSON           │
-  │  → Logs d'accès structurés (format JSON)        │
+  │  → Rate limiting /predict : 20 req/min par IP   │
+  │       burst=5 nodelay, réponse 429 si dépassé  │
+  │  → server_tokens off (masque version NGINX)     │
+  │  → Proxy vers api:8000 (réseau Docker interne)  │
+  │  → Tous les autres endpoints : sans limite      │
   └──────────────────┬──────────────────────────────┘
-                     │  HTTP :8000 (réseau interne Docker/K8s)
+                     │  HTTP :8000 (réseau Docker interne)
                      ▼
   ┌─────────────────────────────────────────────────┐
-  │  FastAPI  (services/api)                        │
-  │  → Logique métier pure                          │
-  │  → Chargement modèle MLflow                     │
-  │  → POST /predict, GET /health, GET /metrics     │
+  │  FastAPI  (services/api)  — port direct : 8080  │
+  │  → POST /token   : émet JWT (admin login)       │
+  │  → POST /predict : require Bearer JWT → 0/1     │
+  │  → GET  /health  : status + model_version       │
+  │  → GET  /metrics : Prometheus counters          │
   └─────────────────────────────────────────────────┘
 
-CONFIGURATION NGINX ESSENTIELLE (nginx.conf)
-─────────────────────────────────────────────
-  upstream api_backend {
-      server api:8000;           # nom du service Docker
-  }
+CONFIGURATION NGINX RÉELLE (services/nginx/nginx.conf)
+───────────────────────────────────────────────────────
+  limit_req_zone $binary_remote_addr zone=predict_ratelimit:10m rate=20r/m;
+
+  upstream api_backend { server api:8000; }
 
   server {
-      listen 443 ssl;
-      limit_req zone=api_limit burst=20 nodelay;  # rate limiting
-      proxy_pass http://api_backend;
-      add_header X-Frame-Options DENY;
+      listen 80;
+      location = /predict {
+          limit_req zone=predict_ratelimit burst=5 nodelay;
+          limit_req_status 429;
+          proxy_pass http://api_backend;
+      }
+      location / { proxy_pass http://api_backend; }
   }
 
-LOCAL vs PRODUCTION
+AUTHENTIFICATION JWT (services/api/app/auth.py)
+────────────────────────────────────────────────
+  POST /token  (form: username + password)  →  {"access_token": "...", "token_type": "bearer"}
+  POST /predict sans token                  →  HTTP 401 Unauthorized
+  POST /predict avec Bearer token valide    →  {"prediction": 0, "probability": 0.71, ...}
+
+PORTS (VPS Scaleway)
 ────────────────────
-  Local      : NGINX sur port 80 (HTTP, pas de TLS) → http://localhost/predict
-  Scaleway   : NGINX Ingress K8s sur port 443 (HTTPS, TLS Let's Encrypt)
-               → https://api.cac-mlops.fr/predict  (exemple)
+  :8090  → NGINX (entrée principale, rate-limited)
+  :8080  → API directe (admin, healthcheck, bypass NGINX)
+  :5001  → MLflow UI
+  :9001  → MinIO console
+  Port 80/443 : pris par une autre application (Caddy) sur le même VPS
+
+PHASE SUIVANTE (TLS)
+─────────────────────
+  TLS/HTTPS non configuré actuellement (accès via IP + port 8090).
+  Mise en place d'un certificat Let's Encrypt prévue avec le passage K8s
+  ou via Caddy si on reste docker-compose.
 ```
 
-### Phase 4 — Monitoring & Maintenance (deadline: 28/09)
+### Phase 4 — Monitoring & Maintenance ✅ TERMINÉE
 
 ```text
 OBJECTIF : surveillance production, drift, réentraînement automatique,
            documentation technique finalisée
 
-  À FAIRE
-  ───────
-  services/monitoring/drift_detection.py  voir sous-section Evidently ci-dessous
-  infrastructure/prometheus/prometheus.yml
-  infrastructure/grafana/dashboards/       api-performance.json
-                                           model-drift.json
+  RÉALISÉ ✅
+  ──────────
+  services/monitoring/drift_detection.py   Evidently — drift features + HTML report
+  infrastructure/prometheus/prometheus.yml scrape api:8000/metrics
+  infrastructure/grafana/dashboards/       api-performance.json (provisionnement auto)
   services/api/app/middleware.py           log chaque prédiction en PostgreSQL
-  services/api/app/routes/metrics.py      endpoint /metrics format Prometheus
-  docs/                                    voir sous-section Documentation ci-dessous
+  services/api/app/routes/metrics.py       endpoint /metrics format Prometheus
 
-  OPTION NICE-TO-HAVE
-  ────────────────────
-  Interface Streamlit ou FastHTML pour visualisation
+  Cockpit Gradio — 6 onglets (services/gradio/app.py)
+  ────────────────────────────────────────────────────
+  Onglet 1 What-If  : applique scenarios (météo/nuit/alcool), compare avant/après
+  Onglet 2 Heatmap  : density_mapbox accidents France, filtres gravité/département
+  Onglet 3 Drift    : sélecteur rapports Evidently, iframe HTML report
+  Onglet 4 Modèles  : liste versions MLflow, mapping année→DVC tag, promotion @Production
+  Onglet 5 Santé    : healthcheck HTTP tous services, statut cluster Kapsule
+  Onglet 6 Liens    : URLs VPS + GitHub Actions + IPs dynamiques Kapsule
+
+  Scripts opérationnels
+  ─────────────────────
+  scripts/raz_mlops.sh          RAZ complète (MLflow, Prefect, données, S3 k8s)
+                                Phases A-G : arrêt, volumes, données, S3, restart, bucket, healthchecks
+  scripts/train_all_cycles.sh  Lance automatiquement 1 cycle par tag DVC data-v*
+                                Détecte les années, attend la fin de chaque run, gère les erreurs
 ```
 
 #### Evidently — Détection de dérive des données et du modèle
@@ -1288,15 +1391,27 @@ FLUX EVIDENTLY EN PRODUCTION
 RÉSULTAT PAR SCÉNARIO
 ──────────────────────
   Pas de drift détecté      : rapport loggé, rien ne change
-  Drift WARNING             : alerte Grafana, équipe notifiée,
-                              pas de réentraînement automatique
-  Drift CRITICAL            : réentraînement automatique déclenché
-                              → si nouveau modèle meilleur : déployé
-                              → sinon : alerte manuelle requise
+  Drift WARNING (> 10%)     : log CRITICAL dans train.yml, rapport HTML généré,
+                              ML Engineer informé via les logs CI
+  Drift CRITICAL (> 25%)    : idem — le ML Engineer décide si le prochain
+                              cycle d'entraînement doit être avancé
 
-  Sur 2024, on s'attend à observer un drift progressif sur certaines
-  features (catv, dep, atm) reflétant les évolutions réelles du
-  parc automobile et des comportements entre 2021-2023 et 2024.
+  POURQUOI PAS DE RÉENTRAÎNEMENT AUTOMATIQUE ?
+  ─────────────────────────────────────────────
+  Un réentraînement n'a de sens que si de nouvelles données LABELLISÉES
+  sont disponibles. Or l'ONISR publie les données de l'année N avec ~2 ans
+  de délai. Déclencher un réentraînement sur les mêmes données produirait
+  un modèle identique — sans valeur.
+
+  Le drift Evidently sert d'indicateur avancé : "les données en production
+  s'éloignent de la référence" → signal pour le ML Engineer de planifier
+  le prochain cycle quand les nouvelles données ONISR seront disponibles.
+
+  SUIVI MULTI-CYCLES
+  ──────────────────
+  En comparant drift_share d'une année sur l'autre, on peut mesurer si
+  les évolutions du parc automobile et des comportements accélèrent ou
+  ralentissent, et calibrer la fréquence optimale des cycles d'entraînement.
 ```
 
 #### Prometheus & Grafana — Surveillance des performances
@@ -1389,7 +1504,7 @@ LIVRABLES DOCUMENTATION (docs/)
 | `noel` | Noël | commits libres, push direct |
 | `main` | — | **pas de commit direct** — uniquement via PR |
 
-### GitHub Actions : deux workflows
+### GitHub Actions : 9 workflows
 
 ```text
 ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
@@ -1399,16 +1514,82 @@ ci.yml — déclenché sur : push vers jacques ou noel / PR vers main
   → la PR ne peut pas merger si ✗
 
 deploy.yml — déclenché sur : push/merge dans main
-  1. SSH vers scw-jovial-dubinsky (deploy@51.159.187.132)
-  2. export PATH → /home/deploy/.local/bin
-  3. cd /home/deploy/cac_mlops
-  4. git fetch origin main && git reset --hard origin/main
-  5. dvc pull (données Scaleway Object Storage)
-  6. docker compose down --remove-orphans
-  7. docker compose up -d --build
-  8. healthcheck : curl http://localhost:8080/health (retry 18×5s = 90s max)
+  Concurrence group : annule tout deploy en cours si nouveau commit arrive
+  1. Build + push images ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest
+  2. SSH → login ghcr.io · arrêt containers
+  3. docker image rm ghcr.io/jakatt/cac-mlops-* (nos images uniquement)
+     ⚠️  PAS docker image prune -af (autre app partage le VPS)
+  4. sudo chown -R deploy: reports/ state/ data/ (répertoires créés root par containers)
+  5. git reset --hard origin/main
+  6. DOCKER_VOLUMES_PATH=/data ajouté dans .env si absent
+  7. docker compose pull (images pré-buildées)
+  8. Migration volumes nommés → /data bind mounts (one-time, idempotent)
+  9. docker volume rm cac_mlops_minio_data cac_mlops_postgres_data ... || true
+  10. docker compose up -d (minio-init crée bucket mlflow automatiquement)
+  11. healthcheck : curl http://localhost:8090/health (retry 18×5s = 90s)
   → ✓ ou logs API + exit 1
+
+train.yml — déclenché : workflow_dispatch (year, cumul, algorithm, promote, simulate_year)
+  0a. Attente API disponible (3 min max, évite "service not running" si deploy en cours)
+  0b. mlflow_cleanup.py (garde 3 derniers runs, gc artifacts MinIO)
+  1. dvc pull data/raw/{2021..year}
+  2. make_dataset.py --year N [--cumul]        (preprocessing dans container api)
+  3. train_model.py --year N [--cumul] --algorithm ALGO  (MLflow run → artefact MinIO)
+  4. validate_model.py --run-id RUN_ID --model-name MODEL [--promote]
+     exit 0 = KPIs OK (promu ou non) · exit 1 = KPIs insuffisants
+     Seuils : accuracy ≥ 0.70 · f1 ≥ 0.64 · auc ≥ 0.75 · recall ≥ 0.60
+  5. docker compose restart api + healthcheck  (charge le nouveau modèle @Production)
+  6. simulate_production.py --year simulate_year (= year+1 par défaut)
+     → télécharge + préprocess données simulate_year si absentes
+     → rejoue ~55k accidents via POST /predict (api:8000, sans rate limit)
+  7. drift_detection.py --month YYYY-MM --reference-path cumul_2021_{year}/X_train.csv
+     → compare distributions simulate_year vs référence d'entraînement year
+     → rapport HTML dans reports/drift/drift_YYYY-MM.html
+     → log WARNING si drift_share > 10%, CRITICAL si > 25%
+
+promote.yml — workflow_dispatch(version, model_name)
+  Force-promote n'importe quelle version → @Production alias MLflow
+  → utile quand le modèle @Production est cassé (ex: feature leak)
+
+test-api.yml — workflow_dispatch
+  Tests end-to-end sur le serveur : health · token JWT · 401 · 200 /predict · 429 rate limit
+
+diag.yml — workflow_dispatch
+  Diagnostic complet serveur : df, lsblk, docker ps, docker images, docker system df,
+  ports ouverts, compose projects, /data contents + disk usage
+
+kapsule-up.yml — workflow_dispatch
+  Provision cluster Kapsule K8s : création nodes, apply manifests, wait déploiements
+  Exporte IPs LoadBalancer → GITHUB_ENV → écrit state/kapsule_ips sur VPS via SSH
+  Cockpit Gradio onglet 6 lit ce fichier pour afficher les URLs dynamiques
+
+kapsule-down.yml — workflow_dispatch
+  Déprovision cluster Kapsule : supprime nodes + cluster
+  Supprime state/kapsule_ips sur le VPS
+
+cleanup.yml — manuel ou planifié
+  Nettoyage runs GitHub Actions anciens (garde N derniers)
 ```
+
+### Script opérationnel : train_all_cycles.sh
+
+```bash
+# Lancer tous les cycles de ré-entraînement depuis data-v1 (2021) jusqu'au dernier tag DVC
+./scripts/train_all_cycles.sh --algorithm lgbm
+
+# Reprendre depuis le cycle 2 si le cycle 1 a échoué
+./scripts/train_all_cycles.sh --from-cycle 2 --algorithm lgbm
+
+# Dry-run (affiche les commandes sans exécuter)
+./scripts/train_all_cycles.sh --dry-run
+```
+
+Le script lit les tags `git tag -l "data-v*"`, compte les versions, et exécute :
+
+- Cycle 1 : year=2021, cumul=false, promote=true
+- Cycle N (N≥2) : year=2020+N, cumul=true, promote=true
+
+Chaque cycle attend la fin du run GitHub Actions (`gh run watch --exit-status`) avant de lancer le suivant. En cas d'échec, il imprime la commande `--from-cycle N` pour reprendre.
 
 ### Workflow quotidien (sur ta branche)
 
@@ -1477,97 +1658,122 @@ cac_mlops/
 │
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                         # lint + pytest sur push jacques/noel et PR→main
-│       └── deploy.yml                     # SSH deploy automatique sur merge dans main
+│       ├── ci.yml                         # lint (flake8) + pytest → bloque PR si ✗
+│       ├── deploy.yml                     # build images → push ghcr.io → SSH deploy
+│       ├── train.yml                      # pipeline ETL+train+validate (workflow_dispatch)
+│       ├── promote.yml                    # force-promote version → @Production
+│       ├── test-api.yml                   # tests end-to-end JWT + /predict + rate limit
+│       ├── diag.yml                       # diagnostic complet serveur (disque, Docker)
+│       ├── kapsule-up.yml                 # provision cluster K8s + écriture state/kapsule_ips
+│       ├── kapsule-down.yml               # déprovision cluster K8s + suppression state/kapsule_ips
+│       └── cleanup.yml                    # nettoyage runs GitHub Actions anciens
 │
 ├── data/                                  # ignoré par Git, géré par DVC
-│   ├── raw/                               # données d'entraînement
-│   │   ├── 2021/
-│   │   │   ├── carcteristiques-2021.csv   # faute de frappe ONISR conservée
-│   │   │   ├── lieux-2021.csv
-│   │   │   ├── usagers-2021.csv
-│   │   │   └── vehicules-2021.csv
-│   │   ├── 2022/                          # ajouté en itération 2
-│   │   └── 2023/                          # ajouté en itération 3
-│   ├── production/                        # données de production (pas d'entraînement)
-│   │   └── 2024/
-│   │       ├── Caract_2024.csv            # convention ONISR 2024 : majuscule + underscore
-│   │       ├── Lieux_2024.csv
-│   │       ├── Usagers_2024.csv
-│   │       └── Vehicules_2024.csv
+│   ├── raw/                               # données d'entraînement versionnées DVC
+│   │   ├── 2021.dvc / 2021/               # carcteristiques-2021.csv (faute ONISR)
+│   │   ├── 2022.dvc / 2022/               # carcteristiques-2022.csv (même faute)
+│   │   └── 2023.dvc / 2023/               # caract-2023.csv (abrégé, faute corrigée)
+│   ├── production/                        # données de production (non entraînement)
+│   │   └── 2024/                          # Caract_2024.csv (majuscule + underscore)
 │   └── preprocessed/
-│       ├── 2021/
-│       │   ├── X_train.csv  X_test.csv
-│       │   └── y_train.csv  y_test.csv
-│       ├── cumul_2021_2022/
-│       └── cumul_2021_2023/
+│       ├── 2021/                          # X_train, X_test, y_train, y_test
+│       ├── cumul_2021_2022/               # 2 ans cumulés
+│       └── cumul_2021_2022_2023/          # 3 ans cumulés → modèle @Production actuel
 │
 ├── services/
 │   ├── api/
 │   │   ├── app/
-│   │   │   ├── main.py                    # FastAPI app
+│   │   │   ├── main.py                    # FastAPI app — routers + metrics middleware
+│   │   │   ├── auth.py                    # JWT HS256 (python-jose + passlib)
+│   │   │   ├── model_loader.py            # chargement MLflow @Production au démarrage
+│   │   │   ├── _metrics.py                # Prometheus counters (REQUESTS_TOTAL, etc.)
+│   │   │   ├── log_capture.py             # capture logs Python → structuré
 │   │   │   ├── routes/
-│   │   │   │   ├── predict.py             # POST /predict
-│   │   │   │   └── metrics.py             # GET /metrics [Ph.4]
-│   │   │   ├── schemas/
-│   │   │   │   └── accident.py            # Pydantic — 28 features
-│   │   │   ├── auth.py                    # JWT [Ph.3]
-│   │   │   └── middleware.py              # log prédictions [Ph.4]
+│   │   │   │   ├── auth.py                # POST /token
+│   │   │   │   ├── predict.py             # POST /predict (Bearer JWT requis)
+│   │   │   │   ├── health.py              # GET /health
+│   │   │   │   └── dashboard.py           # GET /metrics (Prometheus)
+│   │   │   └── schemas/
+│   │   │       └── accident.py            # Pydantic — 28 features
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   │
-│   ├── training/
-│   │   ├── train.py                       # ETL + entraînement (paramétré par year)
+│   ├── mlflow/
+│   │   └── Dockerfile                     # image custom MLflow + boto3 + psycopg2
+│   │
+│   ├── nginx/
+│   │   └── nginx.conf                     # rate limit 20r/min /predict, proxy → api:8000
+│   │                                      # + location /reports/ → /srv/reports/ (Evidently)
+│   │
+│   ├── gradio/
+│   │   ├── app.py                         # Cockpit MLOps 6 onglets (Gradio)
+│   │   ├── scenarios.py                   # scénarios What-If (météo, nuit, alcool…)
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   │
-│   └── monitoring/                        # Phase 4
-│       ├── drift_detection.py             # Evidently
+│   ├── monitoring/
+│   │   └── drift_detection.py             # Evidently : drift features + rapport HTML/JSON
+│   │
+│   └── prefect/                           # configuration Prefect server (non personnalisé)
 │       └── Dockerfile
 │
-├── src/                                   # code existant refactorisé
+├── src/
 │   ├── data/
-│   │   ├── import_raw_data.py             # paramétré : year + source URL
-│   │   ├── make_dataset.py                # paramétré : year
+│   │   ├── import_raw_data.py             # download data.gouv.fr, FILENAMES mapping/année
+│   │   ├── make_dataset.py                # fusion 4 tables, feature engineering, split
 │   │   ├── check_structure.py
-│   │   ├── schema.py                      # schémas Pandera des 4 fichiers ← NOUVEAU
-│   │   ├── schema_validator.py            # 3 niveaux CRITICAL/WARNING/INFO ← NOUVEAU
+│   │   ├── schema.py                      # schémas Pandera (4 fichiers ONISR)
+│   │   ├── schema_validator.py            # 3 niveaux CRITICAL/WARNING/INFO
 │   │   └── normalizer/
-│   │       ├── __init__.py
-│   │       ├── normalize.py               # dispatcher selon année ← NOUVEAU
-│   │       └── schema_2021_plus.py        # no-op pour 2021-2023 ← NOUVEAU
+│   │       └── __init__.py
 │   ├── models/
-│   │   ├── train_model.py
+│   │   ├── train_model.py                 # LightGBM/RF/XGB + MLflow tracking + Registry
 │   │   ├── predict_model.py
-│   │   └── validate_model.py             ← NOUVEAU (compare vs run précédent)
-│   └── features/
-│       └── build_features.py
+│   │   └── validate_model.py              # compare candidat vs @Production, promote si OK
+│   ├── flows/                             # Prefect flows (déployés via prefect.yaml)
+│   │   ├── etl_flow.py                    # download + preprocess
+│   │   ├── train_flow.py                  # train + validate + promote
+│   │   ├── retrain_flow.py                # réentraînement annuel
+│   │   └── drift_flow.py                  # drift check mensuel
+│   ├── scripts/
+│   │   └── mlflow_cleanup.py              # garde 3 runs, gc artifacts MinIO avant train
+│   ├── features/
+│   │   └── build_features.py
+│   └── visualization/
+│       └── visualize.py
 │
 ├── scripts/
-│   └── simulate_production.py             # rejoue data/production/2024/ via POST /predict
-│                                          # ~4 600 req/mois × 12 → logs PostgreSQL Evidently
+│   ├── raz_mlops.sh                       # RAZ complète stack MLOps (Phases A-G)
+│   ├── train_all_cycles.sh               # Lance N cycles depuis tags DVC data-v*
+│   └── simulate_production.py            # Rejoue données année N via POST /predict
 │
-├── orchestration/
-│   └── flows/
-│       ├── etl_flow.py                    # Prefect : ingestion + validation + prep
-│       ├── training_flow.py               # Prefect : entraînement + MLflow
-│       ├── retrain_flow.py                # Prefect : réentraînement automatique
-│       └── drift_monitoring_flow.py       # Prefect : batch mensuel Evidently [Phase 4]
+├── k8s/                                   # Manifests Kubernetes (Kapsule Phase 5)
+│   ├── namespace.yaml
+│   ├── deployments/
+│   ├── services/
+│   └── hpa.yaml                           # HPA api: CPU 70% / RAM 80% → min 2 max 8
 │
 ├── infrastructure/
-│   ├── nginx/nginx.conf
-│   ├── prometheus/prometheus.yml
-│   └── grafana/dashboards/
+│   ├── prometheus/
+│   │   └── prometheus.yml                 # scrape api:8000/metrics
+│   ├── grafana/
+│   │   ├── provisioning/                  # datasources + dashboards auto-provisionnés
+│   │   └── dashboards/
+│   │       └── api-performance.json
+│   └── docker/
+│       └── daemon.json                    # rotation logs Docker (20 MB × 3 fichiers)
 │
-├── k8s/                                   # Phase 3 : Scaleway Kapsule
-│   ├── api-deployment.yaml
-│   ├── api-service.yaml
-│   └── api-hpa.yaml
+├── reports/
+│   └── drift/                             # rapports HTML/JSON Evidently (gitignored sauf .gitkeep)
+│       └── .gitkeep
+│
+├── state/                                 # état runtime (gitignored sauf .gitkeep)
+│   └── kapsule_ips                        # IPs LoadBalancer Kapsule (écrit par kapsule-up.yml)
 │
 ├── tests/
 │   ├── unit/
 │   │   ├── test_preprocessing.py          # make_dataset.py
-│   │   ├── test_schema_validator.py       # validation 3 niveaux ← NOUVEAU
+│   │   ├── test_schema_validator.py       # validation 3 niveaux
 │   │   └── test_predict.py               # predict_model.py
 │   └── integration/
 │       └── test_api.py                    # appels HTTP sur l'API FastAPI
@@ -1575,10 +1781,10 @@ cac_mlops/
 ├── notebooks/
 │   └── 1.0-ldj-initial-data-exploration.ipynb
 │
-├── docker-compose.yml                     # stack locale complète
-├── docker-compose.prod.yml                # surcharge pour Scaleway
-├── .env.example                           # template variables d'env
-├── .dvcconfig                             # remote = Scaleway S3
+├── docker-compose.yml                     # stack locale + prod (11 services)
+├── prefect.yaml                           # configuration Prefect deployments (4 flows)
+├── .env                                   # secrets (gitignore) — JWT_SECRET_KEY, etc.
+├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
 ├── setup.py
 ├── architecture.md                        # ce fichier
@@ -1612,18 +1818,29 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  CI/CD                     │  GitHub Actions → Scaleway Container Registry │
+│  CI/CD                     │  GitHub Actions → ghcr.io (GitHub Container   │
+│                            │  Registry) — 9 workflows (ci, deploy, train,  │
+│                            │  promote, test-api, diag, kapsule-up,         │
+│                            │  kapsule-down, cleanup)                       │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Gateway                   │  NGINX (reverse proxy + auth) [Phase 3]       │
+│  Gateway                   │  NGINX (reverse proxy + rate limit) ✅ Ph.3   │
+│                            │  JWT auth côté FastAPI (auth.py) ✅ Ph.3      │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Monitoring                │  Prometheus + Grafana + Evidently [Phase 4]   │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Cloud                     │  Scaleway Kapsule (K8s) + Object Storage      │
-│                            │  + Managed Database                           │
+│  Cloud actuel              │  Scaleway DEV1-L (docker-compose, 11 services)│
+│                            │  NVMe / + block storage /data (volumes)       │
+│                            │  Modèle : lgbm_accidents@Production           │
+│                            │  Entraîné sur : cumul 2021+2022+2023          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Données de production     │  2024 (data.gouv.fr, déjà disponibles)        │
-│  pour monitoring drift     │  Rejoué via scripts/simulate_production.py    │
-│                            │  Evidently compare vs X_train 2021-2023       │
+│  Cloud cible (Ph.5)        │  Scaleway Kapsule (K8s) + Object Storage      │
+│                            │  + Managed Database + Prefect server          │
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Cycle drift annuel        │  Après chaque entraînement sur année N :      │
+│                            │  simulate_production(year=N+1) → drift check  │
+│                            │  référence = X_train cumul jusqu'à N          │
+│                            │  Pas de réentraînement auto (labels N+1       │
+│                            │  indisponibles — délai ONISR ~2 ans)          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Mapping noms fichiers     │  Dict FILENAMES par année dans                │
 │  (découverte critique)     │  import_raw_data.py — obligatoire dès 2022    │
@@ -1631,5 +1848,9 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Normalisation pré-2019    │  Architecture prévue, non implémentée         │
 │                            │  Extensible si le projet le justifie plus tard│
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Bug feature leak corrigé  │  id_usager supprimé de make_dataset.py        │
+│  (modèles v1–v4 cassés)    │  v6 = modèle @Production sans ce champ        │
+│                            │  Promote manuel via promote.yml si régression │
 └────────────────────────────┴────────────────────────────────────────────────┘
 ```

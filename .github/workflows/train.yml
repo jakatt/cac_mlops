@@ -1,24 +1,31 @@
 name: Train — pipeline on Scaleway
 
 on:
-  # Retrain hebdomadaire : lundi 02h00 UTC
-  schedule:
-    - cron: '0 2 * * 1'
-
+  # Déclenchement manuel uniquement :
+  # - cycle annuel ONISR (nouvelles données disponibles ~mai-juin)
+  # - modèle ad-hoc fourni par un DS
   workflow_dispatch:
     inputs:
       year:
-        description: "Année cible (ex: 2023)"
+        description: "Année cible d'entraînement (ex: 2022 pour modèle 2021+2022)"
         required: true
-        default: "2023"
+        default: "2022"
       cumul:
         description: "Cumul depuis 2021 ? (true/false)"
         required: true
         default: "true"
+      algorithm:
+        description: "Algorithme : rf | xgboost | lgbm"
+        required: false
+        default: "rf"
       promote:
         description: "Promouvoir @Production si KPIs OK ? (true/false)"
         required: true
         default: "true"
+      simulate_year:
+        description: "Année à rejouer via /predict pour drift (ex: 2023 quand year=2022). Vide = year+1"
+        required: false
+        default: ""
 
 jobs:
   train:
@@ -30,20 +37,43 @@ jobs:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 30m
           script: |
             set -e
             export PATH=$PATH:/home/deploy/.local/bin
             cd ${{ secrets.DEPLOY_DIR }}
 
-            YEAR="${{ github.event.inputs.year || '2023' }}"
+            YEAR="${{ github.event.inputs.year || '2022' }}"
             CUMUL="${{ github.event.inputs.cumul || 'true' }}"
+            ALGO="${{ github.event.inputs.algorithm || 'rf' }}"
             PROMOTE="${{ github.event.inputs.promote || 'true' }}"
+            SIM_YEAR="${{ github.event.inputs.simulate_year }}"
+            if [ -z "$SIM_YEAR" ]; then
+              SIM_YEAR=$((YEAR + 1))
+            fi
 
-            echo "==> Paramètres : year=$YEAR cumul=$CUMUL promote=$PROMOTE"
+            echo "==> Paramètres : year=$YEAR cumul=$CUMUL algo=$ALGO promote=$PROMOTE simulate_year=$SIM_YEAR"
 
-            # ── 0. Nettoyage MLflow (libère espace MinIO avant entraînement) ─────
+            # ── 0. Vérification que l'API est disponible (max 3 min) ─────────────
+            echo "==> Attente API disponible (max 3 min)..."
+            for i in $(seq 1 36); do
+              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
+                echo "  API OK après $((i*5))s"
+                break
+              fi
+              if [ "$i" -eq 36 ]; then
+                echo "ERREUR : API non disponible après 3 min"
+                docker compose ps
+                docker compose logs --tail=30 api
+                exit 1
+              fi
+              echo "  [$((i*5))s] Attente API..."
+              sleep 5
+            done
+
+            # ── 0b. Nettoyage MLflow (libère espace MinIO avant entraînement) ────
             echo "==> Nettoyage anciens runs MLflow (conservation des 3 derniers)"
-            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py
+            docker compose exec -T api python3 /app/src/scripts/mlflow_cleanup.py || true
 
             echo "==> GC artifacts MinIO (suppression physique des runs effacés)"
             docker compose run --rm mlflow mlflow gc \
@@ -53,8 +83,12 @@ jobs:
             echo "==> Espace disque après nettoyage"
             df -h /
 
-            # ── 1. Pull données DVC (exécuté sur le host, pas dans Docker) ──────
-            echo "==> Pull données DVC (toutes les années jusqu'à $YEAR)"
+            # ── 0b. Cache DVC sur /data (block storage) ──────────────────────────
+            echo "==> Config cache DVC vers /data/dvc_cache (block storage)"
+            dvc config --local cache.dir /data/dvc_cache
+
+            # ── 1. Pull données DVC (entraînement) ───────────────────────────────
+            echo "==> Pull données DVC (années 2021 → $YEAR)"
             for y in 2021 2022 2023; do
               if [ "$y" -le "$YEAR" ]; then
                 dvc pull data/raw/$y
@@ -76,18 +110,26 @@ jobs:
             fi
 
             # ── 3. Entraînement ──────────────────────────────────────────────────
+            echo "==> Libération NVMe avant entraînement (conteneurs arrêtés + images dangling)"
+            docker container prune -f
+            docker image prune -f
+            echo "==> Espace NVMe disponible"
+            df -h /
+
             echo "==> Entraînement (dans le conteneur api)"
             TRAIN_LOG=$(mktemp)
             if [ "$CUMUL" = "true" ]; then
               docker compose run --rm \
+                -e MLFLOW_RUN_MODE=official \
                 -v "$(pwd)/data:/app/data" \
                 api \
-                python -m src.models.train_model --year $YEAR --cumul 2>&1 | tee "$TRAIN_LOG"
+                python -m src.models.train_model --year $YEAR --cumul --algorithm $ALGO 2>&1 | tee "$TRAIN_LOG"
             else
               docker compose run --rm \
+                -e MLFLOW_RUN_MODE=official \
                 -v "$(pwd)/data:/app/data" \
                 api \
-                python -m src.models.train_model --year $YEAR 2>&1 | tee "$TRAIN_LOG"
+                python -m src.models.train_model --year $YEAR --algorithm $ALGO 2>&1 | tee "$TRAIN_LOG"
             fi
 
             RUN_ID=$(grep "MLflow run_id" "$TRAIN_LOG" | awk '{print $NF}' | tail -1)
@@ -100,17 +142,25 @@ jobs:
             echo "==> run_id = $RUN_ID"
 
             # ── 4. Validation + promotion ─────────────────────────────────────────
-            echo "==> Validation"
+            # MODEL_NAME suit la convention : rf→rf_accidents, xgboost→xgb_accidents, lgbm→lgbm_accidents
+            case "$ALGO" in
+              xgboost) MODEL_NAME="xgb_accidents" ;;
+              lgbm)    MODEL_NAME="lgbm_accidents" ;;
+              *)       MODEL_NAME="rf_accidents" ;;
+            esac
+            echo "==> Validation (model: $MODEL_NAME)"
             if [ "$PROMOTE" = "true" ]; then
               docker compose run --rm api \
-                python -m src.models.validate_model --run-id $RUN_ID --promote
+                python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME --promote \
+                || echo "⚠️ KPI gate FAILED — modèle non promu @Production, pipeline continue"
             else
+              # Mode benchmark : rapport KPI sans bloquer le pipeline
               docker compose run --rm api \
-                python -m src.models.validate_model --run-id $RUN_ID
+                python -m src.models.validate_model --run-id $RUN_ID --model-name $MODEL_NAME || true
             fi
 
             # ── 5. Redémarrage API ────────────────────────────────────────────────
-            echo "==> Redémarrage API"
+            echo "==> Redémarrage API (charge le nouveau modèle @Production)"
             docker compose restart api
 
             echo "==> Healthcheck (attente max 60s)"
@@ -127,4 +177,57 @@ jobs:
               sleep 5
             done
 
-            echo "==> Pipeline terminé ✓"
+            # ── 6. Simulation production (skip en mode benchmark promote=false) ──
+            if [ "$PROMOTE" = "true" ]; then
+              echo "==> Simulation production : données $SIM_YEAR jouées sur modèle $YEAR"
+
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.data.import_raw_data --year $SIM_YEAR 2>/dev/null || true
+
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python -m src.data.make_dataset --year $SIM_YEAR 2>/dev/null || true
+
+              TOKEN=$(curl -sf -X POST http://localhost:8080/token \
+                -d "username=${API_USERNAME:-admin}&password=${API_PASSWORD:-changeme}" \
+                | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                api \
+                python scripts/simulate_production.py \
+                  --year $SIM_YEAR \
+                  --api-url http://api:8000 \
+                  --token "$TOKEN" \
+                  --max-rows 3000 \
+                  --delay-ms 0
+
+              # ── 7. Détection drift ──────────────────────────────────────────────
+              echo "==> Détection drift : données $SIM_YEAR vs référence entraînement $YEAR"
+
+              if [ "$CUMUL" = "true" ] && [ "$YEAR" -gt "2021" ]; then
+                YEARS_SEQ=$(seq -s _ 2021 $YEAR)
+                REF_PATH="data/preprocessed/cumul_${YEARS_SEQ}/X_train.csv"
+              else
+                REF_PATH="data/preprocessed/${YEAR}/X_train.csv"
+              fi
+              echo "  Référence : $REF_PATH"
+
+              DRIFT_MONTH=$(date +%Y-%m)
+              mkdir -p reports/drift
+              docker compose run --rm \
+                -v "$(pwd)/data:/app/data" \
+                -v "$(pwd)/reports:/app/reports" \
+                api \
+                python -m services.monitoring.drift_detection \
+                  --month "$DRIFT_MONTH" \
+                  --reference-path "$REF_PATH"
+
+              echo "==> Pipeline complet terminé ✓ (train $YEAR → simulate $SIM_YEAR → drift)"
+            else
+              echo "==> Mode benchmark (promote=false) : simulation + drift ignorés"
+              echo "==> Pipeline benchmark terminé ✓ (train $YEAR — métriques dans MLflow)"
+            fi

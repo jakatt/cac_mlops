@@ -1,4 +1,4 @@
-name: Diag — disk layout
+name: Diag — disk + all apps
 
 on:
   workflow_dispatch:
@@ -7,23 +7,37 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: Disk diagnostic
+      - name: Full server diagnostic
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 5m
           script: |
             echo "=== lsblk ==="
             lsblk -o NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE
-            echo "=== df -h all ==="
+
+            echo "=== df -h ==="
             df -h
-            echo "=== docker info ==="
-            docker info 2>/dev/null | grep -E "Docker Root Dir|Data Space|Metadata Space"
+
+            echo "=== ALL Docker containers (all projects) ==="
+            docker ps --all --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+
+            echo "=== Docker images ==="
+            docker image ls --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
             echo "=== docker system df ==="
-            docker system df
-            echo "=== minio_data volume ==="
-            docker volume inspect minio_data 2>/dev/null | grep -E "Mountpoint|Name"
-            echo "=== free disk on docker root ==="
-            DOCKER_ROOT=$(docker info 2>/dev/null | grep "Docker Root Dir" | awk '{print $NF}')
-            df -h "$DOCKER_ROOT" 2>/dev/null || echo "Docker root: $DOCKER_ROOT"
+            docker system df -v 2>/dev/null | head -60
+
+            echo "=== Open ports (listening) ==="
+            ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null
+
+            echo "=== Docker Compose projects ==="
+            docker compose ls 2>/dev/null || echo "docker compose ls not available"
+
+            echo "=== /data contents ==="
+            ls -la /data/ 2>/dev/null || echo "cannot list /data"
+
+            echo "=== /data disk usage by dir ==="
+            du -sh /data/*/ 2>/dev/null || echo "no subdirs in /data"
