@@ -37,8 +37,10 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 MLFLOW_URI       = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
-MODEL_NAME       = os.getenv("GRADIO_MODEL_NAME",    "rf_accidents")
 MODEL_ALIAS      = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
+
+# All registered model families — checked in order to find @Production
+ALL_MODEL_NAMES  = ["lgbm_accidents", "rf_accidents", "xgb_accidents"]
 LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH",     "")
 DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
 REPORTS_PATH     = Path(os.getenv("REPORTS_PATH",    "/app/reports/drift"))
@@ -64,6 +66,19 @@ _df      = None
 _df_full = None
 
 
+def _find_production_model() -> str | None:
+    """Return the URI of the current @Production model across all families, or None."""
+    mlflow.set_tracking_uri(MLFLOW_URI)
+    client = mlflow.tracking.MlflowClient()
+    for model_name in ALL_MODEL_NAMES:
+        try:
+            client.get_model_version_by_alias(model_name, MODEL_ALIAS)
+            return f"models:/{model_name}@{MODEL_ALIAS}"
+        except Exception:
+            continue
+    return None
+
+
 def _get_model():
     global _model
     if _model is None:
@@ -72,8 +87,9 @@ def _get_model():
             logger.info("Loading model from local path %s", local)
             _model = joblib.load(local)
         else:
-            mlflow.set_tracking_uri(MLFLOW_URI)
-            uri = f"models:/{MODEL_NAME}@{MODEL_ALIAS}"
+            uri = _find_production_model()
+            if uri is None:
+                raise RuntimeError("Aucun modele @Production trouve dans le registry MLflow")
             logger.info("Loading model %s", uri)
             _model = mlflow.pyfunc.load_model(uri)
     return _model
@@ -318,48 +334,56 @@ def _dvc_tag(year: str, cumul: str) -> str:
 
 
 def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
+    """List versions across all 3 model families. Dropdown value = 'model_name:version'."""
     try:
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
-        versions = client.search_model_versions(f"name='{MODEL_NAME}'")
-        if not versions:
-            return pd.DataFrame({"Info": ["Aucun modele enregistre — lancez le premier cycle Train."]}), []
 
-        try:
-            prod_v = client.get_model_version_by_alias(MODEL_NAME, "Production")
-            prod_version = prod_v.version
-        except Exception:
-            prod_version = None
+        # Find which family holds @Production
+        prod_key: str | None = None
+        for model_name in ALL_MODEL_NAMES:
+            try:
+                pv = client.get_model_version_by_alias(model_name, "Production")
+                prod_key = f"{model_name}:{pv.version}"
+                break
+            except Exception:
+                continue
 
         rows, choices = [], []
-        for v in sorted(versions, key=lambda x: int(x.version)):
-            try:
-                run  = client.get_run(v.run_id)
-                p, m = run.data.params, run.data.metrics
-                years_raw = p.get("years", None)
-                if years_raw:
-                    year_nums = re.findall(r'\d{4}', str(years_raw))
-                    year  = str(max(int(y) for y in year_nums)) if year_nums else "?"
-                    cumul = "true" if len(year_nums) > 1 else "false"
-                else:
-                    year, cumul = "?", "false"
-                algo  = p.get("algorithm", "lgbm")
-                f1    = round(m.get("f1_score", m.get("f1",  0)), 4)
-                auc   = round(m.get("roc_auc",  m.get("auc", 0)), 4)
-            except Exception:
-                year, cumul, algo, f1, auc = "?", "false", "?", 0.0, 0.0
+        for model_name in ALL_MODEL_NAMES:
+            versions = client.search_model_versions(f"name='{model_name}'")
+            for v in sorted(versions, key=lambda x: int(x.version)):
+                try:
+                    run  = client.get_run(v.run_id)
+                    p, m = run.data.params, run.data.metrics
+                    years_raw = p.get("years", None)
+                    if years_raw:
+                        year_nums = re.findall(r'\d{4}', str(years_raw))
+                        year  = str(max(int(y) for y in year_nums)) if year_nums else "?"
+                        cumul = "true" if len(year_nums) > 1 else "false"
+                    else:
+                        year, cumul = "?", "false"
+                    algo = p.get("algorithm", model_name.split("_")[0])
+                    f1   = round(m.get("f1_score", m.get("f1",  0)), 4)
+                    auc  = round(m.get("roc_auc",  m.get("auc", 0)), 4)
+                except Exception:
+                    year, cumul, algo, f1, auc = "?", "false", "?", 0.0, 0.0
 
-            is_prod = (v.version == prod_version)
-            rows.append({
-                "Version":    v.version,
-                "DVC Data":   _dvc_tag(year, cumul),
-                "Annee":      year,
-                "Algo":       algo,
-                "F1":         f1,
-                "AUC":        auc,
-                "Production": "oui" if is_prod else "",
-            })
-            choices.append(v.version)
+                choice_key = f"{model_name}:{v.version}"
+                is_prod = (choice_key == prod_key)
+                rows.append({
+                    "Version":    f"{algo}:v{v.version}",
+                    "DVC Data":   _dvc_tag(year, cumul),
+                    "Annee":      year,
+                    "Algo":       algo,
+                    "F1":         f1,
+                    "AUC":        auc,
+                    "Production": "oui" if is_prod else "",
+                })
+                choices.append(choice_key)
+
+        if not rows:
+            return pd.DataFrame({"Info": ["Aucun modele enregistre — lancez le premier cycle Train."]}), []
 
         return pd.DataFrame(rows), choices
     except Exception as e:
@@ -371,14 +395,23 @@ def refresh_models():
     return df, gr.Dropdown(choices=choices, value=choices[-1] if choices else None)
 
 
-def promote_version(version: str) -> str:
-    if not version:
+def promote_version(choice_key: str) -> str:
+    """Promote a model version. choice_key format: 'model_name:version'."""
+    if not choice_key or ":" not in choice_key:
         return "Selectionnez une version a promouvoir."
     try:
+        model_name, version = choice_key.rsplit(":", 1)
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
-        client.set_registered_model_alias(MODEL_NAME, "Production", int(version))
-        return f"Version v{version} promue @Production. Redemarrez l'API pour charger le nouveau modele."
+        client.set_registered_model_alias(model_name, "Production", int(version))
+        # Clear @Production from other families
+        for other in ALL_MODEL_NAMES:
+            if other != model_name:
+                try:
+                    client.delete_registered_model_alias(other, "Production")
+                except Exception:
+                    pass
+        return f"{model_name} v{version} promu @Production. Redemarrez l'API pour charger le nouveau modele."
     except Exception as e:
         return f"Erreur : {e}"
 
