@@ -46,7 +46,7 @@ def _get_production_score(client: mlflow.MlflowClient) -> float | None:
     return None
 
 
-@task(name="train-model")
+@task(name="train-model", task_run_name="train-model-{algorithm}")
 def train_task(years: list[int], algorithm: str) -> str:
     logger.info("Training %s on years=%s", algorithm, years)
     _metrics, run_id = train(years=years, algorithm=algorithm, register=True)
@@ -54,8 +54,8 @@ def train_task(years: list[int], algorithm: str) -> str:
     return run_id
 
 
-@task(name="get-run-metrics")
-def get_metrics_task(run_id: str) -> dict[str, float]:
+@task(name="get-run-metrics", task_run_name="get-metrics-{algorithm}")
+def get_metrics_task(run_id: str, algorithm: str = "") -> dict[str, float]:
     client = mlflow.tracking.MlflowClient()
     run = client.get_run(run_id)
     return {k: float(v) for k, v in run.data.metrics.items() if k in KPI_THRESHOLDS}
@@ -156,7 +156,7 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     return True
 
 
-@flow(name="train-flow", log_prints=True)
+@flow(name="train-flow", flow_run_name="train-upto-{year}", log_prints=True)
 def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> bool:
     """
     Benchmark RF / XGBoost / LGBM sur les mêmes données.
@@ -171,7 +171,7 @@ def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> bo
         run_ids[algo] = train_task(years, algorithm=algo)
 
     all_metrics: dict[str, dict[str, float]] = {
-        algo: get_metrics_task(run_id) for algo, run_id in run_ids.items()
+        algo: get_metrics_task(run_id, algorithm=algo) for algo, run_id in run_ids.items()
     }
 
     champion = select_champion_task(all_metrics)

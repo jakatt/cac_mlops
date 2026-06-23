@@ -54,7 +54,7 @@ def preprocess_task(years: list[int]) -> None:
     logger.info("Preprocessing complete — %d years", len(years))
 
 
-@flow(name="etl-flow", log_prints=True)
+@flow(name="etl-flow", flow_run_name="etl-year{year}", log_prints=True)
 def etl_flow(year: int = 2023, cumul: bool = True) -> None:
     """Download, push to DVC remote (Scaleway S3) and preprocess ONISR data."""
     download_task(year)

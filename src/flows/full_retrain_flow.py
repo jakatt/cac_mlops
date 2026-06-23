@@ -11,6 +11,7 @@ Cycle sequence (3 DVC tags):
 import logging
 import os
 import time
+from datetime import datetime
 
 import requests as _req
 from prefect import flow, task
@@ -60,7 +61,7 @@ def restart_api_task() -> None:
     logger.warning("API healthcheck timeout — continuing anyway")
 
 
-@task(name="simulate-predictions", retries=1, retry_delay_seconds=60)
+@task(name="simulate-predictions", task_run_name="simulate-{sim_year}", retries=1, retry_delay_seconds=60)
 def simulate_task(sim_year: int, sim_month: str, max_rows: int = 100) -> dict:
     """Send sim_year predictions to /predict with X-Sim-Date override for per-cycle drift isolation."""
     import requests
@@ -89,7 +90,11 @@ def simulate_task(sim_year: int, sim_month: str, max_rows: int = 100) -> dict:
     return result
 
 
-@flow(name="full-retrain-flow", log_prints=True)
+@flow(
+    name="full-retrain-flow",
+    flow_run_name=lambda: f"full-retrain-{datetime.now().strftime('%Y-%m-%d')}",
+    log_prints=True,
+)
 def full_retrain_flow(max_sim_rows: int = 100) -> None:
     """
     Full from-scratch retrain pipeline.
