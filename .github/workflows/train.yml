@@ -202,7 +202,7 @@ jobs:
                   --year $SIM_YEAR \
                   --api-url http://api:8000 \
                   --token "$TOKEN" \
-                  --max-rows 3000 \
+                  --max-rows 100 \
                   --delay-ms 0 \
                   --sim-month "${SIM_YEAR}-06"
 
