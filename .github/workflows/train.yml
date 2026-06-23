@@ -203,7 +203,8 @@ jobs:
                   --api-url http://api:8000 \
                   --token "$TOKEN" \
                   --max-rows 3000 \
-                  --delay-ms 0
+                  --delay-ms 0 \
+                  --sim-month "${SIM_YEAR}-06"
 
               # ── 7. Détection drift ──────────────────────────────────────────────
               echo "==> Détection drift : données $SIM_YEAR vs référence entraînement $YEAR"
@@ -216,7 +217,8 @@ jobs:
               fi
               echo "  Référence : $REF_PATH"
 
-              DRIFT_MONTH=$(date +%Y-%m)
+              # Drift month = année de simulation (prédictions datées SIM_YEAR-06 via X-Sim-Date)
+              DRIFT_MONTH="${SIM_YEAR}-06"
               mkdir -p reports/drift
               docker compose run --rm \
                 -v "$(pwd)/data:/app/data" \

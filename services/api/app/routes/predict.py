@@ -2,7 +2,7 @@
 import logging
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 
 from ..schemas.accident import AccidentFeatures, PredictionResponse
 from ..model_loader import get_model, get_model_version
@@ -26,6 +26,7 @@ def predict(
     features: AccidentFeatures,
     background_tasks: BackgroundTasks,
     _user: str = Depends(get_current_user),
+    x_sim_date: str | None = Header(None),
 ) -> PredictionResponse:
     """
     Predict accident severity.
@@ -56,6 +57,7 @@ def predict(
         prediction=prediction,
         probability=round(probability, 4),
         model_version=version,
+        sim_date=x_sim_date,
     )
 
     return PredictionResponse(

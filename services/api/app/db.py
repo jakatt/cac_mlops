@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,24 @@ INSERT INTO predictions (
 );
 """
 
+# Variante avec created_at explicite — utilisée par simulate_production en mode multi-cycle
+# pour que chaque cycle de simulation soit daté dans sa propre année (drift distinct par cycle)
+_INSERT_WITH_DATE = """
+INSERT INTO predictions (
+    created_at,
+    model_version, prediction, probability,
+    place, catu, sexe, secu1, year_acc, victim_age, catv, obsm, motor,
+    catr, circ, surf, situ, vma, jour, mois, lum, dep, com, agg_,
+    intersection_type, atm, col, lat, long, hour, nb_victim, nb_vehicules
+) VALUES (
+    $1,
+    $2, $3, $4,
+    $5, $6, $7, $8, $9, $10, $11, $12, $13,
+    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
+    $25, $26, $27, $28, $29, $30, $31, $32
+);
+"""
+
 
 def _build_dsn() -> str:
     user = os.getenv("POSTGRES_USER", "mlops")
@@ -95,14 +114,14 @@ async def log_prediction(
     prediction: int,
     probability: float,
     model_version: str,
+    sim_date: str | None = None,
 ) -> None:
+    """Log prediction to DB. sim_date='YYYY-MM' overrides created_at for simulation cycles."""
     if _pool is None:
         return
     try:
         async with _pool.acquire() as conn:
-            await conn.execute(
-                _INSERT,
-                model_version, prediction, probability,
+            feat_vals = (
                 features.get("place"), features.get("catu"), features.get("sexe"),
                 features.get("secu1"), features.get("year_acc"), features.get("victim_age"),
                 features.get("catv"), features.get("obsm"), features.get("motor"),
@@ -114,5 +133,17 @@ async def log_prediction(
                 features.get("long"), features.get("hour"),
                 features.get("nb_victim"), features.get("nb_vehicules"),
             )
+            if sim_date:
+                year, month = sim_date.split("-")
+                created_at = datetime(int(year), int(month), 15, 12, 0, 0, tzinfo=timezone.utc)
+                await conn.execute(
+                    _INSERT_WITH_DATE,
+                    created_at, model_version, prediction, probability, *feat_vals,
+                )
+            else:
+                await conn.execute(
+                    _INSERT,
+                    model_version, prediction, probability, *feat_vals,
+                )
     except Exception:
         logger.debug("Failed to log prediction to DB", exc_info=True)
