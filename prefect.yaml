@@ -47,3 +47,24 @@ deployments:
     entrypoint: src/flows/drift_monitoring_flow.py:drift_monitoring_flow
     work_pool:
       name: default-process-pool
+
+  # ── Full retrain — tous les cycles depuis zéro (après reset-flow) ─────────────
+  # Auto-détecte les années depuis les tags DVC (data-v1, data-v2, ...)
+  # Utilise l'algorithme du modèle @Production actuel pour chaque cycle.
+  - name: full-retrain
+    entrypoint: src/flows/full_retrain_flow.py:full_retrain_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      max_sim_rows: 100
+
+  # ── Reset (RAZ) — vide la table predictions + rapports drift ─────────────────
+  # À lancer avant full-retrain pour repartir d'un état propre.
+  # Ne supprime PAS les runs MLflow ni le model registry (@Production préservé).
+  - name: reset
+    entrypoint: src/flows/reset_flow.py:reset_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      clear_predictions: true
+      clear_drift: true
