@@ -5,8 +5,8 @@ Benchmarks RF / XGBoost / LGBM each cycle, promotes the champion.
 
 Cycle sequence (3 DVC tags):
   Cycle 1 : year=2021 cumul=false → benchmark → promote champion
-  Cycle 2 : year=2022 cumul=true  → benchmark → promote champion → restart API → simulate 2023 → drift 2023-06
-  Cycle 3 : year=2023 cumul=true  → benchmark → promote champion → restart API → simulate 2024 → drift 2024-06
+  Cycle 2 : year=2022 cumul=true  → benchmark → promote champion → restart API → simulate 2023 → drift 2023
+  Cycle 3 : year=2023 cumul=true  → benchmark → promote champion → restart API → simulate 2024 → drift 2024
 """
 import logging
 import os
@@ -118,6 +118,6 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
             sim_month = f"{sim_year}-06"
             restart_api_task()
             simulate_task(sim_year=sim_year, sim_month=sim_month, max_rows=max_sim_rows)
-            drift_monitoring_flow(year_month=sim_month)
+            drift_monitoring_flow(year=str(sim_year))
 
     logger.info("Full retrain complete — %d cycles", len(cycles))

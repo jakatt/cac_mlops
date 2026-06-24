@@ -315,10 +315,19 @@ def load_drift_report(report_name: str) -> str:
     if not report_name:
         return "<p style='color:#6B7280;padding:30px;font-size:0.95em;font-family:Inter,Segoe UI,sans-serif;'>Aucun rapport disponible — lancez au moins 2 cycles de training.</p>"
     report_url = f"http://{VPS_IP}:8090/reports/drift/{report_name}"
-    return (
-        f'<iframe src="{report_url}" width="100%" height="820px" '
-        f'frameborder="0" style="border:none;border-radius:4px;"></iframe>'
+    link = (
+        f'<div style="margin-bottom:8px;font-family:Inter,Segoe UI,sans-serif;font-size:0.88em;color:#6B7280;">'
+        f'⚠️ Si les graphes interactifs apparaissent vides, '
+        f'<a href="{report_url}" target="_blank" rel="noopener" '
+        f'style="color:#2E86AB;font-weight:600;">ouvrir le rapport complet ↗</a>'
+        f'</div>'
     )
+    iframe = (
+        f'<iframe src="{report_url}" width="100%" height="820px" '
+        f'frameborder="0" style="border:none;border-radius:4px;" '
+        f'allow="scripts"></iframe>'
+    )
+    return link + iframe
 
 
 def refresh_drift_reports():

@@ -9,19 +9,18 @@ not monthly, since we have no real continuous production traffic.
 """
 import json
 import logging
-from datetime import datetime, timezone
 
 from prefect import flow, task
 
-from services.monitoring.drift_detection import run_drift_report, _default_month
+from services.monitoring.drift_detection import run_drift_report, _default_year
 
 logger = logging.getLogger(__name__)
 
 
 @task(name="run-evidently-report")
-def drift_report_task(year_month: str) -> dict:
-    logger.info("Running Evidently drift report for %s", year_month)
-    summary = run_drift_report(year_month)
+def drift_report_task(year: str) -> dict:
+    logger.info("Running Evidently drift report for %s", year)
+    summary = run_drift_report(year)
     logger.info("Report summary: %s", json.dumps(summary))
     return summary
 
@@ -48,22 +47,22 @@ def check_threshold_task(summary: dict) -> str:
     return level
 
 
-@flow(name="drift-monitoring-flow", flow_run_name="drift-{year_month}", log_prints=True)
-def drift_monitoring_flow(year_month: str | None = None) -> dict:
+@flow(name="drift-monitoring-flow", flow_run_name="drift-{year}", log_prints=True)
+def drift_monitoring_flow(year: str | None = None) -> dict:
     """
-    Monthly drift detection:
-    1. Fetch last month's predictions from PostgreSQL
+    Annual drift detection:
+    1. Fetch year's predictions from PostgreSQL
     2. Compare with X_train 2021-2023 reference (Evidently)
     3. Log severity — CRITICAL triggers retrain via separate flow
 
     Returns summary dict with drift metrics.
     """
-    if year_month is None:
-        year_month = _default_month()
+    if year is None:
+        year = _default_year()
 
-    logger.info("Drift monitoring for month=%s", year_month)
+    logger.info("Drift monitoring for year=%s", year)
 
-    summary = drift_report_task(year_month)
+    summary = drift_report_task(year)
     level   = check_threshold_task(summary)
     summary["level"] = level
 
