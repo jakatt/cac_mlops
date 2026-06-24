@@ -4,13 +4,14 @@ WORKDIR /app
 
 # system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
+    build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # project source (for src/ imports)
+COPY .dvc/config .dvc/config
 COPY src/ src/
 COPY services/api/app/ services/api/app/
 COPY services/monitoring/ services/monitoring/

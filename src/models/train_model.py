@@ -136,16 +136,25 @@ def _build_classifier(
 def train(
     years: list[int],
     algorithm: str = "rf",
-    n_estimators: int = 100,
+    n_estimators: int | None = None,
     max_depth: int | None = None,
-    learning_rate: float = 0.1,
-    num_leaves: int = 31,
+    learning_rate: float | None = None,
+    num_leaves: int | None = None,
     register: bool = True,
 ) -> tuple[dict[str, float], str]:
     """
     Entraîne, évalue, logue dans MLflow et optionnellement enregistre le modèle.
     Retourne (metrics, run_id).
+    Hyperparamètres : valeur explicite > blueprint config/model_params.yml > défaut codé.
     """
+    bp = _load_algo_params(algorithm)
+    if bp:
+        logger.info("Blueprint chargé depuis config/model_params.yml (%s)", algorithm)
+    n_estimators  = n_estimators  if n_estimators  is not None else bp.get("n_estimators",  100)
+    max_depth     = max_depth     if max_depth     is not None else bp.get("max_depth",      None)
+    learning_rate = learning_rate if learning_rate is not None else bp.get("learning_rate",  0.1)
+    num_leaves    = num_leaves    if num_leaves    is not None else bp.get("num_leaves",      31)
+
     model_name = MODEL_NAMES[algorithm]
     mlflow.set_experiment(EXPERIMENT_NAME)
 
@@ -236,14 +245,6 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
-    # Pré-parse pour récupérer l'algorithme et charger le blueprint
-    pre = argparse.ArgumentParser(add_help=False)
-    pre.add_argument("--algorithm", default="rf")
-    algo = pre.parse_known_args()[0].algorithm
-    cfg = _load_algo_params(algo)
-    if cfg:
-        logger.info("Blueprint chargé depuis config/model_params.yml (%s)", algo)
-
     parser = argparse.ArgumentParser(
         description="Entraîne un modèle de gravité accidents sur données ONISR"
     )
@@ -251,11 +252,12 @@ def main() -> None:
     parser.add_argument("--cumul",         action="store_true")
     parser.add_argument("--algorithm",     default="rf", choices=["rf", "xgboost", "lgbm"],
                         help="Algorithme : rf (défaut) | xgboost | lgbm")
-    parser.add_argument("--n-estimators",  type=int,   default=cfg.get("n_estimators", 100))
-    parser.add_argument("--max-depth",     type=int,   default=cfg.get("max_depth", None))
-    parser.add_argument("--learning-rate", type=float, default=cfg.get("learning_rate", 0.1),
+    # None → train() lit le blueprint ; valeur explicite → override
+    parser.add_argument("--n-estimators",  type=int,   default=None)
+    parser.add_argument("--max-depth",     type=int,   default=None)
+    parser.add_argument("--learning-rate", type=float, default=None,
                         help="Learning rate (xgboost / lgbm uniquement)")
-    parser.add_argument("--num-leaves",    type=int,   default=cfg.get("num_leaves", 31),
+    parser.add_argument("--num-leaves",    type=int,   default=None,
                         help="Nombre de feuilles (lgbm uniquement)")
     parser.add_argument("--no-register",   action="store_true")
     args = parser.parse_args()

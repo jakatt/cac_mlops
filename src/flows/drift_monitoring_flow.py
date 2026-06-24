@@ -48,7 +48,7 @@ def check_threshold_task(summary: dict) -> str:
     return level
 
 
-@flow(name="drift-monitoring-flow", log_prints=True)
+@flow(name="drift-monitoring-flow", flow_run_name="drift-{year_month}", log_prints=True)
 def drift_monitoring_flow(year_month: str | None = None) -> dict:
     """
     Monthly drift detection:

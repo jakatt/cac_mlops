@@ -47,3 +47,38 @@ deployments:
     entrypoint: src/flows/drift_monitoring_flow.py:drift_monitoring_flow
     work_pool:
       name: default-process-pool
+
+  # ── Check new data — détection hebdo de nouvelles données ONISR ─────────────
+  # Vérifie data.gouv.fr chaque lundi à 8h (Europe/Paris).
+  # Si nouvelle année détectée : logs le plan d'action (mise à jour import_raw_data.py
+  # + lancement manual de full-retrain). Ne déclenche PAS le retrain automatiquement
+  # (nommage ONISR imprévisible — validation humaine requise).
+  - name: check-new-data
+    entrypoint: src/flows/check_new_data_flow.py:check_new_data_flow
+    work_pool:
+      name: default-process-pool
+    schedules:
+      - cron: "0 8 * * 1"
+        timezone: "Europe/Paris"
+        active: true
+
+  # ── Full retrain — tous les cycles depuis zéro (après reset-flow) ─────────────
+  # Auto-détecte les années depuis les tags DVC (data-v1, data-v2, ...)
+  # Utilise l'algorithme du modèle @Production actuel pour chaque cycle.
+  - name: full-retrain
+    entrypoint: src/flows/full_retrain_flow.py:full_retrain_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      max_sim_rows: 2000
+
+  # ── Reset (RAZ) — vide la table predictions + rapports drift ─────────────────
+  # À lancer avant full-retrain pour repartir d'un état propre.
+  # Ne supprime PAS les runs MLflow ni le model registry (@Production préservé).
+  - name: reset
+    entrypoint: src/flows/reset_flow.py:reset_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      clear_predictions: true
+      clear_drift: true

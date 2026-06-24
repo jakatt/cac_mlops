@@ -3,6 +3,7 @@ Model loading from MLflow Registry or local joblib fallback.
 
 Priority:
   1. MLflow Model Registry (alias Production — MLflow 3.x)
+     Scan all known model families; MLFLOW_MODEL_NAME overrides the scan.
   2. MLFLOW_MODEL_URI env variable (explicit URI)
   3. LOCAL_MODEL_PATH env variable (local .joblib)
 """
@@ -14,27 +15,43 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# All registered model families — must stay in sync with train_model.MODEL_NAMES
+_ALL_MODEL_NAMES = ["lgbm_accidents", "rf_accidents", "xgb_accidents"]
+
 _model = None
 _model_version: str = "unknown"
 
 
 def _load_from_mlflow() -> tuple | None:
-    """Return (model, version_str) from MLflow Registry or None."""
+    """Return (model, version_str) from MLflow Registry or None.
+
+    If MLFLOW_MODEL_NAME is set, use it directly.
+    Otherwise scan all families for the @Production alias so the API
+    always loads the champion regardless of which family won.
+    """
     try:
         import mlflow.sklearn
         mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
         mlflow.set_tracking_uri(mlflow_uri)
 
-        model_name  = os.getenv("MLFLOW_MODEL_NAME",  "rf_accidents")
-        model_alias = os.getenv("MLFLOW_MODEL_STAGE", "Production")
-        # MLflow 3.x : aliases (@Production) remplacent les stages dépréciés
-        uri = f"models:/{model_name}@{model_alias}"
+        model_alias  = os.getenv("MLFLOW_MODEL_STAGE", "Production")
+        explicit_name = os.getenv("MLFLOW_MODEL_NAME")
+        candidates   = [explicit_name] if explicit_name else _ALL_MODEL_NAMES
 
-        logger.info("Loading model from MLflow: %s", uri)
-        model = mlflow.sklearn.load_model(uri)
-        return model, f"{model_name}@{model_alias}"
+        for model_name in candidates:
+            try:
+                uri = f"models:/{model_name}@{model_alias}"
+                logger.info("Trying MLflow model: %s", uri)
+                model = mlflow.sklearn.load_model(uri)
+                logger.info("Model loaded: %s", uri)
+                return model, f"{model_name}@{model_alias}"
+            except Exception:
+                continue
+
+        logger.warning("No @%s model found in any family — trying fallback", model_alias)
+        return None
     except Exception as exc:
-        logger.warning("MLflow model load failed (%s) — trying fallback", exc)
+        logger.warning("MLflow setup failed (%s) — trying fallback", exc)
         return None
 
 

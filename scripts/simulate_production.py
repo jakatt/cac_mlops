@@ -76,6 +76,7 @@ def simulate(
     dry_run: bool = False,
     delay_ms: int = 0,
     max_rows: int | None = None,
+    sim_month: str | None = None,
 ) -> dict:
     df = _load_production_data(year)
 
@@ -110,6 +111,9 @@ def simulate(
         return {"sent": 0, "errors": 0, "would_send": len(df)}
 
     headers = {"Authorization": f"Bearer {token}"}
+    if sim_month:
+        headers["X-Sim-Date"] = sim_month
+        logger.info("Simulation mode: created_at overridden to %s-15", sim_month)
     sent = errors = 0
 
     logger.info("Sending %d predictions to %s…", len(df), api_url)
@@ -159,6 +163,8 @@ if __name__ == "__main__":
     parser.add_argument("--delay-ms", type=int, default=0, help="ms between requests")
     parser.add_argument("--max-rows", type=int, default=None,
                         help="Limite le nombre de lignes envoyées (sample aléatoire)")
+    parser.add_argument("--sim-month", default=None,
+                        help="YYYY-MM — override created_at pour distinguer les cycles de drift")
     args = parser.parse_args()
 
     token = args.token or _get_token(args.api_url, args.username, args.password)
@@ -170,6 +176,7 @@ if __name__ == "__main__":
         dry_run=args.dry_run,
         delay_ms=args.delay_ms,
         max_rows=args.max_rows,
+        sim_month=args.sim_month,
     )
     total = result.get("sent", 0) + result.get("errors", 0)
     error_rate = result.get("errors", 0) / total if total > 0 else 0
