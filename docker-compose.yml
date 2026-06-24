@@ -203,6 +203,34 @@ services:
       - ./reports:/app/reports:ro  # rapports Evidently (read-only)
       - ./state:/app/state:ro      # IPs Kapsule dynamiques (read-only)
 
+  # ── node-exporter — métriques système (RAM / CPU / disk) ───────────────────
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "127.0.0.1:9100:9100"
+
+  # ── nginx-prometheus-exporter — métriques NGINX (connexions, requêtes) ──────
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    restart: unless-stopped
+    command:
+      - '--nginx.scrape-uri=http://nginx:80/stub_status'
+    ports:
+      - "127.0.0.1:9113:9113"
+    depends_on:
+      - nginx
+
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
@@ -226,9 +254,16 @@ services:
     ports:
       - "${VPS_TAILSCALE_IP:-127.0.0.1}:3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_PASSWORD:           ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP:               "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/api-performance.json
+      GF_SMTP_ENABLED:                      ${GF_SMTP_ENABLED:-false}
+      GF_SMTP_HOST:                         ${GF_SMTP_HOST:-smtp.gmail.com:587}
+      GF_SMTP_USER:                         ${GF_SMTP_USER:-}
+      GF_SMTP_PASSWORD:                     ${GF_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS:                 ${GF_SMTP_FROM_ADDRESS:-grafana@localhost}
+      GF_ALERTING_ENABLED:                  "false"
+      GF_UNIFIED_ALERTING_ENABLED:          "true"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro

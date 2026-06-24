@@ -47,4 +47,54 @@ jobs:
               sleep 5
             done
 
-            echo "==> Promotion done"
+            echo "==> Promotion VPS done"
+
+      - name: Upload model to S3 for Kapsule
+        if: ${{ secrets.KAPSULE_CLUSTER_ID != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            MODEL="${{ github.event.inputs.model_name }}"
+
+            echo "==> Downloading @Production model from MLflow"
+            docker compose exec -T prefect-worker python3 -c "import mlflow,os,shutil,glob; os.environ.update({'MLFLOW_TRACKING_URI':'http://mlflow:5000','MLFLOW_S3_ENDPOINT_URL':'http://minio:9000','AWS_ACCESS_KEY_ID':os.environ.get('MINIO_ROOT_USER','minioadmin'),'AWS_SECRET_ACCESS_KEY':os.environ.get('MINIO_ROOT_PASSWORD','minioadmin')}); c=mlflow.tracking.MlflowClient(); mv=c.get_model_version_by_alias('$MODEL','Production'); mlflow.artifacts.download_artifacts(artifact_uri=mv.source,dst_path='/tmp/model_dl'); files=glob.glob('/tmp/model_dl/**/*.joblib',recursive=True) or glob.glob('/tmp/model_dl/*.joblib'); shutil.copy(files[0],'/tmp/trained_model.joblib'); print('Downloaded:',files[0])"
+            docker cp cac_mlops-prefect-worker-1:/tmp/trained_model.joblib /tmp/trained_model.joblib
+
+            echo "==> Uploading to s3://cac-mlops-data/k8s-model/"
+            docker run --rm \
+              -v /tmp/trained_model.joblib:/tmp/trained_model.joblib \
+              -e AWS_ACCESS_KEY_ID="${{ secrets.SCW_ACCESS_KEY }}" \
+              -e AWS_SECRET_ACCESS_KEY="${{ secrets.SCW_SECRET_KEY }}" \
+              amazon/aws-cli s3 cp /tmp/trained_model.joblib \
+              s3://cac-mlops-data/k8s-model/trained_model.joblib \
+              --endpoint-url https://s3.fr-par.scw.cloud
+
+            echo "==> Model uploaded to S3"
+
+      - name: Rolling restart Kapsule deployment
+        if: ${{ secrets.KAPSULE_CLUSTER_ID != '' }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | sh
+          export PATH=$PATH:$HOME/.local/bin
+
+          scw init \
+            secret-key=${{ secrets.SCW_SECRET_KEY }} \
+            access-key=${{ secrets.SCW_ACCESS_KEY }} \
+            organization-id=${{ secrets.SCW_DEFAULT_ORG_ID }} \
+            region=fr-par zone=fr-par-1 send-telemetry=false
+
+          scw k8s kubeconfig get ${{ secrets.KAPSULE_CLUSTER_ID }} > /tmp/kubeconfig.yaml
+          export KUBECONFIG=/tmp/kubeconfig.yaml
+
+          echo "==> Rolling restart deployment/api"
+          kubectl rollout restart deployment/api -n cac-mlops
+          kubectl rollout status deployment/api -n cac-mlops --timeout=120s
+          echo "==> Kapsule deployment updated — zero downtime"
