@@ -2,8 +2,8 @@
 Evidently drift detection — compare X_train reference vs production predictions.
 
 Usage:
-    python -m services.monitoring.drift_detection --month 2024-01
-    python -m services.monitoring.drift_detection          # uses last full month
+    python -m services.monitoring.drift_detection --year 2024
+    python -m services.monitoring.drift_detection          # uses last full year
 """
 import argparse
 import json
@@ -54,28 +54,27 @@ def _get_conn():
     )
 
 
-def fetch_production_data(year_month: str) -> pd.DataFrame:
-    """Fetch predictions logged during year_month (format: YYYY-MM)."""
-    year, month = year_month.split("-")
+def fetch_production_data(year: str) -> pd.DataFrame:
+    """Fetch predictions logged during year (format: YYYY)."""
     query = """
         SELECT place, catu, sexe, secu1, year_acc, victim_age, catv, obsm, motor,
                catr, circ, surf, situ, vma, jour, mois, lum, dep, com, agg_,
                intersection_type, atm, col, lat, long, hour, nb_victim, nb_vehicules,
                prediction, probability, model_version, created_at
         FROM predictions
-        WHERE date_trunc('month', created_at) = %s::date
+        WHERE EXTRACT(year FROM created_at) = %s
     """
     conn = _get_conn()
     try:
-        df = pd.read_sql(query, conn, params=(f"{year}-{month}-01",))
-        logger.info("Fetched %d production records for %s", len(df), year_month)
+        df = pd.read_sql(query, conn, params=(int(year),))
+        logger.info("Fetched %d production records for %s", len(df), year)
         return df
     finally:
         conn.close()
 
 
-def run_drift_report(year_month: str, reference_path: Path | str | None = None) -> dict:
-    """Run Evidently drift report for a given month. Returns summary dict."""
+def run_drift_report(year: str, reference_path: Path | str | None = None) -> dict:
+    """Run Evidently drift report for a given year. Returns summary dict."""
     try:
         from evidently.report import Report
         from evidently.metric_preset import DataDriftPreset
@@ -100,11 +99,11 @@ def run_drift_report(year_month: str, reference_path: Path | str | None = None) 
         target_col = "grav" if "grav" in y_train.columns else y_train.columns[0]
         reference["prediction"] = y_train[target_col].values
 
-    production = fetch_production_data(year_month)
+    production = fetch_production_data(year)
 
     if production.empty:
-        logger.warning("No production data for %s — skipping drift check", year_month)
-        return {"month": year_month, "rows": 0, "drift_detected": False, "drifted_features": []}
+        logger.warning("No production data for %s — skipping drift check", year)
+        return {"year": year, "rows": 0, "drift_detected": False, "drifted_features": []}
 
     production = production[FEATURE_COLS + (["prediction"] if "prediction" in production.columns else [])]
 
@@ -129,8 +128,8 @@ def run_drift_report(year_month: str, reference_path: Path | str | None = None) 
     report.run(reference_data=reference, current_data=production, column_mapping=column_mapping)
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    html_path = REPORTS_DIR / f"drift_{year_month}.html"
-    json_path  = REPORTS_DIR / f"drift_{year_month}.json"
+    html_path = REPORTS_DIR / f"drift_{year}.html"
+    json_path  = REPORTS_DIR / f"drift_{year}.json"
     report.save_html(str(html_path))
 
     result_dict = report.as_dict()
@@ -159,7 +158,7 @@ def run_drift_report(year_month: str, reference_path: Path | str | None = None) 
     }
 
     summary = {
-        "month": year_month,
+        "year": year,
         "rows": len(production),
         "drift_detected": detected,
         "drifted_features": drifted_features,
@@ -178,7 +177,7 @@ def run_drift_report(year_month: str, reference_path: Path | str | None = None) 
 
     logger.info(
         "Drift %s — %d/%d features drifted (share=%.1f%%) for %s",
-        level, drifted, total, share * 100, year_month,
+        level, drifted, total, share * 100, year,
     )
     if drifted_features:
         logger.info("Drifted features: %s", drifted_features)
@@ -186,23 +185,21 @@ def run_drift_report(year_month: str, reference_path: Path | str | None = None) 
     return summary
 
 
-def _default_month() -> str:
+def _default_year() -> str:
     now = datetime.now(timezone.utc)
-    if now.month == 1:
-        return f"{now.year - 1}-12"
-    return f"{now.year}-{now.month - 1:02d}"
+    return str(now.year - 1)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--month", default=_default_month(),
-                        help="Month to analyze (YYYY-MM). Defaults to last full month.")
+    parser.add_argument("--year", default=_default_year(),
+                        help="Year to analyze (YYYY). Defaults to last full year.")
     parser.add_argument("--reference-path", default=None,
                         help="Répertoire contenant X_train.csv + y_train.csv. "
                              "Par défaut: data/preprocessed/cumul_2021_2022_2023/")
     args = parser.parse_args()
 
     ref = Path(args.reference_path) if args.reference_path else None
-    summary = run_drift_report(args.month, reference_path=ref)
+    summary = run_drift_report(args.year, reference_path=ref)
     print(json.dumps(summary, indent=2))
     sys.exit(0)
