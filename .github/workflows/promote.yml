@@ -15,6 +15,8 @@ on:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    env:
+      KAPSULE_CLUSTER_ID: ${{ secrets.KAPSULE_CLUSTER_ID }}
     steps:
       - name: Force promote model to @Production
         uses: appleboy/ssh-action@v1.0.3
@@ -50,7 +52,7 @@ jobs:
             echo "==> Promotion VPS done"
 
       - name: Upload model to S3 for Kapsule
-        if: ${{ secrets.KAPSULE_CLUSTER_ID != '' }}
+        if: env.KAPSULE_CLUSTER_ID != ''
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SCALEWAY_HOST }}
@@ -80,7 +82,7 @@ jobs:
             echo "==> Model uploaded to S3"
 
       - name: Rolling restart Kapsule deployment
-        if: ${{ secrets.KAPSULE_CLUSTER_ID != '' }}
+        if: env.KAPSULE_CLUSTER_ID != ''
         run: |
           curl -fsSL https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | sh
           export PATH=$PATH:$HOME/.local/bin
