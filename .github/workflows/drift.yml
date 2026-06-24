@@ -1,0 +1,39 @@
+name: Drift — mise à jour rapport Evidently
+
+# Déclenche uniquement la détection de dérive pour un mois donné.
+# Les prédictions doivent déjà être en base (via simulate_production.py
+# ou trafic réel API). N'entraîne pas de nouveau modèle.
+on:
+  workflow_dispatch:
+    inputs:
+      year_month:
+        description: "Mois à analyser (format YYYY-MM, ex: 2024-06)"
+        required: true
+        default: "2024-06"
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Déclencher drift-check via Prefect (SSH)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:            ${{ secrets.SCALEWAY_HOST }}
+          username:        ${{ secrets.SCALEWAY_USER }}
+          key:             ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            export PATH=$PATH:/home/deploy/.local/bin
+            cd ${{ secrets.DEPLOY_DIR }}
+
+            YEAR_MONTH="${{ github.event.inputs.year_month }}"
+
+            echo "==> Drift detection pour month=$YEAR_MONTH"
+
+            docker compose exec -T prefect-worker \
+              prefect deployment run "drift-monitoring-flow/drift-check" \
+              --param year_month="$YEAR_MONTH" \
+              --watch
+
+            echo "==> Rapport généré : http://${{ secrets.SCALEWAY_HOST }}:8090/reports/drift/drift_${YEAR_MONTH}.html"
