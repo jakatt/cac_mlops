@@ -102,3 +102,9 @@ reports/drift/*
 # Kapsule runtime state (IPs dynamiques — générées par kapsule-up.yml)
 state/*
 !state/.gitkeep
+
+# MLflow local tracking (source de vérité = MLflow Server VPS)
+mlruns/
+
+# Modèle binaire local (source de vérité = MLflow Registry @Production)
+src/models/trained_model.joblib
