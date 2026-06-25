@@ -73,8 +73,8 @@ deployments:
       max_sim_rows: 2000
 
   # ── Reset (RAZ) — vide la table predictions + rapports drift ─────────────────
-  # À lancer avant full-retrain pour repartir d'un état propre.
-  # Ne supprime PAS les runs MLflow ni le model registry (@Production préservé).
+  # clear_mlflow=true supprime tous les runs et versions MLflow de
+  # accidents_severity (accidents_severity_explore préservé).
   - name: reset
     entrypoint: src/flows/reset_flow.py:reset_flow
     work_pool:
@@ -82,3 +82,4 @@ deployments:
     parameters:
       clear_predictions: true
       clear_drift: true
+      clear_mlflow: false
