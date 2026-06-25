@@ -67,10 +67,7 @@ def clear_mlflow_task() -> dict:
     except Exception as e:
         logger.warning("Could not clear model registry: %s", e)
 
-    # Re-create the experiment empty so it's ready for a fresh retrain
-    client.delete_experiment(experiment.experiment_id)
-    client.create_experiment(MLFLOW_EXPERIMENT_TO_RESET)
-    logger.info("Experiment '%s' recreated empty", MLFLOW_EXPERIMENT_TO_RESET)
+    logger.info("Experiment '%s' cleared (%d runs deleted)", MLFLOW_EXPERIMENT_TO_RESET, len(runs))
 
     return {"runs_deleted": len(runs), "versions_deleted": versions_deleted}
 
