@@ -249,7 +249,7 @@ services:
 
   # ── Grafana — dashboards [Phase 4] ──────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.5.4
     restart: unless-stopped
     ports:
       - "${VPS_TAILSCALE_IP:-127.0.0.1}:3000:3000"
@@ -262,6 +262,7 @@ services:
       GF_SMTP_USER:                         ${GF_SMTP_USER:-}
       GF_SMTP_PASSWORD:                     ${GF_SMTP_PASSWORD:-}
       GF_SMTP_FROM_ADDRESS:                 ${GF_SMTP_FROM_ADDRESS:-grafana@localhost}
+      GF_ALERT_EMAIL:                       ${GF_ALERT_EMAIL:-}
       GF_ALERTING_ENABLED:                  "false"
       GF_UNIFIED_ALERTING_ENABLED:          "true"
     volumes:
