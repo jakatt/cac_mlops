@@ -165,9 +165,14 @@ services:
       MLFLOW_RUN_MODE:        official
       SCW_ACCESS_KEY_ID:      ${SCW_ACCESS_KEY_ID}
       SCW_SECRET_ACCESS_KEY:  ${SCW_SECRET_ACCESS_KEY}
+      KAPSULE_CLUSTER_ID:     ${KAPSULE_CLUSTER_ID:-}
+      SCW_DEFAULT_ORGANIZATION_ID: ${SCW_DEFAULT_ORGANIZATION_ID:-}
+      KAPSULE_STATE:          /app/state/kapsule_ips
+      NGINX_URL:              http://nginx:80
     volumes:
       - ./data:/app/data
       - ./reports:/app/reports
+      - ./state:/app/state
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       prefect-server:
@@ -175,7 +180,7 @@ services:
       mlflow:
         condition: service_healthy
 
-  # ── Gradio — Cockpit MLOps (6 onglets) ──────────────────────────────────────
+  # ── Gradio — Cockpit MLOps (7 onglets) ──────────────────────────────────────
   gradio:
     image: ghcr.io/jakatt/cac-mlops-gradio:latest
     restart: unless-stopped
@@ -190,7 +195,8 @@ services:
       GRADIO_MODEL_ALIAS:     Production
       GRADIO_DATA_PATH:       /app/data/preprocessed
       GRADIO_PORT:            "7860"
-      # Cockpit onglets 3-6
+      # Cockpit onglets
+      PREFECT_API_URL:        http://prefect-server:4200/api
       VPS_IP:                 ${VPS_IP:-51.159.187.132}
       VPS_TAILSCALE_IP:       ${VPS_TAILSCALE_IP:-}
       GITHUB_REPO:            ${GITHUB_REPO:-jakatt/cac_mlops}

@@ -1,5 +1,5 @@
 """
-Cockpit MLOps — Interface Gradio (6 onglets)
+Cockpit MLOps — Interface Gradio (7 onglets)
 
 Onglets métier (data users) :
   1. What-if        (Sylvie Ferrand / Bison Futé)
@@ -8,8 +8,9 @@ Onglets métier (data users) :
 Onglets MLOps (Léon — MLOps lead) :
   3. Drift          rapports Evidently par mois
   4. Modèles        tableau runs + DVC lineage + promote @Production
-  5. Healthcheck    état services VPS + Kapsule K8s
-  6. Liens          navigation vers tous les outils
+  5. Pipeline       déclenchement flows Prefect (kapsule, retrain, reset, diag…)
+  6. Healthcheck    état services VPS + Kapsule K8s
+  7. Infra          liens navigation + Kapsule IPs
 """
 from __future__ import annotations
 
@@ -37,9 +38,9 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 MLFLOW_URI       = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
+PREFECT_API      = os.getenv("PREFECT_API_URL",      "http://prefect-server:4200/api")
 MODEL_ALIAS      = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
 
-# All registered model families — checked in order to find @Production
 ALL_MODEL_NAMES  = ["lgbm_accidents", "rf_accidents", "xgb_accidents"]
 LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH",     "")
 DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
@@ -68,7 +69,6 @@ _df_full = None
 
 
 def _find_production_model() -> str | None:
-    """Return the URI of the current @Production model across all families, or None."""
     mlflow.set_tracking_uri(MLFLOW_URI)
     client = mlflow.tracking.MlflowClient()
     for model_name in ALL_MODEL_NAMES:
@@ -344,12 +344,10 @@ def _dvc_tag(year: str, cumul: str) -> str:
 
 
 def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
-    """List versions across all 3 model families. Dropdown value = 'model_name:version'."""
     try:
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
 
-        # Find which family holds @Production
         prod_key: str | None = None
         for model_name in ALL_MODEL_NAMES:
             try:
@@ -406,7 +404,6 @@ def refresh_models():
 
 
 def promote_version(choice_key: str) -> str:
-    """Promote a model version. choice_key format: 'model_name:version'."""
     if not choice_key or ":" not in choice_key:
         return "Selectionnez une version a promouvoir."
     try:
@@ -414,7 +411,6 @@ def promote_version(choice_key: str) -> str:
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
         client.set_registered_model_alias(model_name, "Production", int(version))
-        # Clear @Production from other families
         for other in ALL_MODEL_NAMES:
             if other != model_name:
                 try:
@@ -427,7 +423,90 @@ def promote_version(choice_key: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — Healthcheck
+# TAB 5 — Pipeline (Prefect flows)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _prefect_trigger(deployment_name: str, parameters: dict | None = None) -> str:
+    """Crée un flow run Prefect pour le déploiement donné via l'API REST."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/deployments/filter",
+            json={"deployments": {"name": {"any_": [deployment_name]}}},
+            timeout=5,
+        )
+        deps = r.json()
+        if not deps:
+            return f"Deployment '{deployment_name}' introuvable dans Prefect."
+        dep_id = deps[0]["id"]
+        r2 = requests.post(
+            f"{PREFECT_API}/deployments/{dep_id}/create_flow_run",
+            json={"parameters": parameters or {}},
+            timeout=5,
+        )
+        run = r2.json()
+        run_id = run.get("id", "?")
+        state  = run.get("state", {}).get("name", "?")
+        return f"Flow run créé — id: {run_id[:8]}… | état initial: {state}\nVoir Prefect UI pour le suivi."
+    except Exception as e:
+        return f"Erreur Prefect API : {e}"
+
+
+def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
+    """Retourne les derniers flow runs depuis l'API Prefect."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/filter",
+            json={"limit": limit, "sort": "START_TIME_DESC"},
+            timeout=5,
+        )
+        runs = r.json()
+        if not runs:
+            return pd.DataFrame({"Info": ["Aucun run récent"]})
+        rows = []
+        for run in runs:
+            started = run.get("start_time", run.get("expected_start_time", ""))[:19] if run.get("start_time") or run.get("expected_start_time") else ""
+            rows.append({
+                "Flow":   run.get("name", "?"),
+                "État":   run.get("state", {}).get("name", "?"),
+                "Début":  started,
+                "Durée":  f"{run.get('total_run_time', 0):.0f}s" if run.get("total_run_time") else "",
+            })
+        return pd.DataFrame(rows)
+    except Exception as e:
+        return pd.DataFrame({"Erreur": [str(e)]})
+
+
+def trigger_kapsule_up(node_type: str, node_count: int) -> str:
+    return _prefect_trigger("kapsule-up", {"node_type": node_type, "node_count": node_count})
+
+def trigger_kapsule_down() -> str:
+    return _prefect_trigger("kapsule-down")
+
+def trigger_test_api() -> str:
+    return _prefect_trigger("test-api")
+
+def trigger_diag() -> str:
+    return _prefect_trigger("diag")
+
+def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool) -> str:
+    return _prefect_trigger("reset", {
+        "clear_predictions": clear_predictions,
+        "clear_drift": clear_drift,
+        "clear_mlflow": clear_mlflow,
+    })
+
+def trigger_full_retrain() -> str:
+    return _prefect_trigger("full-retrain")
+
+def trigger_check_new_data() -> str:
+    return _prefect_trigger("check-new-data")
+
+def refresh_recent_runs() -> pd.DataFrame:
+    return _prefect_recent_runs()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6 — Healthcheck
 # ══════════════════════════════════════════════════════════════════════════════
 
 _VPS_SERVICES = {
@@ -474,7 +553,7 @@ def check_health() -> pd.DataFrame:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — Liens
+# TAB 7 — Infra (liens + IPs Kapsule)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _kapsule_links_html() -> str:
@@ -532,16 +611,11 @@ def build_links_html() -> str:
 
   <p style="{hs}">Kapsule K8s — Phase 5</p>
   {kapsule_html}
-  <p style="margin-top:8px;font-size:0.82em;color:{MUTED};">
-    <a href="https://github.com/{GITHUB_REPO}/actions/workflows/kapsule-up.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Demarrer Kapsule</a>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="https://github.com/{GITHUB_REPO}/actions/workflows/kapsule-down.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Arreter Kapsule</a>
-  </p>
 
   <p style="{hs}">GitHub</p>
   <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;">
     <tr><th style="{th}">Lien</th><th style="{th}">URL</th></tr>
-    <tr><td style="{td}">GitHub Actions</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/actions</a></td></tr>
+    <tr><td style="{td}">GitHub Actions (CI/CD)</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/actions</a></td></tr>
     <tr><td style="{td}">Train workflow</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions/workflows/train.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Train — pipeline Scaleway</a></td></tr>
     <tr><td style="{td}">DVC Data Tags</td>  <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/tags" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/tags</a></td></tr>
   </table>
@@ -551,7 +625,7 @@ def build_links_html() -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Interface Gradio — 6 onglets
+# Interface Gradio — 7 onglets
 # ══════════════════════════════════════════════════════════════════════════════
 
 SCENARIO_CHOICES = [(v["label"], k) for k, v in SCENARIOS.items()]
@@ -715,7 +789,59 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
             models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
             promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
 
-        # ── Onglet 5 : Healthcheck ───────────────────────────────────────────
+        # ── Onglet 5 : Pipeline ──────────────────────────────────────────────
+        with gr.Tab("Pipeline"):
+            gr.Markdown("### Orchestration Prefect — déclenchement des flows")
+
+            with gr.Row():
+                pipeline_refresh = gr.Button("Rafraichir les runs", scale=1)
+            runs_table = gr.Dataframe(
+                value=_prefect_recent_runs(),
+                label="Derniers flow runs",
+                interactive=False,
+            )
+            pipeline_refresh.click(fn=refresh_recent_runs, outputs=runs_table)
+
+            gr.Markdown("---")
+
+            with gr.Row():
+                # Colonne gauche — Kapsule
+                with gr.Column(scale=1):
+                    gr.Markdown("#### Kapsule K8s (Phase 5)")
+                    kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
+                    kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+                    kap_up_btn  = gr.Button("Démarrer Kapsule", variant="primary")
+                    kap_down_btn = gr.Button("Arrêter Kapsule",  variant="secondary")
+                    kap_result  = gr.Textbox(label="Résultat", lines=3, interactive=False)
+                    kap_up_btn.click(fn=trigger_kapsule_up, inputs=[kap_node_type, kap_node_count], outputs=kap_result)
+                    kap_down_btn.click(fn=trigger_kapsule_down, outputs=kap_result)
+
+                # Colonne milieu — Tests & Diag
+                with gr.Column(scale=1):
+                    gr.Markdown("#### Tests & Diagnostic")
+                    test_btn = gr.Button("Lancer test-api",  variant="primary")
+                    diag_btn = gr.Button("Lancer diag VPS",  variant="secondary")
+                    test_result = gr.Textbox(label="Résultat", lines=3, interactive=False)
+                    test_btn.click(fn=trigger_test_api, outputs=test_result)
+                    diag_btn.click(fn=trigger_diag,     outputs=test_result)
+
+                # Colonne droite — ML flows
+                with gr.Column(scale=1):
+                    gr.Markdown("#### ML Flows")
+                    reset_pred  = gr.Checkbox(value=True,  label="Effacer prédictions")
+                    reset_drift = gr.Checkbox(value=True,  label="Effacer drift reports")
+                    reset_mlf   = gr.Checkbox(value=False, label="Effacer MLflow (accidents_severity)")
+                    reset_btn   = gr.Button("Lancer reset",        variant="secondary")
+                    retrain_btn = gr.Button("Lancer full-retrain", variant="primary")
+                    newdata_btn = gr.Button("Vérifier nouvelles données", variant="secondary")
+                    ml_result   = gr.Textbox(label="Résultat", lines=3, interactive=False)
+                    reset_btn.click(fn=trigger_reset,
+                                    inputs=[reset_pred, reset_drift, reset_mlf],
+                                    outputs=ml_result)
+                    retrain_btn.click(fn=trigger_full_retrain,    outputs=ml_result)
+                    newdata_btn.click(fn=trigger_check_new_data,  outputs=ml_result)
+
+        # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):
             gr.Markdown("### Etat des services VPS et Kapsule K8s")
             health_refresh = gr.Button("Verifier maintenant", variant="primary")
@@ -726,11 +852,11 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
             )
             health_refresh.click(fn=check_health, outputs=health_table)
 
-        # ── Onglet 6 : Liens ─────────────────────────────────────────────────
-        with gr.Tab("Liens"):
-            links_refresh = gr.Button("Rafraichir les IPs Kapsule")
-            links_html    = gr.HTML(value=build_links_html())
-            links_refresh.click(fn=build_links_html, outputs=links_html)
+        # ── Onglet 7 : Infra ─────────────────────────────────────────────────
+        with gr.Tab("Infra"):
+            infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
+            infra_html    = gr.HTML(value=build_links_html())
+            infra_refresh.click(fn=build_links_html, outputs=infra_html)
 
     gr.Markdown("""
 ---
