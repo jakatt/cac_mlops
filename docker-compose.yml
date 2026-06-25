@@ -170,6 +170,7 @@ services:
       KAPSULE_STATE:          /app/state/kapsule_ips
       NGINX_URL:              http://nginx:80
     volumes:
+      - ./src:/app/src:ro          # flows Prefect (override image baked-in)
       - ./data:/app/data
       - ./reports:/app/reports
       - ./state:/app/state
