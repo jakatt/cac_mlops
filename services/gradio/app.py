@@ -716,7 +716,7 @@ table td { font-size: 0.83rem !important; color: #374151 !important; }
 footer { display: none !important; }
 """
 
-with gr.Blocks(title="Cockpit MLOps — Securite Routiere", css=CSS, theme=gr.themes.Base()) as demo:
+with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 
     gr.Markdown("""
 # Cockpit MLOps — Securite Routiere
@@ -869,4 +869,6 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=int(os.getenv("GRADIO_PORT", 7860)),
         show_error=True,
+        theme=gr.themes.Base(),
+        css=CSS,
     )
