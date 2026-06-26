@@ -372,9 +372,11 @@ Modele LightGBM — *outil de recherche, non operationnel.*
 
 
 if __name__ == "__main__":
+    public_url = os.getenv("GRADIO_PUBLIC_URL", "")
     demo.launch(
         server_name="0.0.0.0",
         server_port=int(os.getenv("GRADIO_PORT", 7862)),
+        root_path=public_url,
         show_error=True,
         theme=gr.themes.Base(),
         css=CSS,

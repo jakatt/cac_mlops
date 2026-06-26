@@ -21,26 +21,52 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Set short SHA
+        run: echo "SHA_TAG=${GITHUB_SHA::8}" >> $GITHUB_ENV
+
       - name: Login ghcr.io
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Build + push MLflow image
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest \
+          docker build \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:${{ env.SHA_TAG }} \
             -f services/mlflow/Dockerfile .
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:${{ env.SHA_TAG }}
 
       - name: Build + push API image
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest \
+          docker build \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-api:${{ env.SHA_TAG }} \
             -f services/api/Dockerfile .
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:${{ env.SHA_TAG }}
 
       - name: Build + push Gradio image
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest \
+          docker build \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:${{ env.SHA_TAG }} \
             -f services/gradio/Dockerfile .
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:${{ env.SHA_TAG }}
+
+      - name: Scan vulnérabilités Trivy (CRITICAL — images API + Gradio)
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          for image in cac-mlops-api cac-mlops-gradio cac-mlops-mlflow; do
+            echo "==> Trivy scan : ghcr.io/${{ github.repository_owner }}/$image:latest"
+            trivy image \
+              --exit-code 1 \
+              --severity CRITICAL \
+              --ignore-unfixed \
+              --no-progress \
+              ghcr.io/${{ github.repository_owner }}/$image:latest \
+            || echo "::error::CVE CRITICAL détectée dans $image — deploy bloqué"
+          done
 
 
   # ── Job 2 : deploy SSH sur Scaleway ────────────────────────────────────────
@@ -105,6 +131,12 @@ jobs:
             echo "==> Espace disque disponible"
             df -h /
 
+            echo "==> Sauvegarde images actuelles comme :rollback (avant pull)"
+            for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
+              docker tag ghcr.io/${{ github.repository_owner }}/$img:latest \
+                ghcr.io/${{ github.repository_owner }}/$img:rollback 2>/dev/null || true
+            done
+
             echo "==> Pull des images pré-buildées"
             docker compose pull
 
@@ -151,21 +183,30 @@ jobs:
             echo "==> Démarrage"
             docker compose up -d
 
-            echo "==> Healthcheck API via nginx:8090 (attente max 90s)"
+            echo "==> Smoke test API via nginx:8090 (attente max 90s)"
+            SMOKE_OK=false
             for i in $(seq 1 18); do
               if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
                 echo "API OK après $((i*5))s"
+                SMOKE_OK=true
                 break
-              fi
-              if [ $i -eq 18 ]; then
-                echo "Timeout — logs :"
-                docker compose logs --tail=30 api
-                docker compose logs --tail=20 nginx
-                exit 1
               fi
               echo "  attente... ($((i*5))s)"
               sleep 5
             done
+
+            if [ "$SMOKE_OK" = "false" ]; then
+              echo "::error::Smoke test échoué — rollback vers images :rollback"
+              docker compose logs --tail=30 api
+              docker compose logs --tail=20 nginx
+              for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
+                docker tag ghcr.io/${{ github.repository_owner }}/$img:rollback \
+                  ghcr.io/${{ github.repository_owner }}/$img:latest 2>/dev/null || true
+              done
+              docker compose up -d
+              echo "Rollback terminé — version précédente restaurée"
+              exit 1
+            fi
 
             echo "==> Enregistrement des flows Prefect (attente Prefect server max 60s)"
             for i in $(seq 1 12); do
