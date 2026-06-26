@@ -513,47 +513,64 @@ Personne ne le sait
 ## 6. Architecture globale
 
 ```text
-╔══════════════════════════════════════════════════════════════════════════════════════════════╗
-║                              ARCHITECTURE GLOBALE                                            ║
-╠══════════════════════╦════════════════════════════════════════╦══════════════════════════════╣
-║  DEV LOCAL           ║  VPS SCALEWAY                          ║  KAPSULE K8s                 ║
-║  (développeur)       ║  DEV1-XL · 51.159.187.132             ║  (on-demand, via workflow)   ║
-║                      ║  /data/cac_mlops                       ║                              ║
-╠══════════════════════╬════════════════════════════════════════╬══════════════════════════════╣
-║                      ║                                        ║                              ║
-║  docker-compose.yml  ║  docker-compose.yml (11 services)      ║  Deployments                 ║
-║  (même stack VPS)    ║  ┌──────────────────────────────────┐  ║  api           (HPA 2→8)     ║
-║                      ║  │ nginx     :8090  PUBLIC           │  ║  mlflow        (SQLite)      ║
-║  Outils CLI          ║  │ api       :8080  Tailscale        │  ║  prefect-server              ║
-║  pytest  flake8      ║  │ mlflow    :5001  Tailscale        │  ║  prefect-worker              ║
-║  dvc  git            ║  │ minio     :9001  Tailscale        │  ║  prometheus                  ║
-║  kubectl             ║  │ postgresql:5432  interne           │  ║  grafana                     ║
-║                      ║  │ prefect   :4200  Tailscale        │  ║                              ║
-║  Stockage local      ║  │ prometheus:9090  Tailscale        │  ║  Services LoadBalancer LB-S  ║
-║  data/ ← DVC pull   ║  │ grafana   :3000  Tailscale        │  ║  nginx    :80  → API pub.    ║
-║                      ║  │ gradio    :7860  Tailscale        │  ║  prefect  :4200              ║
-║                      ║  └──────────────────────────────────┘  ║  grafana  :3000              ║
-║                      ║                                        ║                              ║
-║                      ║  Sécurité réseau                       ║  HPA api                     ║
-║                      ║  Tailscale VPN (100.117.99.62)         ║  CPU 70% / RAM 80%           ║
-║                      ║  UFW : admin protégé, 8090 public      ║  min 1 → max 8 pods          ║
-╠══════════════════════╩════════════════════════════════════════╩══════════════════════════════╣
-║                                     PARTAGÉ                                                   ║
-╠══════════════════════════════════════════════════════════════════════════════════════════════╣
-║  GitHub (jakatt/cac_mlops)                                                                    ║
-║    code · .dvc files · K8s manifests (k8s/)                                                  ║
-║    workflows: ci.yml · deploy.yml · train.yml · promote.yml · test-api.yml · diag.yml        ║
-║               kapsule-up.yml · kapsule-down.yml · cleanup.yml                                ║
-║                                                                                               ║
-║  GHCR (ghcr.io/jakatt/)  ← images buildées par deploy.yml                                   ║
-║    cac-mlops-api:latest · cac-mlops-mlflow:latest · cac-mlops-gradio:latest                 ║
-║                                                                                               ║
-║  Scaleway Object Storage — 1 bucket : cac-mlops-data                                        ║
-║    dvc/          → données brutes versionnées (DVC remote)                                   ║
-║    k8s-model/    → trained_model.joblib pour initContainer K8s                               ║
-║    mlflow-k8s/   → artefacts MLflow dans Kapsule                                             ║
-║  MinIO (VPS)     → artefacts MLflow dans docker-compose                                      ║
-╚══════════════════════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                   ARCHITECTURE GLOBALE — CAC MLOPS                                       ║
+╠══════════════════════╦═════════════════════════════════════════════════════╦════════════════════════════╣
+║  DEV LOCAL           ║  VPS SCALEWAY — DEV1-XL  (fr-par-2)                ║  KAPSULE K8s (on-demand)   ║
+║  Mac développeur     ║  IP publique : 51.159.187.132                       ║  Scaleway fr-par           ║
+║                      ║  IP Tailscale: 100.117.99.62                        ║  cluster: cac-mlops 1.35.3 ║
+║                      ║  /  = 20 GB NVMe  ·  /data = 80 GB block storage    ║                            ║
+╠══════════════════════╬═════════════════════════════════════════════════════╬════════════════════════════╣
+║                      ║                                                     ║                            ║
+║  docker-compose.yml  ║  CONTAINERS (13 : 12 permanents + minio-init EXIT)  ║  Deployments               ║
+║  même stack VPS      ║  ┌──────────────────┬────────────┬────────────────┐ ║  (namespace: cac-mlops)    ║
+║  ports 127.0.0.1     ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ────────────────────────  ║
+║  volumes ./          ║  ├──────────────────┼────────────┼────────────────┤ ║  api (HPA min 1→max 8)     ║
+║                      ║  │ postgresql       │ 5432       │ interne        │ ║  mlflow  (SQLite + S3)     ║
+║  Outils CLI          ║  │ minio            │ 9000/9001  │ Tailscale      │ ║  prefect-server / worker   ║
+║  ──────────────────  ║  │ minio-init       │ —          │ EXIT (init)    │ ║  prometheus · grafana      ║
+║  git · dvc · pytest  ║  │ mlflow           │ 5001       │ Tailscale      │ ║                            ║
+║  flake8 · kubectl    ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  LoadBalancers LB-S        ║
+║                      ║  │ nginx            │ 8090       │ PUBLIC         │ ║  ─────────────────────     ║
+║  DVC pull            ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  nginx   :80  → API pub.   ║
+║  → data/ (S3 DVC)    ║  │ prefect-worker   │ —          │ process pool   │ ║  prefect :4200             ║
+║                      ║  │ gradio           │ 7860       │ Tailscale      │ ║  grafana :3000             ║
+║  MLFLOW_TRACKING_URI ║  │ node-exporter    │ 9100       │ interne        │ ║                            ║
+║  100.117.99.62:5001  ║  │ nginx-exporter   │ 9113       │ interne        │ ║  HPA api                   ║
+║  (via Tailscale)     ║  │ prometheus       │ 9090       │ Tailscale      │ ║  CPU 70% / RAM 80%         ║
+║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║  min 1 → max 8 pods        ║
+║                      ║  └──────────────────┴────────────┴────────────────┘ ║                            ║
+║                      ║                                                     ║  Secrets K8s               ║
+║                      ║  ORCHESTRATION — PREFECT (11 deployments)           ║  s3-creds · app-creds      ║
+║                      ║  ┌─────────────────────────────────────────────┐   ║                            ║
+║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster               ║
+║                      ║  │ prefect-worker  image api + kubectl+scw+docker│  ║  state/kapsule_ips (VPS)   ║
+║                      ║  │                                             │   ║  lu par Gradio onglet Infra ║
+║                      ║  │ ML / ETL  : etl · train · retrain-annual   │   ║                            ║
+║                      ║  │             drift-check · check-new-data    │   ╠════════════════════════════╣
+║                      ║  │             full-retrain · reset            │   ║  PARTAGÉ                   ║
+║                      ║  │ Infra/Ops : kapsule-up · kapsule-down       │   ║                            ║
+║                      ║  │             test-api · diag                 │   ║  GitHub (jakatt/cac_mlops) ║
+║                      ║  └─────────────────────────────────────────────┘   ║  7 workflows CI/CD :       ║
+║                      ║                                                     ║  ci · deploy · train       ║
+║                      ║  MONITORING                                         ║  promote · drift           ║
+║                      ║  ┌─────────────────────────────────────────────┐   ║  benchmark · cleanup       ║
+║                      ║  │ Prometheus scrape :                         │   ║                            ║
+║                      ║  │   api:8000/metrics  → req, latence, drift   │   ║  GHCR (ghcr.io/jakatt/)   ║
+║                      ║  │   node-exporter:9100 → CPU/RAM/disk         │   ║  api · mlflow · gradio     ║
+║                      ║  │   nginx-exporter:9113 → connexions nginx     │   ║                            ║
+║                      ║  │ Grafana dashboards :                        │   ║  Scaleway Object Storage   ║
+║                      ║  │   api-performance · model-drift             │   ║  s3://cac-mlops-data       ║
+║                      ║  │ 4 alertes email :                           │   ║  dvc/       → données DVC  ║
+║                      ║  │   brute-force 401 · DDoS 429               │   ║  k8s-model/ → modèle K8s   ║
+║                      ║  │   RAM <10% · Disk /data <15%               │   ║  mlflow-k8s/→ artefacts K8s║
+║                      ║  └─────────────────────────────────────────────┘   ║                            ║
+║                      ║                                                     ║  MinIO (VPS)               ║
+║                      ║  COCKPIT — GRADIO :7860 (Tailscale)                ║  → artefacts MLflow local  ║
+║                      ║  7 onglets : What-If · Points Noirs · Drift        ║                            ║
+║                      ║  Modèles · Pipeline · Healthcheck · Infra          ║  data.gouv.fr (ONISR)      ║
+║                      ║                                                     ║  accidents 2021→2024       ║
+╚══════════════════════╩═════════════════════════════════════════════════════╩════════════════════════════╝
 ```
 
 ### Flux de données de bout en bout
@@ -616,21 +633,23 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   IP Tailscale: 100.117.99.62    (ports admin — tailnet uniquement)       │
 │   Répertoire  : /data/cac_mlops  (symlink depuis /home/deploy)            │
 │                                                                            │
-│   SERVICES DOCKER (docker-compose.yml, 11 services)                       │
+│   CONTAINERS DOCKER (docker-compose.yml, 13 conteneurs : 12 permanents + minio-init EXIT) │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  Service          Port hôte    Accès                             │   │
+│   │  Conteneur        Port hôte    Accès                             │   │
 │   │  ──────────────   ──────────   ─────────────────────────────     │   │
 │   │  postgresql        5432        interne Docker uniquement         │   │
 │   │  minio             9000/9001   http://100.117.99.62:9001        │   │
-│   │  minio-init        —           one-shot : crée bucket mlflow     │   │
+│   │  minio-init        —           EXIT après init (crée bucket)     │   │
 │   │  mlflow            5001        http://100.117.99.62:5001        │   │
-│   │  api               8080        http://100.117.99.62:8080/docs   │   │
+│   │  api               8080/8000   http://100.117.99.62:8080/docs   │   │
 │   │  nginx             8090        http://51.159.187.132:8090 ←pub  │   │
 │   │  prefect-server    4200        http://100.117.99.62:4200        │   │
 │   │  prefect-worker    —           process pool (image api)          │   │
+│   │  gradio            7860        http://100.117.99.62:7860        │   │
+│   │  node-exporter     9100        interne Docker (Prometheus)       │   │
+│   │  nginx-exporter    9113        interne Docker (Prometheus)       │   │
 │   │  prometheus        9090        http://100.117.99.62:9090        │   │
 │   │  grafana           3000        http://100.117.99.62:3000        │   │
-│   │  gradio            7860        http://100.117.99.62:7860        │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Modèle en production : lgbm_accidents@Production                        │
@@ -768,7 +787,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 │                                                                            │
 │   Scaleway Kapsule — cluster: cac-mlops (Kubernetes 1.35.3)               │
 │   Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB)   │
-│   Activé à la demande via kapsule-up.yml / kapsule-down.yml               │
+│   Activé à la demande via Prefect flows kapsule-up / kapsule-down         │
 │                                                                            │
 │   Deployments (namespace: cac-mlops)                                       │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
@@ -789,7 +808,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 │   │  mlflow   : port-forward uniquement (kubectl, pas de LB)         │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Secrets K8s (injectés par kapsule-up.yml depuis GitHub Secrets)         │
+│   Secrets K8s (injectés par le flow Prefect kapsule-up)                    │
 │   s3-creds : AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY                    │
 │   app-creds: JWT_SECRET_KEY · API_USERNAME · API_PASSWORD                 │
 │              POSTGRES_PASSWORD                                             │
@@ -884,15 +903,19 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   Worker  : prefect-worker (image api — toutes dépendances ML)
   Pool    : default-process-pool (type: process)
 
-  DEPLOYMENTS (prefect.yaml)
-  ──────────────────────────
-  etl           → etl_flow.py         : download data.gouv.fr + preprocessing
-  train         → train_flow.py       : benchmark RF/XGBoost/LGBM + promote
-  retrain-annual→ retrain_flow.py     : réentraînement annuel
-  drift-check   → drift_monitoring_flow.py : drift mensuel Evidently
-  full-retrain  → full_retrain_flow.py : tous les cycles depuis zéro
-  reset         → reset_flow.py       : vide predictions + rapports drift
-  check-new-data→ check_new_data_flow.py : détection données ONISR (lundi 8h)
+  DEPLOYMENTS (prefect.yaml) — 11 au total
+  ─────────────────────────────────────────
+  etl            → etl_flow.py              : download data.gouv.fr + preprocessing
+  train          → train_flow.py            : benchmark RF/XGBoost/LGBM + promote
+  retrain-annual → retrain_flow.py          : réentraînement annuel
+  drift-check    → drift_monitoring_flow.py : drift mensuel Evidently
+  full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
+  reset          → reset_flow.py            : vide predictions + rapports drift
+  check-new-data → check_new_data_flow.py   : détection données ONISR (lundi 8h)
+  kapsule-up     → kapsule_up_flow.py       : provision cluster K8s + upload modèle S3
+  kapsule-down   → kapsule_down_flow.py     : déprovision cluster K8s
+  test-api       → test_api_flow.py         : tests end-to-end (JWT, /predict, 429)
+  diag           → diag_flow.py             : diagnostic VPS (disk, docker, network)
 
   BENCHMARK train_flow
   ────────────────────
@@ -957,15 +980,18 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   Image    : ghcr.io/jakatt/cac-mlops-gradio:latest
   URL      : http://100.117.99.62:7860 (Tailscale)
 
-  6 ONGLETS
+  7 ONGLETS
   ──────────
   1. What-If    : applique scénarios (météo/nuit/alcool/vitesse),
                   compare % graves avant vs après sur échantillon
   2. Points Noirs: density_mapbox accidents France, filtres gravité/catr
   3. Drift      : sélecteur rapports Evidently, iframe HTML report
   4. Modèles    : versions MLflow (toutes familles), métriques, promotion @Production
-  5. Santé      : healthcheck HTTP tous services VPS + cluster Kapsule
-  6. Liens      : URLs Tailscale admin + API publique + GitHub Actions + IPs Kapsule
+  5. Pipeline   : déclenchement Prefect flows depuis le cockpit
+                  kapsule-up/down, test-api, diag, reset, full-retrain, check-new-data
+                  tableau des runs récents (état, durée)
+  6. Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
+  7. Infra      : URLs Tailscale admin + API publique + IPs Kapsule
 ```
 
 ---
@@ -1077,21 +1103,19 @@ train.yml — workflow_dispatch (year, cumul, algorithm, promote, simulate_year)
 promote.yml — workflow_dispatch (version, model_name)
   Force-promote n'importe quelle version → @Production
 
-test-api.yml — workflow_dispatch
-  Tests end-to-end : health · token JWT · 401 · 200 /predict · 429 rate limit
+drift.yml — workflow_dispatch (year)
+  Déclenche le flow Prefect drift-check via SSH pour un mois donné
+  Prérequis : prédictions déjà en base (simulate_production ou trafic réel)
 
-diag.yml — workflow_dispatch
-  Diagnostic : df, lsblk, docker ps, docker images, ports, /data contents
+benchmark.yml — workflow_dispatch
+  9 entraînements séquentiels : 3 algos × 3 configs d'années (timeout 3h)
+  Aucune promotion automatique — opérateur promeut manuellement le champion
 
-kapsule-up.yml — workflow_dispatch
-  Provision cluster Kapsule K8s : nodes, manifests, wait déploiements
-  Exporte IPs LoadBalancer → écrit state/kapsule_ips sur VPS via SSH
-
-kapsule-down.yml — workflow_dispatch
-  Déprovision cluster Kapsule + supprime state/kapsule_ips
-
-cleanup.yml — planifié
+cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage runs GitHub Actions anciens
+
+NOTE : kapsule-up · kapsule-down · test-api · diag ont été migrés vers
+       des flows Prefect (déclenchables depuis le cockpit Gradio onglet Pipeline)
 ```
 
 ---
@@ -1161,10 +1185,8 @@ cac_mlops/
 │       ├── deploy.yml                     # build images → push ghcr.io → SSH deploy
 │       ├── train.yml                      # pipeline ETL+train+validate (workflow_dispatch)
 │       ├── promote.yml                    # force-promote version → @Production
-│       ├── test-api.yml                   # tests end-to-end JWT + /predict + rate limit
-│       ├── diag.yml                       # diagnostic complet serveur
-│       ├── kapsule-up.yml                 # provision cluster K8s + state/kapsule_ips
-│       ├── kapsule-down.yml               # déprovision cluster K8s
+│       ├── drift.yml                      # déclenche flow Prefect drift-check via SSH
+│       ├── benchmark.yml                  # 9 entraînements 3 algos × 3 configs (3h)
 │       └── cleanup.yml                    # nettoyage runs GitHub Actions anciens
 │
 ├── data/                                  # ignoré par Git, géré par DVC
@@ -1198,7 +1220,7 @@ cac_mlops/
 │   ├── nginx/
 │   │   └── nginx.conf                     # rate limit 20r/min /predict + /reports/ alias
 │   ├── gradio/
-│   │   ├── app.py                         # Cockpit MLOps 6 onglets
+│   │   ├── app.py                         # Cockpit MLOps 7 onglets
 │   │   ├── scenarios.py                   # scénarios What-If
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
@@ -1222,7 +1244,11 @@ cac_mlops/
 │       ├── drift_monitoring_flow.py       # drift check mensuel
 │       ├── full_retrain_flow.py           # tous les cycles depuis zéro
 │       ├── reset_flow.py                  # vide predictions + rapports drift
-│       └── check_new_data_flow.py         # détection nouvelles données ONISR (hebdo)
+│       ├── check_new_data_flow.py         # détection nouvelles données ONISR (hebdo)
+│       ├── kapsule_up_flow.py             # provision cluster K8s + upload modèle S3
+│       ├── kapsule_down_flow.py           # déprovision cluster K8s
+│       ├── test_api_flow.py               # tests end-to-end JWT + /predict + 429
+│       └── diag_flow.py                   # diagnostic VPS (disk, docker, network)
 │
 ├── scripts/
 │   ├── raz_mlops.sh                       # RAZ complète stack MLOps (Phases A-G)
@@ -1265,7 +1291,7 @@ cac_mlops/
 │       └── test_api.py
 │
 ├── docker-compose.yml                     # stack 11 services (local + VPS)
-├── prefect.yaml                           # 7 deployments Prefect
+├── prefect.yaml                           # 11 deployments Prefect
 ├── .env.example                           # template — copier en .env
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
@@ -1304,11 +1330,11 @@ cac_mlops/
 │  Gateway                   │  NGINX (rate limit 20r/min /predict)          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
-│                            │  7 deployments, process pool                  │
+│                            │  11 deployments, process pool                 │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  CI/CD                     │  GitHub Actions → GHCR → SSH deploy           │
-│                            │  9 workflows (ci, deploy, train, promote,     │
-│                            │  test-api, diag, kapsule-up/down, cleanup)    │
+│                            │  7 workflows (ci, deploy, train, promote,     │
+│                            │  drift, benchmark, cleanup)                   │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Monitoring                │  Prometheus + Grafana + Evidently              │
 │                            │  6 gauges drift → Prometheus → Grafana        │

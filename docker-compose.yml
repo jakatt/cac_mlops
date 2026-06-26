@@ -110,6 +110,7 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+      - gradio-public
     ports:
       - "8090:80"   # production entry point (rate-limited) — port 80 on host taken by system service
     volumes:
@@ -211,6 +212,27 @@ services:
       - ./data:/app/data:ro        # données préprocessées (read-only)
       - ./reports:/app/reports:ro  # rapports Evidently (read-only)
       - ./state:/app/state:ro      # IPs Kapsule dynamiques (read-only)
+
+  # ── Gradio public — cockpit 2 onglets (What-If + Points Noirs) accès internet
+  gradio-public:
+    image: ghcr.io/jakatt/cac-mlops-gradio:latest
+    restart: unless-stopped
+    command: python /app/services/gradio/app_public.py
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    environment:
+      MLFLOW_TRACKING_URI:    http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
+      GRADIO_MODEL_ALIAS:     Production
+      GRADIO_DATA_PATH:       /app/data/preprocessed
+      GRADIO_PORT:            "7862"
+    volumes:
+      - ./services/gradio/app_public.py:/app/services/gradio/app_public.py:ro
+      - ./data:/app/data:ro
+    # Pas de port hôte — nginx le joindra via le réseau Docker (gradio-public:7862)
 
   # ── node-exporter — métriques système (RAM / CPU / disk) ───────────────────
   node-exporter:
