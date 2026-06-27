@@ -522,7 +522,7 @@ Personne ne le sait
 ║                      ║  /  = 20 GB NVMe  ·  /data = 80 GB block storage    ║                            ║
 ╠══════════════════════╬═════════════════════════════════════════════════════╬════════════════════════════╣
 ║                      ║                                                     ║                            ║
-║  docker-compose.yml  ║  CONTAINERS (13 : 12 permanents + minio-init EXIT)  ║  Deployments               ║
+║  docker-compose.yml  ║  CONTAINERS (14 : 13 permanents + minio-init EXIT)  ║  Deployments               ║
 ║  même stack VPS      ║  ┌──────────────────┬────────────┬────────────────┐ ║  (namespace: cac-mlops)    ║
 ║  ports 127.0.0.1     ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ────────────────────────  ║
 ║  volumes ./          ║  ├──────────────────┼────────────┼────────────────┤ ║  api (HPA min 1→max 8)     ║
@@ -535,10 +535,11 @@ Personne ne le sait
 ║  DVC pull            ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  nginx   :80  → API pub.   ║
 ║  → data/ (S3 DVC)    ║  │ prefect-worker   │ —          │ process pool   │ ║  prefect :4200             ║
 ║                      ║  │ gradio           │ 7860       │ Tailscale      │ ║  grafana :3000             ║
-║  MLFLOW_TRACKING_URI ║  │ node-exporter    │ 9100       │ interne        │ ║                            ║
-║  100.117.99.62:5001  ║  │ nginx-exporter   │ 9113       │ interne        │ ║  HPA api                   ║
-║  (via Tailscale)     ║  │ prometheus       │ 9090       │ Tailscale      │ ║  CPU 70% / RAM 80%         ║
-║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║  min 1 → max 8 pods        ║
+║  MLFLOW_TRACKING_URI ║  │ gradio-public    │ 7862(int.) │ via nginx:8090 │ ║                            ║
+║  100.117.99.62:5001  ║  │ node-exporter    │ 9100       │ interne        │ ║  HPA api                   ║
+║  (via Tailscale)     ║  │ nginx-exporter   │ 9113       │ interne        │ ║  CPU 70% / RAM 80%         ║
+║                      ║  │ prometheus       │ 9090       │ Tailscale      │ ║  min 1 → max 8 pods        ║
+║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║                            ║
 ║                      ║  └──────────────────┴────────────┴────────────────┘ ║                            ║
 ║                      ║                                                     ║  Secrets K8s               ║
 ║                      ║  ORCHESTRATION — PREFECT (11 deployments)           ║  s3-creds · app-creds      ║
@@ -566,9 +567,9 @@ Personne ne le sait
 ║                      ║  │   RAM <10% · Disk /data <15%               │   ║  mlflow-k8s/→ artefacts K8s║
 ║                      ║  └─────────────────────────────────────────────┘   ║                            ║
 ║                      ║                                                     ║  MinIO (VPS)               ║
-║                      ║  COCKPIT — GRADIO :7860 (Tailscale)                ║  → artefacts MLflow local  ║
-║                      ║  7 onglets : What-If · Points Noirs · Drift        ║                            ║
-║                      ║  Modèles · Pipeline · Healthcheck · Infra          ║  data.gouv.fr (ONISR)      ║
+║                      ║  COCKPITS GRADIO                                    ║  → artefacts MLflow local  ║
+║                      ║  :7860 Tailscale — 7 onglets MLOps complets        ║                            ║
+║                      ║  :8090 PUBLIC    — 2 onglets (What-If+PointsNoirs) ║  data.gouv.fr (ONISR)      ║
 ║                      ║                                                     ║  accidents 2021→2024       ║
 ╚══════════════════════╩═════════════════════════════════════════════════════╩════════════════════════════╝
 ```
@@ -633,7 +634,7 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   IP Tailscale: 100.117.99.62    (ports admin — tailnet uniquement)       │
 │   Répertoire  : /data/cac_mlops  (symlink depuis /home/deploy)            │
 │                                                                            │
-│   CONTAINERS DOCKER (docker-compose.yml, 13 conteneurs : 12 permanents + minio-init EXIT) │
+│   CONTAINERS DOCKER (docker-compose.yml, 14 conteneurs : 13 permanents + minio-init EXIT) │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  Conteneur        Port hôte    Accès                             │   │
 │   │  ──────────────   ──────────   ─────────────────────────────     │   │
@@ -646,6 +647,7 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   │  prefect-server    4200        http://100.117.99.62:4200        │   │
 │   │  prefect-worker    —           process pool (image api)          │   │
 │   │  gradio            7860        http://100.117.99.62:7860        │   │
+│   │  gradio-public     7862 (int.) via nginx → http://51.159.187.132:8090 ←pub │
 │   │  node-exporter     9100        interne Docker (Prometheus)       │   │
 │   │  nginx-exporter    9113        interne Docker (Prometheus)       │   │
 │   │  prometheus        9090        http://100.117.99.62:9090        │   │
@@ -679,6 +681,7 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │                                                                            │
 │   Deploy : GitHub Actions deploy.yml → SSH → docker compose pull + up     │
 │   Images : ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest           │
+│            + tag :sha-xxxxxxxx par commit (rollback ciblé possible)       │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -694,8 +697,10 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │                                                                            │
 │  ACCÈS PUBLIC (internet)                                                   │
 │  ┌──────────────────────────────────────────────────────────────────┐    │
-│  │  http://51.159.187.132:8090/predict    → NGINX (rate-limited)   │    │
-│  │  http://51.159.187.132:8090/health                               │    │
+│  │  http://51.159.187.132:8090/           → Cockpit public Gradio  │    │
+│  │     (What-If + Points Noirs — 2 onglets, aucun accès admin)     │    │
+│  │  http://51.159.187.132:8090/predict    → NGINX → API (JWT req.) │    │
+│  │  http://51.159.187.132:8090/health     → healthcheck API        │    │
 │  │  http://51.159.187.132:8090/reports/drift/*   (rapports HTML)   │    │
 │  │  ssh deploy@51.159.187.132             → SSH (clé uniquement)   │    │
 │  └──────────────────────────────────────────────────────────────────┘    │
@@ -862,17 +867,22 @@ COMPORTEMENT AU REDÉMARRAGE VPS
        │  HTTP :8090
        ▼
   NGINX (nginx:alpine)
-       │  Rate limiting /predict : 20 req/min par IP (burst=5, 429 si dépassé)
-       │  server_tokens off (masque version NGINX)
-       │  location /reports/ → /srv/reports/ (rapports Evidently HTML)
-       ▼
-  FastAPI api:8000 (réseau Docker interne)
+       │
+       ├── location /          → gradio-public:7862 (cockpit public 2 onglets)
+       │     proxy WebSocket/SSE : Upgrade + Connection + proxy_buffering off
+       ├── location /predict   → api:8000 (rate-limited 20r/min, burst=5)
+       ├── location /health    → api:8000
+       ├── location /token     → api:8000
+       ├── location /metrics   → api:8000
+       ├── location /docs      → api:8000
+       └── location /reports/  → /srv/reports/ (rapports Evidently HTML)
 
   CONFIGURATION CLÉS
   ───────────────────
+  map $http_upgrade $connection_upgrade { default upgrade; '' close; }
   limit_req_zone $binary_remote_addr zone=predict_ratelimit:10m rate=20r/m;
-  location = /predict { limit_req zone=predict_ratelimit burst=5 nodelay; }
-  location /reports/  { alias /srv/reports/; }
+  upstream gradio_public { server gradio-public:7862; }
+  upstream api_backend   { server api:8000; }
 ```
 
 ### MLflow — Tracking & Model Registry
@@ -977,8 +987,10 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
 ### Cockpit Gradio — Interface MLOps
 
 ```text
-  Image    : ghcr.io/jakatt/cac-mlops-gradio:latest
-  URL      : http://100.117.99.62:7860 (Tailscale)
+  COCKPIT MLOPS COMPLET (gradio — Tailscale uniquement)
+  ──────────────────────────────────────────────────────
+  Image : ghcr.io/jakatt/cac-mlops-gradio:latest
+  URL   : http://100.117.99.62:7860
 
   7 ONGLETS
   ──────────
@@ -992,6 +1004,21 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
                   tableau des runs récents (état, durée)
   6. Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
   7. Infra      : URLs Tailscale admin + API publique + IPs Kapsule
+
+  COCKPIT PUBLIC (gradio-public — accès internet)
+  ────────────────────────────────────────────────
+  Image  : ghcr.io/jakatt/cac-mlops-gradio:latest
+  URL    : http://51.159.187.132:8090  (via nginx, port 7862 interne)
+  Script : services/gradio/app_public.py
+
+  2 ONGLETS (sous-ensemble sans accès admin)
+  ──────────────────────────────────────────
+  1. What-If     : mêmes scénarios que le cockpit MLOps
+  2. Points Noirs: même heatmap
+
+  Lazy loading modèle au 1er clic (~30s) puis cache mémoire
+  root_path=http://51.159.187.132:8090 (GRADIO_PUBLIC_URL) pour corriger
+  les connexions SSE/WebSocket derrière le reverse proxy nginx
 ```
 
 ---
@@ -1071,37 +1098,47 @@ SCW_ACCESS_KEY_ID=<clé_scw>            SCW_ACCESS_KEY_ID=<clé_scw>
 ## 12. CI/CD — GitHub Actions
 
 ```text
+PROTECTION BRANCHE main (activée via scripts/setup_branch_protection.sh)
+─────────────────────────────────────────────────────────────────────────
+  CI job "test" obligatoire avant tout merge
+  1 review requise sur les PR
+  Force push interdit · suppression de branche interdite
+
 ci.yml — push vers jacques ou noel / PR vers main
   1. pip install -r requirements.txt
-  2. flake8 (erreurs bloquantes)
-  3. pytest tests/unit/ -v (38 tests)
+  2. pip-audit -r requirements.txt  (audit CVE dépendances Python — warning)
+  3. flake8 (erreurs bloquantes E9/F63/F7/F82)
+  4. flake8 (avertissements — non bloquant)
+  5. pytest tests/unit/ -v
   → la PR ne peut pas merger si ✗
 
 deploy.yml — push/merge dans main
   Concurrence group : annule deploy précédent si nouveau commit
-  1. Build + push images ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest
-  2. SSH → login ghcr.io · arrêt containers
-  3. docker image rm ghcr.io/jakatt/cac-mlops-* (nos images uniquement)
-     ⚠️  PAS docker image prune -af (autre app partage le VPS)
-  4. sudo chown -R deploy: reports/ state/ data/
-  5. git reset --hard origin/main
-  6. DOCKER_VOLUMES_PATH=/data + VPS_TAILSCALE_IP dans .env si absent
-  7. docker compose pull + up -d
-  8. healthcheck : curl http://localhost:8090/health (retry 18×5s)
-
-train.yml — workflow_dispatch (year, cumul, algorithm, promote, simulate_year)
-  0a. Attente API disponible (3 min max)
-  0b. mlflow_cleanup.py (garde 3 derniers runs, gc artifacts MinIO)
-  1. dvc pull data/raw/{year}/
-  2. make_dataset.py --year N [--cumul]
-  3. train_model.py --year N --algorithm ALGO  (run MLflow → artefact MinIO)
-  4. validate_model.py --run-id RUN_ID [--promote]
-  5. docker compose restart api + healthcheck (charge nouveau modèle @Production)
-  6. simulate_production.py --year simulate_year (~55k requêtes POST /predict)
-  7. drift_detection.py --month YYYY-MM --reference-path cumul_*/X_train.csv
+  JOB 1 — build (runner GitHub Actions)
+    1. Build + push images :latest ET :sha-xxxxxxxx (8 premiers chars du SHA)
+       ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:{latest,sha-xxxx}
+    2. Scan Trivy CRITICAL (ignore-unfixed) sur les 3 images
+       → bloque le deploy si CVE critique détectée
+  JOB 2 — deploy SSH (VPS Scaleway)
+    1. Tag images actuelles :rollback (avant écrasement)
+    2. docker image rm nos images uniquement (protège autre app VPS)
+    3. git reset --hard origin/main
+    4. docker compose pull + up -d
+    5. Smoke test : curl http://localhost:8090/health (retry 18×5s)
+       Si échec → restauration images :rollback + docker compose up -d + exit 1
+    6. Prefect deploy --all (enregistrement flows)
 
 promote.yml — workflow_dispatch (version, model_name)
-  Force-promote n'importe quelle version → @Production
+  1. Sauvegarde version @Production actuelle (pour rollback)
+  2. Set alias @Production → version demandée
+  3. docker compose restart api + attente model_loaded:true (60s max)
+  4. Tests intégration (3 tests sur API VPS) :
+       - POST /token → JWT valide
+       - POST /predict (payload valide) → 200 + prediction in {0,1}
+       - POST /predict (sans token)     → 401
+       - POST /predict (payload incomplet) → 422
+  5. Si tests KO → rollback alias MLflow vers version précédente + restart api
+  6. Si tests OK → upload modèle S3 (Kapsule) + rolling restart K8s
 
 drift.yml — workflow_dispatch (year)
   Déclenche le flow Prefect drift-check via SSH pour un mois donné
@@ -1112,7 +1149,7 @@ benchmark.yml — workflow_dispatch
   Aucune promotion automatique — opérateur promeut manuellement le champion
 
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
-  Nettoyage runs GitHub Actions anciens
+  Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
 NOTE : kapsule-up · kapsule-down · test-api · diag ont été migrés vers
        des flows Prefect (déclenchables depuis le cockpit Gradio onglet Pipeline)
@@ -1133,7 +1170,7 @@ NOTE : kapsule-up · kapsule-down · test-api · diag ont été migrés vers
 | Branche | Règle |
 | --- | --- |
 | `jacques` / `noel` | commits libres, push direct |
-| `main` | **pas de commit direct** — uniquement via PR (CI obligatoire) |
+| `main` | **pas de commit direct** — uniquement via PR · CI obligatoire · 1 review requise (branch protection GitHub activée) |
 
 ### Cycle quotidien DS
 
@@ -1220,7 +1257,8 @@ cac_mlops/
 │   ├── nginx/
 │   │   └── nginx.conf                     # rate limit 20r/min /predict + /reports/ alias
 │   ├── gradio/
-│   │   ├── app.py                         # Cockpit MLOps 7 onglets
+│   │   ├── app.py                         # Cockpit MLOps 7 onglets (Tailscale :7860)
+│   │   ├── app_public.py                  # Cockpit public 2 onglets (internet :8090)
 │   │   ├── scenarios.py                   # scénarios What-If
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
@@ -1252,7 +1290,8 @@ cac_mlops/
 │
 ├── scripts/
 │   ├── raz_mlops.sh                       # RAZ complète stack MLOps (Phases A-G)
-│   └── simulate_production.py            # rejoue données année N via POST /predict
+│   ├── simulate_production.py            # rejoue données année N via POST /predict
+│   └── setup_branch_protection.sh        # active branch protection GitHub sur main (one-shot)
 │
 ├── k8s/                                   # Manifests Kubernetes (Kapsule)
 │   ├── namespace.yaml
@@ -1290,7 +1329,7 @@ cac_mlops/
 │   └── integration/
 │       └── test_api.py
 │
-├── docker-compose.yml                     # stack 11 services (local + VPS)
+├── docker-compose.yml                     # stack 14 conteneurs (local + VPS)
 ├── prefect.yaml                           # 11 deployments Prefect
 ├── .env.example                           # template — copier en .env
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
@@ -1335,6 +1374,10 @@ cac_mlops/
 │  CI/CD                     │  GitHub Actions → GHCR → SSH deploy           │
 │                            │  7 workflows (ci, deploy, train, promote,     │
 │                            │  drift, benchmark, cleanup)                   │
+│                            │  Sécurité : Trivy CRITICAL + pip-audit        │
+│                            │  Rollback : images :sha-xxxx + :rollback auto │
+│                            │  Promote : tests intégration + rollback alias │
+│                            │  Branch protection main activée (gh CLI)      │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Monitoring                │  Prometheus + Grafana + Evidently              │
 │                            │  6 gauges drift → Prometheus → Grafana        │
