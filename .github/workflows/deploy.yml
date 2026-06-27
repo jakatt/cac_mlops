@@ -69,6 +69,7 @@ jobs:
               --exit-code 1 \
               --severity CRITICAL \
               --ignore-unfixed \
+              --ignorefile .trivyignore \
               --no-progress \
               ghcr.io/${{ github.repository_owner }}/$image:latest \
             || TRIVY_FAILED=true

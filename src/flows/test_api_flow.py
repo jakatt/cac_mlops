@@ -71,6 +71,35 @@ def test_with_auth(token: str) -> str:
     return "OK"
 
 
+@task(name="test-whatif-vitesse-130-vs-110")
+def test_whatif_speed(token: str) -> str:
+    """Vérifie la cohérence métier : vma=130 → proba gravité > vma=110 (autoroute)."""
+    logger = get_run_logger()
+    headers = {"Authorization": f"Bearer {token}"}
+    autoroute = {
+        **_SAMPLE_PAYLOAD,
+        "catr": 1.0,   # autoroute
+        "agg_": 0,     # hors agglomération
+        "lum": 5,      # nuit sans éclairage public
+        "hour": 22,    # 22h
+        "col": 6,      # collision frontale
+    }
+    r130 = http.post(f"{NGINX_URL}/predict", json={**autoroute, "vma": 130.0},
+                     headers=headers, timeout=10)
+    r110 = http.post(f"{NGINX_URL}/predict", json={**autoroute, "vma": 110.0},
+                     headers=headers, timeout=10)
+    assert r130.status_code == 200, f"Predict vma=130: HTTP {r130.status_code}"
+    assert r110.status_code == 200, f"Predict vma=110: HTTP {r110.status_code}"
+    p130 = r130.json()["probability"]
+    p110 = r110.json()["probability"]
+    logger.info("✓ What-If vitesse — proba(vma=130)=%.3f  proba(vma=110)=%.3f  Δ=%.3f",
+                p130, p110, p130 - p110)
+    assert p130 > p110, (
+        f"Cohérence métier KO : proba(vma=130)={p130:.3f} ≤ proba(vma=110)={p110:.3f}"
+    )
+    return f"OK (Δ={p130 - p110:+.3f})"
+
+
 @task(name="test-429-rate-limit")
 def test_rate_limit(token: str) -> str:
     logger = get_run_logger()
@@ -93,22 +122,25 @@ def test_rate_limit(token: str) -> str:
 @flow(name="test-api", log_prints=True)
 def test_api_flow() -> dict[str, str]:
     """
-    5 tests de l'API publique via nginx :
+    6 tests de l'API publique via nginx :
       1. health check
       2. obtention d'un token JWT
       3. 401 sans token
       4. 200 avec token
-      5. 429 rate-limit après 22 requêtes
+      5. What-If vitesse : proba(vma=130) > proba(vma=110) (cohérence métier)
+      6. 429 rate-limit après 22 requêtes
     """
-    health   = test_health()
-    token    = test_token()
-    no_auth  = test_no_auth()
+    health    = test_health()
+    token     = test_token()
+    no_auth   = test_no_auth()
     with_auth = test_with_auth(token)
-    rate     = test_rate_limit(token)
+    whatif    = test_whatif_speed(token)
+    rate      = test_rate_limit(token)
     return {
         "health":     health,
         "token":      "OK",
         "no_auth":    no_auth,
         "with_auth":  with_auth,
+        "whatif_speed": whatif,
         "rate_limit": rate,
     }

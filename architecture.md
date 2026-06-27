@@ -14,9 +14,10 @@
 10. [Stack technique détaillée](#10-stack-technique-détaillée)
 11. [Développement local](#11-développement-local)
 12. [CI/CD — GitHub Actions](#12-cicd--github-actions)
-13. [Flux de travail collaboratif](#13-flux-de-travail-collaboratif)
-14. [Structure des dossiers](#14-structure-des-dossiers)
-15. [Décisions d'architecture actées](#15-décisions-darchitecture-actées)
+13. [Chaîne complète — version finale](#13-chaîne-complète--version-finale)
+14. [Flux de travail collaboratif](#14-flux-de-travail-collaboratif)
+15. [Structure des dossiers](#15-structure-des-dossiers)
+16. [Décisions d'architecture actées](#16-décisions-darchitecture-actées)
 
 ---
 
@@ -102,7 +103,8 @@ MÉTRIQUES K8s — KAPSULE
 │  → Sécuriser l'accès aux outils d'administration (Tailscale VPN)  │
 │                                                                     │
 │  Quand l'ONISR publiera les données 2025 (juin 2026),              │
-│  une seule commande doit suffire pour mettre à jour le système.    │
+│  le système se met à jour automatiquement (check-new-data-flow).   │
+│  Seule action humaine : valider les métriques dans Prefect UI.     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -182,55 +184,43 @@ de mise à jour du modèle suit ce rythme :
   • On peut suivre l'évolution du drift d'une année sur l'autre
 ```
 
-### Mapping des noms de fichiers par année (CRITIQUE)
+### Résolution dynamique des URLs (data.gouv.fr API)
 
-L'ONISR change la convention de nommage à chaque période. Un pattern générique
-`caracteristiques-{year}.csv` cassera dès 2022. Le mapping hardcodé est obligatoire.
+L'ONISR change la convention de nommage à chaque période. Plutôt qu'un mapping
+hardcodé, les URLs sont résolues dynamiquement par fuzzy-match via l'API data.gouv.fr.
 
 ```python
 # src/data/import_raw_data.py
 
-FILENAMES = {
-    2021: {
-        "caracteristiques": "carcteristiques-2021.csv",   # faute de frappe ONISR
-        "lieux":            "lieux-2021.csv",
-        "usagers":          "usagers-2021.csv",
-        "vehicules":        "vehicules-2021.csv",
-    },
-    2022: {
-        "caracteristiques": "carcteristiques-2022.csv",   # même faute reconduite
-        "lieux":            "lieux-2022.csv",
-        "usagers":          "usagers-2022.csv",
-        "vehicules":        "vehicules-2022.csv",
-    },
-    2023: {
-        "caracteristiques": "caract-2023.csv",            # abrégé (faute corrigée)
-        "lieux":            "lieux-2023.csv",
-        "usagers":          "usagers-2023.csv",
-        "vehicules":        "vehicules-2023.csv",
-    },
-    2024: {
-        "caracteristiques": "Caract_2024.csv",            # majuscule + underscore
-        "lieux":            "Lieux_2024.csv",
-        "usagers":          "Usagers_2024.csv",
-        "vehicules":        "Vehicules_2024.csv",
-    },
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "caracteristiques": ["caract"],
+    "lieux":            ["lieux"],
+    "usagers":          ["usagers"],
+    "vehicules":        ["vehicules", "vehicul"],
 }
+
+def resolve_year_urls(year: int) -> dict[str, str]:
+    """Appel API data.gouv.fr → filtre ressources {year} → match par keyword → {category: url}"""
+
+def discover_raw_files(year: int, raw_dir: Path) -> dict[str, Path]:
+    """Scanne le répertoire local et identifie les 4 fichiers par keyword (indépendant du nom exact)."""
 ```
 
 ```text
-ÉVOLUTION DES CONVENTIONS DE NOMMAGE ONISR
-────────────────────────────────────────────
-  Année   Fichier caract.              Changement notable
-  ──────  ───────────────────────────  ──────────────────────────────────
-  2021    carcteristiques-2021.csv     faute de frappe ("carcteristiques")
-  2022    carcteristiques-2022.csv     même faute reconduite
-  2023    caract-2023.csv              abrégé, faute corrigée
-  2024    Caract_2024.csv              1ère lettre majuscule + underscore
+ÉVOLUTION DES CONVENTIONS DE NOMMAGE ONISR (gérée automatiquement)
+───────────────────────────────────────────────────────────────────
+  Année   Fichier caract.              Keyword match
+  ──────  ───────────────────────────  ─────────────────────────────────────
+  2021    carcteristiques-2021.csv     "caract" ✓
+  2022    carcteristiques-2022.csv     "caract" ✓
+  2023    caract-2023.csv              "caract" ✓
+  2024    Caract_2024.csv              "caract" ✓  (case-insensitive)
+  202X    ?????-202X.csv               "caract" ✓  aucune MAJ manuelle requise
 
-→ Le Niveau 1 de la validation schéma vérifie que le fichier attendu
-  est téléchargeable avant même de l'ouvrir. Si un nom change pour
-  l'année N+1, la validation lève une CRITICAL avec le nom attendu vs trouvé.
+→ resolve_year_urls() appelle l'API data.gouv.fr et retourne les URLs réelles du fichier
+→ discover_raw_files() scanne le répertoire local par keyword — indépendant du nom exact
+→ Le pipeline est insensible aux changements de nommage ONISR — automatisation complète
+→ La validation Niveau 1 lève une CRITICAL si < 4 fichiers correspondants trouvés pour l'année N
 ```
 
 ### Volume des données
@@ -542,7 +532,7 @@ Personne ne le sait
 ║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║                            ║
 ║                      ║  └──────────────────┴────────────┴────────────────┘ ║                            ║
 ║                      ║                                                     ║  Secrets K8s               ║
-║                      ║  ORCHESTRATION — PREFECT (11 deployments)           ║  s3-creds · app-creds      ║
+║                      ║  ORCHESTRATION — PREFECT (13 deployments)           ║  s3-creds · app-creds      ║
 ║                      ║  ┌─────────────────────────────────────────────┐   ║                            ║
 ║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster               ║
 ║                      ║  │ prefect-worker  image api + kubectl+scw+docker│  ║  state/kapsule_ips (VPS)   ║
@@ -550,6 +540,7 @@ Personne ne le sait
 ║                      ║  │ ML / ETL  : etl · train · retrain-annual   │   ║                            ║
 ║                      ║  │             drift-check · check-new-data    │   ╠════════════════════════════╣
 ║                      ║  │             full-retrain · reset            │   ║  PARTAGÉ                   ║
+║                      ║  │ CD        : deploy-vps · deploy-kapsule     │   ║                            ║
 ║                      ║  │ Infra/Ops : kapsule-up · kapsule-down       │   ║                            ║
 ║                      ║  │             test-api · diag                 │   ║  GitHub (jakatt/cac_mlops) ║
 ║                      ║  └─────────────────────────────────────────────┘   ║  7 workflows CI/CD :       ║
@@ -601,9 +592,9 @@ Personne ne le sait
      │
      ▼
 [select_champion]   →  meilleur sur F1, qualité gate KPI, delta vs @Production
-     │ champion qualifié
+     │ champion qualifié (promote=False si via check-new-data-flow)
      ▼
-[MLflow Registry]   →  @Production alias mis à jour
+[deploy-vps-flow]   →  gate manuelle Prefect UI → promote @Production (après validation)
      │
      ▼
 [api service]       →  recharge modèle @Production (restart)
@@ -679,7 +670,8 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   │  mlflow-k8s/ → artefacts MLflow dans Kapsule                     │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Deploy : GitHub Actions deploy.yml → SSH → docker compose pull + up     │
+│   Deploy : GH Actions deploy.yml (CI+Build+Trivy) → SSH trigger →         │
+│            Prefect deploy-vps-flow (gate manuelle) → deploy-kapsule-flow  │
 │   Images : ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest           │
 │            + tag :sha-xxxxxxxx par commit (rollback ciblé possible)       │
 │                                                                            │
@@ -913,15 +905,17 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   Worker  : prefect-worker (image api — toutes dépendances ML)
   Pool    : default-process-pool (type: process)
 
-  DEPLOYMENTS (prefect.yaml) — 11 au total
+  DEPLOYMENTS (prefect.yaml) — 13 au total
   ─────────────────────────────────────────
   etl            → etl_flow.py              : download data.gouv.fr + preprocessing
-  train          → train_flow.py            : benchmark RF/XGBoost/LGBM + promote
+  train          → train_flow.py            : benchmark RF/XGBoost/LGBM, retourne dict metrics
   retrain-annual → retrain_flow.py          : réentraînement annuel
   drift-check    → drift_monitoring_flow.py : drift mensuel Evidently
   full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
   reset          → reset_flow.py            : vide predictions + rapports drift
-  check-new-data → check_new_data_flow.py   : détection données ONISR (lundi 8h)
+  check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h)
+  deploy-vps     → deploy_vps_flow.py       : pull → smoke test → gate manuelle → promote
+  deploy-kapsule → deploy_kapsule_flow.py   : rolling update K8s (si Kapsule actif, sans gate)
   kapsule-up     → kapsule_up_flow.py       : provision cluster K8s + upload modèle S3
   kapsule-down   → kapsule_down_flow.py     : déprovision cluster K8s
   test-api       → test_api_flow.py         : tests end-to-end (JWT, /predict, 429)
@@ -932,7 +926,8 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   3 algos entraînés séquentiellement (RF → XGBoost → LGBM)
   gc.collect() entre chaque algo pour libérer mémoire
   Sélection champion : quality gate KPI + meilleur F1 + delta > +0.01 vs @Prod
-  Promotion @Production seulement si les 3 conditions sont remplies
+  promote=True  (déclenchement direct) : @Production mis à jour dans train_flow
+  promote=False (via check-new-data) : champion sélectionné, promote différé → gate manuelle
 ```
 
 ### Monitoring — Prometheus · Grafana · Evidently
@@ -1119,20 +1114,18 @@ deploy.yml — push/merge dans main
        ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:{latest,sha-xxxx}
     2. Scan Trivy CRITICAL (ignore-unfixed) sur les 3 images
        → bloque le deploy si CVE critique détectée
-  JOB 2 — deploy SSH (VPS Scaleway)
-    1. Tag images actuelles :rollback (avant écrasement)
-    2. docker image rm nos images uniquement (protège autre app VPS)
-    3. git reset --hard origin/main
-    4. docker compose pull + up -d
-    5. Smoke test : curl http://localhost:8090/health (retry 18×5s)
-       Si échec → restauration images :rollback + docker compose up -d + exit 1
-    6. Prefect deploy --all (enregistrement flows)
+  JOB 2 — trigger-deploy (SSH)
+    SSH → VPS → prefect deployment run 'deploy-vps-flow/deploy-vps'
+                 --param sha_tag=${SHA_TAG::8}
+    (le déploiement effectif VPS + Kapsule est délégué à Prefect — voir section 13)
 
-promote.yml — workflow_dispatch (version, model_name)
+promote.yml — workflow_dispatch (version, model_name)  [override manuel]
+  Utilisé pour forcer une promotion hors du cycle normal (la promotion normale
+  passe par deploy-vps-flow après la gate manuelle Prefect).
   1. Sauvegarde version @Production actuelle (pour rollback)
   2. Set alias @Production → version demandée
   3. docker compose restart api + attente model_loaded:true (60s max)
-  4. Tests intégration (3 tests sur API VPS) :
+  4. Tests intégration (4 tests sur API VPS) :
        - POST /token → JWT valide
        - POST /predict (payload valide) → 200 + prediction in {0,1}
        - POST /predict (sans token)     → 401
@@ -1151,13 +1144,95 @@ benchmark.yml — workflow_dispatch
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
-NOTE : kapsule-up · kapsule-down · test-api · diag ont été migrés vers
-       des flows Prefect (déclenchables depuis le cockpit Gradio onglet Pipeline)
+NOTE CD  : le déploiement effectif (VPS + Kapsule) est géré par Prefect :
+           deploy-vps-flow (gate manuelle pause_flow_run) + deploy-kapsule-flow (automatique)
+           GitHub Actions deploy.yml JOB 2 = déclencheur SSH uniquement.
+
+NOTE Prefect : kapsule-up · kapsule-down · test-api · diag déclenchables
+               depuis le cockpit Gradio onglet Pipeline.
 ```
 
 ---
 
-## 13. Flux de travail collaboratif
+## 13. Chaîne complète — version finale
+
+Deux déclencheurs distincts convergent vers le même nœud de déploiement Prefect.
+
+```text
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║         CHAÎNE COMPLÈTE — 2 DÉCLENCHEURS → 1 NŒUD DE DÉPLOIEMENT                  ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                      ║
+║  DÉCLENCHEUR A — CODE  (push/merge sur main — GitHub)                               ║
+║  ─────────────────────────────────────────────────────                              ║
+║  [GitHub — PR vers main]                                                            ║
+║       │  merge (CI obligatoire : pip-audit + flake8 + pytest tests/unit/)          ║
+║       ▼                                                                              ║
+║  [GH Actions — deploy.yml]                                                          ║
+║    JOB 1 — build :                                                                  ║
+║      Build 3 images → ghcr.io/jakatt/ :latest + :sha-xxxxxxxx                      ║
+║      Trivy CRITICAL scan (ignore-unfixed) → bloque si CVE critique                 ║
+║    JOB 2 — trigger-deploy :                                                         ║
+║      SSH → VPS → prefect deployment run 'deploy-vps-flow/deploy-vps'               ║
+║                   --param sha_tag=xxxxxxxx                                          ║
+║       │                                                                              ║
+║       └────────────────────────────────────────────────► [deploy-vps-flow] ───┐    ║
+║                                                                                 │    ║
+╠═════════════════════════════════════════════════════════════════════════════════╪════╣
+║                                                                                 │    ║
+║  DÉCLENCHEUR B — DONNÉES  (lundi 8h UTC — cron Prefect)                        │    ║
+║  ────────────────────────────────────────────────────────                       │    ║
+║  [Prefect — check-new-data-flow]                                                │    ║
+║    1. Appel API data.gouv.fr → liste ressources ONISR                           │    ║
+║    2. Fuzzy-match 4 fichiers par CATEGORY_KEYWORDS                              │    ║
+║       → < 4 trouvés : send_alert() + stop                                       │    ║
+║    3. etl_flow(year=N, cumul=True, urls=matched_urls)                           │    ║
+║         download_year(urls)  → data/raw/N/*.csv                                 │    ║
+║         schema_validator     → CRITICAL ? stop + alert                          │    ║
+║         make_dataset          → data/preprocessed/cumul_2021_..._N/            │    ║
+║         dvc push              → Scaleway Object Storage                          │    ║
+║    4. train_flow(year=N, cumul=True, promote=False)                             │    ║
+║         Benchmark RF / XGBoost / LightGBM                                       │    ║
+║         Quality gate KPI → champion sélectionné (promote=False)                 │    ║
+║         → Pas de champion : send_alert() + stop                                  │    ║
+║         Retourne {champion, run_ids, metrics, year}                              │    ║
+║    5. deploy-vps-flow(champion, run_ids, metrics, year, sha_tag) ─────────────► │    ║
+║                                                                                 │    ║
+╠═════════════════════════════════════════════════════════════════════════════════╪════╣
+║                                                                                 │    ║
+║  [Prefect — deploy-vps-flow]   (VPS Scaleway — nœud commun)  ◄──────────────── ┘    ║
+║  ──────────────────────────────────────────────────────────────                      ║
+║    1. docker login ghcr.io  (GHCR_TOKEN)                                            ║
+║    2. git pull origin main                                                           ║
+║    3. Tag images actuelles → :rollback                                              ║
+║    4. docker compose pull + up -d                                                   ║
+║    5. Smoke test : curl /health (retry 18×5s)                                       ║
+║       → KO : restore :rollback + email + stop                                       ║
+║    6. ★ GATE MANUELLE : pause_flow_run(timeout=86400s)                             ║
+║       (déploiement annuel : affiche métriques champion — F1, AUC, Recall)          ║
+║       Opérateur → Prefect UI → clic "Resume"                                        ║
+║    7. Si champion : promote MLflow @Production + restart api                        ║
+║    8. ──────────────────────────────────────────────────────────────────────► │      ║
+║                                                                                │      ║
+║  [Prefect — deploy-kapsule-flow]   (automatique — si Kapsule actif)  ◄─────── ┘      ║
+║  ──────────────────────────────────────────────────────────────────────               ║
+║    1. Lecture state/kapsule_ips → si vide : skip (Kapsule non actif)                 ║
+║    2. scw k8s kubeconfig get CLUSTER_ID → kubeconfig tempfile                        ║
+║    3. kubectl set image deployment/api + deployment/gradio → :sha-xxxxxxxx           ║
+║    4. kubectl rollout status (timeout 5 min)                                         ║
+║       → KO : kubectl rollout undo × 2 + email + stop                                ║
+║    5. Email : rolling update Kapsule réussi                                          ║
+║                                                                                      ║
+╠══════════════════════════════════════════════════════════════════════════════════════╣
+║  INTERRUPTION DE SERVICE                                                             ║
+║  VPS Scaleway : ~30–90s pendant docker compose up -d (step 4)                       ║
+║  Kapsule K8s  : ZÉRO — RollingUpdate + readiness probes (HPA min 1 pod actif)       ║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 14. Flux de travail collaboratif
 
 ### Branches et rôles
 
@@ -1187,14 +1262,24 @@ git push origin <branche>
 ### Cycle d'ajout d'une nouvelle année ONISR
 
 ```text
+AUTOMATIQUE (via check-new-data-flow — lundi 8h UTC)
+──────────────────────────────────────────────────────
+1. check-new-data-flow détecte les données N sur data.gouv.fr
+   (aucune MAJ manuelle requise — fuzzy-match CATEGORY_KEYWORDS automatique)
+2. etl_flow déclenché automatiquement (download, validation schéma, preprocessing, dvc push)
+3. train_flow lancé (benchmark 3 algos, gate KPI, promote=False)
+4. deploy-vps-flow : gate manuelle dans Prefect UI → valider métriques du nouveau modèle
+   → clic "Resume" → promote @Production + restart api + rolling update Kapsule
+5. Commiter le .dvc pointer généré → PR → main  (seule action manuelle restante)
+
+MANUEL (déclenchement hors-cycle ou urgence)
+─────────────────────────────────────────────
 1. Vérifier que les données N sont disponibles sur data.gouv.fr
-   (mise à jour FILENAMES dans import_raw_data.py si nouveau nommage)
-2. Lancer etl deployment (Prefect UI ou workflow train.yml)
-   → download, validation schéma, preprocessing, dvc push
+2. Lancer etl deployment (Prefect UI)  →  download, validation, preprocessing, dvc push
 3. Lancer train deployment (year=N, cumul=true, promote=true)
    → benchmark 3 algos, gate KPI, promotion @Production si meilleur
 4. Vérifier rapport drift dans Gradio onglet 3
-5. Commiter le .dvc pointer + FILENAMES si modifié → PR → main
+5. Commiter le .dvc pointer → PR → main
 ```
 
 ### Synchronisation DVC
@@ -1211,7 +1296,7 @@ git push origin <branche>
 
 ---
 
-## 14. Structure des dossiers
+## 15. Structure des dossiers
 
 ```text
 cac_mlops/
@@ -1228,9 +1313,9 @@ cac_mlops/
 │
 ├── data/                                  # ignoré par Git, géré par DVC
 │   ├── raw/
-│   │   ├── 2021.dvc / 2021/               # carcteristiques-2021.csv (faute ONISR)
-│   │   ├── 2022.dvc / 2022/               # carcteristiques-2022.csv (même faute)
-│   │   └── 2023.dvc / 2023/               # caract-2023.csv (abrégé)
+│   │   ├── 2021.dvc / 2021/               # 4 CSV ONISR — noms réels identifiés par fuzzy-match
+│   │   ├── 2022.dvc / 2022/
+│   │   └── 2023.dvc / 2023/
 │   └── preprocessed/
 │       ├── 2021/                          # X_train, X_test, y_train, y_test
 │       ├── cumul_2021_2022/
@@ -1267,7 +1352,7 @@ cac_mlops/
 │
 ├── src/
 │   ├── data/
-│   │   ├── import_raw_data.py             # download data.gouv.fr, FILENAMES mapping/année
+│   │   ├── import_raw_data.py             # download data.gouv.fr, CATEGORY_KEYWORDS, résolution URLs dynamique
 │   │   ├── make_dataset.py                # fusion 4 tables, feature engineering, split
 │   │   ├── schema.py                      # schémas Pandera (4 fichiers ONISR)
 │   │   └── schema_validator.py            # 3 niveaux CRITICAL/WARNING/INFO
@@ -1275,14 +1360,19 @@ cac_mlops/
 │   │   ├── train_model.py                 # LightGBM/RF/XGB + MLflow tracking + Registry
 │   │   ├── predict_model.py
 │   │   └── validate_model.py              # compare candidat vs @Production, promote si OK
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── email_utils.py                 # alertes email SMTP (send_alert — silent si non configuré)
 │   └── flows/
-│       ├── etl_flow.py                    # download + preprocess
-│       ├── train_flow.py                  # benchmark 3 algos + select champion + promote
+│       ├── etl_flow.py                    # download + preprocess (paramètre urls optionnel)
+│       ├── train_flow.py                  # benchmark 3 algos + select champion, retourne dict metrics
 │       ├── retrain_flow.py                # réentraînement annuel (1 algo)
 │       ├── drift_monitoring_flow.py       # drift check mensuel
 │       ├── full_retrain_flow.py           # tous les cycles depuis zéro
 │       ├── reset_flow.py                  # vide predictions + rapports drift
-│       ├── check_new_data_flow.py         # détection nouvelles données ONISR (hebdo)
+│       ├── check_new_data_flow.py         # détection ONISR → ETL → train → deploy (hebdo lundi 8h)
+│       ├── deploy_vps_flow.py             # pull → smoke test → gate manuelle → promote → kapsule
+│       ├── deploy_kapsule_flow.py         # rolling update K8s (vérifie kapsule_ips, sans gate)
 │       ├── kapsule_up_flow.py             # provision cluster K8s + upload modèle S3
 │       ├── kapsule_down_flow.py           # déprovision cluster K8s
 │       ├── test_api_flow.py               # tests end-to-end JWT + /predict + 429
@@ -1330,7 +1420,7 @@ cac_mlops/
 │       └── test_api.py
 │
 ├── docker-compose.yml                     # stack 14 conteneurs (local + VPS)
-├── prefect.yaml                           # 11 deployments Prefect
+├── prefect.yaml                           # 13 deployments Prefect (+ deploy-vps, deploy-kapsule)
 ├── .env.example                           # template — copier en .env
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
@@ -1339,7 +1429,7 @@ cac_mlops/
 
 ---
 
-## 15. Décisions d'architecture actées
+## 16. Décisions d'architecture actées
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -1369,14 +1459,16 @@ cac_mlops/
 │  Gateway                   │  NGINX (rate limit 20r/min /predict)          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
-│                            │  11 deployments, process pool                 │
+│                            │  13 deployments, process pool                 │
+│                            │  Gate manuelle : pause_flow_run() natif 3.x  │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  CI/CD                     │  GitHub Actions → GHCR → SSH deploy           │
-│                            │  7 workflows (ci, deploy, train, promote,     │
-│                            │  drift, benchmark, cleanup)                   │
+│  CI/CD                     │  CI dans GitHub Actions (ci.yml + deploy.yml) │
+│                            │  CD dans Prefect (deploy-vps + deploy-kapsule)│
+│                            │  7 workflows GH Actions (ci, deploy, train,   │
+│                            │  promote, drift, benchmark, cleanup)          │
 │                            │  Sécurité : Trivy CRITICAL + pip-audit        │
-│                            │  Rollback : images :sha-xxxx + :rollback auto │
-│                            │  Promote : tests intégration + rollback alias │
+│                            │  Rollback VPS : images :sha-xxxx + :rollback  │
+│                            │  Gate manuelle : pause_flow_run() Prefect 3.x │
 │                            │  Branch protection main activée (gh CLI)      │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Monitoring                │  Prometheus + Grafana + Evidently              │
@@ -1396,8 +1488,9 @@ cac_mlops/
 │  Drift — pas d'auto-retrain│  Labels N+1 indisponibles (ONISR +2 ans)     │
 │                            │  Drift = signal pour planifier le cycle       │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Mapping noms fichiers     │  Dict FILENAMES hardcodé dans                 │
-│                            │  import_raw_data.py — obligatoire dès 2022    │
+│  Résolution URLs dynamique │  URLs résolues via API data.gouv.fr           │
+│                            │  FILENAMES supprimé — CATEGORY_KEYWORDS       │
+│                            │  fuzzy-match (insensible nommage ONISR)       │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Fix feature leak          │  id_usager supprimé de make_dataset.py        │
 │                            │  (modèles v1–v4 inutilisables, v6 corrigé)    │
