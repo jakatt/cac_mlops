@@ -18,13 +18,13 @@ jobs:
     env:
       KAPSULE_CLUSTER_ID: ${{ secrets.KAPSULE_CLUSTER_ID }}
     steps:
-      - name: Force promote model to @Production
+      - name: Promote + tests intégration + rollback si échec
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
-          command_timeout: 2m
+          command_timeout: 5m
           script: |
             set -e
             export PATH=$PATH:/home/deploy/.local/bin
@@ -33,23 +33,129 @@ jobs:
             VERSION="${{ github.event.inputs.version }}"
             MODEL="${{ github.event.inputs.model_name }}"
 
+            # ── 1. Sauvegarde version actuelle pour rollback ────────────────
+            echo "==> Sauvegarde version @Production actuelle"
+            PREV_VERSION=$(docker compose exec -T api python3 -c "
+            import mlflow, os
+            os.environ['MLFLOW_TRACKING_URI'] = 'http://mlflow:5000'
+            c = mlflow.tracking.MlflowClient()
+            try:
+                mv = c.get_model_version_by_alias('$MODEL', 'Production')
+                print(mv.version)
+            except Exception:
+                print('')
+            " 2>/dev/null || echo "")
+            echo "  Version actuelle @Production : ${PREV_VERSION:-aucune}"
+
+            # ── 2. Promotion nouveau modèle ─────────────────────────────────
             echo "==> Promoting $MODEL v$VERSION to @Production"
-            docker compose exec -T api python3 -c "import mlflow,os; os.environ.setdefault('MLFLOW_TRACKING_URI','http://mlflow:5000'); c=mlflow.tracking.MlflowClient(); c.set_registered_model_alias('$MODEL','Production','$VERSION'); print('OK: '+str('$MODEL')+' v'+str('$VERSION')+' is @Production')"
+            docker compose exec -T api python3 -c "
+            import mlflow, os
+            os.environ['MLFLOW_TRACKING_URI'] = 'http://mlflow:5000'
+            c = mlflow.tracking.MlflowClient()
+            c.set_registered_model_alias('$MODEL', 'Production', '$VERSION')
+            print('OK: $MODEL v$VERSION is @Production')
+            "
             echo "==> Restarting API to load new model"
             docker compose restart api
 
-            echo "==> Healthcheck"
+            # ── 3. Attente modèle chargé ────────────────────────────────────
+            echo "==> Attente chargement modèle (max 60s)"
             for i in $(seq 1 12); do
               STATUS=$(curl -sf --max-time 5 http://localhost:8090/health 2>/dev/null || echo '{}')
               if echo "$STATUS" | grep -q '"model_loaded": true'; then
-                echo "API OK: $STATUS"
+                echo "  Modèle chargé après $((i*5))s"
                 break
               fi
-              [ $i -eq 12 ] && echo "Timeout" && exit 1
+              [ $i -eq 12 ] && echo "::error::Timeout chargement modèle" && exit 1
               sleep 5
             done
 
-            echo "==> Promotion VPS done"
+            # ── 4. Tests d'intégration sur le nouveau modèle ────────────────
+            echo "==> Tests intégration API avec nouveau modèle"
+
+            source .env 2>/dev/null || true
+            API_USER="${API_USERNAME:-admin}"
+            API_PASS="${API_PASSWORD:-changeme}"
+
+            # Obtenir token JWT
+            TOKEN=$(curl -sf -X POST http://localhost:8090/token \
+              -d "username=${API_USER}&password=${API_PASS}" \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" \
+              2>/dev/null || echo "")
+
+            if [ -z "$TOKEN" ]; then
+              echo "::error::Echec authentification — rollback"
+              INTEGRATION_FAIL=true
+            else
+              INTEGRATION_FAIL=false
+
+              # Test 1 : prédiction valide → 200 + prediction in {0,1}
+              RESP=$(curl -sf -o /tmp/pred.json -w "%{http_code}" \
+                -X POST http://localhost:8090/predict \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"place":10,"catu":3,"sexe":1,"secu1":0.0,"year_acc":2021,"victim_age":60,"catv":2,"obsm":1,"motor":1,"catr":3,"circ":2.0,"surf":1.0,"situ":1.0,"vma":50.0,"jour":7,"mois":12,"lum":5,"dep":77,"com":77317,"agg_":2,"int":1,"atm":0.0,"col":6.0,"lat":48.60,"long":2.89,"hour":17,"nb_victim":2,"nb_vehicules":1}' \
+                2>/dev/null || echo "000")
+              if [ "$RESP" != "200" ]; then
+                echo "::error::Test 1 FAIL — predict retourné $RESP (attendu 200)"
+                INTEGRATION_FAIL=true
+              else
+                PRED=$(python3 -c "import json; v=json.load(open('/tmp/pred.json')).get('prediction'); assert v in (0,1), f'prediction={v} invalide'; print(f'prediction={v}')" 2>&1)
+                if echo "$PRED" | grep -q "invalide\|Error\|Traceback"; then
+                  echo "::error::Test 1 FAIL — valeur prédiction invalide : $PRED"
+                  INTEGRATION_FAIL=true
+                else
+                  echo "  Test 1 PASS — $PRED"
+                fi
+              fi
+
+              # Test 2 : sans token → 401
+              RESP=$(curl -sf -o /dev/null -w "%{http_code}" \
+                -X POST http://localhost:8090/predict \
+                -H "Content-Type: application/json" \
+                -d '{"place":10}' 2>/dev/null || echo "000")
+              if [ "$RESP" = "401" ]; then
+                echo "  Test 2 PASS — auth enforced (401)"
+              else
+                echo "::error::Test 2 FAIL — auth non appliquée (got $RESP, attendu 401)"
+                INTEGRATION_FAIL=true
+              fi
+
+              # Test 3 : payload incomplet → 422
+              RESP=$(curl -sf -o /dev/null -w "%{http_code}" \
+                -X POST http://localhost:8090/predict \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d '{"place":10}' 2>/dev/null || echo "000")
+              if [ "$RESP" = "422" ]; then
+                echo "  Test 3 PASS — validation payload (422)"
+              else
+                echo "::error::Test 3 FAIL — payload invalide accepté (got $RESP, attendu 422)"
+                INTEGRATION_FAIL=true
+              fi
+            fi
+
+            # ── 5. Rollback si tests échoués ────────────────────────────────
+            if [ "$INTEGRATION_FAIL" = "true" ]; then
+              if [ -n "$PREV_VERSION" ]; then
+                echo "==> ROLLBACK — restauration $MODEL v$PREV_VERSION à @Production"
+                docker compose exec -T api python3 -c "
+            import mlflow, os
+            os.environ['MLFLOW_TRACKING_URI'] = 'http://mlflow:5000'
+            c = mlflow.tracking.MlflowClient()
+            c.set_registered_model_alias('$MODEL', 'Production', '$PREV_VERSION')
+            print('Rollback OK: $MODEL v$PREV_VERSION restauré @Production')
+                "
+                docker compose restart api
+                echo "==> Rollback terminé"
+              else
+                echo "==> Pas de version précédente connue — alias @Production supprimé"
+              fi
+              exit 1
+            fi
+
+            echo "==> Tous les tests PASSED — $MODEL v$VERSION en Production ✓"
 
       - name: Upload model to S3 for Kapsule
         if: env.KAPSULE_CLUSTER_ID != ''

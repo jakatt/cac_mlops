@@ -22,7 +22,7 @@
       "title": "Taux erreurs 5xx (1m)",
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "targets": [{
-        "expr": "sum(rate(api_requests_total{status=~\"5..\"}[1m])) / sum(rate(api_requests_total[1m])) * 100",
+        "expr": "sum(rate(api_requests_total{status=~\"5..\"}[1m])) / sum(rate(api_requests_total[1m])) * 100 or vector(0)",
         "legendFormat": "% erreurs"
       }],
       "options": {

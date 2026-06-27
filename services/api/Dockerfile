@@ -7,6 +7,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl git \
     && rm -rf /var/lib/apt/lists/*
 
+# kubectl (flows kapsule)
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && chmod +x kubectl && mv kubectl /usr/local/bin/
+
+# scw CLI (flows kapsule)
+RUN curl -sL "https://github.com/scaleway/scaleway-cli/releases/latest/download/scaleway-cli_linux_x86_64" \
+    -o /usr/local/bin/scw && chmod +x /usr/local/bin/scw
+
+# docker CLI (flow diag — accès via /var/run/docker.sock)
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz \
+    | tar xz --strip-components=1 -C /usr/local/bin docker/docker
+
 COPY services/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
