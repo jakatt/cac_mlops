@@ -170,6 +170,15 @@ services:
       SCW_DEFAULT_ORGANIZATION_ID: ${SCW_DEFAULT_ORGANIZATION_ID:-}
       KAPSULE_STATE:          /app/state/kapsule_ips
       NGINX_URL:              http://nginx:80
+      # Deploy VPS flow — authentification ghcr.io pour docker compose pull
+      GHCR_TOKEN:             ${GHCR_TOKEN:-}
+      GHCR_USER:              ${GHCR_USER:-jakatt}
+      # Alertes email (même config que Grafana SMTP)
+      SMTP_HOST:              ${GF_SMTP_HOST:-smtp.gmail.com:587}
+      SMTP_USER:              ${GF_SMTP_USER:-}
+      SMTP_PASSWORD:          ${GF_SMTP_PASSWORD:-}
+      SMTP_FROM:              ${GF_SMTP_FROM_ADDRESS:-no-reply@cac-mlops.local}
+      ALERT_EMAIL:            ${GF_ALERT_EMAIL:-}
     volumes:
       - ./src:/app/src:ro          # flows Prefect (override image baked-in)
       - ./prefect.yaml:/app/prefect.yaml:ro  # deployments (override image baked-in)

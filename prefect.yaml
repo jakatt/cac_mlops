@@ -48,11 +48,11 @@ deployments:
     work_pool:
       name: default-process-pool
 
-  # ── Check new data — détection hebdo de nouvelles données ONISR ─────────────
-  # Vérifie data.gouv.fr chaque lundi à 8h (Europe/Paris).
-  # Si nouvelle année détectée : logs le plan d'action (mise à jour import_raw_data.py
-  # + lancement manual de full-retrain). Ne déclenche PAS le retrain automatiquement
-  # (nommage ONISR imprévisible — validation humaine requise).
+  # ── Check new data — détection hebdo + chaîne complète si nouvelle année ─────
+  # Lundi 8h : poll data.gouv.fr, fuzzy-match 4 URLs (plus de FILENAMES hardcodés).
+  # Si 4/4 matchés → ETL (download par URL) → train (champion sans promote)
+  #                 → deploy-vps-flow (gate manuelle) → deploy-kapsule-flow (auto).
+  # Si < 4/4 → email alerte + stop (ONISR a changé ses conventions de nommage).
   - name: check-new-data
     entrypoint: src/flows/check_new_data_flow.py:check_new_data_flow
     work_pool:
@@ -61,6 +61,24 @@ deployments:
       - cron: "0 8 * * 1"
         timezone: "Europe/Paris"
         active: true
+
+  # ── Deploy VPS — déclenché par GitHub Actions (CI) ou manuellement ───────────
+  # Avec champion/metrics/year : annual update (promote après gate).
+  # Sans ces params : deploy code seul (gate avant Kapsule uniquement).
+  - name: deploy-vps
+    entrypoint: src/flows/deploy_vps_flow.py:deploy_vps_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      sha_tag: ""
+
+  # ── Deploy Kapsule — rolling update si cluster actif ─────────────────────────
+  # Appelé automatiquement par deploy-vps-flow après la gate.
+  # Peut aussi être déclenché manuellement (ex : resync après kapsule-up).
+  - name: deploy-kapsule
+    entrypoint: src/flows/deploy_kapsule_flow.py:deploy_kapsule_flow
+    work_pool:
+      name: default-process-pool
 
   # ── Full retrain — tous les cycles depuis zéro (après reset-flow) ─────────────
   # Auto-détecte les années depuis les tags DVC (data-v1, data-v2, ...)

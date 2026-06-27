@@ -1,12 +1,13 @@
 """
 Download ONISR accident data from data.gouv.fr for a given year.
 
-Training years  : 2021, 2022, 2023  → data/raw/{year}/
-Production year : 2024               → data/production/{year}/
+URLs are resolved dynamically via the data.gouv.fr API — no hardcoded filenames.
+The 4 mandatory files (caracteristiques, lieux, usagers, vehicules) are matched
+by keyword against resource titles for the requested year.
 """
 import logging
-import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -16,127 +17,120 @@ logger = logging.getLogger(__name__)
 _DATASET_ID = "53698f4ca3a729239d2036df"
 _API_BASE = f"https://www.data.gouv.fr/api/1/datasets/{_DATASET_ID}/"
 
-# ── Exact filenames per year (ONISR changes naming convention every year) ─────
-FILENAMES: dict[int, dict[str, str]] = {
-    2021: {
-        "caracteristiques": "carcteristiques-2021.csv",  # typo ONISR kept as-is
-        "lieux":            "lieux-2021.csv",
-        "usagers":          "usagers-2021.csv",
-        "vehicules":        "vehicules-2021.csv",
-    },
-    2022: {
-        "caracteristiques": "carcteristiques-2022.csv",  # same typo reconducted
-        "lieux":            "lieux-2022.csv",
-        "usagers":          "usagers-2022.csv",
-        "vehicules":        "vehicules-2022.csv",
-    },
-    2023: {
-        "caracteristiques": "caract-2023.csv",           # abbreviated, typo fixed
-        "lieux":            "lieux-2023.csv",
-        "usagers":          "usagers-2023.csv",
-        "vehicules":        "vehicules-2023.csv",
-    },
-    2024: {
-        "caracteristiques": "Caract_2024.csv",           # uppercase + underscore
-        "lieux":            "Lieux_2024.csv",
-        "usagers":          "Usagers_2024.csv",
-        "vehicules":        "Vehicules_2024.csv",
-    },
+# ── Keywords to fuzzy-match the 4 mandatory ONISR files (shared with check-new-data-flow)
+CATEGORY_KEYWORDS: dict[str, list[str]] = {
+    "caracteristiques": ["caract"],
+    "lieux":            ["lieux"],
+    "usagers":          ["usagers"],
+    "vehicules":        ["vehicules", "vehicul"],
 }
 
+# ── Known training years — informational; training range is derived from FIRST_TRAINING_YEAR
 TRAINING_YEARS = [2021, 2022, 2023]
-PRODUCTION_YEAR = 2024
+FIRST_TRAINING_YEAR = 2021
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _fetch_resource_urls() -> dict[str, str]:
-    """Return {filename: download_url} for all resources in the dataset.
+def training_years_up_to(year: int) -> list[int]:
+    """Return [FIRST_TRAINING_YEAR, ..., year] inclusive."""
+    return list(range(FIRST_TRAINING_YEAR, year + 1))
 
-    Uses the main dataset endpoint (GET /api/1/datasets/{id}/) which returns
-    all resources in a single call — the /resources/ sub-endpoint returns 405.
-    """
+
+def _fetch_resources() -> list[dict]:
+    """Return all resource objects from the ONISR dataset."""
     resp = requests.get(_API_BASE, timeout=15)
     resp.raise_for_status()
-    data = resp.json()
-    url_map: dict[str, str] = {}
-    for resource in data.get("resources", []):
-        title = resource.get("title", "").strip()
-        url = resource.get("url", "")
-        if title and url:
-            url_map[title] = url
-    return url_map
+    return resp.json().get("resources", [])
 
 
-def _dest_dir(year: int, base_dir: Path | None = None) -> Path:
-    if base_dir:
-        return Path(base_dir)
-    if year in TRAINING_YEARS:
-        return PROJECT_ROOT / "data" / "raw" / str(year)
-    return PROJECT_ROOT / "data" / "production" / str(year)
+def resolve_year_urls(year: int, resources: list[dict] | None = None) -> dict[str, str]:
+    """
+    Fuzzy-match the 4 ONISR CSV files for *year* from data.gouv.fr.
+
+    Returns {category: download_url} for all 4 categories.
+    Raises RuntimeError if fewer than 4 files can be matched.
+    """
+    if resources is None:
+        resources = _fetch_resources()
+
+    year_str = str(year)
+    year_resources = [r for r in resources if year_str in r.get("title", "")]
+
+    matched: dict[str, str] = {}
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for r in year_resources:
+            title = r.get("title", "").lower()
+            if any(kw in title for kw in keywords):
+                matched[category] = r["url"]
+                break
+
+    if len(matched) < 4:
+        missing = set(CATEGORY_KEYWORDS) - set(matched)
+        titles = [r.get("title") for r in year_resources]
+        raise RuntimeError(
+            f"Cannot resolve all 4 files for year {year}. "
+            f"Missing categories: {missing}. "
+            f"Titles found for {year}: {titles}"
+        )
+
+    return matched
+
+
+def _dest_dir(year: int) -> Path:
+    return PROJECT_ROOT / "data" / "raw" / str(year)
 
 
 def download_year(
     year: int,
-    base_dir: Path | None = None,
+    urls: dict[str, str] | None = None,
     overwrite: bool = False,
 ) -> list[Path]:
     """
-    Download the 4 ONISR CSV files for *year* from data.gouv.fr.
+    Download the 4 ONISR CSV files for *year*.
+
+    urls: pre-resolved {category: url} dict (from check-new-data-flow or resolve_year_urls).
+          If None, URLs are resolved automatically from data.gouv.fr API.
 
     Returns list of local Paths downloaded.
-    Raises RuntimeError (CRITICAL) if any file cannot be found or downloaded.
+    Raises RuntimeError if any file cannot be resolved or downloaded.
     """
-    if year not in FILENAMES:
-        raise ValueError(
-            f"Year {year} not in FILENAMES mapping. "
-            f"Add it to src/data/import_raw_data.py before proceeding."
-        )
-
-    dest = _dest_dir(year, base_dir)
+    dest = _dest_dir(year)
     dest.mkdir(parents=True, exist_ok=True)
 
-    year_filenames = FILENAMES[year]
-    expected = set(year_filenames.values())
-    already = {f.name for f in dest.iterdir() if f.suffix == ".csv"} if dest.exists() else set()
+    # Skip if 4 CSVs already present
+    existing_csvs = list(dest.glob("*.csv"))
+    if not overwrite and len(existing_csvs) >= 4:
+        logger.info("year=%d — %d CSV files already present, skipping download", year, len(existing_csvs))
+        return existing_csvs
 
-    if not overwrite and expected.issubset(already):
-        logger.info("year=%d — all files already present, skipping download", year)
-        return [dest / fn for fn in year_filenames.values()]
-
-    logger.info("year=%d — fetching resource index from data.gouv.fr…", year)
-    try:
-        url_map = _fetch_resource_urls()
-    except requests.RequestException as exc:
-        raise RuntimeError(
-            f"[CRITICAL] Cannot reach data.gouv.fr API: {exc}"
-        ) from exc
+    # Resolve URLs if not provided
+    if urls is None:
+        logger.info("year=%d — resolving file URLs from data.gouv.fr…", year)
+        try:
+            urls = resolve_year_urls(year)
+        except requests.RequestException as exc:
+            raise RuntimeError(f"[CRITICAL] Cannot reach data.gouv.fr API: {exc}") from exc
 
     downloaded: list[Path] = []
-    for table, filename in year_filenames.items():
-        if not overwrite and filename in already:
+    for category, url in urls.items():
+        filename = Path(urlparse(url).path).name or f"{category}_{year}.csv"
+        out_path = dest / filename
+
+        if not overwrite and out_path.exists():
             logger.info("  %s — already present, skipping", filename)
-            downloaded.append(dest / filename)
+            downloaded.append(out_path)
             continue
 
-        if filename not in url_map:
-            raise RuntimeError(
-                f"[CRITICAL] year={year} table={table}: "
-                f"file '{filename}' not found in data.gouv.fr resource index. "
-                f"ONISR may have changed the filename — update FILENAMES mapping."
-            )
-
-        download_url = url_map[filename]
-        logger.info("  downloading %s …", filename)
+        logger.info("  downloading %s (%s)…", category, filename)
         try:
-            resp = requests.get(download_url, timeout=120, stream=True)
+            resp = requests.get(url, timeout=120, stream=True)
             resp.raise_for_status()
         except requests.RequestException as exc:
             raise RuntimeError(
-                f"[CRITICAL] year={year} — download failed for '{filename}': {exc}"
+                f"[CRITICAL] year={year} category={category}: download failed — {exc}"
             ) from exc
 
-        out_path = dest / filename
         with open(out_path, "wb") as fh:
             for chunk in resp.iter_content(chunk_size=65536):
                 fh.write(chunk)
@@ -158,18 +152,8 @@ def main() -> None:
     )
 
     parser = argparse.ArgumentParser(description="Download ONISR data from data.gouv.fr")
-    parser.add_argument(
-        "--year",
-        type=int,
-        required=True,
-        choices=list(FILENAMES.keys()),
-        help="Year to download (2021-2024)",
-    )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Re-download even if files already exist",
-    )
+    parser.add_argument("--year", type=int, required=True, help="Year to download (e.g. 2024)")
+    parser.add_argument("--overwrite", action="store_true", help="Re-download even if files exist")
     args = parser.parse_args()
 
     paths = download_year(args.year, overwrite=args.overwrite)
