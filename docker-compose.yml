@@ -293,7 +293,7 @@ services:
       GF_SMTP_HOST:                         ${GF_SMTP_HOST:-smtp.gmail.com:587}
       GF_SMTP_USER:                         ${GF_SMTP_USER:-}
       GF_SMTP_PASSWORD:                     ${GF_SMTP_PASSWORD:-}
-      GF_SMTP_FROM_ADDRESS:                 ${GF_SMTP_FROM_ADDRESS:-grafana@localhost}
+      GF_SMTP_FROM_ADDRESS:                 ${GF_SMTP_FROM_ADDRESS:-grafana@cac-mlops.local}
       GF_ALERT_EMAIL:                       ${GF_ALERT_EMAIL:-}
       GF_ALERTING_ENABLED:                  "false"
       GF_UNIFIED_ALERTING_ENABLED:          "true"
