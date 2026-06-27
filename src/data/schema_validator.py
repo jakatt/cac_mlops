@@ -17,7 +17,7 @@ import pandas as pd
 import pandera.pandas as pa
 
 from .schema import QUALITY_BOUNDS, REQUIRED_COLUMNS, TABLE_SCHEMAS
-from .import_raw_data import FILENAMES
+from .import_raw_data import discover_raw_files, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -75,27 +75,27 @@ def _read_csv_safe(path: Path) -> pd.DataFrame | None:
 # ── Level 1 ───────────────────────────────────────────────────────────────────
 
 def _validate_level1(year: int, raw_dir: Path, report: ValidationReport) -> bool:
-    """Return True if all 4 files are readable and non-empty."""
-    filenames = FILENAMES[year]
+    """Return True if all 4 files are discoverable, readable and non-empty."""
+    try:
+        files = discover_raw_files(year, raw_dir)
+    except (FileNotFoundError, RuntimeError) as exc:
+        report.add("CRITICAL", "all", "file_discovery", str(exc))
+        return False
+
     all_ok = True
-    for table, filename in filenames.items():
-        path = raw_dir / filename
-        if not path.exists():
-            report.add("CRITICAL", table, "file_exists", f"'{filename}' not found in {raw_dir}")
-            all_ok = False
-            continue
+    for table, path in files.items():
         if path.stat().st_size == 0:
-            report.add("CRITICAL", table, "file_nonempty", f"'{filename}' is empty")
+            report.add("CRITICAL", table, "file_nonempty", f"'{path.name}' is empty")
             all_ok = False
             continue
         df = _read_csv_safe(path)
         if df is None:
             report.add("CRITICAL", table, "file_readable",
-                       f"'{filename}' cannot be parsed (encoding/separator unknown)")
+                       f"'{path.name}' cannot be parsed (encoding/separator unknown)")
             all_ok = False
             continue
         if len(df) == 0:
-            report.add("CRITICAL", table, "file_nonempty", f"'{filename}' has 0 rows after parse")
+            report.add("CRITICAL", table, "file_nonempty", f"'{path.name}' has 0 rows after parse")
             all_ok = False
     return all_ok
 
@@ -106,11 +106,13 @@ def _validate_level2(
     year: int, raw_dir: Path, report: ValidationReport
 ) -> dict[str, pd.DataFrame]:
     """Return dict of loaded DataFrames. CRITICAL if required columns missing."""
-    filenames = FILENAMES[year]
+    try:
+        files = discover_raw_files(year, raw_dir)
+    except (FileNotFoundError, RuntimeError):
+        return {}  # already flagged in Level 1
     dfs: dict[str, pd.DataFrame] = {}
 
-    for table, filename in filenames.items():
-        path = raw_dir / filename
+    for table, path in files.items():
         df = _read_csv_safe(path)
         if df is None:
             continue  # already flagged in Level 1
@@ -226,13 +228,8 @@ def validate(year: int, raw_dir: Path | None = None) -> ValidationReport:
 
     raw_dir defaults to data/raw/{year}/ (or data/production/{year}/ for 2024).
     """
-    from .import_raw_data import PROJECT_ROOT, TRAINING_YEARS
-
     if raw_dir is None:
-        if year in TRAINING_YEARS:
-            raw_dir = PROJECT_ROOT / "data" / "raw" / str(year)
-        else:
-            raw_dir = PROJECT_ROOT / "data" / "production" / str(year)
+        raw_dir = PROJECT_ROOT / "data" / "raw" / str(year)
 
     report = ValidationReport(year=year)
     logger.info("=== Schema validation year=%d (dir=%s) ===", year, raw_dir)

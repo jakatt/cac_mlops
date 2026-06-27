@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from .import_raw_data import FILENAMES, PROJECT_ROOT, TRAINING_YEARS
+from .import_raw_data import PROJECT_ROOT, training_years_up_to, discover_raw_files
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +31,12 @@ def _load_year(year: int, raw_dir: Path | None = None) -> tuple[
 ]:
     """Load the 4 raw CSVs for *year*. Returns (df_users, df_caract, df_places, df_veh)."""
     d = raw_dir or _raw_dir(year)
-    fn = FILENAMES[year]
+    files = discover_raw_files(year, d)
 
-    df_caract = pd.read_csv(d / fn["caracteristiques"], sep=";", low_memory=False)
-    df_places  = pd.read_csv(d / fn["lieux"],            sep=";", encoding="utf-8")
-    df_users   = pd.read_csv(d / fn["usagers"],          sep=";")
-    df_veh     = pd.read_csv(d / fn["vehicules"],        sep=";")
+    df_caract = pd.read_csv(files["caracteristiques"], sep=";", low_memory=False)
+    df_places  = pd.read_csv(files["lieux"],            sep=";", encoding="utf-8")
+    df_users   = pd.read_csv(files["usagers"],          sep=";")
+    df_veh     = pd.read_csv(files["vehicules"],        sep=";")
 
     # 2022+ : ONISR renomme Num_Acc → Accident_Id dans le fichier caracteristiques
     df_caract.rename(columns={"Accident_Id": "Num_Acc"}, inplace=True)
@@ -203,7 +203,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.cumul:
-        years = [y for y in TRAINING_YEARS if y <= args.year]
+        years = training_years_up_to(args.year)
     else:
         years = [args.year]
 

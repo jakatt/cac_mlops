@@ -4,6 +4,11 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      sha_tag:
+        description: "SHA tag override (laisser vide pour auto)"
+        required: false
+        default: ""
 
 concurrency:
   group: deploy-scaleway
@@ -57,6 +62,7 @@ jobs:
       - name: Scan vulnérabilités Trivy (CRITICAL — images API + Gradio)
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          TRIVY_FAILED=false
           for image in cac-mlops-api cac-mlops-gradio cac-mlops-mlflow; do
             echo "==> Trivy scan : ghcr.io/${{ github.repository_owner }}/$image:latest"
             trivy image \
@@ -65,164 +71,35 @@ jobs:
               --ignore-unfixed \
               --no-progress \
               ghcr.io/${{ github.repository_owner }}/$image:latest \
-            || echo "::error::CVE CRITICAL détectée dans $image — deploy bloqué"
+            || TRIVY_FAILED=true
           done
+          if [ "$TRIVY_FAILED" = "true" ]; then
+            echo "::error::CVE CRITICAL détectée — deploy bloqué"
+            exit 1
+          fi
 
-
-  # ── Job 2 : deploy SSH sur Scaleway ────────────────────────────────────────
-  deploy:
+  # ── Job 2 : trigger deploy-vps-flow via Prefect (SSH) ──────────────────────
+  trigger-deploy:
     needs: build
     runs-on: ubuntu-latest
-    env:
-      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GHCR_USER:  ${{ github.actor }}
 
     steps:
-      - name: Deploy sur le serveur Scaleway
+      - name: Déclencher deploy-vps-flow sur Prefect
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
-          envs:     GHCR_TOKEN,GHCR_USER
           script: |
-            set -e
             export PATH=$PATH:/home/deploy/.local/bin
-            cd ${{ secrets.DEPLOY_DIR }}
+            SHA_TAG="${{ env.SHA_TAG || github.sha }}"
 
-            echo "==> Login ghcr.io"
-            echo $GHCR_TOKEN | docker login ghcr.io -u $GHCR_USER --password-stdin
-
-            echo "==> Arrêt des conteneurs (libère les images)"
-            docker compose down --remove-orphans || true
-            # Force-suppression des conteneurs résiduels (au cas où compose down aurait été incomplet)
-            docker ps -aq --filter "name=cac_mlops-" | xargs -r docker rm -f 2>/dev/null || true
-
-            echo "==> Nettoyage des images cac-mlops uniquement (protege les autres applis du VPS)"
-            docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest 2>/dev/null || true
-            docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest 2>/dev/null || true
-            docker image rm ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest 2>/dev/null || true
-            docker builder prune -af
-
-            echo "==> Suppression données brutes DVC (volumineuses, non nécessaires au runtime)"
-            sudo rm -rf data/raw .dvc/cache 2>/dev/null || true
-            # data/preprocessed est conservé : nécessaire pour le service Gradio (what-if + heatmap)
-
-            echo "==> Correction ownership (répertoires créés par containers root lors de la RAZ)"
-            sudo chown -R $(whoami): reports/ state/ data/ 2>/dev/null || true
-
-            echo "==> Pull du code"
-            git fetch origin main
-            git reset --hard origin/main
-
-            echo "==> Rotation logs Docker (daemon.json — max 20 MB × 3 fichiers)"
-            sudo mkdir -p /etc/docker
-            if ! cmp -s infrastructure/docker/daemon.json /etc/docker/daemon.json 2>/dev/null; then
-              sudo rsync infrastructure/docker/daemon.json /etc/docker/daemon.json
-              sudo systemctl reload docker 2>/dev/null || true
-              echo "  daemon.json mis à jour (prendra effet au prochain restart Docker)"
-            else
-              echo "  daemon.json déjà à jour"
-            fi
-
-            echo "==> Configuration DOCKER_VOLUMES_PATH → block storage /data"
-            grep -q "DOCKER_VOLUMES_PATH" .env 2>/dev/null || echo "DOCKER_VOLUMES_PATH=/data" >> .env
-
-            echo "==> Espace disque disponible"
-            df -h /
-
-            echo "==> Sauvegarde images actuelles comme :rollback (avant pull)"
-            for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
-              docker tag ghcr.io/${{ github.repository_owner }}/$img:latest \
-                ghcr.io/${{ github.repository_owner }}/$img:rollback 2>/dev/null || true
-            done
-
-            echo "==> Pull des images pré-buildées"
-            docker compose pull
-
-            echo "==> Migration volumes Docker → /data (one-time, idempotent, utilise notre image)"
-            MLFLOW_IMG="ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest"
-            MINIO_VOL=$(docker volume ls --format '{{.Name}}' | grep minio_data | head -1)
-            PG_VOL=$(docker volume ls --format '{{.Name}}' | grep postgres_data | head -1)
-
-            if [ -n "$MINIO_VOL" ]; then
-              MINIO_EMPTY=$(docker run --rm -v /data/minio_data:/check "$MLFLOW_IMG" sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
-              if [ "$MINIO_EMPTY" = "0" ]; then
-                echo "  Copie $MINIO_VOL → /data/minio_data"
-                docker run --rm -v "${MINIO_VOL}:/source" -v /data/minio_data:/dest "$MLFLOW_IMG" cp -a /source/. /dest/
-                echo "  minio_data migré"
-              else
-                echo "  /data/minio_data déjà peuplé, skip"
-              fi
-            fi
-
-            if [ -n "$PG_VOL" ]; then
-              PG_EMPTY=$(docker run --rm -v /data/postgres_data:/check "$MLFLOW_IMG" sh -c 'ls -A /check | wc -l' 2>/dev/null || echo "0")
-              if [ "$PG_EMPTY" = "0" ]; then
-                echo "  Copie $PG_VOL → /data/postgres_data"
-                docker run --rm -v "${PG_VOL}:/source" -v /data/postgres_data:/dest "$MLFLOW_IMG" cp -a /source/. /dest/
-                echo "  postgres_data migré"
-              else
-                echo "  /data/postgres_data déjà peuplé, skip"
-              fi
-            fi
-
-            echo "==> Suppression volumes nommés obsolètes (minio+pg migrés vers /data bind mounts)"
-            docker volume rm cac_mlops_minio_data cac_mlops_postgres_data 2>/dev/null || true
-            # cac_mlops_prefect_data conservé : volume nommé Docker contenant l'état SQLite Prefect
-            echo "==> NVMe après nettoyage volumes"
-            df -h /
-
-            echo "==> Libération du port 8090 (nginx)"
-            for cid in $(docker ps -aq --filter "publish=8090"); do
-              echo "  Arrêt conteneur $cid (port 8090)"
-              docker stop "$cid" 2>/dev/null || true
-              docker rm "$cid" 2>/dev/null || true
-            done
-
-            echo "==> Démarrage"
-            docker compose up -d
-
-            echo "==> Smoke test API via nginx:8090 (attente max 90s)"
-            SMOKE_OK=false
-            for i in $(seq 1 18); do
-              if curl -sf http://localhost:8090/health > /dev/null 2>&1; then
-                echo "API OK après $((i*5))s"
-                SMOKE_OK=true
-                break
-              fi
-              echo "  attente... ($((i*5))s)"
-              sleep 5
-            done
-
-            if [ "$SMOKE_OK" = "false" ]; then
-              echo "::error::Smoke test échoué — rollback vers images :rollback"
-              docker compose logs --tail=30 api
-              docker compose logs --tail=20 nginx
-              for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
-                docker tag ghcr.io/${{ github.repository_owner }}/$img:rollback \
-                  ghcr.io/${{ github.repository_owner }}/$img:latest 2>/dev/null || true
-              done
-              docker compose up -d
-              echo "Rollback terminé — version précédente restaurée"
-              exit 1
-            fi
-
-            echo "==> Enregistrement des flows Prefect (attente Prefect server max 60s)"
-            for i in $(seq 1 12); do
-              if curl -sf http://localhost:4200/api/health > /dev/null 2>&1; then
-                echo "  Prefect server OK après $((i*5))s"
-                break
-              fi
-              if [ $i -eq 12 ]; then
-                echo "  Prefect server non disponible — skip deploy flows (non bloquant)"
-              fi
-              sleep 5
-            done
-
-            docker compose exec -T prefect-worker \
-              sh -c "prefect deploy --all" \
-              && echo "  Flows Prefect enregistrés ✓" \
-              || echo "  Prefect deploy échoué — relancer manuellement si besoin"
-
-            echo "==> Deploy OK"
+            echo "==> Déclenchement deploy-vps-flow (SHA: ${SHA_TAG::8})"
+            docker compose \
+              -f ${{ secrets.DEPLOY_DIR }}/docker-compose.yml \
+              exec -T prefect-worker \
+              prefect deployment run \
+                'deploy-vps-flow/deploy-vps' \
+                --param "sha_tag=${SHA_TAG::8}" \
+            && echo "deploy-vps-flow déclenché ✓" \
+            || echo "::warning::Échec du déclenchement Prefect — relancer manuellement depuis l'UI"

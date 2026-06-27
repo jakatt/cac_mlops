@@ -1,17 +1,23 @@
 """Unit tests for 3-level schema validation."""
-import io
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pandas as pd
 import pytest
 
 from src.data.schema_validator import (
     _validate_level1,
+    _validate_level2,
     _validate_level3,
     ValidationReport,
 )
-from src.data.import_raw_data import FILENAMES
+
+# Filenames that match CATEGORY_KEYWORDS for year 2021 (used in fixtures)
+_TEST_FILES = {
+    "caracteristiques": "caract-2021.csv",
+    "lieux":            "lieux-2021.csv",
+    "usagers":          "usagers-2021.csv",
+    "vehicules":        "vehicules-2021.csv",
+}
 
 
 @pytest.fixture
@@ -44,13 +50,10 @@ def tmp_2021(tmp_path: Path) -> Path:
         "catv": [2, 7], "obsm": [1, 0], "motor": [1, 1],
     })
 
-    for table, df in [
-        ("caracteristiques", caract),
-        ("lieux",            lieux),
-        ("usagers",          usagers),
-        ("vehicules",        vehicules),
-    ]:
-        df.to_csv(tmp_path / FILENAMES[2021][table], sep=";", index=False)
+    for table, filename in _TEST_FILES.items():
+        df = {"caracteristiques": caract, "lieux": lieux,
+              "usagers": usagers, "vehicules": vehicules}[table]
+        df.to_csv(tmp_path / filename, sep=";", index=False)
 
     return tmp_path
 
@@ -66,32 +69,23 @@ class TestLevel1:
         assert len(criticals) == 0
 
     def test_missing_file_raises_critical(self, tmp_2021):
-        (tmp_2021 / FILENAMES[2021]["lieux"]).unlink()
+        (tmp_2021 / _TEST_FILES["lieux"]).unlink()
         report = ValidationReport(year=2021)
         ok = _validate_level1(2021, tmp_2021, report)
         assert ok is False
-        critical_checks = [m.check for m in report.messages if m.level == "CRITICAL"]
-        assert "file_exists" in critical_checks
+        assert any(m.level == "CRITICAL" for m in report.messages)
 
     def test_empty_file_raises_critical(self, tmp_2021):
-        (tmp_2021 / FILENAMES[2021]["vehicules"]).write_bytes(b"")
+        (tmp_2021 / _TEST_FILES["vehicules"]).write_bytes(b"")
         report = ValidationReport(year=2021)
         ok = _validate_level1(2021, tmp_2021, report)
         assert ok is False
 
-    def test_2024_naming_convention(self, tmp_path):
-        """2024 uses Caract_2024.csv (uppercase + underscore) — must be in FILENAMES."""
-        assert "Caract_2024.csv" == FILENAMES[2024]["caracteristiques"]
-        assert "Lieux_2024.csv"  == FILENAMES[2024]["lieux"]
-
-    def test_2023_naming_convention(self):
-        """2023 uses caract-2023.csv (abbreviated)."""
-        assert "caract-2023.csv" == FILENAMES[2023]["caracteristiques"]
-
-    def test_2021_typo_in_filename(self):
-        """2021 has 'carcteristiques' (missing 'a') — typo from ONISR preserved."""
-        assert "carcteristiques-2021.csv" == FILENAMES[2021]["caracteristiques"]
-        assert "caracteristiques-2021.csv" not in FILENAMES[2021].values()
+    def test_nonexistent_dir_raises_critical(self, tmp_path):
+        report = ValidationReport(year=2021)
+        ok = _validate_level1(2021, tmp_path / "nonexistent", report)
+        assert ok is False
+        assert any(m.level == "CRITICAL" for m in report.messages)
 
 
 # ── Level 3 ───────────────────────────────────────────────────────────────────
@@ -157,9 +151,7 @@ class TestValidationReport:
 class TestLevel2:
     def test_missing_required_column_raises_critical(self, tmp_2021):
         """Supprimer une colonne requise de caracteristiques → CRITICAL level 2."""
-        from src.data.schema_validator import _validate_level2
-
-        caract_path = tmp_2021 / FILENAMES[2021]["caracteristiques"]
+        caract_path = tmp_2021 / _TEST_FILES["caracteristiques"]
         df = pd.read_csv(caract_path, sep=";")
         df = df.drop(columns=["dep"])
         df.to_csv(caract_path, sep=";", index=False)

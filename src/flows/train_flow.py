@@ -16,7 +16,7 @@ import os
 import mlflow
 from prefect import flow, task
 
-from src.data.import_raw_data import TRAINING_YEARS
+from src.data.import_raw_data import training_years_up_to
 from src.models.train_model import MODEL_NAMES, train
 from src.models.validate_model import KPI_THRESHOLDS
 
@@ -158,13 +158,16 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
 
 
 @flow(name="train-flow", flow_run_name="train-upto-{year}", log_prints=True)
-def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> bool:
+def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> dict:
     """
     Benchmark RF / XGBoost / LGBM sur les mêmes données.
     Promotion en 3 conditions : seuils KPI + meilleur f1 + delta > MIN_IMPROVEMENT vs @Production.
-    Retourne True si un modèle a été promu @Production.
+
+    Returns dict with keys: champion (str|None), run_ids, metrics, promoted (bool).
+    When promote=False, champion and metrics are returned but @Production is not updated —
+    the caller (deploy_vps_flow) promotes after the manual gate.
     """
-    years = [y for y in TRAINING_YEARS if y <= year] if cumul else [year]
+    years = training_years_up_to(year) if cumul else [year]
     logger.info("Benchmark : years=%s  algorithms=%s", years, ALGORITHMS)
 
     run_ids: dict[str, str] = {}
@@ -178,7 +181,14 @@ def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> bo
 
     champion = select_champion_task(all_metrics)
 
-    if champion is None or not promote:
-        return False
+    promoted = False
+    if champion is not None and promote:
+        promoted = promote_task(champion, run_ids)
 
-    return promote_task(champion, run_ids)
+    return {
+        "champion": champion,
+        "run_ids": run_ids,
+        "metrics": all_metrics,
+        "promoted": promoted,
+        "year": year,
+    }

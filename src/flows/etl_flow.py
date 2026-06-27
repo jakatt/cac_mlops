@@ -1,7 +1,8 @@
 """
 ETL flow — download raw ONISR data and preprocess it.
 
-Triggered manually or as the first step of retrain_flow.
+Triggered manually, from check-new-data-flow (with pre-resolved URLs),
+or as the first step of full_retrain_flow.
 """
 import logging
 import subprocess
@@ -9,15 +10,15 @@ from pathlib import Path
 
 from prefect import flow, task
 
-from src.data.import_raw_data import download_year, TRAINING_YEARS
+from src.data.import_raw_data import download_year, training_years_up_to
 
 logger = logging.getLogger(__name__)
 
 
 @task(name="download-raw-data", retries=2, retry_delay_seconds=30)
-def download_task(year: int) -> None:
+def download_task(year: int, urls: dict[str, str] | None = None) -> None:
     logger.info("Downloading ONISR data for year %d", year)
-    download_year(year)
+    download_year(year, urls=urls)
     logger.info("Download complete for year %d", year)
 
 
@@ -25,7 +26,7 @@ def download_task(year: int) -> None:
 def dvc_push_task(year: int) -> None:
     """Track raw data with DVC and push to Scaleway S3 (source de vérité partagée)."""
     raw_path = f"data/raw/{year}"
-    dvc_file  = Path(f"data/raw/{year}.dvc")
+    dvc_file = Path(f"data/raw/{year}.dvc")
 
     r = subprocess.run(
         ["dvc", "add", "--no-commit", raw_path],
@@ -55,9 +56,18 @@ def preprocess_task(years: list[int]) -> None:
 
 
 @flow(name="etl-flow", flow_run_name="etl-year{year}", log_prints=True)
-def etl_flow(year: int = 2023, cumul: bool = True) -> None:
-    """Download, push to DVC remote (Scaleway S3) and preprocess ONISR data."""
-    download_task(year)
+def etl_flow(
+    year: int = 2023,
+    cumul: bool = True,
+    urls: dict[str, str] | None = None,
+) -> None:
+    """
+    Download, push to DVC remote and preprocess ONISR data.
+
+    urls: pre-resolved {category: download_url} — passed by check-new-data-flow
+          to avoid a second API call. If None, URLs are resolved automatically.
+    """
+    download_task(year, urls=urls)
     dvc_push_task(year)
-    years = [y for y in TRAINING_YEARS if y <= year] if cumul else [year]
+    years = training_years_up_to(year) if cumul else [year]
     preprocess_task(years)
