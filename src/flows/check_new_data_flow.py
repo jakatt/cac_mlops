@@ -11,14 +11,14 @@ What it does NOT do (requires human validation):
   - Update FILENAMES / TRAINING_YEARS in import_raw_data.py
     → ONISR changes filename conventions every year; auto-match is best-effort only
   - DVC versioning (dvc add + git tag + git push)
-  - Trigger full-retrain automatically
-    → run full-retrain from Prefect UI once import_raw_data.py is updated
+  - Trigger train automatically
+    → run train-flow/train (year=NEW_YEAR, cumul=true, promote=true) from Prefect UI once import_raw_data.py is updated
 
 Workflow when new data is found:
   1. This flow logs exact filenames found on data.gouv.fr
   2. Human updates FILENAMES[YEAR] and TRAINING_YEARS in src/data/import_raw_data.py
   3. Human commits, pushes → deploy picks up the change
-  4. Human runs full-retrain-flow/full-retrain from Prefect UI
+  4. Human runs train-flow/train (year=NEW_YEAR, cumul=true, promote=true) from Prefect UI
 """
 import logging
 import subprocess
@@ -139,15 +139,15 @@ def check_new_data_flow() -> None:
             "     → Ajouter %d dans TRAINING_YEARS\n"
             "     → Ajouter FILENAMES[%d] avec les noms exacts ci-dessus\n"
             "  2. git commit + git push → deploy automatique\n"
-            "  3. Lancer depuis Prefect UI : full-retrain-flow / full-retrain\n"
-            "     (inclut DVC pull, ETL, train, validate, promote, simulate, drift)\n"
+            "  3. Lancer depuis Prefect UI : train-flow / train\n"
+            "     (paramètres : year=%d, cumul=true, promote=true)\n"
             "═══════════════════════════════════════════════════════════",
             new_year,
             matched.get("caracteristiques", "?"),
             matched.get("lieux", "?"),
             matched.get("usagers", "?"),
             matched.get("vehicules", "?"),
-            new_year, new_year,
+            new_year, new_year, new_year,
         )
     else:
         logger.warning(
