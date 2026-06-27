@@ -1,0 +1,6 @@
+# CVE-2025-68121 : Go crypto/tls — incorrect certificate validation
+# Présent dans kubectl (Go 1.22.11) — fix disponible en Go 1.24.13+ mais
+# aucun build kubectl stable ne l'intègre encore (kubernetes < 1.34).
+# Risque : faible — kubectl est utilisé uniquement comme CLIENT (pas serveur TLS).
+# À supprimer dès qu'un kubectl stable avec Go 1.24.13+ est disponible.
+CVE-2025-68121
