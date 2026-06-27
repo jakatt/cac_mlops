@@ -77,6 +77,34 @@ def resolve_year_urls(year: int, resources: list[dict] | None = None) -> dict[st
     return matched
 
 
+def discover_raw_files(year: int, raw_dir: Path | None = None) -> dict[str, Path]:
+    """
+    Discover the 4 ONISR CSV files for *year* in raw_dir by keyword matching.
+
+    Returns {category: Path} for all 4 categories.
+    Raises FileNotFoundError if directory doesn't exist, RuntimeError if < 4 matched.
+    """
+    d = raw_dir or _dest_dir(year)
+    if not d.exists():
+        raise FileNotFoundError(f"Raw data directory not found: {d}")
+
+    csvs = list(d.glob("*.csv"))
+    result: dict[str, Path] = {}
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for csv in csvs:
+            if any(kw in csv.name.lower() for kw in keywords):
+                result[category] = csv
+                break
+
+    if len(result) < 4:
+        missing = set(CATEGORY_KEYWORDS) - set(result)
+        raise RuntimeError(
+            f"Cannot identify all 4 ONISR files for year {year} in {d}. "
+            f"Missing: {missing}. Files found: {[f.name for f in csvs]}"
+        )
+    return result
+
+
 def _dest_dir(year: int) -> Path:
     return PROJECT_ROOT / "data" / "raw" / str(year)
 
