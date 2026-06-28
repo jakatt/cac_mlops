@@ -916,7 +916,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   reset          → reset_flow.py            : vide predictions + rapports drift
   check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h)
   update-model   → update_model_flow.py     : trigger 3 — extract blueprint → train → gate
-  deploy-vps     → deploy_vps_flow.py       : smoke test → gate manuelle → promote
+  deploy-vps     → deploy_vps_flow.py       : smoke test → gate → promote → test-api → Kapsule (si OK)
   deploy-kapsule → deploy_kapsule_flow.py   : rolling update K8s (si Kapsule actif, sans gate)
   kapsule-up     → kapsule_up_flow.py       : provision cluster K8s + upload modèle S3
   kapsule-down   → kapsule_down_flow.py     : déprovision cluster K8s
@@ -1153,10 +1153,10 @@ benchmark.yml — workflow_dispatch
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
-NOTE CD  : le déploiement effectif (gate + promote) est géré par Prefect :
-           deploy-vps-flow (gate manuelle pause_flow_run) + deploy-kapsule-flow (automatique)
-           GitHub Actions deploy.yml JOB 2 gère : git pull, compose up, smoke test,
-           test-api (5 tests fonctionnels + rollback auto si KO), détection trigger.
+NOTE CD  : le déploiement effectif est entièrement géré par Prefect :
+           deploy-vps-flow : gate → promote (si nouveau modèle) → test-api → Kapsule (si OK)
+           GitHub Actions deploy.yml JOB 2 gère : git pull, compose up, prefect deploy --all,
+           smoke test /health, détection trigger, déclenchement Prefect.
 
 NOTE Prefect : kapsule-up · kapsule-down · test-api · diag déclenchables
                depuis le cockpit Gradio onglet Pipeline.
@@ -1232,10 +1232,13 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║    2. ★ GATE MANUELLE : pause_flow_run(timeout=86400s)                             ║
 ║       Si champion : affiche métriques F1, AUC, Recall pour validation              ║
 ║       Opérateur → Prefect UI → clic "Resume"                                        ║
-║    3. Si champion : promote MLflow @Production + Docker SDK restart api             ║
-║    4. ─────────────────────────────────────────────────────────────────────► │      ║
+║    3. Si champion : sauvegarde @Production actuel → promote MLflow → restart api    ║
+║    4. test-api (5 tests, skip_rate_limit=True)                                      ║
+║       → KO (Triggers 1&3) : rollback promote @Production + restart api + stop      ║
+║       → KO (Trigger 2)    : stop (pas de Kapsule)                                  ║
+║    5. ─────────────────────────────────────────────────────────────────────► │      ║
 ║                                                                              │      ║
-║  [Prefect — deploy-kapsule-flow]   (automatique — si Kapsule actif)  ◄───── ┘      ║
+║  [Prefect — deploy-kapsule-flow]   (seulement si test-api OK)  ◄─────────── ┘      ║
 ║  ─────────────────────────────────────────────────────────────────────              ║
 ║    1. Lecture state/kapsule_ips → si vide : skip (Kapsule non actif)               ║
 ║    2. scw k8s kubeconfig get CLUSTER_ID → kubeconfig tempfile                      ║
@@ -1266,7 +1269,8 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | Sélection | Quality gate KPI + delta > +0.01 F1 vs @Production | `src/models/validate_model.py` | `train_flow` — `select_champion_task` |
 | Gate manuelle | Opérateur valide métriques champion dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
 | Promote | Alias @Production MLflow + Docker restart API | MLflow Registry | `deploy-vps-flow` — `promote_task` |
-| Kapsule | Rolling update pods K8s (si cluster actif) | `kubectl` | `deploy-kapsule-flow` |
+| test-api | 5 tests fonctionnels (skip_rate_limit=True) — rollback promote si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
+| Kapsule | Rolling update pods K8s — seulement si test-api OK | `kubectl` | `deploy-kapsule-flow` |
 
 #### Use case 2 — Nouveau code MLOps (trigger push vers main)
 
@@ -1277,10 +1281,10 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | Scan CVE | Trivy CRITICAL sur 3 images — bloque si CRITICAL | `.trivyignore` | `deploy.yml` JOB 1 |
 | VPS pull | Login GHCR · tag :rollback · git pull · compose up | SSH script | `deploy.yml` JOB 2 |
 | Smoke test | GET /health retry 24×5s — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
-| Tests API | 5 tests fonctionnels (health, JWT, 401, predict, what-if vitesse) — rollback auto si KO | `src/flows/test_api_flow.py` | `deploy.yml` JOB 2 |
 | Détection | `git diff HEAD~1` → pas de blueprint changé → trigger 2 | SSH script | `deploy.yml` JOB 2 |
 | Gate manuelle | Opérateur confirme déploiement sain dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
-| Kapsule | Rolling update pods K8s (si cluster actif) | `kubectl` | `deploy-kapsule-flow` |
+| test-api | 5 tests fonctionnels (skip_rate_limit=True) — stop si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
+| Kapsule | Rolling update pods K8s — seulement si test-api OK | `kubectl` | `deploy-kapsule-flow` |
 
 #### Use case 3 — Nouveau blueprint DS (trigger modèle)
 
@@ -1294,7 +1298,9 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | Entraînement | Benchmark 3 algos avec nouveaux hyperparamètres | `src/models/train_model.py` | `update-model-flow` |
 | Sélection | Compare vs @Production — si pas meilleur : restaure config + email DS | `src/models/validate_model.py` | `update-model-flow` |
 | Gate manuelle | Opérateur valide si champion trouvé | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
-| Promote | @Production + restart API + rolling update Kapsule | MLflow Registry | `deploy-vps-flow` + `deploy-kapsule-flow` |
+| Promote | Alias @Production MLflow + Docker restart API | MLflow Registry | `deploy-vps-flow` — `promote_task` |
+| test-api | 5 tests fonctionnels (skip_rate_limit=True) — rollback promote si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
+| Kapsule | Rolling update pods K8s — seulement si test-api OK | `kubectl` | `deploy-kapsule-flow` |
 
 ---
 
@@ -1335,7 +1341,7 @@ AUTOMATIQUE (via check-new-data-flow — lundi 8h UTC)
 2. etl_flow déclenché automatiquement (download, validation schéma, preprocessing, dvc push)
 3. train_flow lancé (benchmark 3 algos, gate KPI, promote=False)
 4. deploy-vps-flow : gate manuelle dans Prefect UI → valider métriques du nouveau modèle
-   → clic "Resume" → promote @Production + restart api + rolling update Kapsule
+   → clic "Resume" → promote @Production + restart api → test-api → Kapsule (si OK)
 5. Commiter le .dvc pointer généré → PR → main  (seule action manuelle restante)
 
 MANUEL (déclenchement hors-cycle ou urgence)

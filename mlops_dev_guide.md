@@ -70,7 +70,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 | Workflow | Trigger | Rôle |
 |---|---|---|
 | `ci.yml` | push/PR → `main`, branche `jacques` | Tests unitaires + intégration |
-| `deploy.yml` | push → `main` | Build images → VPS pull/up → smoke test → test-api → Prefect gate |
+| `deploy.yml` | push → `main` | Build images → VPS pull/up → smoke test → déclenche `deploy-vps-flow` (Prefect) |
 | `train.yml` | `workflow_dispatch` | Déclenche `train-flow` manuellement |
 | `drift.yml` | `workflow_dispatch` | Déclenche `drift-check` manuellement |
 | `promote.yml` | `workflow_dispatch` | Promote une version MLflow spécifique |
@@ -96,8 +96,8 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 
 | # | Trigger | Déclencheur | Pipeline |
 |---|---------|-------------|----------|
-| 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate → promote |
-| 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images → VPS pull/up → smoke test → test-api → gate → Kapsule |
+| 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate → promote → test-api → Kapsule |
+| 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images → VPS pull/up → smoke test → gate → test-api → Kapsule (si OK) |
 | 3 | Nouveau blueprint DS | push → PR → merge `main` (`src/models/**`, `config/**`) | backup config → extract_blueprint → train → si meilleur : garder config + gate + promote ; sinon : restaurer config + email DS |
 
 ### Détecter trigger 2 vs trigger 3 dans `deploy.yml`
@@ -133,7 +133,7 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all
 | `reset` | `reset_flow` | manuel (RAZ) |
 | `kapsule-up/down` | flows Kapsule | manuel |
 | `diag` | `diag_flow` | manuel |
-| `test-api` | `test_api_flow` | CD (skip_rate_limit=True) + manuel |
+| `test-api` | `test_api_flow` | fin de `deploy-vps-flow` (CD) + manuel |
 
 ---
 
