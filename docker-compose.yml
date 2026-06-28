@@ -182,6 +182,7 @@ services:
       ALERT_EMAIL:            ${GF_ALERT_EMAIL:-}
     volumes:
       - ./src:/app/src:ro          # flows Prefect (override image baked-in)
+      - ./config:/app/config       # blueprint hyperparamètres (rw — extract_blueprint.py écrit ici)
       - ./prefect.yaml:/app/prefect.yaml:ro  # deployments (override image baked-in)
       - ./data:/app/data
       - ./reports:/app/reports

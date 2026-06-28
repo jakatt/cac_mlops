@@ -14,7 +14,7 @@
 10. [Stack technique détaillée](#10-stack-technique-détaillée)
 11. [Développement local](#11-développement-local)
 12. [CI/CD — GitHub Actions](#12-cicd--github-actions)
-13. [Chaîne complète — version finale](#13-chaîne-complète--version-finale)
+13. [Chaîne complète — 3 déclencheurs](#13-chaîne-complète--3-déclencheurs)
 14. [Flux de travail collaboratif](#14-flux-de-travail-collaboratif)
 15. [Structure des dossiers](#15-structure-des-dossiers)
 16. [Décisions d'architecture actées](#16-décisions-darchitecture-actées)
@@ -532,7 +532,7 @@ Personne ne le sait
 ║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║                            ║
 ║                      ║  └──────────────────┴────────────┴────────────────┘ ║                            ║
 ║                      ║                                                     ║  Secrets K8s               ║
-║                      ║  ORCHESTRATION — PREFECT (13 deployments)           ║  s3-creds · app-creds      ║
+║                      ║  ORCHESTRATION — PREFECT (14 deployments)           ║  s3-creds · app-creds      ║
 ║                      ║  ┌─────────────────────────────────────────────┐   ║                            ║
 ║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster               ║
 ║                      ║  │ prefect-worker  image api + kubectl+scw+docker│  ║  state/kapsule_ips (VPS)   ║
@@ -541,9 +541,10 @@ Personne ne le sait
 ║                      ║  │             drift-check · check-new-data    │   ╠════════════════════════════╣
 ║                      ║  │             full-retrain · reset            │   ║  PARTAGÉ                   ║
 ║                      ║  │ CD        : deploy-vps · deploy-kapsule     │   ║                            ║
-║                      ║  │ Infra/Ops : kapsule-up · kapsule-down       │   ║                            ║
-║                      ║  │             test-api · diag                 │   ║  GitHub (jakatt/cac_mlops) ║
-║                      ║  └─────────────────────────────────────────────┘   ║  7 workflows CI/CD :       ║
+║                      ║  │             update-model (trigger 3 DS)     │   ║                            ║
+║                      ║  │ Infra/Ops : kapsule-up · kapsule-down       │   ║  GitHub (jakatt/cac_mlops) ║
+║                      ║  │             test-api · diag                 │   ║  7 workflows CI/CD :       ║
+║                      ║  └─────────────────────────────────────────────┘   ║  ci · deploy · train       ║
 ║                      ║                                                     ║  ci · deploy · train       ║
 ║                      ║  MONITORING                                         ║  promote · drift           ║
 ║                      ║  ┌─────────────────────────────────────────────┐   ║  benchmark · cleanup       ║
@@ -905,16 +906,17 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   Worker  : prefect-worker (image api — toutes dépendances ML)
   Pool    : default-process-pool (type: process)
 
-  DEPLOYMENTS (prefect.yaml) — 13 au total
+  DEPLOYMENTS (prefect.yaml) — 14 au total
   ─────────────────────────────────────────
   etl            → etl_flow.py              : download data.gouv.fr + preprocessing
   train          → train_flow.py            : benchmark RF/XGBoost/LGBM, retourne dict metrics
   retrain-annual → retrain_flow.py          : réentraînement annuel
-  drift-check    → drift_monitoring_flow.py : drift mensuel Evidently
+  drift-check    → drift_monitoring_flow.py : drift mensuel Evidently + retrain auto si CRITICAL
   full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
   reset          → reset_flow.py            : vide predictions + rapports drift
   check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h)
-  deploy-vps     → deploy_vps_flow.py       : pull → smoke test → gate manuelle → promote
+  update-model   → update_model_flow.py     : trigger 3 — extract blueprint → train → gate
+  deploy-vps     → deploy_vps_flow.py       : smoke test → gate manuelle → promote
   deploy-kapsule → deploy_kapsule_flow.py   : rolling update K8s (si Kapsule actif, sans gate)
   kapsule-up     → kapsule_up_flow.py       : provision cluster K8s + upload modèle S3
   kapsule-down   → kapsule_down_flow.py     : déprovision cluster K8s
@@ -1114,10 +1116,17 @@ deploy.yml — push/merge dans main
        ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:{latest,sha-xxxx}
     2. Scan Trivy CRITICAL (ignore-unfixed) sur les 3 images
        → bloque le deploy si CVE critique détectée
-  JOB 2 — trigger-deploy (SSH)
-    SSH → VPS → prefect deployment run 'deploy-vps-flow/deploy-vps'
-                 --param sha_tag=${SHA_TAG::8}
-    (le déploiement effectif VPS + Kapsule est délégué à Prefect — voir section 13)
+  JOB 2 — deploy (SSH sur l'hôte VPS — /data/cac_mlops)
+    1. Login GHCR (GHCR_TOKEN depuis .env VPS)
+    2. Tag images courantes → :rollback (sauvegarde avant tout changement)
+    3. git pull origin main (code + config sur le host VPS)
+    4. docker compose pull + up -d --remove-orphans
+    5. Smoke test : curl /health (retry 18×5s — 90s max)
+       → KO : restore :rollback + docker compose up -d + exit 1
+    6. Détection trigger 2 vs trigger 3 :
+       BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -cE '^(src/models/|src/features/|config/model_params\.yml)')
+       → BLUEPRINT_CHANGED > 0 : extract_blueprint.py + prefect run update-model-flow/update-model (Trigger 3)
+       → Sinon : prefect run deploy-vps-flow/deploy-vps --param sha_tag=${SHA_TAG::8}  (Trigger 2)
 
 promote.yml — workflow_dispatch (version, model_name)  [override manuel]
   Utilisé pour forcer une promotion hors du cycle normal (la promotion normale
@@ -1144,9 +1153,9 @@ benchmark.yml — workflow_dispatch
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
-NOTE CD  : le déploiement effectif (VPS + Kapsule) est géré par Prefect :
+NOTE CD  : le déploiement effectif (smoke test + gate + promote) est géré par Prefect :
            deploy-vps-flow (gate manuelle pause_flow_run) + deploy-kapsule-flow (automatique)
-           GitHub Actions deploy.yml JOB 2 = déclencheur SSH uniquement.
+           GitHub Actions deploy.yml JOB 2 gère : git pull, compose up, smoke test, rollback, détection trigger.
 
 NOTE Prefect : kapsule-up · kapsule-down · test-api · diag déclenchables
                depuis le cockpit Gradio onglet Pipeline.
@@ -1154,81 +1163,135 @@ NOTE Prefect : kapsule-up · kapsule-down · test-api · diag déclenchables
 
 ---
 
-## 13. Chaîne complète — version finale
+## 13. Chaîne complète — 3 déclencheurs
 
-Deux déclencheurs distincts convergent vers le même nœud de déploiement Prefect.
+Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) et modèle DS (trigger 3). Tous convergent vers le même nœud de déploiement Prefect.
 
 ```text
 ╔══════════════════════════════════════════════════════════════════════════════════════╗
-║         CHAÎNE COMPLÈTE — 2 DÉCLENCHEURS → 1 NŒUD DE DÉPLOIEMENT                  ║
+║            ARCHITECTURE 3 DÉCLENCHEURS — PIPELINE COMPLET                           ║
 ╠══════════════════════════════════════════════════════════════════════════════════════╣
 ║                                                                                      ║
-║  DÉCLENCHEUR A — CODE  (push/merge sur main — GitHub)                               ║
-║  ─────────────────────────────────────────────────────                              ║
-║  [GitHub — PR vers main]                                                            ║
-║       │  merge (CI obligatoire : pip-audit + flake8 + pytest tests/unit/)          ║
-║       ▼                                                                              ║
-║  [GH Actions — deploy.yml]                                                          ║
-║    JOB 1 — build :                                                                  ║
-║      Build 3 images → ghcr.io/jakatt/ :latest + :sha-xxxxxxxx                      ║
-║      Trivy CRITICAL scan (ignore-unfixed) → bloque si CVE critique                 ║
-║    JOB 2 — trigger-deploy :                                                         ║
-║      SSH → VPS → prefect deployment run 'deploy-vps-flow/deploy-vps'               ║
-║                   --param sha_tag=xxxxxxxx                                          ║
-║       │                                                                              ║
-║       └────────────────────────────────────────────────► [deploy-vps-flow] ───┐    ║
-║                                                                                 │    ║
-╠═════════════════════════════════════════════════════════════════════════════════╪════╣
-║                                                                                 │    ║
-║  DÉCLENCHEUR B — DONNÉES  (lundi 8h UTC — cron Prefect)                        │    ║
-║  ────────────────────────────────────────────────────────                       │    ║
-║  [Prefect — check-new-data-flow]                                                │    ║
-║    1. Appel API data.gouv.fr → liste ressources ONISR                           │    ║
-║    2. Fuzzy-match 4 fichiers par CATEGORY_KEYWORDS                              │    ║
-║       → < 4 trouvés : send_alert() + stop                                       │    ║
-║    3. etl_flow(year=N, cumul=True, urls=matched_urls)                           │    ║
-║         download_year(urls)  → data/raw/N/*.csv                                 │    ║
-║         schema_validator     → CRITICAL ? stop + alert                          │    ║
-║         make_dataset          → data/preprocessed/cumul_2021_..._N/            │    ║
-║         dvc push              → Scaleway Object Storage                          │    ║
-║    4. train_flow(year=N, cumul=True, promote=False)                             │    ║
-║         Benchmark RF / XGBoost / LightGBM                                       │    ║
-║         Quality gate KPI → champion sélectionné (promote=False)                 │    ║
-║         → Pas de champion : send_alert() + stop                                  │    ║
-║         Retourne {champion, run_ids, metrics, year}                              │    ║
-║    5. deploy-vps-flow(champion, run_ids, metrics, year, sha_tag) ─────────────► │    ║
-║                                                                                 │    ║
-╠═════════════════════════════════════════════════════════════════════════════════╪════╣
-║                                                                                 │    ║
-║  [Prefect — deploy-vps-flow]   (VPS Scaleway — nœud commun)  ◄──────────────── ┘    ║
+║  TRIGGER 1 — NOUVELLE DATA ONISR  (cron Prefect — lundi 8h UTC)                     ║
 ║  ──────────────────────────────────────────────────────────────                      ║
-║    1. docker login ghcr.io  (GHCR_TOKEN)                                            ║
-║    2. git pull origin main                                                           ║
-║    3. Tag images actuelles → :rollback                                              ║
-║    4. docker compose pull + up -d                                                   ║
-║    5. Smoke test : curl /health (retry 18×5s)                                       ║
-║       → KO : restore :rollback + email + stop                                       ║
-║    6. ★ GATE MANUELLE : pause_flow_run(timeout=86400s)                             ║
-║       (déploiement annuel : affiche métriques champion — F1, AUC, Recall)          ║
+║  [check-new-data-flow]                                                               ║
+║    1. API data.gouv.fr → fuzzy-match 4 URLs ONISR par CATEGORY_KEYWORDS             ║
+║       → < 4 trouvés : send_alert() + stop                                            ║
+║    2. etl_flow(year=N, cumul=True, urls=matched_urls)                                ║
+║         download_task  → data/raw/N/*.csv                                            ║
+║         validate_task  → 3 niveaux Pandera — CRITICAL ? stop + alert email          ║
+║         make_dataset   → data/preprocessed/cumul_2021_..._N/                        ║
+║         dvc_push_task  → Scaleway Object Storage                                     ║
+║    3. train_flow(year=N, cumul=True, promote=False)                                  ║
+║         Benchmark RF / XGBoost / LightGBM                                            ║
+║         Quality gate KPI → champion sélectionné (promote=False)                     ║
+║         → Pas de champion : send_alert() + stop                                      ║
+║    4. deploy-vps-flow(champion, run_ids, metrics, year) ───────────────────────► │  ║
+║                                                                                    │  ║
+╠════════════════════════════════════════════════════════════════════════════════════╪══╣
+║                                                                                    │  ║
+║  TRIGGER 2 — NOUVEAU CODE MLOPS  (push → PR → merge main)                         │  ║
+║  ─────────────────────────────────────────────────────────                         │  ║
+║  [GitHub — PR vers main]                                                           │  ║
+║    CI : pip-audit + flake8 + pytest tests/unit/ (bloque si ✗)                     │  ║
+║  [deploy.yml — JOB 1 — build]                                                      │  ║
+║    Build 3 images → ghcr.io/jakatt/ :latest + :sha-xxxxxxxx                       │  ║
+║    Trivy CRITICAL scan (ignore-unfixed) → bloque si CVE critique                  │  ║
+║  [deploy.yml — JOB 2 — SSH sur l'hôte VPS]                                        │  ║
+║    1. Login GHCR · tag images courantes → :rollback                                │  ║
+║    2. git pull origin main + docker compose pull + up -d                           │  ║
+║    3. Smoke test : curl /health (retry 18×5s) → KO : restore :rollback + exit 1   │  ║
+║    4. Détection : git diff HEAD~1 — pas de blueprint changé                        │  ║
+║    → prefect run deploy-vps-flow/deploy-vps --param sha_tag=xxxxxxxx ─────────► │  │  ║
+║                                                                                 │  │  ║
+╠═════════════════════════════════════════════════════════════════════════════════╪══╪══╣
+║                                                                                 │  │  ║
+║  TRIGGER 3 — NOUVEAU BLUEPRINT DS  (push → PR → merge main)                    │  │  ║
+║  ─────────────────────────────────────────────────────────                      │  │  ║
+║  [DS local — MLflow explore]                                                    │  │  ║
+║    Expériences MLFLOW_RUN_MODE=explore → accidents_severity_explore             │  │  ║
+║    DS tagge run champion : mlflow set_tag("export_to_prod", "true")             │  │  ║
+║    PR vers main : src/models/ ou src/features/ ou config/model_params.yml       │  │  ║
+║  [deploy.yml — JOB 2 — SSH VPS — détection BLUEPRINT_CHANGED > 0]              │  │  ║
+║    extract_blueprint.py → lit run tagué → écrit config/model_params.yml         │  │  ║
+║    → prefect run update-model-flow/update-model                                 │  │  ║
+║  [update-model-flow]                                                            │  │  ║
+║    1. extract_blueprint_task() (bind-mount config/ rw)                          │  │  ║
+║    2. train_flow(year, cumul, promote=False)                                    │  │  ║
+║    3. → Pas de champion : send_alert() + stop                                   │  │  ║
+║    4. → Champion : deploy-vps-flow(champion, run_ids, ...) ─────────────────── ┘  │  ║
+║                                                                                    │  ║
+╠════════════════════════════════════════════════════════════════════════════════════╪══╣
+║                                                                                    │  ║
+║  [Prefect — deploy-vps-flow]   (nœud commun triggers 1, 2, 3)  ◄─────────────────┘  ║
+║  ─────────────────────────────────────────────────────────────────                   ║
+║    1. Smoke test : GET /health (urllib — retry 18×5s)                               ║
+║       → KO : send_alert() + return False                                            ║
+║    2. ★ GATE MANUELLE : pause_flow_run(timeout=86400s)                             ║
+║       Si champion : affiche métriques F1, AUC, Recall pour validation              ║
 ║       Opérateur → Prefect UI → clic "Resume"                                        ║
-║    7. Si champion : promote MLflow @Production + restart api                        ║
-║    8. ──────────────────────────────────────────────────────────────────────► │      ║
-║                                                                                │      ║
-║  [Prefect — deploy-kapsule-flow]   (automatique — si Kapsule actif)  ◄─────── ┘      ║
-║  ──────────────────────────────────────────────────────────────────────               ║
-║    1. Lecture state/kapsule_ips → si vide : skip (Kapsule non actif)                 ║
-║    2. scw k8s kubeconfig get CLUSTER_ID → kubeconfig tempfile                        ║
-║    3. kubectl set image deployment/api + deployment/gradio → :sha-xxxxxxxx           ║
-║    4. kubectl rollout status (timeout 5 min)                                         ║
-║       → KO : kubectl rollout undo × 2 + email + stop                                ║
-║    5. Email : rolling update Kapsule réussi                                          ║
-║                                                                                      ║
-╠══════════════════════════════════════════════════════════════════════════════════════╣
-║  INTERRUPTION DE SERVICE                                                             ║
-║  VPS Scaleway : ~30–90s pendant docker compose up -d (step 4)                       ║
-║  Kapsule K8s  : ZÉRO — RollingUpdate + readiness probes (HPA min 1 pod actif)       ║
-╚══════════════════════════════════════════════════════════════════════════════════════╝
+║    3. Si champion : promote MLflow @Production + Docker SDK restart api             ║
+║    4. ─────────────────────────────────────────────────────────────────────► │      ║
+║                                                                              │      ║
+║  [Prefect — deploy-kapsule-flow]   (automatique — si Kapsule actif)  ◄───── ┘      ║
+║  ─────────────────────────────────────────────────────────────────────              ║
+║    1. Lecture state/kapsule_ips → si vide : skip (Kapsule non actif)               ║
+║    2. scw k8s kubeconfig get CLUSTER_ID → kubeconfig tempfile                      ║
+║    3. kubectl set image deployment/api → :sha-xxxxxxxx                             ║
+║    4. kubectl rollout status (timeout 5 min)                                       ║
+║       → KO : kubectl rollout undo + email + stop                                   ║
+║    5. Email : rolling update Kapsule réussi                                        ║
+║                                                                                    ║
+╠════════════════════════════════════════════════════════════════════════════════════╣
+║  INTERRUPTION DE SERVICE                                                           ║
+║  VPS Scaleway : ~30–90s pendant docker compose up -d                              ║
+║  Kapsule K8s  : ZÉRO — RollingUpdate + readiness probes (HPA min 1 pod actif)    ║
+╚════════════════════════════════════════════════════════════════════════════════════╝
 ```
+
+### Tableaux récapitulatifs — 3 use cases
+
+#### Use case 1 — Nouvelle data ONISR (trigger automatique)
+
+| Étape | Description | Script / Fichier | Flow Prefect / GH Action |
+| --- | --- | --- | --- |
+| Détection | Poll API data.gouv.fr, fuzzy-match 4 fichiers ONISR | `src/data/import_raw_data.py` | `check-new-data-flow` (cron lundi 8h) |
+| Téléchargement | Download 4 CSV année N | `src/data/import_raw_data.py` | `etl_flow` — `download_task` |
+| Validation | 3 niveaux CRITICAL/WARNING/INFO — Pandera | `src/data/schema_validator.py` | `etl_flow` — `validate_task` |
+| Preprocessing | Fusion 4 tables, feature engineering, split | `src/data/make_dataset.py` | `etl_flow` |
+| DVC push | Versionnement données sur Scaleway S3 | DVC | `etl_flow` — `dvc_push_task` |
+| Entraînement | Benchmark RF / XGBoost / LightGBM + MLflow tracking | `src/models/train_model.py` | `train_flow` |
+| Sélection | Quality gate KPI + delta > +0.01 F1 vs @Production | `src/models/validate_model.py` | `train_flow` — `select_champion_task` |
+| Gate manuelle | Opérateur valide métriques champion dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
+| Promote | Alias @Production MLflow + Docker restart API | MLflow Registry | `deploy-vps-flow` — `promote_task` |
+| Kapsule | Rolling update pods K8s (si cluster actif) | `kubectl` | `deploy-kapsule-flow` |
+
+#### Use case 2 — Nouveau code MLOps (trigger push vers main)
+
+| Étape | Description | Script / Fichier | Flow Prefect / GH Action |
+| --- | --- | --- | --- |
+| CI | lint + tests sur la branche | pytest, flake8, pip-audit | `ci.yml` |
+| Build images | 3 images Docker → GHCR :latest + :sha-8chrs | `services/*/Dockerfile` | `deploy.yml` JOB 1 |
+| Scan CVE | Trivy CRITICAL sur 3 images — bloque si CRITICAL | `.trivyignore` | `deploy.yml` JOB 1 |
+| VPS pull | Login GHCR · tag :rollback · git pull · compose up | SSH script | `deploy.yml` JOB 2 |
+| Smoke test | GET /health retry 18×5s — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
+| Détection | `git diff HEAD~1` → pas de blueprint changé → trigger 2 | SSH script | `deploy.yml` JOB 2 |
+| Gate manuelle | Opérateur confirme déploiement sain dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
+| Kapsule | Rolling update pods K8s (si cluster actif) | `kubectl` | `deploy-kapsule-flow` |
+
+#### Use case 3 — Nouveau blueprint DS (trigger modèle)
+
+| Étape | Description | Script / Fichier | Flow Prefect / GH Action |
+| --- | --- | --- | --- |
+| Exploration | Expériences locales dans `accidents_severity_explore` | `src/models/train_model.py` | local (MLFLOW_RUN_MODE=explore) |
+| Tag champion | DS tagge run MLflow : `export_to_prod=true` | MLflow client API | DS — action manuelle |
+| CI + merge | PR avec `src/models/` ou `config/model_params.yml` | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
+| Détection | `git diff HEAD~1` détecte fichiers model/features/config | SSH script | `deploy.yml` JOB 2 |
+| Extract blueprint | Lit run tagué → écrit `config/model_params.yml` | `src/scripts/extract_blueprint.py` | `deploy.yml` JOB 2 |
+| Entraînement | Benchmark 3 algos avec nouveaux hyperparamètres | `src/models/train_model.py` | `update-model-flow` |
+| Sélection | Compare vs @Production — stop + email si pas meilleur | `src/models/validate_model.py` | `update-model-flow` |
+| Gate manuelle | Opérateur valide si champion trouvé | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
+| Promote | @Production + restart API + rolling update Kapsule | MLflow Registry | `deploy-vps-flow` + `deploy-kapsule-flow` |
 
 ---
 
@@ -1363,15 +1426,18 @@ cac_mlops/
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   └── email_utils.py                 # alertes email SMTP (send_alert — silent si non configuré)
+│   ├── scripts/
+│   │   └── extract_blueprint.py           # lit run MLflow export_to_prod=true → écrit config/model_params.yml
 │   └── flows/
-│       ├── etl_flow.py                    # download + preprocess (paramètre urls optionnel)
+│       ├── etl_flow.py                    # download + validate + preprocess (paramètre urls optionnel)
 │       ├── train_flow.py                  # benchmark 3 algos + select champion, retourne dict metrics
 │       ├── retrain_flow.py                # réentraînement annuel (1 algo)
-│       ├── drift_monitoring_flow.py       # drift check mensuel
+│       ├── drift_monitoring_flow.py       # drift check mensuel + retrain auto si CRITICAL
 │       ├── full_retrain_flow.py           # tous les cycles depuis zéro
 │       ├── reset_flow.py                  # vide predictions + rapports drift
 │       ├── check_new_data_flow.py         # détection ONISR → ETL → train → deploy (hebdo lundi 8h)
-│       ├── deploy_vps_flow.py             # pull → smoke test → gate manuelle → promote → kapsule
+│       ├── update_model_flow.py           # trigger 3 — extract blueprint → train → gate (blueprint DS)
+│       ├── deploy_vps_flow.py             # smoke test → gate manuelle → promote → kapsule
 │       ├── deploy_kapsule_flow.py         # rolling update K8s (vérifie kapsule_ips, sans gate)
 │       ├── kapsule_up_flow.py             # provision cluster K8s + upload modèle S3
 │       ├── kapsule_down_flow.py           # déprovision cluster K8s
@@ -1403,7 +1469,7 @@ cac_mlops/
 │       └── daemon.json                    # data-root=/data/docker, rotation logs
 │
 ├── config/
-│   └── model_params.yml                   # hyperparamètres par algo (blueprint DS)
+│   └── model_params.yml                   # hyperparamètres par algo (blueprint DS — bind-mount rw sur prefect-worker)
 │
 ├── reports/
 │   └── drift/                             # rapports HTML/JSON Evidently (gitignored)
@@ -1420,11 +1486,14 @@ cac_mlops/
 │       └── test_api.py
 │
 ├── docker-compose.yml                     # stack 14 conteneurs (local + VPS)
-├── prefect.yaml                           # 13 deployments Prefect (+ deploy-vps, deploy-kapsule)
+├── prefect.yaml                           # 14 deployments Prefect
 ├── .env.example                           # template — copier en .env
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
-└── architecture.md                        # ce fichier
+├── architecture.md                        # ce fichier — architecture technique
+├── ds_guide.md                            # guide DS — exploration, blueprint, export_to_prod
+├── mlops_dev_guide.md                     # guide MLOps dev — maintenance stack, CI/CD, debug
+└── mlops_prod_guide.md                    # guide opérateur prod — gates, drift, rollback, admin
 ```
 
 ---
@@ -1459,8 +1528,18 @@ cac_mlops/
 │  Gateway                   │  NGINX (rate limit 20r/min /predict)          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
-│                            │  13 deployments, process pool                 │
+│                            │  14 deployments, process pool                 │
 │                            │  Gate manuelle : pause_flow_run() natif 3.x  │
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  3 triggers production     │  Trigger 1 : cron Prefect (nouvelle data)     │
+│                            │  Trigger 2 : push code → deploy.yml → Prefect │
+│                            │  Trigger 3 : DS blueprint → extract_blueprint  │
+│                            │              → update-model-flow → gate        │
+├────────────────────────────┼────────────────────────────────────────────────┤
+│  Blueprint DS              │  DS tagge run MLflow : export_to_prod=true    │
+│                            │  extract_blueprint.py lit le tag → écrit      │
+│                            │  config/model_params.yml (bind-mount rw)       │
+│                            │  train produit avec les nouveaux params        │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  CI/CD                     │  CI dans GitHub Actions (ci.yml + deploy.yml) │
 │                            │  CD dans Prefect (deploy-vps + deploy-kapsule)│

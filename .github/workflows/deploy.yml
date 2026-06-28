@@ -79,28 +79,84 @@ jobs:
             exit 1
           fi
 
-  # ── Job 2 : trigger deploy-vps-flow via Prefect (SSH) ──────────────────────
+  # ── Job 2 : git pull + docker compose pull/up + smoke test + Prefect (SSH) ───
   trigger-deploy:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Déclencher deploy-vps-flow sur Prefect
+      - name: Deploy sur VPS (pull + up + smoke + Prefect gate)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          command_timeout: 10m
           script: |
+            set -e
             export PATH=$PATH:/home/deploy/.local/bin
-            SHA_TAG="${{ env.SHA_TAG || github.sha }}"
+            DEPLOY_DIR="${{ secrets.DEPLOY_DIR }}"
+            SHA_TAG="${{ github.sha }}"
+            SHA_SHORT="${SHA_TAG::8}"
 
-            echo "==> Déclenchement deploy-vps-flow (SHA: ${SHA_TAG::8})"
-            docker compose \
-              -f ${{ secrets.DEPLOY_DIR }}/docker-compose.yml \
-              exec -T prefect-worker \
-              prefect deployment run \
-                'deploy-vps-flow/deploy-vps' \
-                --param "sha_tag=${SHA_TAG::8}" \
-            && echo "deploy-vps-flow déclenché ✓" \
-            || echo "::warning::Échec du déclenchement Prefect — relancer manuellement depuis l'UI"
+            cd "$DEPLOY_DIR"
+
+            # Login GHCR depuis le .env du VPS
+            GHCR_TOKEN=$(grep '^GHCR_TOKEN=' .env | cut -d= -f2- || true)
+            GHCR_USER=$(grep '^GHCR_USER=' .env | cut -d= -f2- || echo "jakatt")
+            if [ -n "$GHCR_TOKEN" ]; then
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            fi
+
+            # Tag images actuelles comme rollback avant tout changement
+            for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
+              docker tag "ghcr.io/jakatt/$img:latest" "ghcr.io/jakatt/$img:rollback" 2>/dev/null || true
+            done
+
+            # Pull code + nouvelles images depuis GHCR
+            git pull origin main
+            docker compose pull
+            docker compose up -d --remove-orphans
+
+            # Smoke test (90s max)
+            HEALTHY=false
+            for i in $(seq 1 18); do
+              if curl -sf http://localhost:8090/health >/dev/null 2>&1; then
+                HEALTHY=true
+                echo "  Stack healthy après $((i * 5))s"
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$HEALTHY" = "false" ]; then
+              echo "::error::Smoke test échoué après 90s — rollback images :rollback"
+              for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
+                docker tag "ghcr.io/jakatt/$img:rollback" "ghcr.io/jakatt/$img:latest" 2>/dev/null || true
+              done
+              docker compose up -d
+              exit 1
+            fi
+
+            # Détecter si les fichiers blueprint/modèle ont changé (trigger 3)
+            BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
+              | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
+
+            if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
+              echo "==> Blueprint modifié — extraction depuis MLflow explore + train"
+              docker compose exec -T prefect-worker \
+                python src/scripts/extract_blueprint.py || true
+              docker compose exec -T prefect-worker \
+                prefect deployment run 'update-model-flow/update-model' \
+                  --param "sha_tag=${SHA_SHORT}" \
+              && echo "update-model-flow déclenché ✓" \
+              || echo "::warning::update-model-flow non déclenché — relancer depuis Prefect UI"
+            else
+              echo "==> Déploiement code seul (SHA: ${SHA_SHORT})"
+              docker compose exec -T prefect-worker \
+                prefect deployment run \
+                  'deploy-vps-flow/deploy-vps' \
+                  --param "sha_tag=${SHA_SHORT}" \
+              && echo "deploy-vps-flow déclenché ✓" \
+              || echo "::warning::Échec du déclenchement Prefect — relancer manuellement depuis l'UI"
+            fi

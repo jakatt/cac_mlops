@@ -62,6 +62,16 @@ deployments:
         timezone: "Europe/Paris"
         active: true
 
+  # ── Update model — Trigger 3 : nouveau blueprint DS (deploy.yml détecte le changement)
+  # Extract blueprint MLflow explore → train → gate → promote si meilleur que @Production
+  - name: update-model
+    entrypoint: src/flows/update_model_flow.py:update_model_flow
+    work_pool:
+      name: default-process-pool
+    parameters:
+      year: 2023
+      cumul: true
+
   # ── Deploy VPS — déclenché par GitHub Actions (CI) ou manuellement ───────────
   # Avec champion/metrics/year : annual update (promote après gate).
   # Sans ces params : deploy code seul (gate avant Kapsule uniquement).
