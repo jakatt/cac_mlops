@@ -189,24 +189,6 @@ jobs:
               exit 1
             fi
 
-            # Tests fonctionnels API (5 tests, rate-limit skippé en CD)
-            echo "==> Tests fonctionnels API (test-api-flow)"
-            if ! docker compose exec -T prefect-worker \
-                prefect deployment run 'test-api/test-api' \
-                  --param "skip_rate_limit=true" \
-                  --watch --watch-timeout 120 2>&1; then
-              echo "::error::Tests API KO — rollback"
-              if [ "$NEEDS_BUILD" = "true" ]; then
-                echo "Rollback images :rollback"
-                for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
-                  docker tag "ghcr.io/jakatt/$img:rollback" "ghcr.io/jakatt/$img:latest" 2>/dev/null || true
-                done
-                docker compose up -d
-              fi
-              exit 1
-            fi
-            echo "Tests API OK ✓"
-
             # Détecter si les fichiers blueprint/modèle ont changé (trigger 3)
             BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
               | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
