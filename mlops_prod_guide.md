@@ -70,9 +70,6 @@ Si `check-new-data-flow` n'a pas détecté automatiquement une nouvelle année (
 
 ```bash
 # Déclencher manuellement depuis Prefect UI : Deployments → check-new-data → Quick run
-# Ou depuis GitHub Actions
-gh workflow run train.yml --ref main \
-  -f year=2024 -f cumul=true -f promote=true
 ```
 
 Si l'email d'alerte indique "< 4/4 fichiers matchés" : consulter data.gouv.fr manuellement et déclencher l'ETL avec les URLs explicites via Prefect UI.
@@ -95,7 +92,7 @@ Seuils de dérive des features :
 | 10–25 % | WARNING | Email d'alerte — surveiller l'évolution |
 | > 25 % | CRITICAL | Email d'alerte — planifier le prochain cycle annuel manuellement |
 
-Aucun réentraînement automatique sur drift : les labels N+1 sont indisponibles (ONISR publie avec ~2 ans de délai). Réentraîner sur les mêmes données produirait un modèle identique. Le drift est un signal pour décider quand déclencher le prochain cycle via `check-new-data-flow` ou `train.yml`.
+Aucun réentraînement automatique sur drift : les labels N+1 sont indisponibles (ONISR publie avec ~2 ans de délai). Réentraîner sur les mêmes données produirait un modèle identique. Le drift est un signal pour décider quand déclencher le prochain cycle via `check-new-data-flow` (Prefect UI).
 
 ---
 
@@ -207,5 +204,5 @@ Pour repartir de zéro (après incident ou pour démonstration) :
 | Email Grafana "DatasourceError" | Prometheus scrape KO | Vérifier que prometheus scrape l'API sur `:8000/metrics` |
 | `check-new-data` re-trigger chaque semaine | `data/raw/{year}/` absent | Vérifier que le téléchargement ETL a bien eu lieu |
 | Gradio onglet Modèles → 403 | MLflow allowed-hosts incomplet | Vérifier `--allowed-hosts` dans docker-compose.yml commande mlflow |
-| Drift CRITICAL email reçu | Dérive > 25 % — alerte seulement | Planifier manuellement le prochain cycle via Prefect UI ou `train.yml` |
+| Drift CRITICAL email reçu | Dérive > 25 % — alerte seulement | Planifier manuellement le prochain cycle via Prefect UI (`check-new-data`) |
 | NVMe > 70 % | Accumulation Docker layers / logs | Lancer `cleanup.yml` manuellement (GitHub Actions) |

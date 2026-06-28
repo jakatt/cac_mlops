@@ -537,17 +537,17 @@ Personne ne le sait
 ║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster               ║
 ║                      ║  │ prefect-worker  image api + kubectl+scw+docker│  ║  state/kapsule_ips (VPS)   ║
 ║                      ║  │                                             │   ║  lu par Gradio onglet Infra ║
-║                      ║  │ ML / ETL  : etl · train · retrain-annual   │   ║                            ║
+║                      ║  │ ML / ETL  : etl · train · full-retrain     │   ║                            ║
 ║                      ║  │             drift-check · check-new-data    │   ╠════════════════════════════╣
 ║                      ║  │             full-retrain · reset            │   ║  PARTAGÉ                   ║
 ║                      ║  │ CD        : deploy-vps · deploy-kapsule     │   ║                            ║
 ║                      ║  │             update-model (trigger 3 DS)     │   ║                            ║
 ║                      ║  │ Infra/Ops : kapsule-up · kapsule-down       │   ║  GitHub (jakatt/cac_mlops) ║
-║                      ║  │             test-api · diag                 │   ║  7 workflows CI/CD :       ║
-║                      ║  └─────────────────────────────────────────────┘   ║  ci · deploy · train       ║
-║                      ║                                                     ║  ci · deploy · train       ║
-║                      ║  MONITORING                                         ║  promote · drift           ║
-║                      ║  ┌─────────────────────────────────────────────┐   ║  benchmark · cleanup       ║
+║                      ║  │             test-api · diag                 │   ║  3 workflows CI/CD :       ║
+║                      ║  └─────────────────────────────────────────────┘   ║  ci · deploy · cleanup     ║
+║                      ║                                                     ║                            ║
+║                      ║  MONITORING                                         ║                            ║
+║                      ║  ┌─────────────────────────────────────────────┐   ║                            ║
 ║                      ║  │ Prometheus scrape :                         │   ║                            ║
 ║                      ║  │   api:8000/metrics  → req, latence, drift   │   ║  GHCR (ghcr.io/jakatt/)   ║
 ║                      ║  │   node-exporter:9100 → CPU/RAM/disk         │   ║  api · mlflow · gradio     ║
@@ -910,7 +910,6 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   ─────────────────────────────────────────
   etl            → etl_flow.py              : download data.gouv.fr + preprocessing
   train          → train_flow.py            : benchmark RF/XGBoost/LGBM, retourne dict metrics
-  retrain-annual → retrain_flow.py          : réentraînement annuel
   drift-check    → drift_monitoring_flow.py : drift annuel Evidently + alerte email (pas de retrain auto)
   full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
   reset          → reset_flow.py            : vide predictions + rapports drift
@@ -1128,28 +1127,6 @@ deploy.yml — push/merge dans main
        → BLUEPRINT_CHANGED > 0 : prefect run update-model-flow/update-model (Trigger 3)
        → Sinon : prefect run deploy-vps-flow/deploy-vps --param sha_tag=${SHA_TAG::8}  (Trigger 2)
 
-promote.yml — workflow_dispatch (version, model_name)  [override manuel]
-  Utilisé pour forcer une promotion hors du cycle normal (la promotion normale
-  passe par deploy-vps-flow après la gate manuelle Prefect).
-  1. Sauvegarde version @Production actuelle (pour rollback)
-  2. Set alias @Production → version demandée
-  3. docker compose restart api + attente model_loaded:true (60s max)
-  4. Tests intégration (4 tests sur API VPS) :
-       - POST /token → JWT valide
-       - POST /predict (payload valide) → 200 + prediction in {0,1}
-       - POST /predict (sans token)     → 401
-       - POST /predict (payload incomplet) → 422
-  5. Si tests KO → rollback alias MLflow vers version précédente + restart api
-  6. Si tests OK → upload modèle S3 (Kapsule) + rolling restart K8s
-
-drift.yml — workflow_dispatch (year)
-  Déclenche le flow Prefect drift-check via SSH pour un mois donné
-  Prérequis : prédictions déjà en base (simulate_production ou trafic réel)
-
-benchmark.yml — workflow_dispatch
-  9 entraînements séquentiels : 3 algos × 3 configs d'années (timeout 3h)
-  Aucune promotion automatique — opérateur promeut manuellement le champion
-
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
@@ -1328,7 +1305,7 @@ git add src/ config/           # ne jamais ajouter data/
 git commit -m "feat: ..."
 dvc push                       # pousse données si modifiées
 git push origin <branche>
-# Quand prêt : PR → main → deploy automatique → train.yml si besoin
+# Quand prêt : PR → main → deploy automatique
 ```
 
 ### Cycle d'ajout d'une nouvelle année ONISR
@@ -1377,11 +1354,7 @@ cac_mlops/
 │   └── workflows/
 │       ├── ci.yml                         # lint + pytest → bloque PR si ✗
 │       ├── deploy.yml                     # build images → push ghcr.io → SSH deploy
-│       ├── train.yml                      # pipeline ETL+train+validate (workflow_dispatch)
-│       ├── promote.yml                    # force-promote version → @Production
-│       ├── drift.yml                      # déclenche flow Prefect drift-check via SSH
-│       ├── benchmark.yml                  # 9 entraînements 3 algos × 3 configs (3h)
-│       └── cleanup.yml                    # nettoyage runs GitHub Actions anciens
+│       └── cleanup.yml                    # nettoyage NVMe VPS (cron dimanche 03h)
 │
 ├── data/                                  # ignoré par Git, géré par DVC
 │   ├── raw/
@@ -1440,7 +1413,6 @@ cac_mlops/
 │   └── flows/
 │       ├── etl_flow.py                    # download + validate + preprocess (paramètre urls optionnel)
 │       ├── train_flow.py                  # benchmark 3 algos + select champion, retourne dict metrics
-│       ├── retrain_flow.py                # réentraînement annuel (1 algo)
 │       ├── drift_monitoring_flow.py       # drift check annuel + alerte email (pas de retrain auto)
 │       ├── full_retrain_flow.py           # tous les cycles depuis zéro
 │       ├── reset_flow.py                  # vide predictions + rapports drift

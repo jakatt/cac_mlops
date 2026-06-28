@@ -71,10 +71,6 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 |---|---|---|
 | `ci.yml` | push/PR → `main`, branche `jacques` | Tests unitaires + intégration |
 | `deploy.yml` | push → `main` | Build images → VPS pull/up → smoke test → déclenche `deploy-vps-flow` (Prefect) |
-| `train.yml` | `workflow_dispatch` | Déclenche `train-flow` manuellement |
-| `drift.yml` | `workflow_dispatch` | Déclenche `drift-check` manuellement |
-| `promote.yml` | `workflow_dispatch` | Promote une version MLflow spécifique |
-| `benchmark.yml` | `workflow_dispatch` | Benchmark ponctuel |
 | `cleanup.yml` | cron dimanche 3h UTC | Nettoyage NVMe (docker prune, logs) |
 
 ### Secrets GitHub requis
@@ -126,7 +122,6 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all
 | `etl` | `etl_flow` | manuel / chaîné |
 | `train` | `train_flow` | manuel / chaîné |
 | `update-model` | `update_model_flow` | deploy.yml trigger 3 |
-| `retrain-annual` | `retrain_flow` | manuel |
 | `deploy-vps` | `deploy_vps_flow` | deploy.yml trigger 2 |
 | `drift-check` | `drift_monitoring_flow` | manuel / fin de retrain |
 | `full-retrain` | `full_retrain_flow` | manuel (init complète) |

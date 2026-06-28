@@ -30,19 +30,7 @@ deployments:
       cumul: true
       promote: true
 
-  # ── Retrain annuel — déclenché manuellement quand les données ONISR de l'année N
-  # sont disponibles (~juin de l'année N+2). Pas de cron : réentraîner sur les
-  # mêmes données produirait un modèle identique.
-  - name: retrain-annual
-    entrypoint: src/flows/retrain_flow.py:retrain_flow
-    work_pool:
-      name: default-process-pool
-    parameters:
-      year: 2023
-      cumul: true
-
-  # ── Drift — déclenché manuellement après simulate_production.py
-  # (ou via train.yml qui gère simulation + drift en une passe)
+  # ── Drift — déclenché manuellement depuis Prefect UI ou cockpit Gradio
   - name: drift-check
     entrypoint: src/flows/drift_monitoring_flow.py:drift_monitoring_flow
     work_pool:
