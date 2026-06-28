@@ -103,13 +103,14 @@ Ouvre une PR vers `main`. Le MLOps lead review et merge.
 
 ### Ce qui se passe automatiquement après merge
 
-`deploy.yml` détecte que `src/models/`, `src/features/` ou `config/model_params.yml` ont changé et déclenche :
+`deploy.yml` détecte que `src/models/`, `src/features/` ou `config/model_params.yml` ont changé et déclenche `update-model-flow` qui :
 
-1. `extract_blueprint.py` → lit le run tagué `export_to_prod=true` → écrit `config/model_params.yml`
-2. `update-model-flow` → entraîne les 3 algos avec le nouveau blueprint sur données prod
-3. Comparaison vs `@Production` (si le nouveau modèle n'est pas meilleur → @Production inchangé)
-4. Gate manuelle dans Prefect UI (MLOps lead valide)
-5. Promote `@Production` + restart API si validé
+1. Sauvegarde `config/model_params.yml` courant
+2. Lit le run tagué `export_to_prod=true` → écrit `config/model_params.yml` avec tes hyperparamètres
+3. Entraîne les 3 algos avec ce nouveau blueprint sur données prod
+4. Compare vs `@Production` :
+   - **Meilleur** → `config/model_params.yml` conservé (tes params sont adoptés) + gate manuelle Prefect UI + promote `@Production` + restart API
+   - **Pas meilleur** → `config/model_params.yml` restauré à son état précédent + email de notification
 
 **Si aucun run n'est tagué** `export_to_prod=true` : le pipeline s'entraîne avec les params actuels de `config/model_params.yml` (utile si seul le code de feature engineering a changé).
 

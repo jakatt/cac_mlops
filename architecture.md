@@ -1125,7 +1125,7 @@ deploy.yml — push/merge dans main
        → KO : restore :rollback + docker compose up -d + exit 1
     6. Détection trigger 2 vs trigger 3 :
        BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -cE '^(src/models/|src/features/|config/model_params\.yml)')
-       → BLUEPRINT_CHANGED > 0 : extract_blueprint.py + prefect run update-model-flow/update-model (Trigger 3)
+       → BLUEPRINT_CHANGED > 0 : prefect run update-model-flow/update-model (Trigger 3)
        → Sinon : prefect run deploy-vps-flow/deploy-vps --param sha_tag=${SHA_TAG::8}  (Trigger 2)
 
 promote.yml — workflow_dispatch (version, model_name)  [override manuel]
@@ -1213,13 +1213,14 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║    DS tagge run champion : mlflow set_tag("export_to_prod", "true")             │  │  ║
 ║    PR vers main : src/models/ ou src/features/ ou config/model_params.yml       │  │  ║
 ║  [deploy.yml — JOB 2 — SSH VPS — détection BLUEPRINT_CHANGED > 0]              │  │  ║
-║    extract_blueprint.py → lit run tagué → écrit config/model_params.yml         │  │  ║
 ║    → prefect run update-model-flow/update-model                                 │  │  ║
 ║  [update-model-flow]                                                            │  │  ║
-║    1. extract_blueprint_task() (bind-mount config/ rw)                          │  │  ║
-║    2. train_flow(year, cumul, promote=False)                                    │  │  ║
-║    3. → Pas de champion : send_alert() + stop                                   │  │  ║
-║    4. → Champion : deploy-vps-flow(champion, run_ids, ...) ─────────────────── ┘  │  ║
+║    1. Backup config/model_params.yml courant                                    │  │  ║
+║    2. extract_blueprint_task() → lit run tagué → écrit config/model_params.yml  │  │  ║
+║    3. train_flow(year, cumul, promote=False)                                    │  │  ║
+║    4a. → Pas de champion : restaurer backup + send_alert DS + stop              │  │  ║
+║    4b. → Champion : garder config/model_params.yml (params DS gagnants)         │  │  ║
+║         deploy-vps-flow(champion, run_ids, ...) ────────────────────────────── ┘  │  ║
 ║                                                                                    │  ║
 ╠════════════════════════════════════════════════════════════════════════════════════╪══╣
 ║                                                                                    │  ║
@@ -1287,9 +1288,9 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | Tag champion | DS tagge run MLflow : `export_to_prod=true` | MLflow client API | DS — action manuelle |
 | CI + merge | PR avec `src/models/` ou `config/model_params.yml` | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
 | Détection | `git diff HEAD~1` détecte fichiers model/features/config | SSH script | `deploy.yml` JOB 2 |
-| Extract blueprint | Lit run tagué → écrit `config/model_params.yml` | `src/scripts/extract_blueprint.py` | `deploy.yml` JOB 2 |
+| Extract blueprint | Backup config actuel + lit run tagué → écrit `config/model_params.yml` | `src/scripts/extract_blueprint.py` | `update-model-flow` |
 | Entraînement | Benchmark 3 algos avec nouveaux hyperparamètres | `src/models/train_model.py` | `update-model-flow` |
-| Sélection | Compare vs @Production — stop + email si pas meilleur | `src/models/validate_model.py` | `update-model-flow` |
+| Sélection | Compare vs @Production — si pas meilleur : restaure config + email DS | `src/models/validate_model.py` | `update-model-flow` |
 | Gate manuelle | Opérateur valide si champion trouvé | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
 | Promote | @Production + restart API + rolling update Kapsule | MLflow Registry | `deploy-vps-flow` + `deploy-kapsule-flow` |
 
@@ -1537,9 +1538,10 @@ cac_mlops/
 │                            │              → update-model-flow → gate        │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Blueprint DS              │  DS tagge run MLflow : export_to_prod=true    │
-│                            │  extract_blueprint.py lit le tag → écrit      │
-│                            │  config/model_params.yml (bind-mount rw)       │
-│                            │  train produit avec les nouveaux params        │
+│                            │  update-model-flow : backup config → extract  │
+│                            │  → train → si champion : garder config (params│
+│                            │  DS gagnants) ; sinon : restaurer config +    │
+│                            │  notifier DS                                  │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  CI/CD                     │  CI dans GitHub Actions (ci.yml + deploy.yml) │
 │                            │  CD dans Prefect (deploy-vps + deploy-kapsule)│
