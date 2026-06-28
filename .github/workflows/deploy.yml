@@ -20,8 +20,39 @@ permissions:
 
 jobs:
 
-  # ── Job 1 : build et push des images vers ghcr.io ──────────────────────────
+  # ── Job 0 : détecter si les images Docker doivent être rebuildées ──────────
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      needs_build: ${{ steps.check.outputs.needs_build }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Vérifier si Dockerfiles / requirements ont changé
+        id: check
+        run: |
+          # workflow_dispatch force toujours le build
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+            echo "Build forcé (workflow_dispatch)"
+            exit 0
+          fi
+          CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
+            | grep -cE '^(services/.+/Dockerfile|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
+          if [ "${CHANGED:-0}" -gt 0 ]; then
+            echo "needs_build=true" >> $GITHUB_OUTPUT
+            echo "Dockerfiles/requirements modifiés → build complet"
+          else
+            echo "needs_build=false" >> $GITHUB_OUTPUT
+            echo "Pas de changement Dockerfile/requirements → skip build"
+          fi
+
+  # ── Job 1 : build et push des images (seulement si Dockerfile a changé) ───
   build:
+    needs: check-changes
+    if: needs.check-changes.outputs.needs_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -79,9 +110,10 @@ jobs:
             exit 1
           fi
 
-  # ── Job 2 : git pull + docker compose pull/up + smoke test + Prefect (SSH) ───
+  # ── Job 2 : git pull + docker compose up + smoke test + Prefect (SSH) ──────
   trigger-deploy:
-    needs: build
+    needs: [check-changes, build]
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
 
     steps:
@@ -91,39 +123,47 @@ jobs:
           host:     ${{ secrets.SCALEWAY_HOST }}
           username: ${{ secrets.SCALEWAY_USER }}
           key:      ${{ secrets.SCALEWAY_SSH_KEY }}
-          command_timeout: 10m
+          command_timeout: 20m
           script: |
             set -e
             export PATH=$PATH:/home/deploy/.local/bin
             DEPLOY_DIR="${{ secrets.DEPLOY_DIR }}"
             SHA_TAG="${{ github.sha }}"
             SHA_SHORT="${SHA_TAG::8}"
+            NEEDS_BUILD="${{ needs.check-changes.outputs.needs_build }}"
 
             cd "$DEPLOY_DIR"
-
-            # Login GHCR depuis le .env du VPS
-            GHCR_TOKEN=$(grep '^GHCR_TOKEN=' .env | cut -d= -f2- || true)
-            GHCR_USER=$(grep '^GHCR_USER=' .env | cut -d= -f2- || echo "jakatt")
-            if [ -n "$GHCR_TOKEN" ]; then
-              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            fi
-
-            # Tag images actuelles comme rollback avant tout changement
-            for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
-              docker tag "ghcr.io/jakatt/$img:latest" "ghcr.io/jakatt/$img:rollback" 2>/dev/null || true
-            done
 
             # Pull code — stash les éventuels fichiers SCP'd locaux avant merge
             git stash --include-untracked || true
             git pull origin main
-            docker compose pull
+
+            if [ "$NEEDS_BUILD" = "true" ]; then
+              # Login GHCR depuis le .env du VPS
+              GHCR_TOKEN=$(grep '^GHCR_TOKEN=' .env | cut -d= -f2- || true)
+              GHCR_USER=$(grep '^GHCR_USER=' .env | cut -d= -f2- || echo "jakatt")
+              if [ -n "$GHCR_TOKEN" ]; then
+                echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+              fi
+
+              # Tag images actuelles comme rollback avant tout changement
+              for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
+                docker tag "ghcr.io/jakatt/$img:latest" "ghcr.io/jakatt/$img:rollback" 2>/dev/null || true
+              done
+
+              echo "==> Build détecté — pull nouvelles images GHCR"
+              docker compose pull
+            else
+              echo "==> Pas de build — images existantes conservées"
+            fi
+
             docker compose up -d --remove-orphans
             # Force nginx à re-résoudre le DNS après recréation des conteneurs
             docker compose restart nginx
 
-            # Smoke test (90s max)
+            # Smoke test (120s max — API charge le modèle MLflow au démarrage)
             HEALTHY=false
-            for i in $(seq 1 18); do
+            for i in $(seq 1 24); do
               if curl -sf http://localhost:8090/health >/dev/null 2>&1; then
                 HEALTHY=true
                 echo "  Stack healthy après $((i * 5))s"
@@ -133,11 +173,14 @@ jobs:
             done
 
             if [ "$HEALTHY" = "false" ]; then
-              echo "::error::Smoke test échoué après 90s — rollback images :rollback"
-              for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
-                docker tag "ghcr.io/jakatt/$img:rollback" "ghcr.io/jakatt/$img:latest" 2>/dev/null || true
-              done
-              docker compose up -d
+              echo "::error::Smoke test échoué après 120s — stack non opérationnelle"
+              if [ "$NEEDS_BUILD" = "true" ]; then
+                echo "Rollback images :rollback"
+                for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
+                  docker tag "ghcr.io/jakatt/$img:rollback" "ghcr.io/jakatt/$img:latest" 2>/dev/null || true
+                done
+                docker compose up -d
+              fi
               exit 1
             fi
 
