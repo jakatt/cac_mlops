@@ -189,7 +189,7 @@ jobs:
             if ! docker compose exec -T prefect-worker \
                 prefect deployment run 'test-api/test-api' \
                   --param "skip_rate_limit=true" \
-                  --watch --timeout 120 2>&1; then
+                  --watch --watch-timeout 120 2>&1; then
               echo "::error::Tests API KO — rollback"
               if [ "$NEEDS_BUILD" = "true" ]; then
                 echo "Rollback images :rollback"
