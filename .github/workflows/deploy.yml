@@ -118,6 +118,8 @@ jobs:
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
+            # Force nginx à re-résoudre le DNS après recréation des conteneurs
+            docker compose restart nginx
 
             # Smoke test (90s max)
             HEALTHY=false
