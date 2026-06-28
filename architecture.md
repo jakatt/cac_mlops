@@ -1153,9 +1153,10 @@ benchmark.yml — workflow_dispatch
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
-NOTE CD  : le déploiement effectif (smoke test + gate + promote) est géré par Prefect :
+NOTE CD  : le déploiement effectif (gate + promote) est géré par Prefect :
            deploy-vps-flow (gate manuelle pause_flow_run) + deploy-kapsule-flow (automatique)
-           GitHub Actions deploy.yml JOB 2 gère : git pull, compose up, smoke test, rollback, détection trigger.
+           GitHub Actions deploy.yml JOB 2 gère : git pull, compose up, smoke test,
+           test-api (5 tests fonctionnels + rollback auto si KO), détection trigger.
 
 NOTE Prefect : kapsule-up · kapsule-down · test-api · diag déclenchables
                depuis le cockpit Gradio onglet Pipeline.
@@ -1275,7 +1276,8 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | Build images | 3 images Docker → GHCR :latest + :sha-8chrs | `services/*/Dockerfile` | `deploy.yml` JOB 1 |
 | Scan CVE | Trivy CRITICAL sur 3 images — bloque si CRITICAL | `.trivyignore` | `deploy.yml` JOB 1 |
 | VPS pull | Login GHCR · tag :rollback · git pull · compose up | SSH script | `deploy.yml` JOB 2 |
-| Smoke test | GET /health retry 18×5s — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
+| Smoke test | GET /health retry 24×5s — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
+| Tests API | 5 tests fonctionnels (health, JWT, 401, predict, what-if vitesse) — rollback auto si KO | `src/flows/test_api_flow.py` | `deploy.yml` JOB 2 |
 | Détection | `git diff HEAD~1` → pas de blueprint changé → trigger 2 | SSH script | `deploy.yml` JOB 2 |
 | Gate manuelle | Opérateur confirme déploiement sain dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
 | Kapsule | Rolling update pods K8s (si cluster actif) | `kubectl` | `deploy-kapsule-flow` |
