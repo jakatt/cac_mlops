@@ -6,6 +6,11 @@ Triggered manually after simulate_production.py has populated the
 predictions table (or automatically at the end of the retrain pipeline).
 No cron schedule : drift is checked once per retrain cycle (annual),
 not monthly, since we have no real continuous production traffic.
+
+On drift CRITICAL : alert email only. Retraining is NOT triggered
+automatically — labels N+1 are unavailable (ONISR publishes with ~2yr
+delay), so retraining on the same data produces an identical model.
+Drift is an early warning for the next annual cycle.
 """
 import json
 import logging
@@ -48,40 +53,17 @@ def check_threshold_task(summary: dict) -> str:
     return level
 
 
-def _trigger_retrain(year: str) -> None:
-    """Déclenche retrain-annual via l'API Prefect REST."""
-    import os
-    import requests as _req
-    api_url = os.getenv("PREFECT_API_URL", "http://prefect-server:4200/api")
-    try:
-        r = _req.post(
-            f"{api_url}/deployments/filter",
-            json={"deployments": {"name": {"any_": ["retrain-annual"]}}},
-            timeout=5,
-        )
-        deps = r.json()
-        if not deps:
-            logger.warning("Deployment 'retrain-annual' introuvable — relancer manuellement")
-            return
-        dep_id = deps[0]["id"]
-        _req.post(
-            f"{api_url}/deployments/{dep_id}/create_flow_run",
-            json={"parameters": {"year": int(year), "cumul": True}},
-            timeout=5,
-        )
-        logger.info("retrain-annual déclenché pour year=%s", year)
-    except Exception as exc:
-        logger.warning("Impossible de déclencher retrain-annual : %s", exc)
-
-
 @flow(name="drift-monitoring-flow", flow_run_name="drift-{year}", log_prints=True)
 def drift_monitoring_flow(year: str | None = None) -> dict:
     """
     Annual drift detection:
     1. Fetch year's predictions from PostgreSQL
-    2. Compare with X_train 2021-2023 reference (Evidently)
-    3. Alert email sur WARNING/CRITICAL
-    4. CRITICAL → déclenche retrain-annual automatiquement
+    2. Compare with X_train reference (Evidently)
+    3. Alert email sur WARNING / CRITICAL
+
+    Aucun réentraînement automatique : les labels N+1 sont indisponibles
+    (ONISR publie avec ~2 ans de délai). Le drift est un signal pour
+    planifier manuellement le prochain cycle annuel.
 
     Returns summary dict with drift metrics.
     """
@@ -101,14 +83,14 @@ def drift_monitoring_flow(year: str | None = None) -> dict:
     )
 
     if level == "CRITICAL":
-        logger.warning("CRITICAL drift detected — déclenchement retrain-annual")
+        logger.warning("CRITICAL drift detected — alerte envoyée, action manuelle requise")
         send_alert(
-            f"Drift CRITICAL {year} — réentraînement automatique déclenché",
+            f"Drift CRITICAL {year} — action manuelle requise",
             f"Dérive critique détectée sur les prédictions de production.\n\n"
-            f"{drift_info}\n\nUn retrain-annual a été déclenché automatiquement.\n"
-            f"Validez la gate dans Prefect UI pour promouvoir le nouveau modèle.",
+            f"{drift_info}\n\n"
+            f"Action : quand les données ONISR de l'année N seront disponibles,\n"
+            f"déclencher manuellement le cycle annuel via Prefect UI ou train.yml.",
         )
-        _trigger_retrain(year)
 
     elif level == "WARNING":
         logger.warning("WARNING drift detected — monitoring conseillé")

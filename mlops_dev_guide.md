@@ -126,7 +126,7 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all
 | `etl` | `etl_flow` | manuel / chaîné |
 | `train` | `train_flow` | manuel / chaîné |
 | `update-model` | `update_model_flow` | deploy.yml trigger 3 |
-| `retrain-annual` | `retrain_flow` | manuel / drift CRITICAL |
+| `retrain-annual` | `retrain_flow` | manuel |
 | `deploy-vps` | `deploy_vps_flow` | deploy.yml trigger 2 |
 | `drift-check` | `drift_monitoring_flow` | manuel / fin de retrain |
 | `full-retrain` | `full_retrain_flow` | manuel (init complète) |

@@ -911,7 +911,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   etl            → etl_flow.py              : download data.gouv.fr + preprocessing
   train          → train_flow.py            : benchmark RF/XGBoost/LGBM, retourne dict metrics
   retrain-annual → retrain_flow.py          : réentraînement annuel
-  drift-check    → drift_monitoring_flow.py : drift mensuel Evidently + retrain auto si CRITICAL
+  drift-check    → drift_monitoring_flow.py : drift annuel Evidently + alerte email (pas de retrain auto)
   full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
   reset          → reset_flow.py            : vide predictions + rapports drift
   check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h)
@@ -1433,7 +1433,7 @@ cac_mlops/
 │       ├── etl_flow.py                    # download + validate + preprocess (paramètre urls optionnel)
 │       ├── train_flow.py                  # benchmark 3 algos + select champion, retourne dict metrics
 │       ├── retrain_flow.py                # réentraînement annuel (1 algo)
-│       ├── drift_monitoring_flow.py       # drift check mensuel + retrain auto si CRITICAL
+│       ├── drift_monitoring_flow.py       # drift check annuel + alerte email (pas de retrain auto)
 │       ├── full_retrain_flow.py           # tous les cycles depuis zéro
 │       ├── reset_flow.py                  # vide predictions + rapports drift
 │       ├── check_new_data_flow.py         # détection ONISR → ETL → train → deploy (hebdo lundi 8h)

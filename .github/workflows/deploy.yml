@@ -113,7 +113,8 @@ jobs:
               docker tag "ghcr.io/jakatt/$img:latest" "ghcr.io/jakatt/$img:rollback" 2>/dev/null || true
             done
 
-            # Pull code + nouvelles images depuis GHCR
+            # Pull code — stash les éventuels fichiers SCP'd locaux avant merge
+            git stash --include-untracked || true
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
