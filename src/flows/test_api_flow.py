@@ -120,27 +120,39 @@ def test_rate_limit(token: str) -> str:
 
 
 @flow(name="test-api", log_prints=True)
-def test_api_flow() -> dict[str, str]:
+def test_api_flow(skip_rate_limit: bool = False) -> dict[str, str]:
     """
-    6 tests de l'API publique via nginx :
+    Tests fonctionnels de l'API via nginx.
+
+    skip_rate_limit=True en CD pour éviter de saturer nginx sur la prod.
+    Laisser False pour un test manuel complet (6 tests).
+
+    Toujours exécutés (1-5) :
       1. health check
       2. obtention d'un token JWT
       3. 401 sans token
       4. 200 avec token
       5. What-If vitesse : proba(vma=130) > proba(vma=110) (cohérence métier)
-      6. 429 rate-limit après 22 requêtes
+
+    Optionnel (6) :
+      6. 429 rate-limit après 22 requêtes (skip si skip_rate_limit=True)
     """
     health    = test_health()
     token     = test_token()
     no_auth   = test_no_auth()
     with_auth = test_with_auth(token)
     whatif    = test_whatif_speed(token)
-    rate      = test_rate_limit(token)
-    return {
-        "health":     health,
-        "token":      "OK",
-        "no_auth":    no_auth,
-        "with_auth":  with_auth,
+
+    results = {
+        "health":       health,
+        "token":        "OK",
+        "no_auth":      no_auth,
+        "with_auth":    with_auth,
         "whatif_speed": whatif,
-        "rate_limit": rate,
+        "rate_limit":   "skipped (CD mode)",
     }
+
+    if not skip_rate_limit:
+        results["rate_limit"] = test_rate_limit(token)
+
+    return results
