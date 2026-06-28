@@ -1,9 +1,13 @@
 """
-Deploy VPS flow — smoke test + gate manuelle + promote MLflow + deploy Kapsule.
+Deploy VPS flow — smoke test + gate manuelle + promote MLflow + test-api + deploy Kapsule.
 
 Depuis correctif 5 : git pull / docker compose pull / up sont gérés par le
 script SSH de deploy.yml (côté HOST) avant que ce flow soit déclenché.
-Ce flow ne fait plus que : smoke test → gate → promote (si annual) → Kapsule.
+Ce flow ne fait plus que :
+  smoke test → gate → promote (si nouveau modèle) → test-api → Kapsule (si OK)
+
+Rollback du promote si test-api KO (Triggers 1 & 3 uniquement).
+Kapsule n'est déclenché que si test-api OK.
 
 Deux modes d'appel :
   1. Depuis GitHub Actions (changement code) : sha_tag renseigné, pas de champion.
@@ -16,6 +20,7 @@ import time
 from prefect import flow, task, get_run_logger, pause_flow_run
 
 from src.flows.deploy_kapsule_flow import deploy_kapsule_flow
+from src.flows.test_api_flow import test_api_flow
 from src.flows.train_flow import promote_task
 from src.utils.email_utils import send_alert
 
@@ -27,7 +32,7 @@ logger = logging.getLogger(__name__)
 @task(name="smoke-test-health")
 def smoke_test_task(max_wait_s: int = 90) -> bool:
     log = get_run_logger()
-    import urllib.request, urllib.error
+    import urllib.request
     for i in range(max_wait_s // 5):
         try:
             urllib.request.urlopen(f"{NGINX_URL}/health", timeout=5)
@@ -69,6 +74,43 @@ def restart_api_task() -> None:
     log.warning("API healthcheck timeout — continuation")
 
 
+@task(name="get-current-production")
+def get_current_production_task(champion: str) -> dict | None:
+    """Sauvegarde @Production avant promote pour rollback si test-api KO."""
+    import mlflow
+    from src.models.train_model import MODEL_NAMES
+    client = mlflow.tracking.MlflowClient()
+    for model_name in MODEL_NAMES.values():
+        try:
+            mv = client.get_model_version_by_alias(model_name, "Production")
+            return {"model_name": model_name, "version": mv.version}
+        except Exception:
+            continue
+    return None
+
+
+@task(name="rollback-promote")
+def rollback_promote_task(previous: dict | None, champion: str) -> None:
+    """Restaure @Production vers la version précédente après échec test-api."""
+    import mlflow
+    from src.models.train_model import MODEL_NAMES
+    log = get_run_logger()
+    client = mlflow.tracking.MlflowClient()
+    new_model_name = MODEL_NAMES[champion]
+    try:
+        client.delete_registered_model_alias(new_model_name, "Production")
+        log.info("@Production supprimé de %s", new_model_name)
+    except Exception as exc:
+        log.warning("Suppression alias échouée (%s)", exc)
+    if previous:
+        client.set_registered_model_alias(
+            previous["model_name"], "Production", previous["version"]
+        )
+        log.info("@Production restauré → %s v%s", previous["model_name"], previous["version"])
+    else:
+        log.warning("Aucun @Production précédent à restaurer")
+
+
 @flow(name="deploy-vps-flow", log_prints=True)
 def deploy_vps_flow(
     champion: str | None = None,
@@ -78,11 +120,11 @@ def deploy_vps_flow(
     sha_tag: str = "",
 ) -> bool:
     """
-    Smoke test → gate manuelle → promote @Production (si annual update) → Kapsule.
+    smoke test → gate manuelle → promote @Production (si nouveau modèle)
+    → test-api (validation finale) → Kapsule (seulement si test-api OK).
 
-    Le pull des images et le git pull sont effectués par le script SSH de deploy.yml
-    avant l'appel à ce flow (trigger code). Pour le trigger données (check-new-data-flow),
-    aucune image ne change — seul le promote MLflow a lieu après la gate.
+    Triggers 1 & 3 : si test-api KO → rollback du promote + stop (pas de Kapsule).
+    Trigger 2 (code seul) : si test-api KO → stop (pas de Kapsule, pas de rollback modèle).
 
     champion / run_ids / metrics / year : renseignés par check-new-data-flow.
     sha_tag : SHA du commit buildé, passé par GitHub Actions.
@@ -96,7 +138,7 @@ def deploy_vps_flow(
         send_alert(
             "Deploy VPS — smoke test ÉCHOUÉ",
             f"Stack non opérationnelle.\nSHA: {sha_tag or 'N/A'}\n"
-            f"Vérifier les logs : docker compose logs api nginx",
+            "Vérifier les logs : docker compose logs api nginx",
         )
         return False
 
@@ -128,18 +170,37 @@ def deploy_vps_flow(
 
     pause_flow_run(timeout=86400)
 
-    # ── 3. Promote MLflow (uniquement si annual update) ───────────────────────
+    # ── 3. Promote MLflow (uniquement Triggers 1 & 3 — nouveau modèle) ────────
+    previous_production: dict | None = None
     if champion and run_ids:
+        previous_production = get_current_production_task(champion)
         log.info("Promotion @Production → %s", champion)
         promote_task(champion, run_ids)
         restart_api_task()
         log.info("API redémarrée avec le nouveau modèle @Production")
 
-    # ── 4. Deploy Kapsule (automatique après gate) ────────────────────────────
+    # ── 4. Test-api — validation finale en production ─────────────────────────
+    try:
+        test_api_flow(skip_rate_limit=True)
+        log.info("test-api OK ✓")
+    except Exception as exc:
+        log.error("test-api ÉCHOUÉ : %s", exc)
+        if champion and run_ids:
+            log.info("Rollback promote @Production...")
+            rollback_promote_task(previous_production, champion)
+            restart_api_task()
+        send_alert(
+            "Deploy VPS — test-api ÉCHOUÉ",
+            f"Tests fonctionnels KO après deploy.\nSHA: {sha_tag or 'N/A'}\nErreur: {exc}"
+            + ("\nPromote @Production annulé (rollback effectué)." if champion else ""),
+        )
+        return False
+
+    # ── 5. Deploy Kapsule (seulement si test-api OK) ──────────────────────────
     deploy_kapsule_flow()
 
     send_alert(
-        "Deploy VPS + Kapsule OK",
+        "Deploy VPS + Kapsule OK ✓",
         f"Deploy terminé avec succès.\nSHA: {sha_tag or 'N/A'}"
         + (f"\nModèle promu : {champion} (F1={metrics.get(champion, {}).get('f1', 0):.4f})"
            if champion else ""),
