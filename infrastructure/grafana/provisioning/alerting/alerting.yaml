@@ -40,6 +40,7 @@ groups:
             datasourceUid: "__expr__"
             model:
               type: threshold
+              expression: "A"
               conditions:
                 - evaluator:
                     params: [20]
@@ -79,6 +80,7 @@ groups:
             datasourceUid: "__expr__"
             model:
               type: threshold
+              expression: "A"
               conditions:
                 - evaluator:
                     params: [50]
@@ -118,6 +120,7 @@ groups:
             datasourceUid: "__expr__"
             model:
               type: threshold
+              expression: "A"
               conditions:
                 - evaluator:
                     params: [10]
@@ -157,6 +160,7 @@ groups:
             datasourceUid: "__expr__"
             model:
               type: threshold
+              expression: "A"
               conditions:
                 - evaluator:
                     params: [15]
