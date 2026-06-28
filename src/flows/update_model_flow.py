@@ -2,13 +2,15 @@
 Update model flow — Trigger 3 : nouveau blueprint DS.
 
 Chaîne : extract blueprint → train avec nouveaux hyperparamètres
-→ compare vs @Production → gate manuelle → promote si meilleur.
+→ compare vs @Production
+→ si meilleur  : promote @Production + config/model_params.yml conservé (params DS gagnants)
+→ si pas meilleur : config/model_params.yml restauré + notification DS
 
 Déclenché par deploy.yml quand src/models/, src/features/ ou
 config/model_params.yml changent lors d'un push → PR → merge main.
 """
 import logging
-import os
+from pathlib import Path
 
 from prefect import flow, task, get_run_logger
 
@@ -17,6 +19,8 @@ from src.flows.train_flow import train_flow
 from src.utils.email_utils import send_alert
 
 logger = logging.getLogger(__name__)
+
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "model_params.yml"
 
 
 @task(name="extract-blueprint-task")
@@ -41,34 +45,40 @@ def update_model_flow(
     """
     Trigger 3 — DS a poussé un nouveau blueprint vers MLflow explore.
 
-    1. Extrait les hyperparamètres du run tagué export_to_prod=true
-    2. Entraîne les 3 algos avec le nouveau blueprint sur données prod
-    3. Compare vs @Production (select_champion_task existant)
-    4. Gate manuelle si un champion est trouvé
-    5. Promote @Production + restart API + Kapsule
-
-    Si aucun run n'est tagué export_to_prod=true : entraîne avec les
-    params actuels de config/model_params.yml (utile si seul le code
-    de feature engineering a changé).
+    1. Backup config/model_params.yml courant
+    2. Extrait les hyperparamètres du run tagué export_to_prod=true
+    3. Entraîne les 3 algos avec le nouveau blueprint sur données prod
+    4a. Si meilleur que @Production : gate → promote + garder config/model_params.yml (params DS gagnants)
+    4b. Si pas meilleur : restaurer config/model_params.yml + notifier DS
     """
     log = get_run_logger()
+
+    # Backup avant extraction — restauré si le modèle DS ne bat pas @Production
+    config_backup: str | None = None
+    if CONFIG_PATH.exists():
+        config_backup = CONFIG_PATH.read_text()
 
     extract_blueprint_task()
 
     result = train_flow(year=year, cumul=cumul, promote=False)
 
     if result["champion"] is None:
+        # Restaurer le blueprint précédent — les params DS n'ont pas battu @Production
+        if config_backup is not None:
+            CONFIG_PATH.write_text(config_backup)
+            log.info("config/model_params.yml restauré (params DS non retenus)")
         msg = (
-            f"Nouveau blueprint testé (SHA: {sha_tag or 'N/A'}) "
+            f"Blueprint DS testé (SHA: {sha_tag or 'N/A'}) "
             f"— aucun algorithme ne dépasse @Production.\n"
-            f"Métriques : {result['metrics']}"
+            f"config/model_params.yml restauré. Métriques : {result['metrics']}"
         )
         log.warning(msg)
-        send_alert("Update modèle — aucun champion", msg)
+        send_alert("Update modèle — blueprint DS non retenu", msg)
         return False
 
+    # Champion trouvé → config/model_params.yml garde les params DS gagnants
     log.info(
-        "Champion identifié : %s — lancement gate manuelle",
+        "Champion identifié : %s — config/model_params.yml mis à jour avec les params DS",
         result["champion"],
     )
 

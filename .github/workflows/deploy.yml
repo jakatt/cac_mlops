@@ -143,9 +143,7 @@ jobs:
               | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
 
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
-              echo "==> Blueprint modifié — extraction depuis MLflow explore + train"
-              docker compose exec -T prefect-worker \
-                python src/scripts/extract_blueprint.py || true
+              echo "==> Blueprint DS modifié — déclenchement update-model-flow"
               docker compose exec -T prefect-worker \
                 prefect deployment run 'update-model-flow/update-model' \
                   --param "sha_tag=${SHA_SHORT}" \
