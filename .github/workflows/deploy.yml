@@ -113,10 +113,13 @@ jobs:
               docker tag "ghcr.io/jakatt/$img:latest" "ghcr.io/jakatt/$img:rollback" 2>/dev/null || true
             done
 
-            # Pull code + nouvelles images depuis GHCR
+            # Pull code — stash les éventuels fichiers SCP'd locaux avant merge
+            git stash --include-untracked || true
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
+            # Force nginx à re-résoudre le DNS après recréation des conteneurs
+            docker compose restart nginx
 
             # Smoke test (90s max)
             HEALTHY=false
@@ -143,9 +146,7 @@ jobs:
               | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
 
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
-              echo "==> Blueprint modifié — extraction depuis MLflow explore + train"
-              docker compose exec -T prefect-worker \
-                python src/scripts/extract_blueprint.py || true
+              echo "==> Blueprint DS modifié — déclenchement update-model-flow"
               docker compose exec -T prefect-worker \
                 prefect deployment run 'update-model-flow/update-model' \
                   --param "sha_tag=${SHA_SHORT}" \
