@@ -18,7 +18,6 @@ Full automation chain (nouvelle data → prod):
     → deploy-kapsule-flow()              — rolling update automatique si Kapsule actif
 """
 import logging
-import subprocess
 
 import requests
 from prefect import flow, task
@@ -32,14 +31,20 @@ _DATA_GOUV_API = f"https://www.data.gouv.fr/api/1/datasets/{_DATASET_ID}/"
 
 
 def _versioned_years() -> set[int]:
-    """Years already tracked in git DVC tags (data-v1 → 2021, data-v2 → 2022, ...)."""
-    try:
-        r = subprocess.run(["git", "tag", "-l", "data-v*"], capture_output=True, text=True)
-        tags = sorted(t for t in r.stdout.strip().split("\n") if t.startswith("data-v"))
-        return {2020 + i for i, _ in enumerate(tags, start=1)}
-    except Exception:
-        from src.data.import_raw_data import TRAINING_YEARS
-        return set(TRAINING_YEARS)
+    """Years with downloaded raw data (4+ CSV files in data/raw/{year}/).
+
+    Remplace l'ancienne détection par git tags (data-v*) qui échouait
+    silencieusement dans le container Prefect (pas de .git à /app).
+    """
+    from src.data.import_raw_data import PROJECT_ROOT, TRAINING_YEARS
+    raw_root = PROJECT_ROOT / "data" / "raw"
+    known: set[int] = set()
+    if raw_root.exists():
+        for d in raw_root.iterdir():
+            if d.is_dir() and d.name.isdigit() and 2020 <= int(d.name) <= 2030:
+                if len(list(d.glob("*.csv"))) >= 4:
+                    known.add(int(d.name))
+    return known if known else set(TRAINING_YEARS)
 
 
 @task(name="fetch-datagouv-resources")

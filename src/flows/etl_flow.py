@@ -1,5 +1,5 @@
 """
-ETL flow — download raw ONISR data and preprocess it.
+ETL flow — download raw ONISR data, validate, push to DVC, preprocess.
 
 Triggered manually, from check-new-data-flow (with pre-resolved URLs),
 or as the first step of full_retrain_flow.
@@ -11,6 +11,7 @@ from pathlib import Path
 from prefect import flow, task
 
 from src.data.import_raw_data import download_year, training_years_up_to
+from src.utils.email_utils import send_alert
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,32 @@ def download_task(year: int, urls: dict[str, str] | None = None) -> None:
     logger.info("Downloading ONISR data for year %d", year)
     download_year(year, urls=urls)
     logger.info("Download complete for year %d", year)
+
+
+@task(name="validate-schema")
+def validate_task(year: int) -> None:
+    """3-level schema validation. Raises RuntimeError on CRITICAL — stoppe le pipeline."""
+    from src.data.schema_validator import validate
+    report = validate(year)
+    level = report.overall_level
+
+    if level == "CRITICAL":
+        send_alert(
+            f"Validation CRITICAL — année {year}",
+            f"Le pipeline ETL est stoppé.\n\n{report.summary()}",
+        )
+        raise RuntimeError(
+            f"Schema validation CRITICAL pour year={year} — pipeline stoppé.\n"
+            f"{report.summary()}"
+        )
+
+    if level == "WARNING":
+        send_alert(
+            f"Validation WARNING — année {year}",
+            f"Pipeline continue mais des anomalies ont été détectées.\n\n{report.summary()}",
+        )
+
+    logger.info("Validation level=%s year=%d", level, year)
 
 
 @task(name="dvc-push", retries=1, retry_delay_seconds=30)
@@ -62,12 +89,13 @@ def etl_flow(
     urls: dict[str, str] | None = None,
 ) -> None:
     """
-    Download, push to DVC remote and preprocess ONISR data.
+    Download, validate, push to DVC remote and preprocess ONISR data.
 
     urls: pre-resolved {category: download_url} — passed by check-new-data-flow
           to avoid a second API call. If None, URLs are resolved automatically.
     """
     download_task(year, urls=urls)
+    validate_task(year)
     dvc_push_task(year)
     years = training_years_up_to(year) if cumul else [year]
     preprocess_task(years)
