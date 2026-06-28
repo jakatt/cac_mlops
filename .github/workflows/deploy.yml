@@ -161,6 +161,11 @@ jobs:
             # Force nginx à re-résoudre le DNS après recréation des conteneurs
             docker compose restart nginx
 
+            # Re-synchroniser les schémas de deployments Prefect (paramètres, entrypoints)
+            docker compose exec -T prefect-worker prefect deploy --all \
+              && echo "prefect deploy --all ✓" \
+              || echo "::warning::prefect deploy --all échoué — schémas potentiellement périmés"
+
             # Smoke test (120s max — API charge le modèle MLflow au démarrage)
             HEALTHY=false
             for i in $(seq 1 24); do
