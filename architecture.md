@@ -986,6 +986,29 @@ ALERTES GRAFANA (provisionnées, toutes → email GF_ALERT_EMAIL)
                          → train_flow terminé sans amélioration @Production
     drift-critical-log : "CRITICAL drift detected" dans prefect-worker
 
+GRAFANA ALERT STATE HISTORY → LOKI (Grafana 10+ natif)
+────────────────────────────────────────────────────────
+  Grafana écrit automatiquement dans Loki chaque transition d'état de toutes
+  ses alertes (Normal → Alerting → Resolved), y compris les alertes Prometheus
+  (RAM, Disk) qui n'ont pas de log applicatif.
+
+  Config (GF_UNIFIED_ALERTING_STATE_HISTORY_*) dans docker-compose.yml :
+    ENABLED   = true
+    BACKEND   = loki
+    LOKI_REMOTE_URL = http://loki:3100
+
+  Labels injectés par Grafana dans Loki :
+    grafana_alertname  · grafana_folder · state (Alerting/Normal/NoData)
+    + tous les labels de la règle (severity, etc.)
+
+  Exploration dans Grafana → Explore → source Loki :
+    {grafana_alertname=~".+"} | state = "Alerting"
+    {grafana_alertname="ram-critical"}
+    {grafana_alertname="disk-data-critical"}
+
+  Résultat : TOUTES les alertes Grafana (Prometheus + Loki) sont désormais
+  historisées dans Loki, y compris RAM et Disk.
+
 PROMETHEUS — MÉTRIQUES COLLECTÉES
 ──────────────────────────────────
   Depuis l'API (GET /metrics) :
