@@ -37,9 +37,6 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
 
-ruler:
-  alertmanager_url: http://localhost:9093
-
 query_range:
   results_cache:
     cache:
