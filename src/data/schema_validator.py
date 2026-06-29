@@ -117,6 +117,10 @@ def _validate_level2(
         if df is None:
             continue  # already flagged in Level 1
 
+        # 2022+ : ONISR renamed Num_Acc → Accident_Id in caracteristiques
+        if table == "caracteristiques" and "Accident_Id" in df.columns and "Num_Acc" not in df.columns:
+            df = df.rename(columns={"Accident_Id": "Num_Acc"})
+
         # ── required columns ─────────────────────────────────────────────────
         required = set(REQUIRED_COLUMNS.get(table, []))
         missing = required - set(df.columns)
