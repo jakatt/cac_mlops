@@ -139,8 +139,15 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
 
     mv_list = client.search_model_versions(f"run_id='{run_id}'")
     if not mv_list:
-        logger.error("Aucune version enregistrée pour run_id=%s", run_id)
-        return False
+        raise RuntimeError(
+            f"Promote @Production impossible — aucune version MLflow enregistrée "
+            f"pour run_id={run_id} (champion={champion}, modèle={model_name}).\n"
+            "Actions requises :\n"
+            "  1. MLflow UI → Experiments → vérifier que ce run_id existe et est 'Finished'\n"
+            "  2. Vérifier que register_model() a bien été appelé pendant le train\n"
+            "  3. Si le registre MLflow est incohérent : reset-flow (clear_mlflow=True) "
+            "puis full-retrain"
+        )
     version = mv_list[0].version
 
     client.set_registered_model_alias(model_name, "Production", version)

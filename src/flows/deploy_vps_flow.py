@@ -123,8 +123,9 @@ def deploy_vps_flow(
     smoke test → gate manuelle → promote @Production (si nouveau modèle)
     → test-api (validation finale) → Kapsule (seulement si test-api OK).
 
-    Triggers 1 & 3 : si test-api KO → rollback du promote + stop (pas de Kapsule).
-    Trigger 2 (code seul) : si test-api KO → stop (pas de Kapsule, pas de rollback modèle).
+    Triggers 1 & 3 : si test-api KO → rollback du promote + RuntimeError (pas de Kapsule).
+    Trigger 2 (code seul) : si test-api KO → RuntimeError (pas de Kapsule, pas de rollback modèle).
+    Smoke test KO → RuntimeError immédiate (stack non opérationnelle).
 
     champion / run_ids / metrics / year : renseignés par check-new-data-flow.
     sha_tag : SHA du commit buildé, passé par GitHub Actions.
@@ -134,13 +135,20 @@ def deploy_vps_flow(
     # ── 1. Smoke test ─────────────────────────────────────────────────────────
     ok = smoke_test_task()
     if not ok:
-        log.error("Smoke test échoué — stack non opérationnelle")
         send_alert(
             "Deploy VPS — smoke test ÉCHOUÉ",
             f"Stack non opérationnelle.\nSHA: {sha_tag or 'N/A'}\n"
             "Vérifier les logs : docker compose logs api nginx",
         )
-        return False
+        raise RuntimeError(
+            f"Smoke test ÉCHOUÉ — {NGINX_URL}/health ne répond pas après 90s.\n"
+            f"SHA déployé : {sha_tag or 'N/A'}\n"
+            "Actions requises :\n"
+            "  1. docker compose logs api nginx --tail=100\n"
+            "  2. Vérifier que l'API charge le modèle MLflow au démarrage\n"
+            "  3. Si image corrompue : docker compose pull && docker compose up -d\n"
+            "  4. Si MLflow inaccessible : vérifier healthcheck mlflow + minio"
+        )
 
     # ── 2. Gate manuelle ──────────────────────────────────────────────────────
     if champion and metrics and year:
@@ -192,9 +200,20 @@ def deploy_vps_flow(
         send_alert(
             "Deploy VPS — test-api ÉCHOUÉ",
             f"Tests fonctionnels KO après deploy.\nSHA: {sha_tag or 'N/A'}\nErreur: {exc}"
-            + ("\nPromote @Production annulé (rollback effectué)." if champion else ""),
+            + ("\nPromote @Production annulé — rollback effectué." if champion else ""),
         )
-        return False
+        raise RuntimeError(
+            f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
+            f"SHA déployé : {sha_tag or 'N/A'}\n"
+            f"Erreur : {exc}\n"
+            + ("@Production rollback effectué — l'ancienne version est restaurée.\n"
+               if champion else "Pas de rollback modèle (trigger code seul).\n")
+            + "Actions requises :\n"
+            "  1. docker compose logs api --tail=100\n"
+            "  2. Vérifier que le modèle @Production est accessible dans MLflow\n"
+            "  3. Tester manuellement : curl -X POST http://VPS:8080/predict\n"
+            "  4. Si rollback insuffisant : reset-flow puis full-retrain"
+        )
 
     # ── 5. Deploy Kapsule (seulement si test-api OK) ──────────────────────────
     deploy_kapsule_flow()

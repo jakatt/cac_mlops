@@ -147,7 +147,15 @@ def deploy_kapsule_flow() -> bool:
             "Deploy Kapsule ÉCHOUÉ — rollback effectué",
             "Le rolling update Kapsule a échoué. La version précédente a été restaurée.",
         )
-        return False
+        raise RuntimeError(
+            "Deploy Kapsule ÉCHOUÉ — rolling update impossible sur le cluster K8s.\n"
+            "Le rollback vers la version précédente a été effectué automatiquement.\n"
+            "Actions requises :\n"
+            "  1. kubectl get pods -n cac-mlops  (pods en erreur ?)\n"
+            "  2. kubectl describe deployment api -n cac-mlops  (events, image pull error ?)\n"
+            "  3. Vérifier que l'image GHCR est pullable depuis le cluster\n"
+            "  4. Si cluster instable : kapsule-down puis kapsule-up"
+        )
 
     send_alert(
         "Deploy Kapsule OK",
