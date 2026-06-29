@@ -128,3 +128,13 @@ deployments:
     entrypoint: src/flows/diag_flow.py:diag_flow
     work_pool:
       name: default-process-pool
+
+  # ── Disk cleanup — nettoyage quotidien Docker (containers, dangling images, builder cache)
+  - name: disk-cleanup
+    entrypoint: src/flows/disk_cleanup_flow.py:disk_cleanup_flow
+    work_pool:
+      name: default-process-pool
+    schedules:
+      - cron: "0 2 * * *"   # 02h00 UTC tous les jours
+        timezone: "UTC"
+        active: true

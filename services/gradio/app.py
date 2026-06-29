@@ -586,6 +586,9 @@ def trigger_test_api() -> str:
 def trigger_diag() -> str:
     return _prefect_trigger("diag")
 
+def trigger_disk_cleanup() -> str:
+    return _prefect_trigger("disk-cleanup")
+
 def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool) -> str:
     return _prefect_trigger("reset", {
         "clear_predictions": clear_predictions,
@@ -983,11 +986,13 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 # Colonne milieu — Tests & Diag
                 with gr.Column(scale=1):
                     gr.Markdown("#### Tests & Diagnostic")
-                    test_btn = gr.Button("Lancer test-api",  variant="primary")
-                    diag_btn = gr.Button("Lancer diag VPS",  variant="secondary")
+                    test_btn    = gr.Button("Lancer test-api",         variant="primary")
+                    diag_btn    = gr.Button("Lancer diag VPS",         variant="secondary")
+                    cleanup_btn = gr.Button("Nettoyer disque (Docker)", variant="secondary")
                     test_result = gr.Textbox(label="Résultat", lines=3, interactive=False)
-                    test_btn.click(fn=trigger_test_api, outputs=test_result)
-                    diag_btn.click(fn=trigger_diag,     outputs=test_result)
+                    test_btn.click(fn=trigger_test_api,    outputs=test_result)
+                    diag_btn.click(fn=trigger_diag,        outputs=test_result)
+                    cleanup_btn.click(fn=trigger_disk_cleanup, outputs=test_result)
 
                 # Colonne droite — ML flows
                 with gr.Column(scale=1):
