@@ -506,30 +506,32 @@ Personne ne le sait
 ╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                   ARCHITECTURE GLOBALE — CAC MLOPS                                       ║
 ╠══════════════════════╦═════════════════════════════════════════════════════╦════════════════════════════╣
-║  DEV LOCAL           ║  VPS SCALEWAY — DEV1-XL  (fr-par-2)                ║  KAPSULE K8s (on-demand)   ║
+║  POSTE DEV           ║  VPS SCALEWAY — DEV1-XL  (fr-par-2)                ║  KAPSULE K8s (on-demand)   ║
 ║  Mac développeur     ║  IP publique : 51.159.187.132                       ║  Scaleway fr-par           ║
 ║                      ║  IP Tailscale: 100.117.99.62                        ║  cluster: cac-mlops 1.35.3 ║
 ║                      ║  /  = 20 GB NVMe  ·  /data = 80 GB block storage    ║                            ║
 ╠══════════════════════╬═════════════════════════════════════════════════════╬════════════════════════════╣
 ║                      ║                                                     ║                            ║
-║  docker-compose.yml  ║  CONTAINERS (14 : 13 permanents + minio-init EXIT)  ║  Deployments               ║
-║  même stack VPS      ║  ┌──────────────────┬────────────┬────────────────┐ ║  (namespace: cac-mlops)    ║
-║  ports 127.0.0.1     ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ────────────────────────  ║
-║  volumes ./          ║  ├──────────────────┼────────────┼────────────────┤ ║  api (HPA min 1→max 8)     ║
-║                      ║  │ postgresql       │ 5432       │ interne        │ ║  mlflow  (SQLite + S3)     ║
-║  Outils CLI          ║  │ minio            │ 9000/9001  │ Tailscale      │ ║  prefect-server / worker   ║
-║  ──────────────────  ║  │ minio-init       │ —          │ EXIT (init)    │ ║  prometheus · grafana      ║
-║  git · dvc · pytest  ║  │ mlflow           │ 5001       │ Tailscale      │ ║                            ║
-║  flake8 · kubectl    ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  LoadBalancers LB-S        ║
-║                      ║  │ nginx            │ 8090       │ PUBLIC         │ ║  ─────────────────────     ║
-║  DVC pull            ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  nginx   :80  → API pub.   ║
-║  → data/ (S3 DVC)    ║  │ prefect-worker   │ —          │ process pool   │ ║  prefect :4200             ║
-║                      ║  │ gradio           │ 7860       │ Tailscale      │ ║  grafana :3000             ║
-║  MLFLOW_TRACKING_URI ║  │ gradio-public    │ 7862(int.) │ via nginx:8090 │ ║                            ║
-║  100.117.99.62:5001  ║  │ node-exporter    │ 9100       │ interne        │ ║  HPA api                   ║
-║  (via Tailscale)     ║  │ nginx-exporter   │ 9113       │ interne        │ ║  CPU 70% / RAM 80%         ║
-║                      ║  │ prometheus       │ 9090       │ Tailscale      │ ║  min 1 → max 8 pods        ║
+║  Écriture du code    ║  CONTAINERS (16 : 15 permanents + minio-init EXIT)  ║  Deployments               ║
+║  + tests unitaires   ║  ┌──────────────────┬────────────┬────────────────┐ ║  (namespace: cac-mlops)    ║
+║  Pas de stack Docker ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ────────────────────────  ║
+║  locale — le VPS     ║  ├──────────────────┼────────────┼────────────────┤ ║  api (HPA min 1→max 8)     ║
+║  est l'unique env.   ║  │ postgresql       │ 5432       │ interne        │ ║  mlflow  (SQLite + S3)     ║
+║  d'intégration réel  ║  │ minio            │ 9000/9001  │ Tailscale      │ ║  prefect-server / worker   ║
+║                      ║  │ minio-init       │ —          │ EXIT (init)    │ ║  prometheus · grafana      ║
+║  Outils CLI          ║  │ mlflow           │ 5001       │ Tailscale      │ ║                            ║
+║  ──────────────────  ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  LoadBalancers LB-S        ║
+║  git · dvc · pytest  ║  │ nginx            │ 8090       │ PUBLIC         │ ║  ─────────────────────     ║
+║  flake8 · kubectl    ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  nginx   :80  → API pub.   ║
+║                      ║  │ prefect-worker   │ —          │ process pool   │ ║  prefect :4200             ║
+║  Cycle dev           ║  │ gradio           │ 7860       │ Tailscale      │ ║  grafana :3000             ║
+║  ──────────────────  ║  │ gradio-public    │ 7862(int.) │ via nginx:8090 │ ║                            ║
+║  code → PR → CI      ║  │ node-exporter    │ 9100       │ interne        │ ║  HPA api                   ║
+║  → merge → deploy    ║  │ nginx-exporter   │ 9113       │ interne        │ ║  CPU 70% / RAM 80%         ║
+║  → validation VPS    ║  │ prometheus       │ 9090       │ Tailscale      │ ║  min 1 → max 8 pods        ║
 ║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║                            ║
+║                      ║  │ loki             │ 3100       │ interne        │ ║                            ║
+║                      ║  │ promtail         │ —          │ interne        │ ║                            ║
 ║                      ║  └──────────────────┴────────────┴────────────────┘ ║                            ║
 ║                      ║                                                     ║  Secrets K8s               ║
 ║                      ║  ORCHESTRATION — PREFECT (14 deployments)           ║  s3-creds · app-creds      ║
@@ -554,14 +556,17 @@ Personne ne le sait
 ║                      ║  │   nginx-exporter:9113 → connexions nginx     │   ║                            ║
 ║                      ║  │ Grafana dashboards :                        │   ║  Scaleway Object Storage   ║
 ║                      ║  │   api-performance · model-drift             │   ║  s3://cac-mlops-data       ║
-║                      ║  │ 4 alertes email :                           │   ║  dvc/       → données DVC  ║
-║                      ║  │   brute-force 401 · DDoS 429               │   ║  k8s-model/ → modèle K8s   ║
-║                      ║  │   RAM <10% · Disk /data <15%               │   ║  mlflow-k8s/→ artefacts K8s║
+║                      ║  │ Loki (logs) — via Promtail :                │   ║  dvc/       → données DVC  ║
+║                      ║  │   prefect-worker · api · nginx · gradio     │   ║  k8s-model/ → modèle K8s   ║
+║                      ║  │ Alertes email (Prometheus + Loki) :         │   ║  mlflow-k8s/→ artefacts K8s║
+║                      ║  │   brute-force 401 · DDoS 429               │   ║                            ║
+║                      ║  │   RAM <10% · Disk /data <15%               │   ║                            ║
+║                      ║  │   Flow Prefect ERROR · aucun champion       │   ║                            ║
 ║                      ║  └─────────────────────────────────────────────┘   ║                            ║
 ║                      ║                                                     ║  MinIO (VPS)               ║
 ║                      ║  COCKPITS GRADIO                                    ║  → artefacts MLflow local  ║
-║                      ║  :7860 Tailscale — 7 onglets MLOps complets        ║                            ║
-║                      ║  :8090 PUBLIC    — 2 onglets (What-If+PointsNoirs) ║  data.gouv.fr (ONISR)      ║
+║                      ║  :7860 Tailscale — 8 onglets MLOps complets        ║                            ║
+║                      ║  :8090 PUBLIC    — 3 onglets (Predict+What-If+PN)  ║  data.gouv.fr (ONISR)      ║
 ║                      ║                                                     ║  accidents 2021→2024       ║
 ╚══════════════════════╩═════════════════════════════════════════════════════╩════════════════════════════╝
 ```
@@ -931,9 +936,79 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   promote=False (via check-new-data) : champion sélectionné, promote différé → gate manuelle
 ```
 
-### Monitoring — Prometheus · Grafana · Evidently
+### Monitoring — Stack PLG (Prometheus · Loki · Grafana) + Evidently
 
 ```text
+STACK PLG — VUE D'ENSEMBLE
+────────────────────────────
+  Prometheus  → métriques numériques (API, système, drift)
+  Loki        → logs centralisés (tous conteneurs Docker)
+  Grafana     → dashboards + alertes unifiées (email + UI)
+  Promtail    → agent Docker → collecte les logs → pousse vers Loki
+  Evidently   → détection dérive (rapport HTML + métriques Prometheus)
+
+  Ports internes (Tailscale uniquement) :
+    Prometheus  :9090    Loki  :3100
+    Grafana     :3000    Promtail :9080 (agent, sans port exposé)
+
+LOKI — CENTRALISATION DES LOGS
+────────────────────────────────
+  Promtail lit les logs JSON de tous les conteneurs Docker
+  labellés com.docker.compose.project=cac_mlops.
+
+  Labels extraits automatiquement :
+    service    → nom du service Compose (prefect-worker, api, nginx…)
+    container  → nom du conteneur Docker
+    level      → DEBUG / INFO / WARNING / ERROR / CRITICAL
+
+  Label supplémentaire pour prefect-worker :
+    flow_run   → UUID du flow run extrait du message
+
+  Rétention : 30 jours (chunks filesystem /loki)
+  Schéma    : tsdb v13 / index 24h
+
+  Exploration dans Grafana → Explore → source Loki :
+    {service="prefect-worker"} | = "ERROR"
+    {service="api"} | json | level = "ERROR"
+    {service="prefect-worker"} | = "Email envoyé"   ← trace de toutes les alertes email
+
+ALERTES GRAFANA (provisionnées, toutes → email GF_ALERT_EMAIL)
+────────────────────────────────────────────────────────────────
+  Groupe security-monitoring (Prometheus, éval 1 min) :
+    brute-force-401    : > 20 erreurs 401 / 5 min
+    ddos-429           : > 50 erreurs 429 / 5 min
+    ram-critical       : RAM disponible < 10%
+    disk-data-critical : /data libre < 15%
+
+  Groupe logs-monitoring (Loki, éval 2 min) :
+    prefect-error-logs : ERROR ou CRITICAL dans prefect-worker (5 min)
+    no-champion-log    : "Aucun algorithme" dans prefect-worker (10 min)
+                         → train_flow terminé sans amélioration @Production
+    drift-critical-log : "CRITICAL drift detected" dans prefect-worker
+
+GRAFANA ALERT STATE HISTORY → LOKI (Grafana 10+ natif)
+────────────────────────────────────────────────────────
+  Grafana écrit automatiquement dans Loki chaque transition d'état de toutes
+  ses alertes (Normal → Alerting → Resolved), y compris les alertes Prometheus
+  (RAM, Disk) qui n'ont pas de log applicatif.
+
+  Config (GF_UNIFIED_ALERTING_STATE_HISTORY_*) dans docker-compose.yml :
+    ENABLED   = true
+    BACKEND   = loki
+    LOKI_REMOTE_URL = http://loki:3100
+
+  Labels injectés par Grafana dans Loki :
+    grafana_alertname  · grafana_folder · state (Alerting/Normal/NoData)
+    + tous les labels de la règle (severity, etc.)
+
+  Exploration dans Grafana → Explore → source Loki :
+    {grafana_alertname=~".+"} | state = "Alerting"
+    {grafana_alertname="ram-critical"}
+    {grafana_alertname="disk-data-critical"}
+
+  Résultat : TOUTES les alertes Grafana (Prometheus + Loki) sont désormais
+  historisées dans Loki, y compris RAM et Disk.
+
 PROMETHEUS — MÉTRIQUES COLLECTÉES
 ──────────────────────────────────
   Depuis l'API (GET /metrics) :
@@ -988,18 +1063,20 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   Image : ghcr.io/jakatt/cac-mlops-gradio:latest
   URL   : http://100.117.99.62:7860
 
-  7 ONGLETS
+  8 ONGLETS
   ──────────
-  1. What-If    : applique scénarios (météo/nuit/alcool/vitesse),
+  1. Predict    : saisie des 28 features → prédiction @Production + probabilité
+                  5 exemples préremplis (données 2023), résultat 🟢/🔴
+  2. What-If    : applique scénarios (météo/nuit/alcool/vitesse),
                   compare % graves avant vs après sur échantillon
-  2. Points Noirs: density_mapbox accidents France, filtres gravité/catr
-  3. Drift      : sélecteur rapports Evidently, iframe HTML report
-  4. Modèles    : versions MLflow (toutes familles), métriques, promotion @Production
-  5. Pipeline   : déclenchement Prefect flows depuis le cockpit
+  3. Points Noirs: density_mapbox accidents France, filtres gravité/catr
+  4. Drift      : sélecteur rapports Evidently, iframe HTML report
+  5. Modèles    : versions MLflow (toutes familles), métriques, promotion @Production
+  6. Pipeline   : déclenchement Prefect flows depuis le cockpit
                   kapsule-up/down, test-api, diag, reset, full-retrain, check-new-data
                   tableau des runs récents (état, durée)
-  6. Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
-  7. Infra      : URLs Tailscale admin + API publique + IPs Kapsule
+  7. Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
+  8. Infra      : URLs Tailscale admin + API publique + IPs Kapsule
 
   COCKPIT PUBLIC (gradio-public — accès internet)
   ────────────────────────────────────────────────
@@ -1007,10 +1084,11 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   URL    : http://51.159.187.132:8090  (via nginx, port 7862 interne)
   Script : services/gradio/app_public.py
 
-  2 ONGLETS (sous-ensemble sans accès admin)
+  3 ONGLETS (sous-ensemble sans accès admin)
   ──────────────────────────────────────────
-  1. What-If     : mêmes scénarios que le cockpit MLOps
-  2. Points Noirs: même heatmap
+  1. Predict     : même interface de prédiction que le cockpit (28 features + exemples)
+  2. What-If     : mêmes scénarios que le cockpit MLOps
+  3. Points Noirs: même heatmap
 
   Lazy loading modèle au 1er clic (~30s) puis cache mémoire
   root_path=http://51.159.187.132:8090 (GRADIO_PUBLIC_URL) pour corriger
