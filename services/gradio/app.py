@@ -162,6 +162,104 @@ def _predict(df: pd.DataFrame) -> np.ndarray:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# TAB Predict — prédiction individuelle
+# ══════════════════════════════════════════════════════════════════════════════
+
+_PREDICT_LABELS = {
+    "place":             "Place (1=conducteur, 2-9=passager, 10=piéton)",
+    "catu":              "Catég. usager (1=conducteur, 2=passager, 3=piéton)",
+    "sexe":              "Sexe (1=masculin, 2=féminin)",
+    "secu1":             "Équipement sécu (0=aucun, 1=ceinture, 2=casque, 8=autre)",
+    "year_acc":          "Année accident",
+    "victim_age":        "Âge victime",
+    "catv":              "Catég. véhicule (1=VL, 2=util., 3=PL/bus, 4=moto, 5=cycle, 6=EDP)",
+    "obsm":              "Obstacle mobile (1=piéton, 2=véhicule, 4=animal)",
+    "motor":             "Motorisation (1=thermique, 2=hybride, 3=électrique)",
+    "catr":              "Catég. route (1=autoroute, 2=nat., 3=dépt., 4=comm., 6=parking, 7=urbaine)",
+    "circ":              "Circulation (1=sens unique, 2=bidirectionnel)",
+    "surf":              "Surface (1=normale, 2=mouillée, 5=neige, 7=boue, 9=autre)",
+    "situ":              "Situation (1=voie norm., 2=intersection, 3=BAU, 4=trottoir)",
+    "vma":               "Vitesse max autorisée (km/h)",
+    "jour":              "Jour semaine (1=lun … 7=dim)",
+    "mois":              "Mois (1-12)",
+    "lum":               "Éclairage (1=plein jour, 3=nuit sans éclairage, 5=nuit éclairé)",
+    "dep":               "Département",
+    "com":               "Code commune INSEE",
+    "agg_":              "Localisation (1=hors agglo, 2=agglo)",
+    "intersection_type": "Intersection (1=hors carref., 2=carref. X, 3=T, 6=giratoire)",
+    "atm":               "Météo (0=normale, 1=perturbée)",
+    "col":               "Collision (1=frontale, 2=arrière, 3=latérale, 6=aucune)",
+    "lat":               "Latitude",
+    "long":              "Longitude",
+    "hour":              "Heure (0-23)",
+    "nb_victim":         "Nb victimes",
+    "nb_vehicules":      "Nb véhicules",
+}
+
+# 5 exemples issus de cumul_2021_2022_2023/X_test.csv
+# ordre des valeurs : place, catu, sexe, secu1, year_acc, victim_age, catv, obsm, motor,
+#   catr, circ, surf, situ, vma, jour, mois, lum, dep, com, agg_,
+#   intersection_type, atm, col, lat, long, hour, nb_victim, nb_vehicules
+_PREDICT_EXAMPLES = [
+    ("Conducteur H, 26 ans, nuit, agglo 30 km/h",
+     1, 1, 1, 2.0, 2023, 26.0, 1.0, 2.0, 3.0, 3, 2.0, 1.0, 1.0, 30.0, 16, 12, 5, 61, 61001, 2, 2, 0.0, 3.0, 48.43534, 0.09162, 20, 2, 2),
+    ("Conducteur H, 79 ans, route nationale, jour",
+     1, 1, 1, 1.0, 2023, 79.0, 2.0, 2.0, 1.0, 2, 2.0, 1.0, 1.0, 50.0, 23, 11, 1, 84, 84007, 1, 4, 0.0, 3.0, 43.89102, 4.91632, 16, 2, 2),
+    ("Piéton F, 69 ans, agglo, matin",
+     10, 3, 2, 0.0, 2021, 69.0, 5.0, 1.0, 1.0, 3, 2.0, 2.0, 1.0, 30.0, 12, 1, 1, 92, 92023, 2, 1, 1.0, 6.0, 48.7883, 2.25826, 11, 2, 1),
+    ("Conducteur F, 30 ans, voie urbaine, soir",
+     1, 1, 2, 8.0, 2021, 30.0, 1.0, 2.0, 1.0, 7, 1.0, 1.0, 1.0, 50.0, 7, 4, 1, 34, 34172, 2, 1, 0.0, 2.0, 43.57503, 3.86022, 19, 2, 2),
+    ("Cycliste, 10 ans, parking, été",
+     2, 2, 1, 2.0, 2022, 10.0, 1.0, 2.0, 3.0, 6, 2.0, 9.0, 3.0, 50.0, 29, 8, 1, 25, 25512, 2, 9, 0.0, 3.0, 47.163298, 6.728774, 17, 4, 2),
+]
+
+
+def _predict_with_proba(df: pd.DataFrame) -> tuple[int, float | None]:
+    model = _get_model()
+    df_pred = df.rename(columns={"intersection_type": "int"}).copy()
+    for c in _FLOAT_COLS:
+        if c in df_pred.columns:
+            df_pred[c] = df_pred[c].astype(float)
+    pred = int(model.predict(df_pred)[0])
+    proba = None
+    try:
+        res = model.predict(df_pred, params={"predict_method": "predict_proba"})
+        arr = res.values if hasattr(res, "values") else np.array(res)
+        proba = float(arr[0][pred])
+    except Exception:
+        try:
+            inner = model._model_impl
+            if hasattr(inner, "predict_proba"):
+                arr = inner.predict_proba(df_pred)
+                proba = float(arr[0][pred])
+        except Exception:
+            pass
+    return pred, proba
+
+
+def run_predict(place, catu, sexe, secu1, year_acc, victim_age, catv,
+                obsm, motor, catr, circ, surf, situ, vma, jour, mois,
+                lum, dep, com, agg_, intersection_type, atm, col,
+                lat, long, hour, nb_victim, nb_vehicules) -> str:
+    try:
+        row = dict(zip(FEATURE_COLS, [
+            int(place), int(catu), int(sexe), float(secu1), int(year_acc), float(victim_age),
+            float(catv), float(obsm), float(motor), int(catr), float(circ), float(surf),
+            float(situ), float(vma), int(jour), int(mois), int(lum), int(dep), int(com),
+            int(agg_), int(intersection_type), float(atm), float(col),
+            float(lat), float(long), int(hour), int(nb_victim), int(nb_vehicules),
+        ]))
+        df = pd.DataFrame([row])
+        pred, proba = _predict_with_proba(df)
+        label     = "**PRIORITAIRE** — blessure grave ou décès probable" if pred == 1 else "**Non prioritaire** — blessure légère ou indemne probable"
+        emoji     = "🔴" if pred == 1 else "🟢"
+        proba_str = f"  \nProbabilité : **{proba:.1%}**" if proba is not None else ""
+        return f"## {emoji} {label}{proba_str}\n\n*Prédiction modèle @Production — à titre indicatif uniquement.*"
+    except Exception as exc:
+        return f"Erreur de prédiction : {exc}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — What-If
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -616,7 +714,6 @@ def build_links_html() -> str:
   <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;">
     <tr><th style="{th}">Lien</th><th style="{th}">URL</th></tr>
     <tr><td style="{td}">GitHub Actions (CI/CD)</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/actions</a></td></tr>
-    <tr><td style="{td}">Train workflow</td> <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions/workflows/train.yml" target="_blank" style="color:{NAVY};text-decoration:none;">Train — pipeline Scaleway</a></td></tr>
     <tr><td style="{td}">DVC Data Tags</td>  <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/tags" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/tags</a></td></tr>
   </table>
 
@@ -724,6 +821,73 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 """)
 
     with gr.Tabs():
+
+        # ── Onglet Predict ───────────────────────────────────────────────────
+        with gr.Tab("Predict"):
+            gr.Markdown("### Prédiction individuelle — saisir les caractéristiques de l'accident")
+
+            gr.Markdown("**Exemples pré-remplis (données 2023)**")
+            with gr.Row():
+                _ex_buttons = [
+                    gr.Button(ex[0], size="sm", variant="secondary")
+                    for ex in _PREDICT_EXAMPLES
+                ]
+
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### Usager")
+                    _inp_catu       = gr.Number(value=1,       label=_PREDICT_LABELS["catu"])
+                    _inp_sexe       = gr.Number(value=1,       label=_PREDICT_LABELS["sexe"])
+                    _inp_victim_age = gr.Number(value=30.0,    label=_PREDICT_LABELS["victim_age"])
+                    _inp_place      = gr.Number(value=1,       label=_PREDICT_LABELS["place"])
+                    _inp_secu1      = gr.Number(value=1.0,     label=_PREDICT_LABELS["secu1"])
+                    _inp_year_acc   = gr.Number(value=2023,    label=_PREDICT_LABELS["year_acc"])
+                with gr.Column():
+                    gr.Markdown("#### Véhicule")
+                    _inp_catv         = gr.Number(value=1.0,  label=_PREDICT_LABELS["catv"])
+                    _inp_motor        = gr.Number(value=1.0,  label=_PREDICT_LABELS["motor"])
+                    _inp_obsm         = gr.Number(value=2.0,  label=_PREDICT_LABELS["obsm"])
+                    gr.Markdown("#### Contexte")
+                    _inp_jour         = gr.Number(value=1,    label=_PREDICT_LABELS["jour"])
+                    _inp_mois         = gr.Number(value=6,    label=_PREDICT_LABELS["mois"])
+                    _inp_hour         = gr.Number(value=8,    label=_PREDICT_LABELS["hour"])
+                    _inp_nb_victim    = gr.Number(value=2,    label=_PREDICT_LABELS["nb_victim"])
+                    _inp_nb_vehicules = gr.Number(value=2,    label=_PREDICT_LABELS["nb_vehicules"])
+                with gr.Column():
+                    gr.Markdown("#### Lieu")
+                    _inp_catr  = gr.Number(value=3,       label=_PREDICT_LABELS["catr"])
+                    _inp_agg_  = gr.Number(value=2,       label=_PREDICT_LABELS["agg_"])
+                    _inp_int   = gr.Number(value=1,       label=_PREDICT_LABELS["intersection_type"])
+                    _inp_vma   = gr.Number(value=50.0,    label=_PREDICT_LABELS["vma"])
+                    _inp_dep   = gr.Number(value=75,      label=_PREDICT_LABELS["dep"])
+                    _inp_com   = gr.Number(value=75056,   label=_PREDICT_LABELS["com"])
+                    _inp_lat   = gr.Number(value=48.8566, label=_PREDICT_LABELS["lat"])
+                    _inp_long  = gr.Number(value=2.3522,  label=_PREDICT_LABELS["long"])
+                with gr.Column():
+                    gr.Markdown("#### Conditions")
+                    _inp_lum  = gr.Number(value=1,    label=_PREDICT_LABELS["lum"])
+                    _inp_atm  = gr.Number(value=0.0,  label=_PREDICT_LABELS["atm"])
+                    _inp_surf = gr.Number(value=1.0,  label=_PREDICT_LABELS["surf"])
+                    _inp_circ = gr.Number(value=2.0,  label=_PREDICT_LABELS["circ"])
+                    _inp_col  = gr.Number(value=3.0,  label=_PREDICT_LABELS["col"])
+                    _inp_situ = gr.Number(value=1.0,  label=_PREDICT_LABELS["situ"])
+
+            _predict_btn = gr.Button("Prédire", variant="primary", size="lg")
+            _predict_out = gr.Markdown()
+
+            # liste dans l'ordre exact de FEATURE_COLS / signature run_predict
+            _pred_inputs = [
+                _inp_place, _inp_catu, _inp_sexe, _inp_secu1, _inp_year_acc, _inp_victim_age,
+                _inp_catv, _inp_obsm, _inp_motor, _inp_catr, _inp_circ, _inp_surf, _inp_situ,
+                _inp_vma, _inp_jour, _inp_mois, _inp_lum, _inp_dep, _inp_com, _inp_agg_, _inp_int,
+                _inp_atm, _inp_col, _inp_lat, _inp_long, _inp_hour, _inp_nb_victim, _inp_nb_vehicules,
+            ]
+
+            _predict_btn.click(fn=run_predict, inputs=_pred_inputs, outputs=_predict_out)
+
+            for _i, _ex in enumerate(_PREDICT_EXAMPLES):
+                _ex_vals = _ex[1:]
+                _ex_buttons[_i].click(fn=lambda v=_ex_vals: v, outputs=_pred_inputs)
 
         # ── Onglet 1 : What-If ───────────────────────────────────────────────
         with gr.Tab("What-if"):
