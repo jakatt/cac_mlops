@@ -40,13 +40,13 @@ jobs:
             exit 0
           fi
           CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
-            | grep -cE '^(services/.+/Dockerfile|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
+            | grep -cE '^(services/.+/Dockerfile|services/gradio/.*\.py|services/api/app/.*\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
           if [ "${CHANGED:-0}" -gt 0 ]; then
             echo "needs_build=true" >> $GITHUB_OUTPUT
-            echo "Dockerfiles/requirements modifiés → build complet"
+            echo "Code service ou Dockerfile modifié → build complet"
           else
             echo "needs_build=false" >> $GITHUB_OUTPUT
-            echo "Pas de changement Dockerfile/requirements → skip build"
+            echo "Pas de changement image → skip build"
           fi
 
   # ── Job 1 : build et push des images (seulement si Dockerfile a changé) ───
