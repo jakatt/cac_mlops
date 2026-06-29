@@ -74,7 +74,17 @@ def update_model_flow(
         )
         log.warning(msg)
         send_alert("Update modèle — blueprint DS non retenu", msg)
-        return False
+        raise RuntimeError(
+            f"Blueprint DS non retenu — aucun algorithme ne dépasse @Production "
+            f"(SHA: {sha_tag or 'N/A'}).\n"
+            "config/model_params.yml restauré aux paramètres précédents.\n"
+            f"Métriques obtenues : {result['metrics']}\n"
+            "Ce résultat est attendu si les hyperparamètres DS n'améliorent pas le modèle.\n"
+            "Actions possibles :\n"
+            "  1. MLflow UI → Experiments → comparer les métriques du run update-model\n"
+            "  2. Ajuster les hyperparamètres et retagger export_to_prod=true dans MLflow\n"
+            "  3. Vérifier que le benchmark a utilisé les données les plus récentes"
+        )
 
     # Champion trouvé → config/model_params.yml garde les params DS gagnants
     log.info(
