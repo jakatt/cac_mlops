@@ -179,3 +179,134 @@ groups:
           summary: "Disque /data < 15% libre — nettoyage requis"
         labels:
           severity: critical
+
+  - orgId: 1
+    name: logs-monitoring
+    folder: Alerts
+    interval: 2m
+    rules:
+      - uid: prefect-error-logs
+        title: "Prefect — erreur de flow (ERROR)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service="prefect-worker"} |~ "ERROR|CRITICAL" [5m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Log ERROR ou CRITICAL dans prefect-worker — vérifier les flow runs dans l'UI Prefect"
+        labels:
+          severity: critical
+
+      - uid: no-champion-log
+        title: "Prefect — aucun algorithme champion (KPI non atteints)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service="prefect-worker"} |= "Aucun algorithme" [10m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "train_flow terminé sans champion — aucun algorithme ne dépasse les seuils KPI, @Production inchangé"
+        labels:
+          severity: warning
+
+      - uid: drift-critical-log
+        title: "Prefect — drift critique détecté"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service="prefect-worker"} |= "CRITICAL drift detected" [5m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: NoData
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Drift critique détecté par Evidently — action manuelle requise, rapport disponible dans Grafana"
+        labels:
+          severity: critical

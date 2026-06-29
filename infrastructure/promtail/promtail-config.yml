@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  # ── Logs Docker de tous les conteneurs du projet ──────────────────────────
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.project=cac_mlops"]
+    relabel_configs:
+      # Récupérer le nom du service Compose comme label
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      # Nom du conteneur pour debug
+      - source_labels: [__meta_docker_container_name]
+        regex: /(.*)
+        target_label: container
+
+    pipeline_stages:
+      # Détecter le niveau de log depuis le message Python
+      - regex:
+          expression: '.*(?P<level>DEBUG|INFO|WARNING|ERROR|CRITICAL).*'
+      - labels:
+          level:
+      # Structurer les logs Prefect (préfixés par le runner)
+      - match:
+          selector: '{service="prefect-worker"}'
+          stages:
+            - regex:
+                expression: '.*(?P<flow_run>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).*'
+            - labels:
+                flow_run:

@@ -194,7 +194,7 @@ services:
       mlflow:
         condition: service_healthy
 
-  # ── Gradio — Cockpit MLOps (7 onglets) ──────────────────────────────────────
+  # ── Gradio — Cockpit MLOps (8 onglets) ──────────────────────────────────────
   gradio:
     image: ghcr.io/jakatt/cac-mlops-gradio:latest
     restart: unless-stopped
@@ -224,7 +224,7 @@ services:
       - ./reports:/app/reports:ro  # rapports Evidently (read-only)
       - ./state:/app/state:ro      # IPs Kapsule dynamiques (read-only)
 
-  # ── Gradio public — cockpit 2 onglets (What-If + Points Noirs) accès internet
+  # ── Gradio public — cockpit 3 onglets (Predict + What-If + Points Noirs) accès internet
   gradio-public:
     image: ghcr.io/jakatt/cac-mlops-gradio:latest
     restart: unless-stopped
@@ -290,6 +290,35 @@ services:
     depends_on:
       - api
 
+  # ── Loki — centralisation des logs (stack PLG) ──────────────────────────────
+  loki:
+    image: grafana/loki:3.4.3
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./infrastructure/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Promtail — agent collecte logs Docker → Loki ────────────────────────────
+  promtail:
+    image: grafana/promtail:3.4.3
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./infrastructure/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+
   # ── Grafana — dashboards [Phase 4] ──────────────────────────────────────────
   grafana:
     image: grafana/grafana:11.5.4
@@ -314,11 +343,13 @@ services:
       - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
+      - loki
 
 volumes:
   prometheus_data:   # named volume — Docker gère les permissions (UID 65534)
   grafana_data:      # named volume — Docker gère les permissions (UID 472)
   prefect_data:      # named volume — SQLite Prefect + config
+  loki_data:         # named volume — chunks + index Loki (logs 30 jours)
 
 # MinIO et Postgres utilisent des bind mounts sur /data (block storage Scaleway)
 # DOCKER_VOLUMES_PATH=/data dans .env sur le serveur → block storage (19 GB)
