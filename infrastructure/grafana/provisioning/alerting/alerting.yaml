@@ -33,25 +33,25 @@ groups:
               expr: 'increase(api_requests_total{status="401"}[5m])'
               intervalMs: 1000
               maxDataPoints: 43200
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: "A"
+              reducer: last
+              settings:
+                mode: dropNN
           - refId: C
-            relativeTimeRange:
-              from: 300
-              to: 0
             datasourceUid: "__expr__"
             model:
               type: threshold
-              expression: "A"
+              expression: "B"
               conditions:
                 - evaluator:
                     params: [20]
                     type: gt
                   operator:
                     type: and
-                  query:
-                    params: [A]
-                  reducer:
-                    params: []
-                    type: last
         noDataState: NoData
         execErrState: Error
         for: 1m
@@ -73,25 +73,25 @@ groups:
               expr: 'increase(api_requests_total{status="429"}[5m])'
               intervalMs: 1000
               maxDataPoints: 43200
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: "A"
+              reducer: last
+              settings:
+                mode: dropNN
           - refId: C
-            relativeTimeRange:
-              from: 300
-              to: 0
             datasourceUid: "__expr__"
             model:
               type: threshold
-              expression: "A"
+              expression: "B"
               conditions:
                 - evaluator:
                     params: [50]
                     type: gt
                   operator:
                     type: and
-                  query:
-                    params: [A]
-                  reducer:
-                    params: []
-                    type: last
         noDataState: NoData
         execErrState: Error
         for: 1m
@@ -113,25 +113,25 @@ groups:
               expr: "(node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100"
               intervalMs: 1000
               maxDataPoints: 43200
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: "A"
+              reducer: last
+              settings:
+                mode: dropNN
           - refId: C
-            relativeTimeRange:
-              from: 300
-              to: 0
             datasourceUid: "__expr__"
             model:
               type: threshold
-              expression: "A"
+              expression: "B"
               conditions:
                 - evaluator:
                     params: [10]
                     type: lt
                   operator:
                     type: and
-                  query:
-                    params: [A]
-                  reducer:
-                    params: []
-                    type: last
         noDataState: NoData
         execErrState: Error
         for: 2m
@@ -153,25 +153,25 @@ groups:
               expr: '(node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"}) * 100'
               intervalMs: 1000
               maxDataPoints: 43200
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: "A"
+              reducer: last
+              settings:
+                mode: dropNN
           - refId: C
-            relativeTimeRange:
-              from: 300
-              to: 0
             datasourceUid: "__expr__"
             model:
               type: threshold
-              expression: "A"
+              expression: "B"
               conditions:
                 - evaluator:
                     params: [15]
                     type: lt
                   operator:
                     type: and
-                  query:
-                    params: [A]
-                  reducer:
-                    params: []
-                    type: last
         noDataState: NoData
         execErrState: Error
         for: 2m
