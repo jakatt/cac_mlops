@@ -2,7 +2,7 @@ name: CI — lint + tests
 
 on:
   push:
-    branches: ["jacques", "noel"]
+    branches: ["mlops", "DS"]
   pull_request:
     branches: ["main"]
 
