@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import gradio as gr
@@ -524,8 +525,12 @@ def promote_version(choice_key: str) -> str:
 # TAB 5 — Pipeline (Prefect flows)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _prefect_trigger(deployment_name: str, parameters: dict | None = None) -> str:
-    """Crée un flow run Prefect pour le déploiement donné via l'API REST."""
+_TERMINAL_STATES = {"Completed", "Failed", "Crashed", "Cancelled"}
+
+
+def _prefect_trigger(deployment_name: str, parameters: dict | None = None,
+                     wait_s: int = 45) -> str:
+    """Crée un flow run Prefect et attend la fin (max wait_s secondes)."""
     try:
         r = requests.post(
             f"{PREFECT_API}/deployments/filter",
@@ -541,10 +546,33 @@ def _prefect_trigger(deployment_name: str, parameters: dict | None = None) -> st
             json={"parameters": parameters or {}},
             timeout=5,
         )
-        run = r2.json()
-        run_id = run.get("id", "?")
-        state  = run.get("state", {}).get("name", "?")
-        return f"Flow run créé — id: {run_id[:8]}… | état initial: {state}\nVoir Prefect UI pour le suivi."
+        run    = r2.json()
+        run_id = run.get("id", "")
+        if not run_id:
+            return f"Erreur création flow run : {run}"
+
+        # Polling jusqu'à l'état terminal
+        elapsed = 0
+        interval = 3
+        while elapsed < wait_s:
+            time.sleep(interval)
+            elapsed += interval
+            try:
+                r3 = requests.get(f"{PREFECT_API}/flow_runs/{run_id}", timeout=5)
+                fr = r3.json()
+                state_obj = fr.get("state") or {}
+                state_name = state_obj.get("name", "")
+                if state_name in _TERMINAL_STATES:
+                    msg = state_obj.get("message") or ""
+                    icon = "✓" if state_name == "Completed" else "✗"
+                    result = f"{icon} {state_name} ({elapsed}s)"
+                    if msg:
+                        result += f"\n{msg[:300]}"
+                    return result
+            except Exception:
+                pass
+
+        return f"En cours… ({wait_s}s écoulées) — run id: {run_id[:8]}\nSuivre dans l'onglet Pipeline → Rafraîchir les runs."
     except Exception as e:
         return f"Erreur Prefect API : {e}"
 
@@ -562,12 +590,14 @@ def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
             return pd.DataFrame({"Info": ["Aucun run récent"]})
         rows = []
         for run in runs:
-            started = run.get("start_time", run.get("expected_start_time", ""))[:19] if run.get("start_time") or run.get("expected_start_time") else ""
+            started = run.get("start_time") or run.get("expected_start_time") or ""
+            started = started[:19] if started else ""
+            state_obj = run.get("state") or {}
             rows.append({
-                "Flow":   run.get("name", "?"),
-                "État":   run.get("state", {}).get("name", "?"),
-                "Début":  started,
-                "Durée":  f"{run.get('total_run_time', 0):.0f}s" if run.get("total_run_time") else "",
+                "Flow":  run.get("name", "?"),
+                "État":  state_obj.get("name", "?") if isinstance(state_obj, dict) else "?",
+                "Début": started,
+                "Durée": f"{run.get('total_run_time', 0):.0f}s" if run.get("total_run_time") else "",
             })
         return pd.DataFrame(rows)
     except Exception as e:
@@ -999,7 +1029,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                     gr.Markdown("#### ML Flows")
                     reset_pred  = gr.Checkbox(value=True,  label="Effacer prédictions")
                     reset_drift = gr.Checkbox(value=True,  label="Effacer drift reports")
-                    reset_mlf   = gr.Checkbox(value=False, label="Effacer MLflow (accidents_severity)")
+                    reset_mlf   = gr.Checkbox(value=True,  label="Effacer MLflow (accidents_severity)")
                     reset_btn   = gr.Button("Lancer reset",        variant="secondary")
                     retrain_btn = gr.Button("Lancer full-retrain", variant="primary")
                     newdata_btn = gr.Button("Vérifier nouvelles données", variant="secondary")

@@ -41,35 +41,36 @@ async def clear_predictions_task() -> int:
 def clear_mlflow_task() -> dict:
     import mlflow
     from mlflow.tracking import MlflowClient
+    from src.models.train_model import MODEL_NAMES
 
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
     mlflow.set_tracking_uri(tracking_uri)
     client = MlflowClient()
 
-    experiment = client.get_experiment_by_name(MLFLOW_EXPERIMENT_TO_RESET)
-    if experiment is None:
-        logger.info("MLflow experiment '%s' not found, nothing to clear", MLFLOW_EXPERIMENT_TO_RESET)
-        return {"runs_deleted": 0, "versions_deleted": 0}
-
     # Delete all runs in the experiment
-    runs = client.search_runs(experiment_ids=[experiment.experiment_id], max_results=50000)
-    for run in runs:
-        client.delete_run(run.info.run_id)
-    logger.info("Deleted %d MLflow run(s) from '%s'", len(runs), MLFLOW_EXPERIMENT_TO_RESET)
+    runs_deleted = 0
+    experiment = client.get_experiment_by_name(MLFLOW_EXPERIMENT_TO_RESET)
+    if experiment is not None:
+        runs = client.search_runs(experiment_ids=[experiment.experiment_id], max_results=50000)
+        for run in runs:
+            client.delete_run(run.info.run_id)
+        runs_deleted = len(runs)
+        logger.info("Deleted %d MLflow run(s) from '%s'", runs_deleted, MLFLOW_EXPERIMENT_TO_RESET)
+    else:
+        logger.info("MLflow experiment '%s' not found", MLFLOW_EXPERIMENT_TO_RESET)
 
-    # Delete all registered model versions linked to this experiment
-    versions_deleted = 0
-    try:
-        for mv in client.search_model_versions(f"name='{MLFLOW_EXPERIMENT_TO_RESET}'"):
-            client.delete_model_version(mv.name, mv.version)
-            versions_deleted += 1
-        logger.info("Deleted %d model version(s) from registry", versions_deleted)
-    except Exception as e:
-        logger.warning("Could not clear model registry: %s", e)
+    # Delete registered models entirely (rf_accidents, xgb_accidents, lgbm_accidents)
+    # Supprime toutes les versions + alias @Production — recréés automatiquement par train_flow
+    models_deleted = 0
+    for model_name in MODEL_NAMES.values():
+        try:
+            client.delete_registered_model(model_name)
+            models_deleted += 1
+            logger.info("Registered model '%s' supprimé", model_name)
+        except Exception:
+            logger.info("Registered model '%s' absent (déjà supprimé ou jamais créé)", model_name)
 
-    logger.info("Experiment '%s' cleared (%d runs deleted)", MLFLOW_EXPERIMENT_TO_RESET, len(runs))
-
-    return {"runs_deleted": len(runs), "versions_deleted": versions_deleted}
+    return {"runs_deleted": runs_deleted, "models_deleted": models_deleted}
 
 
 @task(name="clear-drift-reports")
@@ -90,7 +91,7 @@ def clear_drift_reports_task() -> int:
 async def reset_flow(
     clear_predictions: bool = True,
     clear_drift: bool = True,
-    clear_mlflow: bool = False,
+    clear_mlflow: bool = True,
 ) -> dict:
     """
     RAZ — wipe predictions table and/or drift reports before a from-scratch retrain.
