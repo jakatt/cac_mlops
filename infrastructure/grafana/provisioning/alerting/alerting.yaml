@@ -52,7 +52,7 @@ groups:
                     type: gt
                   operator:
                     type: and
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 1m
         annotations:
@@ -92,7 +92,7 @@ groups:
                     type: gt
                   operator:
                     type: and
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 1m
         annotations:
@@ -132,7 +132,7 @@ groups:
                     type: lt
                   operator:
                     type: and
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 2m
         annotations:
@@ -172,7 +172,7 @@ groups:
                     type: lt
                   operator:
                     type: and
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 2m
         annotations:
@@ -219,7 +219,7 @@ groups:
                   reducer:
                     params: []
                     type: last
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 0s
         annotations:
@@ -261,7 +261,7 @@ groups:
                   reducer:
                     params: []
                     type: last
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 0s
         annotations:
@@ -303,7 +303,7 @@ groups:
                   reducer:
                     params: []
                     type: last
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 0s
         annotations:
