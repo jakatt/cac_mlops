@@ -557,6 +557,18 @@ _LOG_SKIP_PATTERNS = (
     "prefect.task",
     "Crash detected",
     "Log level",
+    # infrastructure worker noise
+    "Worker '",
+    "Starting flow run",
+    "submitted to infrastructure",
+    "Running 1 deployment",
+    "Deployment step '",
+    "All deployment steps",
+    "Beginning flow run",
+    "Beginning subflow run",
+    "Process for flow run",
+    "Check the flow run logs",
+    "Engine execution exited",
 )
 
 _flow_id_cache: dict[str, str] = {}
@@ -580,7 +592,7 @@ def _fetch_run_logs(run_id: str, max_lines: int = 30) -> str:
         r = requests.post(
             f"{PREFECT_API}/logs/filter",
             json={
-                "flow_run_id": {"any_": [run_id]},
+                "logs": {"flow_run_id": {"any_": [run_id]}},
                 "sort": "TIMESTAMP_ASC",
                 "limit": 500,
             },
