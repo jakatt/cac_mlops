@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import gradio as gr
@@ -654,7 +655,18 @@ def _prefect_trigger(deployment_name: str, parameters: dict | None = None,
         return f"Erreur Prefect API : {e}"
 
 
-def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
+def _parse_ts(ts_str: str) -> str:
+    """Convertit un timestamp ISO UTC en heure locale (format YYYY-MM-DD HH:MM)."""
+    if not ts_str:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return ts_str[:16].replace("T", " ")
+
+
+def _prefect_recent_runs(limit: int = 20) -> pd.DataFrame:
     """Retourne les derniers flow runs depuis l'API Prefect avec noms lisibles."""
     try:
         r = requests.post(
@@ -673,8 +685,7 @@ def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
 
         rows = []
         for run in runs:
-            started = run.get("start_time") or run.get("expected_start_time") or ""
-            started = started[:16].replace("T", " ") if started else "—"
+            ts = run.get("start_time") or run.get("expected_start_time") or ""
             state_obj = run.get("state") or {}
             state_name = state_obj.get("name", "?") if isinstance(state_obj, dict) else "?"
             fid = run.get("flow_id", "")
@@ -683,7 +694,7 @@ def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
             rows.append({
                 "Flow":  flow_display,
                 "État":  state_name,
-                "Début": started,
+                "Début": _parse_ts(ts),
                 "Durée": f"{duration:.0f}s" if duration else "—",
             })
         return pd.DataFrame(rows)
@@ -1096,7 +1107,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 with gr.Column(scale=1):
                     gr.Markdown("#### Résultat")
                     action_result = gr.Textbox(
-                        label="", lines=14, interactive=False, show_label=False,
+                        label="", lines=22, interactive=False, show_label=False,
                     )
 
                 # Col 3 — Options
@@ -1113,12 +1124,23 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 
             with gr.Row():
                 pipeline_refresh = gr.Button("Rafraîchir les runs", variant="secondary", scale=1)
+                table_filter = gr.Textbox(
+                    placeholder="Filtrer par flow, état…", show_label=False, scale=3,
+                )
 
             runs_table = gr.Dataframe(
                 value=_prefect_recent_runs(),
                 label="Derniers flows exécutés",
                 interactive=False,
             )
+
+            def _filtered_runs(query: str) -> pd.DataFrame:
+                df = _prefect_recent_runs()
+                if not query.strip():
+                    return df
+                q = query.lower()
+                mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
+                return df[mask]
 
             kap_up_btn.click(fn=trigger_kapsule_up,     inputs=[kap_node_type, kap_node_count], outputs=action_result)
             kap_down_btn.click(fn=trigger_kapsule_down,  outputs=action_result)
@@ -1128,7 +1150,8 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
             retrain_btn.click(fn=trigger_full_retrain,   outputs=action_result)
             newdata_btn.click(fn=trigger_check_new_data, outputs=action_result)
             reset_btn.click(fn=trigger_reset, inputs=[reset_pred, reset_drift, reset_mlf], outputs=action_result)
-            pipeline_refresh.click(fn=refresh_recent_runs, outputs=runs_table)
+            pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
+            table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
 
         # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):
