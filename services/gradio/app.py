@@ -576,7 +576,7 @@ def _fetch_run_logs(run_id: str, max_lines: int = 30) -> str:
         r = requests.post(
             f"{PREFECT_API}/logs/filter",
             json={
-                "logs": {"flow_run_id": {"any_": [run_id]}},
+                "flow_run_id": {"any_": [run_id]},
                 "sort": "TIMESTAMP_ASC",
                 "limit": 500,
             },
