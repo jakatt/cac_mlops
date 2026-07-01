@@ -1185,6 +1185,219 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
             infra_html    = gr.HTML(value=build_links_html())
             infra_refresh.click(fn=build_links_html, outputs=infra_html)
 
+        # ── Onglet 8 : Architecture ──────────────────────────────────────────
+        with gr.Tab("Architecture"):
+            gr.Markdown("### Architecture globale — CAC MLOps\n"
+                        "*VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 14 flows · 3 workflows GitHub Actions*")
+
+            # ── SECTION 1 : DEV LOCAL ────────────────────────────────────────
+            with gr.Accordion("💻  DEV LOCAL", open=False):
+                gr.Markdown("""
+**Environnement Mac développeur**
+
+| Outil | Rôle |
+|---|---|
+| git + DVC | versioning code + données (remote S3 Scaleway) |
+| pytest + flake8 | tests et lint locaux avant PR |
+| kubectl + scw CLI | interaction cluster Kapsule |
+| docker-compose | stack locale complète (ports → 127.0.0.1) |
+
+**MLflow distant via Tailscale**
+`MLFLOW_TRACKING_URI = http://100.117.99.62:5001` — les expériences DS sont loggées directement sur le VPS.
+
+**Cycle quotidien DS**
+```
+git pull && dvc pull          # sync code + données depuis S3
+→ dev + expériences MLflow
+→ git push + dvc push
+→ PR vers main → CI → deploy automatique
+```
+""")
+
+            # ── SECTION 2 : VPS ──────────────────────────────────────────────
+            with gr.Accordion("🖥️  VPS Scaleway — DEV1-XL  (4 vCPU · 12 GB RAM · /data = 74 GB NVMe)", open=True):
+
+                gr.Markdown(
+                    "IP publique : **51.159.187.132** (port 8090 uniquement)  \n"
+                    "IP Tailscale : **100.117.99.62** (ports admin — VPN uniquement)"
+                )
+
+                # Docker
+                with gr.Accordion("🐳  Docker — 16 conteneurs  (15 permanents + minio-init EXIT)", open=False):
+
+                    with gr.Accordion("🔵  Notre Solution — 4 conteneurs  (3 images buildées en CI/CD)", open=True):
+                        gr.Markdown("""
+| Conteneur | Port hôte | Accès | Rôle |
+|---|---|---|---|
+| **api** | 8080 / 8000 | Tailscale + Prometheus | FastAPI — prédiction + JWT + métriques |
+| **mlflow** | 5001 | Tailscale | Tracking + Registry (image custom boto3/psycopg2) |
+| **gradio** | 7860 | Tailscale | Cockpit MLOps admin — 8 onglets |
+| **gradio-public** | 7862 (int.) | via nginx → PUBLIC | Cockpit public — 3 onglets (Predict, What-If, Points Noirs) |
+""")
+
+                    with gr.Accordion("⚪  Infrastructure Standard — 12 conteneurs", open=False):
+                        gr.Markdown("""
+| Conteneur | Port hôte | Accès |
+|---|---|---|
+| postgresql | 5432 | interne Docker |
+| minio | 9000 / 9001 | Tailscale |
+| minio-init | — | EXIT après init (crée bucket) |
+| nginx | 8090 | **PUBLIC 0.0.0.0** |
+| prefect-server | 4200 | Tailscale |
+| prefect-worker | — | process pool (image api + kubectl + scw) |
+| node-exporter | 9100 | interne Docker |
+| nginx-exporter | 9113 | interne Docker |
+| prometheus | 9090 | Tailscale |
+| grafana | 3000 | Tailscale |
+| loki | 3100 | interne Docker |
+| promtail | — | agent logs → loki |
+""")
+
+                    gr.Markdown("""
+**Niveaux d'accès**
+`PUBLIC` → 51.159.187.132 · `Tailscale` → 100.117.99.62 · `interne` → réseau Docker · `process pool` → aucun port · `EXIT` → one-shot init
+""")
+
+                # Prefect
+                with gr.Accordion("⚙️  Prefect — 14 flows  (prefect-server :4200 · pool: process)", open=False):
+
+                    with gr.Accordion("🤖  ML / ETL — 7 flows", open=True):
+                        gr.Markdown("""
+| Flow | Déclencheur | Rôle |
+|---|---|---|
+| **etl** | manuel / cron | download data.gouv.fr + validation schéma + preprocessing |
+| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion |
+| **full-retrain** | manuel | tous les cycles depuis zéro (etl + train × 3 années + drift) |
+| **drift-check** | hebdo | drift Evidently → alerte email si seuil dépassé |
+| **reset** | manuel | vide predictions + rapports drift (± MLflow selon options) |
+| **check-new-data** | cron lundi 8h UTC | détecte nouvelles données ONISR → déclenche etl + train |
+| **update-model** | trigger 3 CI/CD | extrait blueprint DS → train → gate manuelle → promote |
+""")
+
+                    with gr.Accordion("🔧  Infra / Ops — 7 flows", open=False):
+                        gr.Markdown("""
+| Flow | Déclencheur | Rôle |
+|---|---|---|
+| **deploy-vps** | CI/CD (trigger 1 & 2) | smoke test → **gate manuelle** → promote @Production → test-api → Kapsule |
+| **deploy-kapsule** | post deploy-vps | rolling update pods K8s (sans gate) |
+| **kapsule-up** | manuel | provision cluster Kapsule + upload modèle S3 |
+| **kapsule-down** | manuel | déprovision cluster Kapsule |
+| **test-api** | CI/CD + manuel | 6 tests fonctionnels (JWT · /predict · what-if · 429) |
+| **diag** | manuel | snapshot VPS : disk, docker ps, ports réseau |
+| **disk-cleanup** | cron 2h UTC | nettoyage images Docker + alerte si disk < 15% |
+""")
+
+                # Monitoring
+                with gr.Accordion("📊  Monitoring — Prometheus + Grafana + Loki + Evidently", open=False):
+                    gr.Markdown("""
+**Prometheus** `:9090` (Tailscale)
+
+| Source | Métriques |
+|---|---|
+| api:8000/metrics | requêtes, latence p50/p95/p99, prédictions, drift |
+| node-exporter:9100 | CPU / RAM / disk VPS |
+| nginx-exporter:9113 | connexions nginx, taux 4xx/5xx |
+
+**Grafana** `:3000` (Tailscale) — 4 dashboards provisionnés
+- `api-performance` — latence, taux erreur, throughput
+- `model-drift` — drift_share, features driftées (Evidently → Prometheus)
+- `system-health` — CPU / RAM / disk VPS en temps réel
+- `prefect-logs` — logs flows via datasource Loki
+
+**Loki + Promtail** (interne Docker)
+Promtail scrape les logs de tous les conteneurs → Loki → Grafana Explore
+
+**7 alertes email (SMTP)**
+
+| Type | Alerte | Seuil |
+|---|---|---|
+| Prometheus | Brute-force 401 | > 20 / 5 min |
+| Prometheus | DDoS 429 | > 50 / 5 min |
+| Prometheus | RAM critique | < 10% |
+| Prometheus | Disk /data | < 15% |
+| Loki | Erreur flow Prefect | pattern ERROR dans logs |
+| Loki | Taux erreur API | > 5% sur 5 min |
+| Loki | OOMKilled | pattern OOMKilled |
+""")
+
+                # CI/CD
+                with gr.Accordion("🔄  CI/CD GitHub — 3 workflows", open=False):
+                    gr.Markdown("""
+| Workflow | Déclencheur | Étapes |
+|---|---|---|
+| **ci.yml** | push mlops/DS + PR → main | flake8 → pytest → bloque PR si ✗ |
+| **deploy.yml** | push → main | build 3 images → Trivy CRITICAL → SSH VPS → git pull → compose up → smoke test → Prefect |
+| **cleanup.yml** | cron hebdo | purge anciennes images GHCR |
+
+**3 images Docker buildées et publiées sur GHCR**
+`ghcr.io/jakatt/cac-mlops-api:latest` · `cac-mlops-mlflow:latest` · `cac-mlops-gradio:latest`
+
+**Rollback automatique** : images taguées `:sha-xxxxxxxx` + `:rollback` avant chaque deploy.
+Smoke test KO → restore `:rollback` + exit 1.
+
+**Sécurité** : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).
+""")
+
+                # Stockage
+                with gr.Accordion("🗄️  Stockage — S3 + MinIO", open=False):
+                    gr.Markdown("""
+**Scaleway Object Storage** `s3://cac-mlops-data`
+
+| Préfixe | Contenu |
+|---|---|
+| `dvc/` | données ONISR versionnées (remote DVC) |
+| `k8s-model/` | `trained_model.joblib` — chargé par l'initContainer K8s |
+| `mlflow-k8s/` | artefacts MLflow dans Kapsule |
+
+**MinIO** `:9000 / 9001` (Tailscale) — artefacts MLflow VPS local
+Même interface S3 que Scaleway → `MLFLOW_S3_ENDPOINT_URL = http://minio:9000`
+
+**DVC** — `data/` n'est jamais commité dans git (`.gitignore`).
+`dvc pull` → récupère les données depuis S3. `dvc push` → pousse après nouvel ETL.
+""")
+
+            # ── SECTION 3 : KUBERNETES ───────────────────────────────────────
+            with gr.Accordion("☸️  Kapsule K8s — Scaleway  (on-demand, fr-par)", open=False):
+
+                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops)", open=True):
+                    gr.Markdown("""
+| Deployment | Particularité |
+|---|---|
+| **api** | HPA CPU 70% / RAM 80% → min 1 pod, max 8 pods |
+| | initContainer : `fetch-model` récupère `trained_model.joblib` depuis S3 au démarrage |
+| mlflow | SQLite emptyDir + artefacts S3 `mlflow-k8s/` |
+| prefect-server | UI Prefect K8s |
+| prefect-worker | pool process K8s |
+| prometheus | scrape `api:8000/metrics` |
+| grafana | ConfigMaps provisionnés (mêmes dashboards que VPS) |
+""")
+
+                with gr.Accordion("🌐  LoadBalancers", open=False):
+                    gr.Markdown("""
+| Service | Port | Accès |
+|---|---|---|
+| nginx | 80 | API publique (rate-limit 20r/min) |
+| prefect-server | 4200 | UI Prefect K8s |
+| grafana | 3000 | dashboards K8s |
+| mlflow | port-forward uniquement | — |
+
+IPs LoadBalancer écrites dans `state/kapsule_ips` par `kapsule-up-flow` → lues par l'onglet Infra.
+""")
+
+                with gr.Accordion("🔑  Secrets K8s", open=False):
+                    gr.Markdown("""
+| Secret | Variables |
+|---|---|
+| `s3-creds` | `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` |
+| `app-creds` | `JWT_SECRET_KEY` · `API_USERNAME` · `API_PASSWORD` |
+""")
+
+                gr.Markdown("""
+**Cycle provision / déprovision**
+Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → provision + upload modèle S3
+→ `deploy-kapsule-flow` rolling update pods → `kapsule-down-flow` déprovision (économie coût).
+""")
+
     gr.Markdown("""
 ---
 *LightGBM — donnees ONISR 2021-2023*
