@@ -1,7 +1,7 @@
 """
 Extract blueprint from MLflow explore experiment.
 
-Lit le dernier run tagué export_to_prod=true dans accidents_severity_explore,
+Lit le dernier run tagué export_to_prod=true dans accidents_severity_dev,
 extrait les hyperparamètres et met à jour config/model_params.yml.
 
 Convention DS :
@@ -24,7 +24,7 @@ import yaml
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")
 logger = logging.getLogger(__name__)
 
-EXPLORE_EXPERIMENT = "accidents_severity_explore"
+EXPLORE_EXPERIMENT = "accidents_severity_dev"
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "model_params.yml"
 
 ALGO_PARAMS: dict[str, list[str]] = {
