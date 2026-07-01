@@ -527,10 +527,86 @@ def promote_version(choice_key: str) -> str:
 
 _TERMINAL_STATES = {"Completed", "Failed", "Crashed", "Cancelled"}
 
+_FLOW_DISPLAY_NAMES = {
+    "full-retrain-flow":      "Réentraînement complet",
+    "kapsule-up-flow":        "Démarrage Kubernetes",
+    "kapsule-down-flow":      "Arrêt Kubernetes",
+    "test-api":               "Tests API",
+    "reset-flow":             "Réinitialisation",
+    "diag":                   "Diagnostic VPS",
+    "disk-cleanup-flow":      "Nettoyage disque",
+    "check-new-data-flow":    "Vérif. nouvelles données",
+    "update-model-flow":      "Mise à jour modèle",
+    "deploy-vps-flow":        "Déploiement VPS",
+    "train-flow":             "Entraînement modèles",
+    "drift-monitoring-flow":  "Monitoring drift",
+    "etl-flow":               "Import données",
+}
+
+_LOG_SKIP_PATTERNS = (
+    "Created task run",
+    "Submitted task run",
+    "Finished in state",
+    "Created flow run",
+    "Executing '",
+    "prefect.flow",
+    "prefect.task",
+    "Crash detected",
+    "Log level",
+)
+
+_flow_id_cache: dict[str, str] = {}
+
+
+def _resolve_flow_name(flow_id: str) -> str:
+    if flow_id in _flow_id_cache:
+        return _flow_id_cache[flow_id]
+    try:
+        r = requests.get(f"{PREFECT_API}/flows/{flow_id}", timeout=3)
+        raw = r.json().get("name", "")
+        display = _FLOW_DISPLAY_NAMES.get(raw, raw) if raw else flow_id[:8]
+        _flow_id_cache[flow_id] = display
+        return display
+    except Exception:
+        return flow_id[:8]
+
+
+def _fetch_run_logs(run_id: str, max_lines: int = 30) -> str:
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/logs/filter",
+            json={
+                "logs": {"flow_run_id": {"any_": [run_id]}},
+                "sort": "TIMESTAMP_ASC",
+                "limit": 500,
+            },
+            timeout=5,
+        )
+        entries = r.json()
+        if not entries:
+            return ""
+        lines = []
+        for entry in entries:
+            level = entry.get("level", 20)
+            msg = (entry.get("message") or "").strip()
+            if not msg or level < 20:
+                continue
+            if any(p in msg for p in _LOG_SKIP_PATTERNS):
+                continue
+            lines.append(msg)
+        if not lines:
+            return ""
+        if len(lines) > max_lines:
+            hidden = len(lines) - max_lines
+            lines = [f"[…{hidden} ligne(s) masquée(s)]"] + lines[-max_lines:]
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
 
 def _prefect_trigger(deployment_name: str, parameters: dict | None = None,
-                     wait_s: int = 45) -> str:
-    """Crée un flow run Prefect et attend la fin (max wait_s secondes)."""
+                     wait_s: int = 60) -> str:
+    """Crée un flow run Prefect et attend la fin (max wait_s s). wait_s=0 = fire-and-forget."""
     try:
         r = requests.post(
             f"{PREFECT_API}/deployments/filter",
@@ -551,6 +627,9 @@ def _prefect_trigger(deployment_name: str, parameters: dict | None = None,
         if not run_id:
             return f"Erreur création flow run : {run}"
 
+        if wait_s == 0:
+            return f"Lancé — run id : {run_id[:8]}\nSuivre la progression dans les runs ci-dessous."
+
         # Polling jusqu'à l'état terminal
         elapsed = 0
         interval = 3
@@ -563,22 +642,20 @@ def _prefect_trigger(deployment_name: str, parameters: dict | None = None,
                 state_obj = fr.get("state") or {}
                 state_name = state_obj.get("name", "")
                 if state_name in _TERMINAL_STATES:
-                    msg = state_obj.get("message") or ""
                     icon = "✓" if state_name == "Completed" else "✗"
-                    result = f"{icon} {state_name} ({elapsed}s)"
-                    if msg:
-                        result += f"\n{msg[:300]}"
-                    return result
+                    header = f"{icon} {state_name} ({elapsed}s)"
+                    logs = _fetch_run_logs(run_id)
+                    return f"{header}\n\n{logs}" if logs else header
             except Exception:
                 pass
 
-        return f"En cours… ({wait_s}s écoulées) — run id: {run_id[:8]}\nSuivre dans l'onglet Pipeline → Rafraîchir les runs."
+        return f"En cours… ({wait_s}s écoulées) — run id : {run_id[:8]}\nSuivre dans les runs ci-dessous."
     except Exception as e:
         return f"Erreur Prefect API : {e}"
 
 
 def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
-    """Retourne les derniers flow runs depuis l'API Prefect."""
+    """Retourne les derniers flow runs depuis l'API Prefect avec noms lisibles."""
     try:
         r = requests.post(
             f"{PREFECT_API}/flow_runs/filter",
@@ -588,16 +665,26 @@ def _prefect_recent_runs(limit: int = 10) -> pd.DataFrame:
         runs = r.json()
         if not runs:
             return pd.DataFrame({"Info": ["Aucun run récent"]})
+
+        for run in runs:
+            fid = run.get("flow_id")
+            if fid and fid not in _flow_id_cache:
+                _resolve_flow_name(fid)
+
         rows = []
         for run in runs:
             started = run.get("start_time") or run.get("expected_start_time") or ""
-            started = started[:19] if started else ""
+            started = started[:16].replace("T", " ") if started else "—"
             state_obj = run.get("state") or {}
+            state_name = state_obj.get("name", "?") if isinstance(state_obj, dict) else "?"
+            fid = run.get("flow_id", "")
+            flow_display = _flow_id_cache.get(fid, run.get("name", "?"))
+            duration = run.get("total_run_time")
             rows.append({
-                "Flow":  run.get("name", "?"),
-                "État":  state_obj.get("name", "?") if isinstance(state_obj, dict) else "?",
+                "Flow":  flow_display,
+                "État":  state_name,
                 "Début": started,
-                "Durée": f"{run.get('total_run_time', 0):.0f}s" if run.get("total_run_time") else "",
+                "Durée": f"{duration:.0f}s" if duration else "—",
             })
         return pd.DataFrame(rows)
     except Exception as e:
@@ -627,7 +714,7 @@ def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool
     })
 
 def trigger_full_retrain() -> str:
-    return _prefect_trigger("full-retrain")
+    return _prefect_trigger("full-retrain", wait_s=0)
 
 def trigger_check_new_data() -> str:
     return _prefect_trigger("check-new-data")
@@ -988,57 +1075,60 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 
         # ── Onglet 5 : Pipeline ──────────────────────────────────────────────
         with gr.Tab("Pipeline"):
-            gr.Markdown("### Orchestration Prefect — déclenchement des flows")
+            gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
             with gr.Row():
-                pipeline_refresh = gr.Button("Rafraichir les runs", scale=1)
-            runs_table = gr.Dataframe(
-                value=_prefect_recent_runs(),
-                label="Derniers flow runs",
-                interactive=False,
-            )
-            pipeline_refresh.click(fn=refresh_recent_runs, outputs=runs_table)
+                # Col 1 — Actions
+                with gr.Column(scale=1):
+                    gr.Markdown("#### Kubernetes")
+                    kap_up_btn   = gr.Button("Démarrer le cluster K8s",      variant="primary")
+                    kap_down_btn = gr.Button("Arrêter le cluster K8s",        variant="secondary")
+                    gr.Markdown("#### Tests & Maintenance")
+                    test_btn    = gr.Button("Tester l'API (6 vérifications)", variant="primary")
+                    diag_btn    = gr.Button("Diagnostiquer le VPS",            variant="secondary")
+                    cleanup_btn = gr.Button("Nettoyer l'espace disque",        variant="secondary")
+                    gr.Markdown("#### Modèles ML")
+                    retrain_btn = gr.Button("Réentraîner les modèles",         variant="primary")
+                    newdata_btn = gr.Button("Vérifier nouvelles données",       variant="secondary")
+                    reset_btn   = gr.Button("Réinitialiser la solution",        variant="secondary")
+
+                # Col 2 — Résultat unique partagé
+                with gr.Column(scale=1):
+                    gr.Markdown("#### Résultat")
+                    action_result = gr.Textbox(
+                        label="", lines=14, interactive=False, show_label=False,
+                    )
+
+                # Col 3 — Options
+                with gr.Column(scale=1):
+                    gr.Markdown("#### Options Kubernetes")
+                    kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
+                    kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+                    gr.Markdown("#### Options Réinitialisation")
+                    reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
+                    reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
+                    reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
 
             gr.Markdown("---")
 
             with gr.Row():
-                # Colonne gauche — Kapsule
-                with gr.Column(scale=1):
-                    gr.Markdown("#### Kapsule K8s (Phase 5)")
-                    kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
-                    kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
-                    kap_up_btn  = gr.Button("Démarrer Kapsule", variant="primary")
-                    kap_down_btn = gr.Button("Arrêter Kapsule",  variant="secondary")
-                    kap_result  = gr.Textbox(label="Résultat", lines=3, interactive=False)
-                    kap_up_btn.click(fn=trigger_kapsule_up, inputs=[kap_node_type, kap_node_count], outputs=kap_result)
-                    kap_down_btn.click(fn=trigger_kapsule_down, outputs=kap_result)
+                pipeline_refresh = gr.Button("Rafraîchir les runs", variant="secondary", scale=1)
 
-                # Colonne milieu — Tests & Diag
-                with gr.Column(scale=1):
-                    gr.Markdown("#### Tests & Diagnostic")
-                    test_btn    = gr.Button("Lancer test-api",         variant="primary")
-                    diag_btn    = gr.Button("Lancer diag VPS",         variant="secondary")
-                    cleanup_btn = gr.Button("Nettoyer disque (Docker)", variant="secondary")
-                    test_result = gr.Textbox(label="Résultat", lines=3, interactive=False)
-                    test_btn.click(fn=trigger_test_api,    outputs=test_result)
-                    diag_btn.click(fn=trigger_diag,        outputs=test_result)
-                    cleanup_btn.click(fn=trigger_disk_cleanup, outputs=test_result)
+            runs_table = gr.Dataframe(
+                value=_prefect_recent_runs(),
+                label="Derniers flows exécutés",
+                interactive=False,
+            )
 
-                # Colonne droite — ML flows
-                with gr.Column(scale=1):
-                    gr.Markdown("#### ML Flows")
-                    reset_pred  = gr.Checkbox(value=True,  label="Effacer prédictions")
-                    reset_drift = gr.Checkbox(value=True,  label="Effacer drift reports")
-                    reset_mlf   = gr.Checkbox(value=True,  label="Effacer MLflow (accidents_severity)")
-                    reset_btn   = gr.Button("Lancer reset",        variant="secondary")
-                    retrain_btn = gr.Button("Lancer full-retrain", variant="primary")
-                    newdata_btn = gr.Button("Vérifier nouvelles données", variant="secondary")
-                    ml_result   = gr.Textbox(label="Résultat", lines=3, interactive=False)
-                    reset_btn.click(fn=trigger_reset,
-                                    inputs=[reset_pred, reset_drift, reset_mlf],
-                                    outputs=ml_result)
-                    retrain_btn.click(fn=trigger_full_retrain,    outputs=ml_result)
-                    newdata_btn.click(fn=trigger_check_new_data,  outputs=ml_result)
+            kap_up_btn.click(fn=trigger_kapsule_up,     inputs=[kap_node_type, kap_node_count], outputs=action_result)
+            kap_down_btn.click(fn=trigger_kapsule_down,  outputs=action_result)
+            test_btn.click(fn=trigger_test_api,          outputs=action_result)
+            diag_btn.click(fn=trigger_diag,              outputs=action_result)
+            cleanup_btn.click(fn=trigger_disk_cleanup,   outputs=action_result)
+            retrain_btn.click(fn=trigger_full_retrain,   outputs=action_result)
+            newdata_btn.click(fn=trigger_check_new_data, outputs=action_result)
+            reset_btn.click(fn=trigger_reset, inputs=[reset_pred, reset_drift, reset_mlf], outputs=action_result)
+            pipeline_refresh.click(fn=refresh_recent_runs, outputs=runs_table)
 
         # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):
