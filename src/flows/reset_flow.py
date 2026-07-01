@@ -1,7 +1,7 @@
 """
 Reset flow (RAZ) — clears the predictions table, drift reports, and optionally
-MLflow runs/model versions for the accidents_severity experiment.
-accidents_severity_explore is never touched.
+MLflow runs/model versions for the accidents_severity_prod experiment.
+accidents_severity_dev is never touched.
 """
 import logging
 import os
@@ -11,7 +11,7 @@ from prefect import flow, task
 
 logger = logging.getLogger(__name__)
 
-MLFLOW_EXPERIMENT_TO_RESET = "accidents_severity"
+MLFLOW_EXPERIMENT_TO_RESET = "accidents_severity_prod"
 
 
 def _build_dsn() -> str:

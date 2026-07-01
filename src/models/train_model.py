@@ -48,10 +48,10 @@ def _load_algo_params(algorithm: str) -> dict[str, Any]:
         return {}
 
 # Expérience MLflow :
-#   "accidents_severity"         → runs officiels VPS (train.yml)
-#   "accidents_severity_explore" → expériences locales DS (via tunnel SSH)
+#   "accidents_severity_prod" → runs officiels VPS (train.yml)
+#   "accidents_severity_dev"  → expériences locales DS (via tunnel SSH)
 _RUN_MODE = os.getenv("MLFLOW_RUN_MODE", "explore")
-EXPERIMENT_NAME = "accidents_severity" if _RUN_MODE == "official" else "accidents_severity_explore"
+EXPERIMENT_NAME = "accidents_severity_prod" if _RUN_MODE == "official" else "accidents_severity_dev"
 
 # Nom MLflow par algorithme
 MODEL_NAMES = {
