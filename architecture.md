@@ -631,7 +631,7 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   IP Tailscale: 100.117.99.62    (ports admin — tailnet uniquement)       │
 │   Répertoire  : /data/cac_mlops  (symlink depuis /home/deploy)            │
 │                                                                            │
-│   CONTAINERS DOCKER (docker-compose.yml, 14 conteneurs : 13 permanents + minio-init EXIT) │
+│   CONTAINERS DOCKER (docker-compose.yml, 16 conteneurs : 15 permanents + minio-init EXIT) │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  Conteneur        Port hôte    Accès                             │   │
 │   │  ──────────────   ──────────   ─────────────────────────────     │   │
@@ -649,6 +649,8 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   │  nginx-exporter    9113        interne Docker (Prometheus)       │   │
 │   │  prometheus        9090        http://100.117.99.62:9090        │   │
 │   │  grafana           3000        http://100.117.99.62:3000        │   │
+│   │  loki              3100        interne Docker (logs agrégation)  │   │
+│   │  promtail          —           agent scrape logs → loki          │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Modèle en production : lgbm_accidents@Production                        │
@@ -696,7 +698,7 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │  ACCÈS PUBLIC (internet)                                                   │
 │  ┌──────────────────────────────────────────────────────────────────┐    │
 │  │  http://51.159.187.132:8090/           → Cockpit public Gradio  │    │
-│  │     (What-If + Points Noirs — 2 onglets, aucun accès admin)     │    │
+│  │     (Predict + What-If + Points Noirs — 3 onglets, aucun admin) │    │
 │  │  http://51.159.187.132:8090/predict    → NGINX → API (JWT req.) │    │
 │  │  http://51.159.187.132:8090/health     → healthcheck API        │    │
 │  │  http://51.159.187.132:8090/reports/drift/*   (rapports HTML)   │    │
@@ -866,7 +868,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
        ▼
   NGINX (nginx:alpine)
        │
-       ├── location /          → gradio-public:7862 (cockpit public 2 onglets)
+       ├── location /          → gradio-public:7862 (cockpit public 3 onglets)
        │     proxy WebSocket/SSE : Upgrade + Connection + proxy_buffering off
        ├── location /predict   → api:8000 (rate-limited 20r/min, burst=5)
        ├── location /health    → api:8000
@@ -900,8 +902,8 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 
   EXPÉRIENCES
   ────────────
-  accidents_severity        → runs officiels VPS (MLFLOW_RUN_MODE=official)
-  accidents_severity_explore → expériences locales DS (via Tailscale)
+  accidents_severity_prod → runs officiels VPS (MLFLOW_RUN_MODE=official)
+  accidents_severity_dev  → expériences locales DS (via Tailscale)
 ```
 
 ### Prefect — Orchestration
@@ -917,15 +919,16 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   train          → train_flow.py            : benchmark RF/XGBoost/LGBM, retourne dict metrics
   drift-check    → drift_monitoring_flow.py : drift annuel Evidently + alerte email (pas de retrain auto)
   full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
-  reset          → reset_flow.py            : vide predictions + rapports drift
-  check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h)
+  reset          → reset_flow.py            : vide predictions + rapports drift + MLflow
+  check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h UTC)
   update-model   → update_model_flow.py     : trigger 3 — extract blueprint → train → gate
   deploy-vps     → deploy_vps_flow.py       : smoke test → gate → promote → test-api → Kapsule (si OK)
   deploy-kapsule → deploy_kapsule_flow.py   : rolling update K8s (si Kapsule actif, sans gate)
   kapsule-up     → kapsule_up_flow.py       : provision cluster K8s + upload modèle S3
   kapsule-down   → kapsule_down_flow.py     : déprovision cluster K8s
-  test-api       → test_api_flow.py         : tests end-to-end (JWT, /predict, 429)
-  diag           → diag_flow.py             : diagnostic VPS (disk, docker, network)
+  test-api       → test_api_flow.py         : 6 tests fonctionnels end-to-end (JWT, /predict, what-if, 429)
+  diag           → diag_flow.py             : diagnostic VPS (disk, docker, network, ports)
+  disk-cleanup   → disk_cleanup_flow.py     : nettoyage Docker quotidien (cron 2h UTC) + alerte si disk < 15%
 
   BENCHMARK train_flow
   ────────────────────
@@ -1073,8 +1076,9 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   4. Drift      : sélecteur rapports Evidently, iframe HTML report
   5. Modèles    : versions MLflow (toutes familles), métriques, promotion @Production
   6. Pipeline   : déclenchement Prefect flows depuis le cockpit
-                  kapsule-up/down, test-api, diag, reset, full-retrain, check-new-data
-                  tableau des runs récents (état, durée)
+                  kapsule-up/down, test-api, diag, disk-cleanup, reset, full-retrain,
+                  check-new-data — tableau des 20 derniers runs (état, durée, heure locale)
+                  filtre texte temps réel, tri par colonne
   7. Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
   8. Infra      : URLs Tailscale admin + API publique + IPs Kapsule
 
@@ -1178,7 +1182,7 @@ PROTECTION BRANCHE main (activée via scripts/setup_branch_protection.sh)
   1 review requise sur les PR
   Force push interdit · suppression de branche interdite
 
-ci.yml — push vers jacques ou noel / PR vers main
+ci.yml — push vers mlops ou DS / PR vers main
   1. pip install -r requirements.txt
   2. pip-audit -r requirements.txt  (audit CVE dépendances Python — warning)
   3. flake8 (erreurs bloquantes E9/F63/F7/F82)
@@ -1265,7 +1269,7 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║  TRIGGER 3 — NOUVEAU BLUEPRINT DS  (push → PR → merge main)                    │  │  ║
 ║  ─────────────────────────────────────────────────────────                      │  │  ║
 ║  [DS local — MLflow explore]                                                    │  │  ║
-║    Expériences MLFLOW_RUN_MODE=explore → accidents_severity_explore             │  │  ║
+║    Expériences MLFLOW_RUN_MODE=explore → accidents_severity_dev                 │  │  ║
 ║    DS tagge run champion : mlflow set_tag("export_to_prod", "true")             │  │  ║
 ║    PR vers main : src/models/ ou src/features/ ou config/model_params.yml       │  │  ║
 ║  [deploy.yml — JOB 2 — SSH VPS — détection BLUEPRINT_CHANGED > 0]              │  │  ║
@@ -1335,7 +1339,7 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | Build images | 3 images Docker → GHCR :latest + :sha-8chrs | `services/*/Dockerfile` | `deploy.yml` JOB 1 |
 | Scan CVE | Trivy CRITICAL sur 3 images — bloque si CRITICAL | `.trivyignore` | `deploy.yml` JOB 1 |
 | VPS pull | Login GHCR · tag :rollback · git pull · compose up | SSH script | `deploy.yml` JOB 2 |
-| Smoke test | GET /health retry 24×5s — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
+| Smoke test | GET /health retry 18×5s (90s max) — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
 | Détection | `git diff HEAD~1` → pas de blueprint changé → trigger 2 | SSH script | `deploy.yml` JOB 2 |
 | Gate manuelle | Opérateur confirme déploiement sain dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
 | test-api | 5 tests fonctionnels (skip_rate_limit=True) — stop si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
@@ -1345,7 +1349,7 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 
 | Étape | Description | Script / Fichier | Flow Prefect / GH Action |
 | --- | --- | --- | --- |
-| Exploration | Expériences locales dans `accidents_severity_explore` | `src/models/train_model.py` | local (MLFLOW_RUN_MODE=explore) |
+| Exploration | Expériences locales dans `accidents_severity_dev` | `src/models/train_model.py` | local (MLFLOW_RUN_MODE=explore) |
 | Tag champion | DS tagge run MLflow : `export_to_prod=true` | MLflow client API | DS — action manuelle |
 | CI + merge | PR avec `src/models/` ou `config/model_params.yml` | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
 | Détection | `git diff HEAD~1` détecte fichiers model/features/config | SSH script | `deploy.yml` JOB 2 |
@@ -1364,14 +1368,14 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ### Branches et rôles
 
 ```text
-  jacques ──┐  (développement)
-             ├──► Pull Request ──► main ──► deploy automatique Scaleway
-  noel    ──┘  (développement)
+  mlops ──┐  (développement)
+           ├──► Pull Request ──► main ──► deploy automatique Scaleway
+  DS    ──┘  (développement)
 ```
 
 | Branche | Règle |
 | --- | --- |
-| `jacques` / `noel` | commits libres, push direct |
+| `mlops` / `DS` | commits libres, push direct |
 | `main` | **pas de commit direct** — uniquement via PR · CI obligatoire · 1 review requise (branch protection GitHub activée) |
 
 ### Cycle quotidien DS
@@ -1417,7 +1421,7 @@ MANUEL (déclenchement hors-cycle ou urgence)
                        │
           ┌────────────┼────────────┐
           │            │            │
-      jacques        noel      VPS deploy
+        mlops          DS        VPS deploy
    dvc push/pull  dvc push/pull  dvc pull (auto via deploy.yml)
 ```
 
@@ -1465,8 +1469,8 @@ cac_mlops/
 │   ├── nginx/
 │   │   └── nginx.conf                     # rate limit 20r/min /predict + /reports/ alias
 │   ├── gradio/
-│   │   ├── app.py                         # Cockpit MLOps 7 onglets (Tailscale :7860)
-│   │   ├── app_public.py                  # Cockpit public 2 onglets (internet :8090)
+│   │   ├── app.py                         # Cockpit MLOps 8 onglets (Tailscale :7860)
+│   │   ├── app_public.py                  # Cockpit public 3 onglets (internet :8090)
 │   │   ├── scenarios.py                   # scénarios What-If
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
@@ -1500,7 +1504,7 @@ cac_mlops/
 │       ├── deploy_kapsule_flow.py         # rolling update K8s (vérifie kapsule_ips, sans gate)
 │       ├── kapsule_up_flow.py             # provision cluster K8s + upload modèle S3
 │       ├── kapsule_down_flow.py           # déprovision cluster K8s
-│       ├── test_api_flow.py               # tests end-to-end JWT + /predict + 429
+│       ├── test_api_flow.py               # 6 tests fonctionnels (JWT, /predict, what-if, 429) — skip_rate_limit en CD
 │       └── diag_flow.py                   # diagnostic VPS (disk, docker, network)
 │
 ├── scripts/
@@ -1544,7 +1548,7 @@ cac_mlops/
 │   └── integration/
 │       └── test_api.py
 │
-├── docker-compose.yml                     # stack 14 conteneurs (local + VPS)
+├── docker-compose.yml                     # stack 16 conteneurs (local + VPS)
 ├── prefect.yaml                           # 14 deployments Prefect
 ├── .env.example                           # template — copier en .env
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
@@ -1603,8 +1607,8 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  CI/CD                     │  CI dans GitHub Actions (ci.yml + deploy.yml) │
 │                            │  CD dans Prefect (deploy-vps + deploy-kapsule)│
-│                            │  7 workflows GH Actions (ci, deploy, train,   │
-│                            │  promote, drift, benchmark, cleanup)          │
+│                            │  3 workflows GH Actions (ci, deploy, cleanup) │
+│                            │                                               │
 │                            │  Sécurité : Trivy CRITICAL + pip-audit        │
 │                            │  Rollback VPS : images :sha-xxxx + :rollback  │
 │                            │  Gate manuelle : pause_flow_run() Prefect 3.x │
