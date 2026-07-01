@@ -21,8 +21,11 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import gradio as gr
+
+_TZ = ZoneInfo("Europe/Paris")
 import joblib
 import mlflow
 import mlflow.pyfunc
@@ -661,7 +664,7 @@ def _parse_ts(ts_str: str) -> str:
         return "—"
     try:
         dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-        return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+        return dt.astimezone(_TZ).strftime("%Y-%m-%d %H:%M")
     except Exception:
         return ts_str[:16].replace("T", " ")
 

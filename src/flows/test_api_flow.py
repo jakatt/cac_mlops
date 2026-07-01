@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 
 import requests as http
-from prefect import flow, task, get_run_logger
+from prefect import flow, task
 
 # Dans le réseau Docker interne : nginx écoute sur nginx:80
 NGINX_URL    = os.getenv("NGINX_URL",    "http://nginx:80")
@@ -27,16 +27,14 @@ _SAMPLE_PAYLOAD = {
 
 @task(name="test-health", retries=2)
 def test_health() -> str:
-    logger = get_run_logger()
     r = http.get(f"{NGINX_URL}/health", timeout=10)
     assert r.status_code == 200, f"Health check: HTTP {r.status_code}"
-    logger.info("✓ /health → %s", r.json())
+    print(f"✓ /health → {r.json()}")
     return "OK"
 
 
 @task(name="test-token")
 def test_token() -> str:
-    logger = get_run_logger()
     r = http.post(
         f"{NGINX_URL}/token",
         data={"username": API_USERNAME, "password": API_PASSWORD},
@@ -44,22 +42,20 @@ def test_token() -> str:
     )
     assert r.status_code == 200, f"/token: HTTP {r.status_code} — {r.text}"
     token = r.json()["access_token"]
-    logger.info("✓ JWT token obtenu")
+    print("✓ JWT token obtenu")
     return token
 
 
 @task(name="test-401-sans-token")
 def test_no_auth() -> str:
-    logger = get_run_logger()
     r = http.post(f"{NGINX_URL}/predict", json=_SAMPLE_PAYLOAD, timeout=10)
     assert r.status_code == 401, f"Attendu 401, reçu {r.status_code}"
-    logger.info("✓ 401 sans token: OK")
+    print("✓ 401 sans token: OK")
     return "OK"
 
 
 @task(name="test-200-avec-token")
 def test_with_auth(token: str) -> str:
-    logger = get_run_logger()
     r = http.post(
         f"{NGINX_URL}/predict",
         json=_SAMPLE_PAYLOAD,
@@ -67,14 +63,13 @@ def test_with_auth(token: str) -> str:
         timeout=10,
     )
     assert r.status_code == 200, f"Predict: HTTP {r.status_code} — {r.text}"
-    logger.info("✓ /predict avec token → %s", r.json())
+    print(f"✓ /predict avec token → {r.json()}")
     return "OK"
 
 
 @task(name="test-whatif-vitesse-130-vs-110")
 def test_whatif_speed(token: str) -> str:
     """Vérifie la cohérence métier : vma=130 → proba gravité > vma=110 (autoroute)."""
-    logger = get_run_logger()
     headers = {"Authorization": f"Bearer {token}"}
     autoroute = {
         **_SAMPLE_PAYLOAD,
@@ -92,8 +87,7 @@ def test_whatif_speed(token: str) -> str:
     assert r110.status_code == 200, f"Predict vma=110: HTTP {r110.status_code}"
     p130 = r130.json()["probability"]
     p110 = r110.json()["probability"]
-    logger.info("✓ What-If vitesse — proba(vma=130)=%.3f  proba(vma=110)=%.3f  Δ=%.3f",
-                p130, p110, p130 - p110)
+    print(f"✓ What-If vitesse — proba(vma=130)={p130:.3f}  proba(vma=110)={p110:.3f}  Δ={p130 - p110:+.3f}")
     assert p130 > p110, (
         f"Cohérence métier KO : proba(vma=130)={p130:.3f} ≤ proba(vma=110)={p110:.3f}"
     )
@@ -102,7 +96,6 @@ def test_whatif_speed(token: str) -> str:
 
 @task(name="test-429-rate-limit")
 def test_rate_limit(token: str) -> str:
-    logger = get_run_logger()
     hit_429 = False
     for i in range(22):
         r = http.post(
@@ -112,7 +105,7 @@ def test_rate_limit(token: str) -> str:
             timeout=10,
         )
         if r.status_code == 429:
-            logger.info("✓ Rate-limit 429 déclenché à la requête %d", i + 1)
+            print(f"✓ Rate-limit 429 déclenché à la requête {i + 1}")
             hit_429 = True
             break
     assert hit_429, "Rate-limit 429 non déclenché en 22 requêtes (vérifier nginx.conf)"

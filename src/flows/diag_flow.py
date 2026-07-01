@@ -7,11 +7,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, task
 
 
 def _run(label: str, cmd: list[str], timeout: int = 30) -> str:
-    logger = get_run_logger()
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         out = r.stdout + (("\n[stderr] " + r.stderr) if r.returncode != 0 and r.stderr else "")
@@ -21,7 +20,7 @@ def _run(label: str, cmd: list[str], timeout: int = 30) -> str:
         out = f"[timeout {timeout}s]"
     except Exception as e:
         out = f"[erreur: {e}]"
-    logger.info("=== %s ===\n%s", label, out.strip())
+    print(f"=== {label} ===\n{out.strip()}")
     return out
 
 
