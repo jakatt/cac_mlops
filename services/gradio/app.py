@@ -1121,27 +1121,27 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
 
           <div class="accueil-stack-card">
-              <div style="font-size:2rem;margin-bottom:8px;">⚡</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">FastAPI</div>
-              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">API REST sécurisée<br>JWT · Rate-limit · 6 endpoints</div>
+              <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Disponibilité API</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">FastAPI · Nginx · Prometheus<br>JWT · rate-limit · alertes latence</div>
           </div>
 
           <div class="accueil-stack-card">
-              <div style="font-size:2rem;margin-bottom:8px;">🧪</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">MLflow</div>
-              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Tracking &amp; Registry<br>prod · dev · gate manuelle</div>
+              <div style="font-size:2rem;margin-bottom:8px;">📈</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Qualité modèle</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">MLflow · Evidently · Gate<br>drift PSI/KS · promote si meilleur</div>
           </div>
 
           <div class="accueil-stack-card">
               <div style="font-size:2rem;margin-bottom:8px;">🔀</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Prefect</div>
-              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">14 flows · 1 worker<br>Crons + déclenchements manuels</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Orchestration</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Prefect · CI/CD GitHub Actions<br>auto · stop si KO · tests · rollback</div>
           </div>
 
           <div class="accueil-stack-card">
-              <div style="font-size:2rem;margin-bottom:8px;">📡</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">PLG Stack</div>
-              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Prometheus · Loki · Grafana<br>7 alertes · SMTP ✓</div>
+              <div style="font-size:2rem;margin-bottom:8px;">🔍</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Traçabilité</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Git · DVC · MLflow<br>code · données · modèles</div>
           </div>
 
       </div>
