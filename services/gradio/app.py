@@ -1103,51 +1103,94 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
         with gr.Tab("Pipeline"):
             gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
-            with gr.Row():
-                # Col 1 — Actions
-                with gr.Column(scale=1):
-                    gr.Markdown("#### Kubernetes")
-                    kap_up_btn   = gr.Button("Démarrer le cluster K8s",      variant="primary")
-                    kap_down_btn = gr.Button("Arrêter le cluster K8s",        variant="secondary")
-                    gr.Markdown("#### Tests & Maintenance")
-                    test_btn    = gr.Button("Tester l'API (6 vérifications)", variant="primary")
-                    diag_btn    = gr.Button("Diagnostiquer le VPS",            variant="secondary")
-                    cleanup_btn = gr.Button("Nettoyer l'espace disque",        variant="secondary")
-                    gr.Markdown("#### Modèles ML")
-                    retrain_btn = gr.Button("Réentraîner les modèles",         variant="primary")
-                    newdata_btn = gr.Button("Vérifier nouvelles données",       variant="secondary")
-                    reset_btn   = gr.Button("Réinitialiser la solution",        variant="secondary")
+            _FLOW_CONFIGS = {
+                "Tester l'API (6 vérifications)": {
+                    "key": "test-api",
+                    "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=130 vs 110), rate-limit 429.",
+                    "opts": None,
+                },
+                "Diagnostiquer le VPS": {
+                    "key": "diag",
+                    "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
+                    "opts": None,
+                },
+                "Nettoyer l'espace disque": {
+                    "key": "disk-cleanup",
+                    "desc": "Purge les images Docker dangling et les conteneurs arrêtés. Alerte email si disque /data reste < 15% après nettoyage.",
+                    "opts": None,
+                },
+                "Réentraîner les modèles": {
+                    "key": "full-retrain",
+                    "desc": "Réentraîne les modèles sur toutes les années disponibles (2021–2023) : ETL → benchmark RF/XGBoost/LGBM → gate manuelle → promote si meilleur. Durée ~15 min.",
+                    "opts": None,
+                },
+                "Vérifier nouvelles données": {
+                    "key": "check-new-data",
+                    "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
+                    "opts": None,
+                },
+                "Réinitialiser la solution": {
+                    "key": "reset",
+                    "desc": "Vide les prédictions simulées et/ou les rapports de drift et/ou les expériences MLflow selon les options sélectionnées ci-dessous.",
+                    "opts": "reset",
+                },
+                "Démarrer le cluster K8s": {
+                    "key": "kapsule-up",
+                    "desc": "Provisionne un cluster Kubernetes Kapsule sur Scaleway, upload le modèle @Production sur S3, puis déclenche le rolling update des pods API.",
+                    "opts": "kapsule",
+                },
+                "Arrêter le cluster K8s": {
+                    "key": "kapsule-down",
+                    "desc": "Déprovisionne le cluster Kubernetes Kapsule pour arrêter la facturation. Les données et artefacts restent dans S3.",
+                    "opts": None,
+                },
+            }
 
-                # Col 2 — Résultat unique partagé
+            _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
+            _FIRST_FLOW  = _FLOW_NAMES[0]
+            _FIRST_DESC  = f"*{_FLOW_CONFIGS[_FIRST_FLOW]['desc']}*"
+
+            with gr.Row():
+                # ── Colonne gauche : sélection + description + options ─────
                 with gr.Column(scale=1):
-                    gr.Markdown("#### Résultat")
+                    with gr.Row():
+                        flow_dd  = gr.Dropdown(
+                            choices=_FLOW_NAMES, value=_FIRST_FLOW,
+                            show_label=False, scale=5,
+                        )
+                        run_btn = gr.Button("▶", variant="primary", scale=1, min_width=54)
+
+                    flow_desc = gr.Markdown(value=_FIRST_DESC)
+
+                    with gr.Group(visible=False) as kapsule_opts:
+                        kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
+                        kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+
+                    with gr.Group(visible=False) as reset_opts:
+                        reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
+                        reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
+                        reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
+
+                # ── Colonne droite : résultat ─────────────────────────────
+                with gr.Column(scale=1):
                     action_result = gr.Textbox(
-                        label="", lines=22, interactive=False, show_label=False,
+                        label="Résultat", lines=22, interactive=False,
                     )
 
-                # Col 3 — Options
-                with gr.Column(scale=1):
-                    gr.Markdown("#### Options Kubernetes")
-                    kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
-                    kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
-                    gr.Markdown("#### Options Réinitialisation")
-                    reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
-                    reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
-                    reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
-
-            gr.Markdown("---")
-
-            with gr.Row():
-                pipeline_refresh = gr.Button("Rafraîchir les runs", variant="secondary", scale=1)
-                table_filter = gr.Textbox(
-                    placeholder="Filtrer par flow, état…", show_label=False, scale=3,
-                )
-
+            # Table pleine largeur
             runs_table = gr.Dataframe(
                 value=_prefect_recent_runs(),
                 label="Derniers flows exécutés",
                 interactive=False,
             )
+
+            with gr.Row():
+                table_filter = gr.Textbox(
+                    placeholder="Filtrer par flow, état…", show_label=False, scale=5,
+                )
+                pipeline_refresh = gr.Button("↻  Rafraîchir", variant="secondary", scale=1, min_width=120)
+
+            # ── Callbacks ────────────────────────────────────────────────
 
             def _filtered_runs(query: str) -> pd.DataFrame:
                 df = _prefect_recent_runs()
@@ -1157,14 +1200,46 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
                 return df[mask]
 
-            kap_up_btn.click(fn=trigger_kapsule_up,     inputs=[kap_node_type, kap_node_count], outputs=action_result)
-            kap_down_btn.click(fn=trigger_kapsule_down,  outputs=action_result)
-            test_btn.click(fn=trigger_test_api,          outputs=action_result)
-            diag_btn.click(fn=trigger_diag,              outputs=action_result)
-            cleanup_btn.click(fn=trigger_disk_cleanup,   outputs=action_result)
-            retrain_btn.click(fn=trigger_full_retrain,   outputs=action_result)
-            newdata_btn.click(fn=trigger_check_new_data, outputs=action_result)
-            reset_btn.click(fn=trigger_reset, inputs=[reset_pred, reset_drift, reset_mlf], outputs=action_result)
+            def _on_flow_select(flow_name):
+                cfg  = _FLOW_CONFIGS.get(flow_name, {})
+                desc = cfg.get("desc", "")
+                opts = cfg.get("opts")
+                return (
+                    f"*{desc}*",
+                    gr.update(visible=(opts == "kapsule")),
+                    gr.update(visible=(opts == "reset")),
+                )
+
+            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf):
+                key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
+                if key == "kapsule-up":
+                    return trigger_kapsule_up(node_type, int(node_count or 2))
+                if key == "kapsule-down":
+                    return trigger_kapsule_down()
+                if key == "reset":
+                    return trigger_reset(r_pred, r_drift, r_mlf)
+                if key == "test-api":
+                    return trigger_test_api()
+                if key == "diag":
+                    return trigger_diag()
+                if key == "disk-cleanup":
+                    return trigger_disk_cleanup()
+                if key == "full-retrain":
+                    return trigger_full_retrain()
+                if key == "check-new-data":
+                    return trigger_check_new_data()
+                return f"Flow inconnu : {flow_name}"
+
+            flow_dd.change(
+                fn=_on_flow_select,
+                inputs=flow_dd,
+                outputs=[flow_desc, kapsule_opts, reset_opts],
+            )
+            run_btn.click(
+                fn=_run_flow,
+                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf],
+                outputs=action_result,
+            )
             pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
             table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
 
