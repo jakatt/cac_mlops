@@ -958,17 +958,26 @@ table td { font-size: 0.83rem !important; color: #374151 !important; }
 /* Hide footer */
 footer { display: none !important; }
 
-/* Pipeline — ▶ / ↻ boutons : hauteur alignée sur les inputs */
-#pipe-run-btn button, #pipe-refresh-btn button {
-    min-height: 40px !important;
+/* Pipeline — wrapper Gradio autour de ▶ et ↻ : supprimer le padding interne */
+div:has(> button#pipe-run-btn),
+div:has(> button#pipe-refresh-btn) {
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: unset !important;
+}
+/* Pipeline — boutons ▶ et ↻ : hauteur exacte égale aux inputs */
+button#pipe-run-btn,
+button#pipe-refresh-btn {
     height: 40px !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+    min-height: unset !important;
+    max-height: 40px !important;
+    padding: 0 12px !important;
     font-size: 1.1rem !important;
     line-height: 1 !important;
 }
-#pipe-run-btn, #pipe-refresh-btn {
-    align-self: flex-end;
+/* Pipeline — aligner en bas pour que bouton et input soient au même niveau */
+#pipe-action-row, #pipe-filter-row {
+    align-items: flex-end !important;
 }
 """
 
@@ -1166,7 +1175,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
             with gr.Row():
                 # ── Colonne gauche : sélection + description + options ─────
                 with gr.Column(scale=1):
-                    with gr.Row():
+                    with gr.Row(elem_id="pipe-action-row"):
                         flow_dd  = gr.Dropdown(
                             choices=_FLOW_NAMES, value=_FIRST_FLOW,
                             show_label=False, scale=5,
@@ -1201,7 +1210,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 interactive=False,
             )
 
-            with gr.Row():
+            with gr.Row(elem_id="pipe-filter-row"):
                 table_filter = gr.Textbox(
                     placeholder="Filtrer par flow, état…", show_label=False, scale=5,
                 )
