@@ -594,7 +594,7 @@ def _fetch_run_logs(run_id: str, max_lines: int = 30) -> str:
             json={
                 "logs": {"flow_run_id": {"any_": [run_id]}},
                 "sort": "TIMESTAMP_ASC",
-                "limit": 500,
+                "limit": 200,
             },
             timeout=5,
         )
@@ -744,6 +744,9 @@ def trigger_full_retrain() -> str:
 
 def trigger_check_new_data() -> str:
     return _prefect_trigger("check-new-data")
+
+def trigger_drift_check() -> str:
+    return _prefect_trigger("drift-check")
 
 def refresh_recent_runs() -> pd.DataFrame:
     return _prefect_recent_runs()
@@ -957,16 +960,204 @@ table td { font-size: 0.83rem !important; color: #374151 !important; }
 
 /* Hide footer */
 footer { display: none !important; }
+
+/* Pipeline — wrapper Gradio autour de ▶ et ↻ : supprimer le padding interne */
+div:has(> button#pipe-run-btn),
+div:has(> button#pipe-refresh-btn) {
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: unset !important;
+}
+/* Pipeline — boutons ▶ et ↻ : hauteur exacte égale aux inputs */
+button#pipe-run-btn,
+button#pipe-refresh-btn {
+    height: 40px !important;
+    min-height: unset !important;
+    max-height: 40px !important;
+    padding: 0 12px !important;
+    font-size: 1.1rem !important;
+    line-height: 1 !important;
+}
+/* Pipeline — aligner en bas pour que bouton et input soient au même niveau */
+#pipe-action-row, #pipe-filter-row {
+    align-items: flex-end !important;
+}
 """
 
 with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 
     gr.Markdown("""
 # Cockpit MLOps — Securite Routiere
-Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
+Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 """)
 
     with gr.Tabs():
+
+        # ── Onglet Accueil ───────────────────────────────────────────────────
+        with gr.Tab("Accueil"):
+            gr.HTML("""
+<style>
+.accueil-pill {
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.28);
+    color: #fff;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-family: 'Inter','Segoe UI',sans-serif;
+    white-space: nowrap;
+}
+.accueil-card {
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 18px 20px;
+    background: white;
+    flex: 1;
+    min-width: 0;
+}
+.accueil-card h3 {
+    color: #143B5E !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 8px 0 !important;
+    border: none !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    padding: 0 !important;
+}
+.accueil-card p {
+    color: #6B7280;
+    font-size: 0.83rem;
+    line-height: 1.55;
+    margin: 0;
+}
+.accueil-stack-card {
+    background: white;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 20px 16px;
+    text-align: center;
+    flex: 1;
+    min-width: 0;
+}
+</style>
+
+<div style="font-family:'Inter','Segoe UI',sans-serif;color:#374151;max-width:100%;padding:4px 0;">
+
+  <!-- ── Hero banner ─────────────────────────────────────────────── -->
+  <div style="
+      position:relative;
+      border-radius:14px;
+      padding:38px 40px;
+      margin-bottom:22px;
+      overflow:hidden;
+      background:
+          linear-gradient(160deg, rgba(13,27,42,0.92) 0%, rgba(20,59,94,0.88) 55%, rgba(13,27,42,0.95) 100%),
+          url('https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Car_crash_1.jpg/1280px-Car_crash_1.jpg')
+          center/cover no-repeat;
+  ">
+      <!-- route stripes déco -->
+      <div style="
+          position:absolute;inset:0;pointer-events:none;
+          background:
+              repeating-linear-gradient(90deg,
+                  transparent,transparent 47%,
+                  rgba(255,255,255,0.04) 47%,rgba(255,255,255,0.04) 53%),
+              radial-gradient(ellipse at 15% 60%, rgba(220,38,38,0.18) 0%, transparent 55%),
+              radial-gradient(ellipse at 85% 30%, rgba(220,38,38,0.10) 0%, transparent 45%);
+      "></div>
+
+      <div style="position:relative;z-index:1;">
+          <div style="font-size:0.7rem;color:rgba(255,255,255,0.45);letter-spacing:4px;text-transform:uppercase;margin-bottom:6px;">
+              COCKPIT MLOPS — SÉCURITÉ ROUTIÈRE
+          </div>
+          <h1 style="color:white !important;font-size:2rem !important;font-weight:800 !important;
+                     letter-spacing:3px;margin:0 0 10px 0 !important;border:none !important;
+                     padding:0 !important;text-transform:uppercase;">
+              BIENVENUE LÉON
+          </h1>
+          <p style="color:rgba(255,255,255,0.78);font-size:0.93rem;margin:0 0 26px 0;line-height:1.5;">
+              Cockpit MLOps de la solution de prévision de gravité des accidents de la route de la sécurité routière
+          </p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;">
+              <span class="accueil-pill">🔄&nbsp; 14 flows Prefect</span>
+              <span class="accueil-pill">⚙️&nbsp; 3 workflows CI/CD</span>
+              <span class="accueil-pill">📊&nbsp; Monitoring 24 / 7</span>
+              <span class="accueil-pill">🚨&nbsp; 7 alertes configurées</span>
+          </div>
+      </div>
+  </div>
+
+  <!-- ── Ce que vous pouvez faire ici ────────────────────────────── -->
+  <div style="background:white;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #E5E7EB;">
+      <div style="color:#143B5E;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Ce que vous pouvez faire ici</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+
+          <div class="accueil-card">
+              <h3>Pipeline &nbsp;→</h3>
+              <p>Déclenchez les <strong>8 flows Prefect</strong> depuis l'interface : tests API,
+              réentraînement complet, diagnostic VPS, nettoyage disque, cluster Kapsule K8s et
+              réinitialisation de la solution.</p>
+          </div>
+
+          <div class="accueil-card">
+              <h3>Modèles &nbsp;→</h3>
+              <p>Suivez <strong>rf_accidents @ Production</strong> dans MLflow. Comparez les
+              benchmarks RF / XGBoost / LightGBM, consultez les métriques par année et
+              visualisez les features importances.</p>
+          </div>
+
+          <div class="accueil-card">
+              <h3>Drift &amp; Healthcheck &nbsp;→</h3>
+              <p>Détectez les <strong>dérives de distribution</strong> (PSI, KS) par variable et
+              supervisez la santé de l'API en temps réel — latence, taux d'erreur, charge CPU
+              et utilisation disque.</p>
+          </div>
+
+      </div>
+  </div>
+
+  <!-- ── Les 4 piliers de la stack ───────────────────────────────── -->
+  <div style="background:#F9FAFB;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #E5E7EB;">
+      <div style="color:#143B5E;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Les 4 piliers de la stack</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Disponibilité API</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">FastAPI · Nginx · Prometheus<br>JWT · rate-limit · alertes latence</div>
+          </div>
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">📈</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Qualité modèle</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">MLflow · Evidently · Gate<br>drift PSI/KS · promote si meilleur</div>
+          </div>
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">🔀</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Orchestration</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Prefect · CI/CD GitHub Actions<br>auto · stop si KO · tests · rollback</div>
+          </div>
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">🔍</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Traçabilité</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Git · DVC · MLflow<br>code · données · modèles</div>
+          </div>
+
+      </div>
+  </div>
+
+  <!-- ── Disclaimer ──────────────────────────────────────────────── -->
+  <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:10px;padding:14px 20px;font-size:0.8rem;color:#92400E;line-height:1.5;">
+      <strong>Note :</strong> Ce cockpit est un outil interne de supervision MLOps. Les prédictions
+      sont générées par un modèle statistique entraîné sur les données ONISR 2021–2023 et
+      ne constituent pas une expertise légale ou réglementaire.
+  </div>
+
+</div>
+""")
 
         # ── Onglet Predict ───────────────────────────────────────────────────
         with gr.Tab("Predict"):
@@ -1103,51 +1294,103 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
         with gr.Tab("Pipeline"):
             gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
-            with gr.Row():
-                # Col 1 — Actions
-                with gr.Column(scale=1):
-                    gr.Markdown("#### Kubernetes")
-                    kap_up_btn   = gr.Button("Démarrer le cluster K8s",      variant="primary")
-                    kap_down_btn = gr.Button("Arrêter le cluster K8s",        variant="secondary")
-                    gr.Markdown("#### Tests & Maintenance")
-                    test_btn    = gr.Button("Tester l'API (6 vérifications)", variant="primary")
-                    diag_btn    = gr.Button("Diagnostiquer le VPS",            variant="secondary")
-                    cleanup_btn = gr.Button("Nettoyer l'espace disque",        variant="secondary")
-                    gr.Markdown("#### Modèles ML")
-                    retrain_btn = gr.Button("Réentraîner les modèles",         variant="primary")
-                    newdata_btn = gr.Button("Vérifier nouvelles données",       variant="secondary")
-                    reset_btn   = gr.Button("Réinitialiser la solution",        variant="secondary")
+            _FLOW_CONFIGS = {
+                "Tester l'API (6 vérifications)": {
+                    "key": "test-api",
+                    "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=130 vs 110), rate-limit 429.",
+                    "opts": None,
+                },
+                "Diagnostiquer le VPS": {
+                    "key": "diag",
+                    "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
+                    "opts": None,
+                },
+                "Nettoyer l'espace disque": {
+                    "key": "disk-cleanup",
+                    "desc": "Purge les images Docker dangling et les conteneurs arrêtés. Alerte email si disque /data reste < 15% après nettoyage.",
+                    "opts": None,
+                },
+                "Réentraîner les modèles": {
+                    "key": "full-retrain",
+                    "desc": "Réentraîne les modèles sur toutes les années disponibles (2021–2023) : ETL → benchmark RF/XGBoost/LGBM → gate manuelle → promote si meilleur. Durée ~15 min.",
+                    "opts": None,
+                },
+                "Vérifier nouvelles données": {
+                    "key": "check-new-data",
+                    "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
+                    "opts": None,
+                },
+                "Analyser le drift": {
+                    "key": "drift-check",
+                    "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement 2021–2023 et les prédictions de production. Génère le rapport Evidently dans l'onglet Drift.",
+                    "opts": None,
+                },
+                "Réinitialiser la solution": {
+                    "key": "reset",
+                    "desc": "Vide les prédictions simulées et/ou les rapports de drift et/ou les expériences MLflow selon les options sélectionnées ci-dessous.",
+                    "opts": "reset",
+                },
+                "Démarrer le cluster K8s": {
+                    "key": "kapsule-up",
+                    "desc": "Provisionne un cluster Kubernetes Kapsule sur Scaleway, upload le modèle @Production sur S3, puis déclenche le rolling update des pods API.",
+                    "opts": "kapsule",
+                },
+                "Arrêter le cluster K8s": {
+                    "key": "kapsule-down",
+                    "desc": "Déprovisionne le cluster Kubernetes Kapsule pour arrêter la facturation. Les données et artefacts restent dans S3.",
+                    "opts": None,
+                },
+            }
 
-                # Col 2 — Résultat unique partagé
+            _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
+            _FIRST_FLOW  = _FLOW_NAMES[0]
+            _FIRST_DESC  = _FLOW_CONFIGS[_FIRST_FLOW]["desc"]
+
+            with gr.Row():
+                # ── Colonne gauche : sélection + description + options ─────
                 with gr.Column(scale=1):
-                    gr.Markdown("#### Résultat")
-                    action_result = gr.Textbox(
-                        label="", lines=22, interactive=False, show_label=False,
+                    with gr.Row(elem_id="pipe-action-row"):
+                        flow_dd  = gr.Dropdown(
+                            choices=_FLOW_NAMES, value=_FIRST_FLOW,
+                            show_label=False, scale=5,
+                        )
+                        run_btn = gr.Button("▶", variant="primary", scale=1, min_width=54, elem_id="pipe-run-btn")
+
+                    flow_desc = gr.Textbox(
+                        value=_FIRST_DESC,
+                        show_label=False, interactive=False, lines=3, max_lines=5,
+                        elem_id="pipe-desc",
                     )
 
-                # Col 3 — Options
+                    with gr.Group(visible=False) as kapsule_opts:
+                        kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
+                        kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+
+                    with gr.Group(visible=False) as reset_opts:
+                        reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
+                        reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
+                        reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
+
+                # ── Colonne droite : résultat ─────────────────────────────
                 with gr.Column(scale=1):
-                    gr.Markdown("#### Options Kubernetes")
-                    kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
-                    kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
-                    gr.Markdown("#### Options Réinitialisation")
-                    reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
-                    reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
-                    reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
+                    action_result = gr.Textbox(
+                        label="Résultat", lines=22, interactive=False,
+                    )
 
-            gr.Markdown("---")
-
-            with gr.Row():
-                pipeline_refresh = gr.Button("Rafraîchir les runs", variant="secondary", scale=1)
-                table_filter = gr.Textbox(
-                    placeholder="Filtrer par flow, état…", show_label=False, scale=3,
-                )
-
+            # Table pleine largeur
             runs_table = gr.Dataframe(
                 value=_prefect_recent_runs(),
                 label="Derniers flows exécutés",
                 interactive=False,
             )
+
+            with gr.Row(elem_id="pipe-filter-row"):
+                table_filter = gr.Textbox(
+                    placeholder="Filtrer par flow, état…", show_label=False, scale=5,
+                )
+                pipeline_refresh = gr.Button("↻", variant="primary", scale=1, min_width=54, elem_id="pipe-refresh-btn")
+
+            # ── Callbacks ────────────────────────────────────────────────
 
             def _filtered_runs(query: str) -> pd.DataFrame:
                 df = _prefect_recent_runs()
@@ -1157,14 +1400,48 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
                 return df[mask]
 
-            kap_up_btn.click(fn=trigger_kapsule_up,     inputs=[kap_node_type, kap_node_count], outputs=action_result)
-            kap_down_btn.click(fn=trigger_kapsule_down,  outputs=action_result)
-            test_btn.click(fn=trigger_test_api,          outputs=action_result)
-            diag_btn.click(fn=trigger_diag,              outputs=action_result)
-            cleanup_btn.click(fn=trigger_disk_cleanup,   outputs=action_result)
-            retrain_btn.click(fn=trigger_full_retrain,   outputs=action_result)
-            newdata_btn.click(fn=trigger_check_new_data, outputs=action_result)
-            reset_btn.click(fn=trigger_reset, inputs=[reset_pred, reset_drift, reset_mlf], outputs=action_result)
+            def _on_flow_select(flow_name):
+                cfg  = _FLOW_CONFIGS.get(flow_name, {})
+                desc = cfg.get("desc", "")
+                opts = cfg.get("opts")
+                return (
+                    desc,
+                    gr.update(visible=(opts == "kapsule")),
+                    gr.update(visible=(opts == "reset")),
+                )
+
+            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf):
+                key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
+                if key == "kapsule-up":
+                    return trigger_kapsule_up(node_type, int(node_count or 2))
+                if key == "kapsule-down":
+                    return trigger_kapsule_down()
+                if key == "reset":
+                    return trigger_reset(r_pred, r_drift, r_mlf)
+                if key == "test-api":
+                    return trigger_test_api()
+                if key == "diag":
+                    return trigger_diag()
+                if key == "disk-cleanup":
+                    return trigger_disk_cleanup()
+                if key == "full-retrain":
+                    return trigger_full_retrain()
+                if key == "check-new-data":
+                    return trigger_check_new_data()
+                if key == "drift-check":
+                    return trigger_drift_check()
+                return f"Flow inconnu : {flow_name}"
+
+            flow_dd.change(
+                fn=_on_flow_select,
+                inputs=flow_dd,
+                outputs=[flow_desc, kapsule_opts, reset_opts],
+            )
+            run_btn.click(
+                fn=_run_flow,
+                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf],
+                outputs=action_result,
+            )
             pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
             table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
 
@@ -1185,9 +1462,222 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
             infra_html    = gr.HTML(value=build_links_html())
             infra_refresh.click(fn=build_links_html, outputs=infra_html)
 
+        # ── Onglet 8 : Architecture ──────────────────────────────────────────
+        with gr.Tab("Architecture"):
+            gr.Markdown("### Architecture globale — CAC MLOps\n"
+                        "*VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 14 flows · 3 workflows GitHub Actions*")
+
+            # ── SECTION 1 : DEV LOCAL ────────────────────────────────────────
+            with gr.Accordion("💻  DEV LOCAL", open=False):
+                gr.Markdown("""
+**Environnement Mac développeur**
+
+| Outil | Rôle |
+|---|---|
+| git + DVC | versioning code + données (remote S3 Scaleway) |
+| pytest + flake8 | tests et lint locaux avant PR |
+| kubectl + scw CLI | interaction cluster Kapsule |
+| docker-compose | stack locale complète (ports → 127.0.0.1) |
+
+**MLflow distant via Tailscale**
+`MLFLOW_TRACKING_URI = http://100.117.99.62:5001` — les expériences DS sont loggées directement sur le VPS.
+
+**Cycle quotidien DS**
+```
+git pull && dvc pull          # sync code + données depuis S3
+→ dev + expériences MLflow
+→ git push + dvc push
+→ PR vers main → CI → deploy automatique
+```
+""")
+
+            # ── SECTION 2 : VPS ──────────────────────────────────────────────
+            with gr.Accordion("🖥️  VPS Scaleway — DEV1-XL  (4 vCPU · 12 GB RAM · /data = 74 GB NVMe)", open=True):
+
+                gr.Markdown(
+                    "IP publique : **51.159.187.132** (port 8090 uniquement)  \n"
+                    "IP Tailscale : **100.117.99.62** (ports admin — VPN uniquement)"
+                )
+
+                # Docker
+                with gr.Accordion("🐳  Docker — 16 conteneurs  (15 permanents + minio-init EXIT)", open=False):
+
+                    with gr.Accordion("🔵  Notre Solution — 4 conteneurs  (3 images buildées en CI/CD)", open=True):
+                        gr.Markdown("""
+| Conteneur | Port hôte | Accès | Rôle |
+|---|---|---|---|
+| **api** | 8080 / 8000 | Tailscale + Prometheus | FastAPI — prédiction + JWT + métriques |
+| **mlflow** | 5001 | Tailscale | Tracking + Registry (image custom boto3/psycopg2) |
+| **gradio** | 7860 | Tailscale | Cockpit MLOps admin — 8 onglets |
+| **gradio-public** | 7862 (int.) | via nginx → PUBLIC | Cockpit public — 3 onglets (Predict, What-If, Points Noirs) |
+""")
+
+                    with gr.Accordion("⚪  Infrastructure Standard — 12 conteneurs", open=False):
+                        gr.Markdown("""
+| Conteneur | Port hôte | Accès |
+|---|---|---|
+| postgresql | 5432 | interne Docker |
+| minio | 9000 / 9001 | Tailscale |
+| minio-init | — | EXIT après init (crée bucket) |
+| nginx | 8090 | **PUBLIC 0.0.0.0** |
+| prefect-server | 4200 | Tailscale |
+| prefect-worker | — | process pool (image api + kubectl + scw) |
+| node-exporter | 9100 | interne Docker |
+| nginx-exporter | 9113 | interne Docker |
+| prometheus | 9090 | Tailscale |
+| grafana | 3000 | Tailscale |
+| loki | 3100 | interne Docker |
+| promtail | — | agent logs → loki |
+""")
+
+                    gr.Markdown("""
+**Niveaux d'accès**
+`PUBLIC` → 51.159.187.132 · `Tailscale` → 100.117.99.62 · `interne` → réseau Docker · `process pool` → aucun port · `EXIT` → one-shot init
+""")
+
+                # Prefect
+                with gr.Accordion("⚙️  Prefect — 14 flows  (prefect-server :4200 · pool: process)", open=False):
+
+                    with gr.Accordion("🤖  ML / ETL — 7 flows", open=True):
+                        gr.Markdown("""
+| Flow | Déclencheur | Rôle |
+|---|---|---|
+| **etl** | manuel / cron | download data.gouv.fr + validation schéma + preprocessing |
+| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion |
+| **full-retrain** | manuel | tous les cycles depuis zéro (etl + train × 3 années + drift) |
+| **drift-check** | hebdo | drift Evidently → alerte email si seuil dépassé |
+| **reset** | manuel | vide predictions + rapports drift (± MLflow selon options) |
+| **check-new-data** | cron lundi 8h UTC | détecte nouvelles données ONISR → déclenche etl + train |
+| **update-model** | trigger 3 CI/CD | extrait blueprint DS → train → gate manuelle → promote |
+""")
+
+                    with gr.Accordion("🔧  Infra / Ops — 7 flows", open=False):
+                        gr.Markdown("""
+| Flow | Déclencheur | Rôle |
+|---|---|---|
+| **deploy-vps** | CI/CD (trigger 1 & 2) | smoke test → **gate manuelle** → promote @Production → test-api → Kapsule |
+| **deploy-kapsule** | post deploy-vps | rolling update pods K8s (sans gate) |
+| **kapsule-up** | manuel | provision cluster Kapsule + upload modèle S3 |
+| **kapsule-down** | manuel | déprovision cluster Kapsule |
+| **test-api** | CI/CD + manuel | 6 tests fonctionnels (JWT · /predict · what-if · 429) |
+| **diag** | manuel | snapshot VPS : disk, docker ps, ports réseau |
+| **disk-cleanup** | cron 2h UTC | nettoyage images Docker + alerte si disk < 15% |
+""")
+
+                # Monitoring
+                with gr.Accordion("📊  Monitoring — Prometheus + Grafana + Loki + Evidently", open=False):
+                    gr.Markdown("""
+**Prometheus** `:9090` (Tailscale)
+
+| Source | Métriques |
+|---|---|
+| api:8000/metrics | requêtes, latence p50/p95/p99, prédictions, drift |
+| node-exporter:9100 | CPU / RAM / disk VPS |
+| nginx-exporter:9113 | connexions nginx, taux 4xx/5xx |
+
+**Grafana** `:3000` (Tailscale) — 4 dashboards provisionnés
+- `api-performance` — latence, taux erreur, throughput
+- `model-drift` — drift_share, features driftées (Evidently → Prometheus)
+- `system-health` — CPU / RAM / disk VPS en temps réel
+- `prefect-logs` — logs flows via datasource Loki
+
+**Loki + Promtail** (interne Docker)
+Promtail scrape les logs de tous les conteneurs → Loki → Grafana Explore
+
+**7 alertes email (SMTP)**
+
+| Type | Alerte | Seuil |
+|---|---|---|
+| Prometheus | Brute-force 401 | > 20 / 5 min |
+| Prometheus | DDoS 429 | > 50 / 5 min |
+| Prometheus | RAM critique | < 10% |
+| Prometheus | Disk /data | < 15% |
+| Loki | Erreur flow Prefect | pattern ERROR dans logs |
+| Loki | Taux erreur API | > 5% sur 5 min |
+| Loki | OOMKilled | pattern OOMKilled |
+""")
+
+                # CI/CD
+                with gr.Accordion("🔄  CI/CD GitHub — 3 workflows", open=False):
+                    gr.Markdown("""
+| Workflow | Déclencheur | Étapes |
+|---|---|---|
+| **ci.yml** | push mlops/DS + PR → main | flake8 → pytest → bloque PR si ✗ |
+| **deploy.yml** | push → main | build 3 images → Trivy CRITICAL → SSH VPS → git pull → compose up → smoke test → Prefect |
+| **cleanup.yml** | cron hebdo | purge anciennes images GHCR |
+
+**3 images Docker buildées et publiées sur GHCR**
+`ghcr.io/jakatt/cac-mlops-api:latest` · `cac-mlops-mlflow:latest` · `cac-mlops-gradio:latest`
+
+**Rollback automatique** : images taguées `:sha-xxxxxxxx` + `:rollback` avant chaque deploy.
+Smoke test KO → restore `:rollback` + exit 1.
+
+**Sécurité** : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).
+""")
+
+                # Stockage
+                with gr.Accordion("🗄️  Stockage — S3 + MinIO", open=False):
+                    gr.Markdown("""
+**Scaleway Object Storage** `s3://cac-mlops-data`
+
+| Préfixe | Contenu |
+|---|---|
+| `dvc/` | données ONISR versionnées (remote DVC) |
+| `k8s-model/` | `trained_model.joblib` — chargé par l'initContainer K8s |
+| `mlflow-k8s/` | artefacts MLflow dans Kapsule |
+
+**MinIO** `:9000 / 9001` (Tailscale) — artefacts MLflow VPS local
+Même interface S3 que Scaleway → `MLFLOW_S3_ENDPOINT_URL = http://minio:9000`
+
+**DVC** — `data/` n'est jamais commité dans git (`.gitignore`).
+`dvc pull` → récupère les données depuis S3. `dvc push` → pousse après nouvel ETL.
+""")
+
+            # ── SECTION 3 : KUBERNETES ───────────────────────────────────────
+            with gr.Accordion("☸️  Kapsule K8s — Scaleway  (on-demand, fr-par)", open=False):
+
+                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops)", open=True):
+                    gr.Markdown("""
+| Deployment | Particularité |
+|---|---|
+| **api** | HPA CPU 70% / RAM 80% → min 1 pod, max 8 pods |
+| | initContainer : `fetch-model` récupère `trained_model.joblib` depuis S3 au démarrage |
+| mlflow | SQLite emptyDir + artefacts S3 `mlflow-k8s/` |
+| prefect-server | UI Prefect K8s |
+| prefect-worker | pool process K8s |
+| prometheus | scrape `api:8000/metrics` |
+| grafana | ConfigMaps provisionnés (mêmes dashboards que VPS) |
+""")
+
+                with gr.Accordion("🌐  LoadBalancers", open=False):
+                    gr.Markdown("""
+| Service | Port | Accès |
+|---|---|---|
+| nginx | 80 | API publique (rate-limit 20r/min) |
+| prefect-server | 4200 | UI Prefect K8s |
+| grafana | 3000 | dashboards K8s |
+| mlflow | port-forward uniquement | — |
+
+IPs LoadBalancer écrites dans `state/kapsule_ips` par `kapsule-up-flow` → lues par l'onglet Infra.
+""")
+
+                with gr.Accordion("🔑  Secrets K8s", open=False):
+                    gr.Markdown("""
+| Secret | Variables |
+|---|---|
+| `s3-creds` | `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` |
+| `app-creds` | `JWT_SECRET_KEY` · `API_USERNAME` · `API_PASSWORD` |
+""")
+
+                gr.Markdown("""
+**Cycle provision / déprovision**
+Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → provision + upload modèle S3
+→ `deploy-kapsule-flow` rolling update pods → `kapsule-down-flow` déprovision (économie coût).
+""")
+
     gr.Markdown("""
 ---
-*LightGBM — donnees ONISR 2021-2023*
+*Random Forest — donnees ONISR 2021-2023 — rf:v3 @ Production*
 """)
 
 

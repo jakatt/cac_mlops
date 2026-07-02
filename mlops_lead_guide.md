@@ -1,4 +1,4 @@
-# Guide MLOps Prod — Opération de la Solution
+# Guide MLOps Lead — Opération de la Solution
 
 > **Périmètre** : opérer la solution en production — valider les gates de déploiement, surveiller via Grafana/Gradio, gérer le cycle annuel ONISR, promouvoir/rollback des modèles, administrer le VPS.
 
@@ -8,7 +8,7 @@
 
 | Interface | URL | Accès | Rôle |
 | --- | --- | --- | --- |
-| Gradio Cockpit | [http://100.117.99.62:7860](http://100.117.99.62:7860) | Tailscale | Cockpit MLOps 7 onglets |
+| Gradio Cockpit | [http://100.117.99.62:7860](http://100.117.99.62:7860) | Tailscale | Cockpit MLOps 9 onglets |
 | Prefect UI | [http://100.117.99.62:4200](http://100.117.99.62:4200) | Tailscale | Flows, runs, gates manuelles |
 | MLflow UI | [http://100.117.99.62:5001](http://100.117.99.62:5001) | Tailscale | Expériences, Model Registry |
 | Grafana | [http://100.117.99.62:3000](http://100.117.99.62:3000) | Tailscale | Métriques API, alertes |

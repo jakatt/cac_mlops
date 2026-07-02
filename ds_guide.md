@@ -61,16 +61,16 @@ Le `.env` est pré-configuré avec `MLFLOW_TRACKING_URI=http://localhost:5001`.
 ### Lancer une expérience
 
 ```bash
-# MLFLOW_RUN_MODE=explore (défaut) → runs dans "accidents_severity_explore"
+# MLFLOW_RUN_MODE=explore (défaut) → runs dans "accidents_severity_dev"
 python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
   --n-estimators 500 --num-leaves 63 --learning-rate 0.03
 ```
 
-Les runs vont dans l'expérience `accidents_severity_explore` (séparée de `accidents_severity` utilisée en prod).
+Les runs vont dans l'expérience `accidents_severity_dev` (séparée de `accidents_severity_prod` utilisée en production).
 
 ### Comparer les runs
 
-Dans MLflow UI → **Experiments** → `accidents_severity_explore` → trier par F1 / AUC / Recall.
+Dans MLflow UI → **Experiments** → `accidents_severity_dev` → trier par F1 / AUC / Recall.
 
 ---
 
