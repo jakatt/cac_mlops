@@ -990,6 +990,173 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 
     with gr.Tabs():
 
+        # ── Onglet Accueil ───────────────────────────────────────────────────
+        with gr.Tab("Accueil"):
+            gr.HTML("""
+<style>
+.accueil-pill {
+    background: rgba(255,255,255,0.13);
+    border: 1px solid rgba(255,255,255,0.28);
+    color: #fff;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-family: 'Inter','Segoe UI',sans-serif;
+    white-space: nowrap;
+}
+.accueil-card {
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 18px 20px;
+    background: white;
+    flex: 1;
+    min-width: 0;
+}
+.accueil-card h3 {
+    color: #143B5E !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 8px 0 !important;
+    border: none !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    padding: 0 !important;
+}
+.accueil-card p {
+    color: #6B7280;
+    font-size: 0.83rem;
+    line-height: 1.55;
+    margin: 0;
+}
+.accueil-stack-card {
+    background: white;
+    border: 1.5px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 20px 16px;
+    text-align: center;
+    flex: 1;
+    min-width: 0;
+}
+</style>
+
+<div style="font-family:'Inter','Segoe UI',sans-serif;color:#374151;max-width:100%;padding:4px 0;">
+
+  <!-- ── Hero banner ─────────────────────────────────────────────── -->
+  <div style="
+      position:relative;
+      border-radius:14px;
+      padding:38px 40px;
+      margin-bottom:22px;
+      overflow:hidden;
+      background:
+          linear-gradient(160deg, rgba(13,27,42,0.92) 0%, rgba(20,59,94,0.88) 55%, rgba(13,27,42,0.95) 100%),
+          url('https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Car_crash_1.jpg/1280px-Car_crash_1.jpg')
+          center/cover no-repeat;
+  ">
+      <!-- route stripes déco -->
+      <div style="
+          position:absolute;inset:0;pointer-events:none;
+          background:
+              repeating-linear-gradient(90deg,
+                  transparent,transparent 47%,
+                  rgba(255,255,255,0.04) 47%,rgba(255,255,255,0.04) 53%),
+              radial-gradient(ellipse at 15% 60%, rgba(220,38,38,0.18) 0%, transparent 55%),
+              radial-gradient(ellipse at 85% 30%, rgba(220,38,38,0.10) 0%, transparent 45%);
+      "></div>
+
+      <div style="position:relative;z-index:1;">
+          <div style="font-size:0.7rem;color:rgba(255,255,255,0.45);letter-spacing:4px;text-transform:uppercase;margin-bottom:6px;">
+              COCKPIT MLOPS — SÉCURITÉ ROUTIÈRE
+          </div>
+          <h1 style="color:white !important;font-size:2rem !important;font-weight:800 !important;
+                     letter-spacing:3px;margin:0 0 10px 0 !important;border:none !important;
+                     padding:0 !important;text-transform:uppercase;">
+              BIENVENUE LÉON
+          </h1>
+          <p style="color:rgba(255,255,255,0.78);font-size:0.93rem;margin:0 0 26px 0;line-height:1.5;">
+              Gardien de la Production &nbsp;·&nbsp; Supervision MLOps accidents de la route &nbsp;·&nbsp;
+              <strong style="color:rgba(255,255,255,0.92);">rf_accidents @ Production</strong>
+          </p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;">
+              <span class="accueil-pill">🔄&nbsp; 14 flows Prefect</span>
+              <span class="accueil-pill">⚙️&nbsp; 3 workflows CI/CD</span>
+              <span class="accueil-pill">📊&nbsp; Monitoring 24 / 7</span>
+              <span class="accueil-pill">🚨&nbsp; 7 alertes configurées</span>
+          </div>
+      </div>
+  </div>
+
+  <!-- ── Ce que vous pouvez faire ici ────────────────────────────── -->
+  <div style="background:white;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #E5E7EB;">
+      <div style="color:#143B5E;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Ce que vous pouvez faire ici</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+
+          <div class="accueil-card">
+              <h3>Pipeline &nbsp;→</h3>
+              <p>Déclenchez les <strong>8 flows Prefect</strong> depuis l'interface : tests API,
+              réentraînement complet, diagnostic VPS, nettoyage disque, cluster Kapsule K8s et
+              réinitialisation de la solution.</p>
+          </div>
+
+          <div class="accueil-card">
+              <h3>Modèles &nbsp;→</h3>
+              <p>Suivez <strong>rf_accidents @ Production</strong> dans MLflow. Comparez les
+              benchmarks RF / XGBoost / LightGBM, consultez les métriques par année et
+              visualisez les features importances.</p>
+          </div>
+
+          <div class="accueil-card">
+              <h3>Drift &amp; Healthcheck &nbsp;→</h3>
+              <p>Détectez les <strong>dérives de distribution</strong> (PSI, KS) par variable et
+              supervisez la santé de l'API en temps réel — latence, taux d'erreur, charge CPU
+              et utilisation disque.</p>
+          </div>
+
+      </div>
+  </div>
+
+  <!-- ── Les 4 piliers de la stack ───────────────────────────────── -->
+  <div style="background:#F9FAFB;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #E5E7EB;">
+      <div style="color:#143B5E;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Les 4 piliers de la stack</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">⚡</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">FastAPI</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">API REST sécurisée<br>JWT · Rate-limit · 6 endpoints</div>
+          </div>
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">🧪</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">MLflow</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Tracking &amp; Registry<br>prod · dev · gate manuelle</div>
+          </div>
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">🔀</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Prefect</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">14 flows · 1 worker<br>Crons + déclenchements manuels</div>
+          </div>
+
+          <div class="accueil-stack-card">
+              <div style="font-size:2rem;margin-bottom:8px;">📡</div>
+              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">PLG Stack</div>
+              <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Prometheus · Loki · Grafana<br>7 alertes · SMTP ✓</div>
+          </div>
+
+      </div>
+  </div>
+
+  <!-- ── Disclaimer ──────────────────────────────────────────────── -->
+  <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:10px;padding:14px 20px;font-size:0.8rem;color:#92400E;line-height:1.5;">
+      <strong>Note :</strong> Ce cockpit est un outil interne de supervision MLOps. Les prédictions
+      sont générées par un modèle statistique entraîné sur les données ONISR 2021–2023 et
+      ne constituent pas une expertise légale ou réglementaire.
+  </div>
+
+</div>
+""")
+
         # ── Onglet Predict ───────────────────────────────────────────────────
         with gr.Tab("Predict"):
             gr.Markdown("### Prédiction individuelle — saisir les caractéristiques de l'accident")
