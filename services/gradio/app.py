@@ -988,7 +988,7 @@ with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 
     gr.Markdown("""
 # Cockpit MLOps — Securite Routiere
-Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
+Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 """)
 
     with gr.Tabs():
@@ -1677,7 +1677,7 @@ Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → pr
 
     gr.Markdown("""
 ---
-*LightGBM — donnees ONISR 2021-2023*
+*Random Forest — donnees ONISR 2021-2023 — rf:v3 @ Production*
 """)
 
 
