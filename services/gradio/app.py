@@ -1074,8 +1074,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
               BIENVENUE LÉON
           </h1>
           <p style="color:rgba(255,255,255,0.78);font-size:0.93rem;margin:0 0 26px 0;line-height:1.5;">
-              Gardien de la Production &nbsp;·&nbsp; Supervision MLOps accidents de la route &nbsp;·&nbsp;
-              <strong style="color:rgba(255,255,255,0.92);">rf_accidents @ Production</strong>
+              Cockpit MLOps de la solution de prévision de gravité des accidents de la route de la sécurité routière
           </p>
           <div style="display:flex;flex-wrap:wrap;gap:10px;">
               <span class="accueil-pill">🔄&nbsp; 14 flows Prefect</span>
