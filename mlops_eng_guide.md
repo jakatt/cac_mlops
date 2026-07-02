@@ -1,4 +1,4 @@
-# Guide MLOps Developer — Maintenance de la Solution
+# Guide MLOps Engineer — Maintenance de la Solution
 
 > **Périmètre** : maintenir et faire évoluer la stack MLOps (Docker Compose, flows Prefect, GitHub Actions, infra Scaleway). Ce guide documente l'architecture interne, les patterns de deploy et les procédures de debug.
 
@@ -19,8 +19,9 @@
 │  mlflow :5000           minio :9000/:9001  postgresql :5432           │
 │  prometheus :9090       grafana :3000                                 │
 │  node-exporter :9100    nginx-exporter :9113                          │
+│  loki :3100             promtail (scrape Docker SD)                   │
 │                                                                       │
-│  gradio :7860  (cockpit MLOps complet — Tailscale only)               │
+│  gradio :7860  (cockpit MLOps 9 onglets — Tailscale only)             │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,8 +70,8 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 
 | Workflow | Trigger | Rôle |
 |---|---|---|
-| `ci.yml` | push/PR → `main`, branche `jacques` | Tests unitaires + intégration |
-| `deploy.yml` | push → `main` | Build images → VPS pull/up → smoke test → déclenche `deploy-vps-flow` (Prefect) |
+| `ci.yml` | push/PR → `main`, branches `mlops` et `DS` | Tests unitaires + intégration |
+| `deploy.yml` | push → `main` | Build 4 images → VPS pull/up → smoke test → déclenche `deploy-vps-flow` (Prefect) |
 | `cleanup.yml` | cron dimanche 3h UTC | Nettoyage NVMe (docker prune, logs) |
 
 ### Secrets GitHub requis
@@ -128,19 +129,21 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all
 | `reset` | `reset_flow` | manuel (RAZ) |
 | `kapsule-up/down` | flows Kapsule | manuel |
 | `diag` | `diag_flow` | manuel |
+| `disk-cleanup` | `disk_cleanup_flow` | cron 2h UTC quotidien + manuel |
 | `test-api` | `test_api_flow` | fin de `deploy-vps-flow` (CD) + manuel |
 
 ---
 
 ## 6. Images Docker
 
-Trois images buildées par `deploy.yml` et pushées sur GHCR :
+Quatre images buildées par `deploy.yml` et pushées sur GHCR :
 
 | Image | Dockerfile | Contient |
 |---|---|---|
 | `ghcr.io/jakatt/cac-mlops-api:latest` | `services/api/Dockerfile` | FastAPI + flows Prefect + scripts |
 | `ghcr.io/jakatt/cac-mlops-mlflow:latest` | `services/mlflow/Dockerfile` | MLflow server |
-| `ghcr.io/jakatt/cac-mlops-gradio:latest` | `services/gradio/Dockerfile` | Gradio cockpit |
+| `ghcr.io/jakatt/cac-mlops-gradio:latest` | `services/gradio/Dockerfile` | Gradio cockpit (9 onglets, Tailscale) |
+| `ghcr.io/jakatt/cac-mlops-gradio-public:latest` | `services/gradio/Dockerfile` | Gradio public (3 onglets, internet via nginx:8090) |
 
 Le prefect-worker utilise `cac-mlops-api` (toutes les dépendances ML sont là).
 
@@ -172,8 +175,9 @@ docker compose up -d api
 ## 8. Monitoring
 
 - **Prometheus** : `http://51.159.187.132:9090` — métriques brutes PromQL
+- **Loki** : `http://51.159.187.132:3100` — logs agrégés (scrape Promtail via Docker SD)
 - **Grafana** : `http://51.159.187.132:3000` (admin/admin) — dashboards API perf + alertes
-- **Alertes email** : brute-force 401, DDoS 429, RAM < 10%, disque /data < 15%
+- **Alertes** : 7 au total — 4 Prometheus (brute-force 401, DDoS 429, RAM < 10%, disk < 15%) + 3 Loki (erreurs API 5xx, OOM, crash conteneur)
 - **SMTP** : configuré dans `/data/cac_mlops/.env` (ne jamais commiter ce fichier)
 
 Dashboards définis dans `infrastructure/grafana/dashboards/`.
@@ -201,7 +205,7 @@ Pour ignorer un CVE légitimement non-fixable : ajouter dans `.trivyignore`.
 |---|---|---|
 | Flow Prefect ne démarre pas | Worker déconnecté | `docker compose restart prefect-worker` |
 | `prefect deploy --all` échoue | Fichier flow absent sur VPS host | SCP le fichier manquant |
-| Smoke test échec dans deploy.yml | Image corrompue ou service en crash | Rollback `:rollback` déclenché auto, vérifier `docker compose logs` |
+| Smoke test échec dans deploy.yml | Image corrompue ou service en crash | Vérifier `docker compose logs <service>` — rollback manuel si nécessaire |
 | `docker compose pull` échoue | Token GHCR expiré | Vérifier `GHCR_TOKEN` dans `/data/cac_mlops/.env` |
 | `config/model_params.yml` non mis à jour | `./config` pas bind-mounté | Vérifier `docker compose up -d prefect-worker` après changement compose |
 | Grafana alertes "DatasourceError" | `expression: "A"` manquant dans alerting.yaml | Vérifier `infrastructure/grafana/provisioning/alerting/alerting.yaml` |

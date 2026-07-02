@@ -7,38 +7,34 @@ Système MLOps complet de prédiction de gravité d'accidents routiers, entraîn
 ## Statut d'implémentation
 
 ```text
-PHASE 1 ✅ MERGÉE DANS MAIN
+SOLUTION COMPLÈTE ✅ EN PRODUCTION (branche main — 2026-07)
+
+DONNÉES & MODÈLE
   import_raw_data.py    FILENAMES mapping par année · API data.gouv.fr · --year
   schema.py             Schémas Pandera 4 fichiers ONISR
   schema_validator.py   3 niveaux CRITICAL / WARNING / OK
-  make_dataset.py       Paramétré --year/--cumul · suppression prompts interactifs
+  make_dataset.py       Paramétré --year/--cumul
   train_model.py        MLflow tracking · gate KPI · Model Registry
-  FastAPI               POST /predict · GET /health · GET /metrics (port 8080)
-  docker-compose.yml    PostgreSQL + MinIO + MLflow v3.1.0 (custom image) + API
-  Tests                 38/38 passent (unit : pipeline + validation + API)
+  Modèle en prod        rf_accidents @ Production — cumul 2021+2022+2023 (RF)
+  Expériences MLflow    accidents_severity_prod (officiel) · accidents_severity_dev (explore)
 
-INFRA ✅ OPÉRATIONNELLE (main → Scaleway)
+INFRASTRUCTURE VPS (Scaleway · /data/cac_mlops)
+  16 conteneurs Docker  PostgreSQL · MinIO · MLflow · API · Prefect (server+worker)
+                        Nginx · Grafana · Prometheus · Loki · Promtail
+                        Gradio (Tailscale) · Gradio-public (nginx:8090)
+                        node-exporter · nginx-exporter · minio-init (EXIT)
   DVC remote            Scaleway Object Storage (s3://cac-mlops-data/dvc)
-  Données versionnées   data/raw/2021/ → bucket Scaleway
-  CI GitHub Actions     ci.yml : lint + pytest sur push jacques/noel et PR→main
-  CD GitHub Actions     deploy.yml : SSH deploy automatique sur merge dans main
-                        → git pull · dvc pull · docker compose down && up · healthcheck
-  Serveur Scaleway      scw-jovial-dubinsky DEV1-L · /home/deploy/cac_mlops
-                        4 containers healthy : PostgreSQL · MinIO · MLflow · API
-  Workflow Git          jacques / noel → PR → main → deploy automatique
 
-MODÈLE ✅ EN PRODUCTION
-  Données               2021 seul (54 698 accidents · 28 features)
-  Entraînement          38 288 train / 16 410 test
-  KPI                   accuracy=0.777 · f1=0.648 · auc=0.838 · recall=0.593
-  Seuils                f1 ⚠️ <0.68 · recall ⚠️ <0.65 · auc ✅ >0.75
-  MLflow                rf_accidents@Production (v2 sur serveur · v1 en local)
-  API health            {"status":"ok","model_version":"rf_accidents@Production"}
-  Note                  KPI améliorés en ajoutant 2022+2023 (Phase 2)
+CI/CD GitHub Actions    3 workflows : ci · deploy · cleanup
+  ci.yml                lint + pytest sur push mlops/DS et PR→main
+  deploy.yml            build 4 images → VPS pull/up → smoke test → gate → test-api
+  cleanup.yml           cron dimanche 3h UTC — docker prune
+  Workflow Git          mlops / DS → PR → main → deploy automatique
 
-PHASE 2 ⏳ EN COURS    données 2022+2023 · améliorer F1≥0.68 et Recall≥0.65 · validate_model.py
-PHASE 3 ⏳ À VENIR   Prefect orchestration · NGINX · Kubernetes
-PHASE 4 ⏳ À VENIR   Prometheus · Grafana · Evidently · simulate_production.py
+ORCHESTRATION           14 flows Prefect · crons + déclenchements manuels + cockpit
+MONITORING              Prometheus + Loki/Promtail + Grafana · 7 alertes · SMTP ✓
+COCKPIT                 Gradio 9 onglets (Tailscale) + Gradio-public 3 onglets (internet)
+KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)
 ```
 
 ---
@@ -231,23 +227,3 @@ PHASE 4 ⏳ À VENIR   Prometheus · Grafana · Evidently · simulate_production
   Détecter le drift             Evidently       Kapsule (prod)
   Intégrer en continu           GitHub Actions  GitHub
 ```
-
----
-
-## Conseils pour la mise en PowerPoint
-
-### Slide 1 — Flow annuel
-
-- Fond sombre (navy/dark), flèches oranges (couleur Liora)
-- 9 boîtes verticales numérotées, reliées par des flèches
-- Mettre en évidence les 3 branches de la validation schéma (❌/⚠️/✅) avec 3 couleurs
-- Encadré en bas "Traçabilité : Git · DVC · MLflow" en bannière horizontale
-- Annotation à droite à l'étape 9 : "données 2024 → simulate_production.py → Evidently"
-
-### Slide 2 — Architecture
-
-- Diviser en 5 bandes horizontales : Source → Données → Entraînement → Serving → Monitoring
-- Bande du bas : Local vs Scaleway en 2 colonnes côte à côte
-- Logos des outils à côté de leur nom (Docker, MLflow, Prefect, NGINX, Evidently, Grafana)
-- Flèches de gauche à droite pour le flux de données, de haut en bas pour le cycle de vie
-- Dans la couche Monitoring : préciser "Evidently : ref=X_train 2021-23 · prod=données 2024"
