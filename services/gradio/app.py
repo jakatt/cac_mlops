@@ -745,6 +745,9 @@ def trigger_full_retrain() -> str:
 def trigger_check_new_data() -> str:
     return _prefect_trigger("check-new-data")
 
+def trigger_drift_check() -> str:
+    return _prefect_trigger("drift-check")
+
 def refresh_recent_runs() -> pd.DataFrame:
     return _prefect_recent_runs()
 
@@ -1317,6 +1320,11 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                     "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
                     "opts": None,
                 },
+                "Analyser le drift": {
+                    "key": "drift-check",
+                    "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement 2021–2023 et les prédictions de production. Génère le rapport Evidently dans l'onglet Drift.",
+                    "opts": None,
+                },
                 "Réinitialiser la solution": {
                     "key": "reset",
                     "desc": "Vide les prédictions simulées et/ou les rapports de drift et/ou les expériences MLflow selon les options sélectionnées ci-dessous.",
@@ -1420,6 +1428,8 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                     return trigger_full_retrain()
                 if key == "check-new-data":
                     return trigger_check_new_data()
+                if key == "drift-check":
+                    return trigger_drift_check()
                 return f"Flow inconnu : {flow_name}"
 
             flow_dd.change(
