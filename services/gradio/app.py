@@ -957,6 +957,19 @@ table td { font-size: 0.83rem !important; color: #374151 !important; }
 
 /* Hide footer */
 footer { display: none !important; }
+
+/* Pipeline — ▶ / ↻ boutons : hauteur alignée sur les inputs */
+#pipe-run-btn button, #pipe-refresh-btn button {
+    min-height: 40px !important;
+    height: 40px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    font-size: 1.1rem !important;
+    line-height: 1 !important;
+}
+#pipe-run-btn, #pipe-refresh-btn {
+    align-self: flex-end;
+}
 """
 
 with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
@@ -1148,7 +1161,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 
             _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
             _FIRST_FLOW  = _FLOW_NAMES[0]
-            _FIRST_DESC  = f"*{_FLOW_CONFIGS[_FIRST_FLOW]['desc']}*"
+            _FIRST_DESC  = _FLOW_CONFIGS[_FIRST_FLOW]["desc"]
 
             with gr.Row():
                 # ── Colonne gauche : sélection + description + options ─────
@@ -1158,9 +1171,13 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                             choices=_FLOW_NAMES, value=_FIRST_FLOW,
                             show_label=False, scale=5,
                         )
-                        run_btn = gr.Button("▶", variant="primary", scale=1, min_width=54)
+                        run_btn = gr.Button("▶", variant="primary", scale=1, min_width=54, elem_id="pipe-run-btn")
 
-                    flow_desc = gr.Markdown(value=_FIRST_DESC)
+                    flow_desc = gr.Textbox(
+                        value=_FIRST_DESC,
+                        show_label=False, interactive=False, lines=3, max_lines=5,
+                        elem_id="pipe-desc",
+                    )
 
                     with gr.Group(visible=False) as kapsule_opts:
                         kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
@@ -1188,7 +1205,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 table_filter = gr.Textbox(
                     placeholder="Filtrer par flow, état…", show_label=False, scale=5,
                 )
-                pipeline_refresh = gr.Button("↻  Rafraîchir", variant="secondary", scale=1, min_width=120)
+                pipeline_refresh = gr.Button("↻", variant="primary", scale=1, min_width=54, elem_id="pipe-refresh-btn")
 
             # ── Callbacks ────────────────────────────────────────────────
 
@@ -1205,7 +1222,7 @@ Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
                 desc = cfg.get("desc", "")
                 opts = cfg.get("opts")
                 return (
-                    f"*{desc}*",
+                    desc,
                     gr.update(visible=(opts == "kapsule")),
                     gr.update(visible=(opts == "reset")),
                 )
