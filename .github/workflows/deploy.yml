@@ -158,12 +158,11 @@ jobs:
             fi
 
             docker compose up -d --remove-orphans
-            # Force nginx à re-résoudre le DNS après recréation des conteneurs
-            docker compose restart nginx
 
             # ── Restarts ciblés selon fichiers modifiés (fast lane) ───────────
             CHANGED_FILES=$(git diff HEAD~1 --name-only 2>/dev/null || true)
 
+            NGINX_CONF=$(echo "$CHANGED_FILES"     | grep -cE '^services/nginx/nginx\.conf$' || true)
             GRADIO_MAIN=$(echo "$CHANGED_FILES"    | grep -cE '^services/gradio/(app\.py|scenarios\.py)$' || true)
             GRADIO_PUBLIC=$(echo "$CHANGED_FILES"  | grep -cE '^services/gradio/app_public\.py$' || true)
             GRAFANA_PROV=$(echo "$CHANGED_FILES"   | grep -cE '^infrastructure/grafana/provisioning/' || true)
@@ -172,6 +171,7 @@ jobs:
             PROMTAIL=$(echo "$CHANGED_FILES"       | grep -cE '^infrastructure/promtail/promtail-config\.yml$' || true)
             DRIFT_PY=$(echo "$CHANGED_FILES"       | grep -cE '^services/monitoring/drift_detection\.py$' || true)
 
+            [ "${NGINX_CONF:-0}"    -gt 0 ] && docker compose restart nginx       && echo "restart nginx ✓"
             [ "${GRADIO_MAIN:-0}"   -gt 0 ] && docker compose restart gradio      && echo "restart gradio ✓"
             [ "${GRADIO_PUBLIC:-0}" -gt 0 ] && docker compose restart gradio-public && echo "restart gradio-public ✓"
             [ "${GRAFANA_PROV:-0}"  -gt 0 ] && docker compose restart grafana     && echo "restart grafana ✓"
