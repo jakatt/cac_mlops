@@ -69,6 +69,7 @@ services:
       --host 0.0.0.0
       --port 5000
       --allowed-hosts mlflow,mlflow:5000,localhost,127.0.0.1,${VPS_TAILSCALE_IP:-127.0.0.1},${VPS_TAILSCALE_IP:-127.0.0.1}:5001
+      --cors-allowed-origins http://${VPS_TAILSCALE_IP:-127.0.0.1}:5001
     ports:
       - "${VPS_TAILSCALE_IP:-127.0.0.1}:5001:5000"  # UI → http://[tailscale-ip]:5001
     healthcheck:
