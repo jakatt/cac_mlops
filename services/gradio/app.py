@@ -1299,6 +1299,12 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
             )
 
             gr.Markdown("#### Promouvoir une version en Production")
+            gr.Markdown(
+                "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
+                "Aucun smoke test ni gate automatique. "
+                "Réservé aux rollbacks d'urgence. "
+                "Pour une promotion normale, utiliser le flow **update-model** (onglet Orchestration)."
+            )
             with gr.Row():
                 promote_dd  = gr.Dropdown(choices=_init_choices,
                                           value=_init_choices[-1] if _init_choices else None,
