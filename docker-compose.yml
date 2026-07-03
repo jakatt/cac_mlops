@@ -245,6 +245,7 @@ services:
       GRADIO_PUBLIC_URL:      "https://mlops.jakat-inc.fr"
     volumes:
       - ./services/gradio/app_public.py:/app/services/gradio/app_public.py:ro
+      - ./services/gradio/scenarios.py:/app/services/gradio/scenarios.py:ro
       - ./data:/app/data:ro
     # Pas de port hôte — nginx le joindra via le réseau Docker (gradio-public:7862)
 
