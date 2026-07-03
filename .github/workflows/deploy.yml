@@ -40,7 +40,7 @@ jobs:
             exit 0
           fi
           CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
-            | grep -cE '^(services/.+/Dockerfile|services/.+/requirements.*\.txt|services/gradio/.*\.py|services/api/app/.*\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
+            | grep -cE '^(services/.+/Dockerfile|services/.+/requirements.*\.txt|services/api/app/.*\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
           if [ "${CHANGED:-0}" -gt 0 ]; then
             echo "needs_build=true" >> $GITHUB_OUTPUT
             echo "Code service ou Dockerfile modifié → build complet"
@@ -161,6 +161,24 @@ jobs:
             # Force nginx à re-résoudre le DNS après recréation des conteneurs
             docker compose restart nginx
 
+            # ── Restarts ciblés selon fichiers modifiés (fast lane) ───────────
+            CHANGED_FILES=$(git diff HEAD~1 --name-only 2>/dev/null || true)
+
+            GRADIO_MAIN=$(echo "$CHANGED_FILES"    | grep -cE '^services/gradio/(app\.py|scenarios\.py)$' || true)
+            GRADIO_PUBLIC=$(echo "$CHANGED_FILES"  | grep -cE '^services/gradio/app_public\.py$' || true)
+            GRAFANA_PROV=$(echo "$CHANGED_FILES"   | grep -cE '^infrastructure/grafana/provisioning/' || true)
+            PROMETHEUS=$(echo "$CHANGED_FILES"     | grep -cE '^infrastructure/prometheus/prometheus\.yml$' || true)
+            LOKI=$(echo "$CHANGED_FILES"           | grep -cE '^infrastructure/loki/loki-config\.yml$' || true)
+            PROMTAIL=$(echo "$CHANGED_FILES"       | grep -cE '^infrastructure/promtail/promtail-config\.yml$' || true)
+            DRIFT_PY=$(echo "$CHANGED_FILES"       | grep -cE '^services/monitoring/drift_detection\.py$' || true)
+
+            [ "${GRADIO_MAIN:-0}"   -gt 0 ] && docker compose restart gradio      && echo "restart gradio ✓"
+            [ "${GRADIO_PUBLIC:-0}" -gt 0 ] && docker compose restart gradio-public && echo "restart gradio-public ✓"
+            [ "${GRAFANA_PROV:-0}"  -gt 0 ] && docker compose restart grafana     && echo "restart grafana ✓"
+            [ "${PROMETHEUS:-0}"    -gt 0 ] && docker compose restart prometheus  && echo "restart prometheus ✓"
+            [ "${LOKI:-0}"          -gt 0 ] && docker compose restart loki        && echo "restart loki ✓"
+            [ "${PROMTAIL:-0}"      -gt 0 ] && docker compose restart promtail    && echo "restart promtail ✓"
+
             # Re-synchroniser les schémas de deployments Prefect (paramètres, entrypoints)
             docker compose exec -T prefect-worker prefect deploy --all \
               && echo "prefect deploy --all ✓" \
@@ -188,6 +206,8 @@ jobs:
               fi
               exit 1
             fi
+
+            [ "${DRIFT_PY:-0}" -gt 0 ] && docker compose restart prefect-worker && echo "restart prefect-worker ✓"
 
             # Détecter si les fichiers blueprint/modèle ont changé (trigger 3)
             BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \

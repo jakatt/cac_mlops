@@ -268,7 +268,7 @@ def run_predict(place, catu, sexe, secu1, year_acc, victim_age, catv,
 # TAB 1 — What-If
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_whatif(scenario_key: str, sample_size: int) -> tuple:
+def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> tuple:
     df = _get_data()
     if df is None:
         return None, "Donnees non disponibles. Verifiez que le volume data/ est monte."
@@ -277,7 +277,7 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
         df = df.sample(sample_size, random_state=42).reset_index(drop=True)
 
     try:
-        df_orig, df_mod, n_rows = apply_scenario(df, scenario_key)
+        df_orig, df_mod, n_rows = apply_scenario(df, scenario_key, multiplier)
     except Exception as exc:
         return None, f"Erreur scenario : {exc}"
 
@@ -294,10 +294,25 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
     pct_apres = float(pred_apres.mean() * 100)
     delta     = pct_apres - pct_avant
     scenario  = SCENARIOS[scenario_key]
+    is_global = scenario.get("global", False)
 
-    categories  = ["Situation reelle", "Scenario simule"]
-    values      = [pct_avant, pct_apres]
-    bar_colors  = [NAVY, BLUE2]
+    if is_global:
+        title_label = f"{scenario['label']} (×{multiplier:.1f})"
+        extra_rows  = len(df_mod) - len(df_orig)
+        context_rows_label = f"{n_rows:,} accidents {scenario['context_label'].split('(')[0].strip().lower()}"
+        extra_label = f"+{extra_rows:,} accidents ajoutés"
+        scope_label = "Gravite globale reelle"
+        scope_label2 = "Gravite globale scenario"
+    else:
+        title_label = scenario["label"]
+        context_rows_label = str(n_rows)
+        extra_label = None
+        scope_label = "Gravite reelle"
+        scope_label2 = "Gravite scenario"
+
+    categories = ["Situation reelle", "Scenario simule"]
+    values     = [pct_avant, pct_apres]
+    bar_colors = [NAVY, BLUE2]
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=categories, y=values,
@@ -315,7 +330,7 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
         font=dict(size=15, color=arrow_color, family="Inter, Segoe UI, sans-serif"),
     )
     fig.update_layout(
-        title=dict(text=scenario["label"], font=dict(size=13, color=NAVY, family="Inter, Segoe UI, sans-serif")),
+        title=dict(text=title_label, font=dict(size=13, color=NAVY, family="Inter, Segoe UI, sans-serif")),
         yaxis=dict(title="% d'accidents graves predit", range=[0, max(values) * 1.35],
                    gridcolor="#F0F2F5", tickfont=dict(color=SLATE)),
         xaxis=dict(tickfont=dict(color=SLATE)),
@@ -326,15 +341,33 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
     )
 
     sens = "amelioration" if delta < 0 else "deterioration"
-    stats = f"""
+
+    if is_global:
+        stats = f"""
+### Resultats — {title_label}
+
+| Indicateur | Valeur |
+|---|---|
+| Contexte | *{scenario['context_label']}* |
+| Accidents de reference | **{context_rows_label}** |
+| Accidents ajoutés (scénario) | **{extra_label}** |
+| {scope_label} | **{pct_avant:.1f}%** |
+| {scope_label2} | **{pct_apres:.1f}%** |
+| Delta | **{delta:+.1f} points** |
+| Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
+
+*Impact mesuré sur la gravité globale de l'ensemble des accidents. Projection predictive, non causale.*
+"""
+    else:
+        stats = f"""
 ### Resultats — {scenario['label']}
 
 | Indicateur | Valeur |
 |---|---|
 | Accidents analyses | **{n_rows:,}** |
 | Contexte | *{scenario['context_label']}* |
-| Gravite reelle | **{pct_avant:.1f}%** |
-| Gravite scenario | **{pct_apres:.1f}%** |
+| {scope_label} | **{pct_avant:.1f}%** |
+| {scope_label2} | **{pct_apres:.1f}%** |
 | Delta | **{delta:+.1f} points** |
 | Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
 
@@ -1232,12 +1265,20 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
             with gr.Row():
                 with gr.Column(scale=1, min_width=300):
                     scenario_dd = gr.Dropdown(choices=SCENARIO_CHOICES, value=SCENARIO_CHOICES[0][1], label="Scenario")
+                    mult_sl     = gr.Slider(minimum=0.1, maximum=10.0, step=0.1, value=2.0,
+                                            label="Multiplicateur (× fois plus)", visible=False)
                     sample_sl   = gr.Slider(minimum=2000, maximum=30000, step=1000, value=10000, label="Taille echantillon")
                     run_btn     = gr.Button("Lancer l'analyse", variant="primary", size="lg")
                     stats_md    = gr.Markdown(value="*Les resultats s'afficheront ici apres l'analyse.*")
                 with gr.Column(scale=2):
                     chart_out = gr.Plot(label="Gravite reelle vs scenario simule")
-            run_btn.click(fn=run_whatif, inputs=[scenario_dd, sample_sl], outputs=[chart_out, stats_md])
+
+            def _on_whatif_scenario_change(key):
+                has_mult = SCENARIOS.get(key, {}).get("has_multiplier", False)
+                return gr.update(visible=has_mult)
+
+            scenario_dd.change(fn=_on_whatif_scenario_change, inputs=scenario_dd, outputs=mult_sl)
+            run_btn.click(fn=run_whatif, inputs=[scenario_dd, sample_sl, mult_sl], outputs=[chart_out, stats_md])
 
         # ── Onglet 2 : Points Noirs ──────────────────────────────────────────
         with gr.Tab("Points Noirs"):
