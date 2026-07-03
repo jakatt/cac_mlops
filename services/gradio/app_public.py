@@ -230,7 +230,7 @@ def run_predict(place, catu, sexe, secu1, year_acc, victim_age, catv,
 
 # ── Tab 1 — What-If ────────────────────────────────────────────────────────────
 
-def run_whatif(scenario_key: str, sample_size: int) -> tuple:
+def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> tuple:
     df = _get_data()
     if df is None:
         return None, "Donnees non disponibles."
@@ -239,7 +239,7 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
         df = df.sample(sample_size, random_state=42).reset_index(drop=True)
 
     try:
-        df_orig, df_mod, n_rows = apply_scenario(df, scenario_key)
+        df_orig, df_mod, n_rows = apply_scenario(df, scenario_key, multiplier)
     except Exception as exc:
         return None, f"Erreur scenario : {exc}"
 
@@ -288,13 +288,21 @@ def run_whatif(scenario_key: str, sample_size: int) -> tuple:
     )
 
     sens = "amelioration" if delta < 0 else "deterioration"
+    is_global = scenario.get("global", False)
+    if is_global:
+        extra_rows = len(df_mod) - len(df_orig)
+        context_line = f"**+{extra_rows:,}** accidents simulés ({multiplier:.1f}× trafic {scenario['context_label'].split('(')[0].strip().lower()})"
+        volume_label = "Véhicules concernés (base)"
+    else:
+        context_line = f"*{scenario['context_label']}*"
+        volume_label = "Accidents analyses"
     stats = f"""
 ### Resultats — {scenario['label']}
 
 | Indicateur | Valeur |
 |---|---|
-| Accidents analyses | **{n_rows:,}** |
-| Contexte | *{scenario['context_label']}* |
+| {volume_label} | **{n_rows:,}** |
+| Contexte | {context_line} |
 | Gravite reelle | **{pct_avant:.1f}%** |
 | Gravite scenario | **{pct_apres:.1f}%** |
 | Delta | **{delta:+.1f} points** |
@@ -484,6 +492,10 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                         value=SCENARIO_CHOICES[0][1],
                         label="Scenario",
                     )
+                    mult_sl = gr.Slider(
+                        minimum=0.1, maximum=10, step=0.1,
+                        value=2.0, label="Multiplicateur de trafic", visible=False,
+                    )
                     sample_sl = gr.Slider(
                         minimum=2000, maximum=30000, step=1000,
                         value=10000, label="Taille echantillon",
@@ -492,9 +504,14 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                     stats_md = gr.Markdown(value="*Les resultats s'afficheront ici.*")
                 with gr.Column(scale=2):
                     chart_out = gr.Plot(label="Gravite reelle vs scenario simule")
+            scenario_dd.change(
+                fn=lambda k: gr.update(visible=SCENARIOS.get(k, {}).get("has_multiplier", False)),
+                inputs=[scenario_dd],
+                outputs=[mult_sl],
+            )
             run_btn.click(
                 fn=run_whatif,
-                inputs=[scenario_dd, sample_sl],
+                inputs=[scenario_dd, sample_sl, mult_sl],
                 outputs=[chart_out, stats_md],
             )
 

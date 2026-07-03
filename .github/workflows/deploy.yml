@@ -164,7 +164,7 @@ jobs:
 
             NGINX_CONF=$(echo "$CHANGED_FILES"     | grep -cE '^services/nginx/nginx\.conf$' || true)
             GRADIO_MAIN=$(echo "$CHANGED_FILES"    | grep -cE '^services/gradio/(app\.py|scenarios\.py)$' || true)
-            GRADIO_PUBLIC=$(echo "$CHANGED_FILES"  | grep -cE '^services/gradio/app_public\.py$' || true)
+            GRADIO_PUBLIC=$(echo "$CHANGED_FILES"  | grep -cE '^services/gradio/(app_public\.py|scenarios\.py)$' || true)
             GRAFANA_PROV=$(echo "$CHANGED_FILES"   | grep -cE '^infrastructure/grafana/provisioning/' || true)
             PROMETHEUS=$(echo "$CHANGED_FILES"     | grep -cE '^infrastructure/prometheus/prometheus\.yml$' || true)
             LOKI=$(echo "$CHANGED_FILES"           | grep -cE '^infrastructure/loki/loki-config\.yml$' || true)
