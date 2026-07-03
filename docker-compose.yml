@@ -113,7 +113,7 @@ services:
       - api
       - gradio-public
     ports:
-      - "8090:80"   # production entry point (rate-limited) — port 80 on host taken by system service
+      - "127.0.0.1:8090:80"   # localhost only — Caddy proxy uniquement, pas d'accès HTTP direct depuis internet
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./reports:/srv/reports:ro   # Evidently drift reports (HTML statique)
