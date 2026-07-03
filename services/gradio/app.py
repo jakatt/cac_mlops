@@ -994,27 +994,7 @@ table td { font-size: 0.83rem !important; color: #374151 !important; }
 /* Hide footer */
 footer { display: none !important; }
 
-/* Pipeline — wrapper Gradio autour de ▶ et ↻ : supprimer le padding interne */
-div:has(> button#pipe-run-btn),
-div:has(> button#pipe-refresh-btn) {
-    padding: 0 !important;
-    margin: 0 !important;
-    min-height: unset !important;
-}
-/* Pipeline — boutons ▶ et ↻ : hauteur exacte égale aux inputs */
-button#pipe-run-btn,
-button#pipe-refresh-btn {
-    height: 40px !important;
-    min-height: unset !important;
-    max-height: 40px !important;
-    padding: 0 12px !important;
-    font-size: 1.1rem !important;
-    line-height: 1 !important;
-}
-/* Pipeline — aligner en bas pour que bouton et input soient au même niveau */
-#pipe-action-row, #pipe-filter-row {
-    align-items: flex-end !important;
-}
+
 """
 
 with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
@@ -1184,9 +1164,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 
   <!-- ── Disclaimer ──────────────────────────────────────────────── -->
   <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:10px;padding:14px 20px;font-size:0.8rem;color:#92400E;line-height:1.5;">
-      <strong>Note :</strong> Ce cockpit est un outil interne de supervision MLOps. Les prédictions
-      sont générées par un modèle statistique entraîné sur les données ONISR 2021–2023 et
-      ne constituent pas une expertise légale ou réglementaire.
+      <strong>Note :</strong> Ce cockpit est un outil interne de supervision MLOps. Les prédictions sont générées par un modèle de Machine Learning.
   </div>
 
 </div>
@@ -1331,8 +1309,8 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
             models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
             promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
 
-        # ── Onglet 5 : Pipeline ──────────────────────────────────────────────
-        with gr.Tab("Pipeline"):
+        # ── Onglet 5 : Orchestration ─────────────────────────────────────────
+        with gr.Tab("Orchestration"):
             gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
             _FLOW_CONFIGS = {
@@ -1390,12 +1368,11 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
             with gr.Row():
                 # ── Colonne gauche : sélection + description + options ─────
                 with gr.Column(scale=1):
-                    with gr.Row(elem_id="pipe-action-row"):
-                        flow_dd  = gr.Dropdown(
-                            choices=_FLOW_NAMES, value=_FIRST_FLOW,
-                            show_label=False, scale=5,
-                        )
-                        run_btn = gr.Button("▶", variant="primary", scale=1, min_width=54, elem_id="pipe-run-btn")
+                    flow_dd = gr.Dropdown(
+                        choices=_FLOW_NAMES, value=_FIRST_FLOW,
+                        show_label=False,
+                    )
+                    run_btn = gr.Button("▶", variant="primary", elem_id="pipe-run-btn")
 
                     flow_desc = gr.Textbox(
                         value=_FIRST_DESC,
@@ -1425,11 +1402,10 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
                 interactive=False,
             )
 
-            with gr.Row(elem_id="pipe-filter-row"):
-                table_filter = gr.Textbox(
-                    placeholder="Filtrer par flow, état…", show_label=False, scale=5,
-                )
-                pipeline_refresh = gr.Button("↻", variant="primary", scale=1, min_width=54, elem_id="pipe-refresh-btn")
+            table_filter = gr.Textbox(
+                placeholder="Filtrer par flow, état…", show_label=False,
+            )
+            pipeline_refresh = gr.Button("↻", variant="primary", elem_id="pipe-refresh-btn")
 
             # ── Callbacks ────────────────────────────────────────────────
 
