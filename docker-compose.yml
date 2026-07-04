@@ -215,6 +215,7 @@ services:
       PREFECT_API_URL:        http://prefect-server:4200/api
       VPS_IP:                 ${VPS_IP:-51.159.187.132}
       VPS_TAILSCALE_IP:       ${VPS_TAILSCALE_IP:-}
+      PUBLIC_URL:             "https://mlops.jakat-inc.fr"
       GITHUB_REPO:            ${GITHUB_REPO:-jakatt/cac_mlops}
       REPORTS_PATH:           /app/reports/drift
       KAPSULE_STATE:          /app/state/kapsule_ips
