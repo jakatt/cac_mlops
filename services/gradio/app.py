@@ -52,6 +52,7 @@ DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
 REPORTS_PATH     = Path(os.getenv("REPORTS_PATH",    "/app/reports/drift"))
 VPS_IP           = os.getenv("VPS_IP",               "51.159.187.132")
 VPS_TAILSCALE_IP = os.getenv("VPS_TAILSCALE_IP",     "") or VPS_IP
+PUBLIC_URL       = os.getenv("PUBLIC_URL",            "https://mlops.jakat-inc.fr")
 GITHUB_REPO      = os.getenv("GITHUB_REPO",          "jakatt/cac_mlops")
 KAPSULE_STATE    = Path(os.getenv("KAPSULE_STATE",   "/app/state/kapsule_ips"))
 
@@ -450,7 +451,7 @@ def _list_drift_reports() -> list[str]:
 def load_drift_report(report_name: str) -> str:
     if not report_name:
         return "<p style='color:#6B7280;padding:30px;font-size:0.95em;font-family:Inter,Segoe UI,sans-serif;'>Aucun rapport disponible — lancez au moins 2 cycles de training.</p>"
-    report_url = f"http://{VPS_IP}:8090/reports/drift/{report_name}"
+    report_url = f"{PUBLIC_URL}/reports/drift/{report_name}"
     link = (
         f'<div style="margin-bottom:8px;font-family:Inter,Segoe UI,sans-serif;font-size:0.88em;color:#6B7280;">'
         f'⚠️ Si les graphes interactifs apparaissent vides, '
@@ -886,7 +887,7 @@ def build_links_html() -> str:
     <tr><td style="{td}">API Swagger</td>   <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:8080/docs" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:8080/docs</a></td></tr>
     <tr><td style="{td}">MinIO Console</td> <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9001</a></td></tr>
     <tr><td style="{td}">Prometheus</td>    <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9090" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9090</a></td></tr>
-    <tr><td style="{td}">API publique (NGINX)</td> <td style="{tda}"><a href="http://{VPS_IP}:8090/predict" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_IP}:8090/predict</a></td></tr>
+    <tr><td style="{td}">API publique (HTTPS)</td> <td style="{tda}"><a href="{PUBLIC_URL}/predict" target="_blank" style="color:{NAVY};text-decoration:none;">{PUBLIC_URL}/predict</a></td></tr>
   </table>
 
   <p style="{hs}">Kapsule K8s — Phase 5</p>
