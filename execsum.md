@@ -15,7 +15,7 @@ DONNÉES & MODÈLE
   schema_validator.py   3 niveaux CRITICAL / WARNING / OK
   make_dataset.py       Paramétré --year/--cumul
   train_model.py        MLflow tracking · gate KPI · Model Registry
-  Modèle en prod        lgbm_accidents @ Production — cumul 2021+2022+2023 (LightGBM)
+  Modèle en prod        rf_accidents @ Production — cumul 2021+2022+2023 (RF)
   Expériences MLflow    accidents_severity_prod (officiel) · accidents_severity_dev (explore)
 
 INFRASTRUCTURE VPS (Scaleway · /data/cac_mlops)
@@ -168,7 +168,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  ENTRAÎNEMENT │         │  ORCHESTRATION  │         │   VERSIONING   │
   │               │         │                 │         │                │
   │  scikit-learn │         │  Prefect        │         │  Git  → code   │
-  │  LightGBM     │◄────────│  · ETL flow     │         │  DVC  → data   │
+  │  RandomForest │◄────────│  · ETL flow     │         │  DVC  → data   │
   │               │         │  · Train flow   │         │  MLflow→modèle │
   │  MLflow       │         │  · Retrain flow │         │                │
   │  · Tracking   │         │                 │         └────────────────┘

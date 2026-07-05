@@ -656,9 +656,9 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   │  promtail          —           agent scrape logs → loki          │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Modèle en production : lgbm_accidents@Production                        │
+│   Modèle en production : rf_accidents@Production                           │
 │     Entraîné sur : cumul 2021+2022+2023                                   │
-│     Métriques : accuracy=0.785  f1=0.678  auc=0.847  recall=0.652        │
+│     Métriques : f1=0.6913  auc=0.8623                                     │
 │                                                                            │
 │   DISQUES                                                                  │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
