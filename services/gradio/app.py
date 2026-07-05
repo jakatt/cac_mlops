@@ -932,10 +932,10 @@ def build_docs_html() -> str:
     cards = "".join(f"""
   <a href="{GITHUB_BASE}/{fname}" target="_blank"
      style="display:flex;flex-direction:column;gap:5px;padding:16px 20px;
-            background:white;border:1px solid #c8dfe8;border-radius:8px;
+            background:white;border:1px solid #c2dbe4;border-radius:8px;
             text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s;"
      onmouseover="this.style.borderColor='#156082';this.style.boxShadow='0 2px 10px rgba(21,96,130,0.13)'"
-     onmouseout="this.style.borderColor='#c8dfe8';this.style.boxShadow='none'">
+     onmouseout="this.style.borderColor='#c2dbe4';this.style.boxShadow='none'">
     <span style="font-size:0.92rem;font-weight:600;color:#156082;
                  font-family:Inter,'Segoe UI',sans-serif;">{title}</span>
     <span style="font-size:0.80rem;color:#6B7280;
@@ -988,7 +988,7 @@ h3 {
 h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
 
 /* ─── Tabs ─── */
-.tab-nav { border-bottom: 1px solid #c8dfe8; background: #f4f8fb; }
+.tab-nav { border-bottom: 1px solid #c2dbe4; background: #f4f8fb; }
 .tab-nav button {
     font-size: 0.83rem;
     font-weight: 500;
@@ -1000,25 +1000,26 @@ h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
 }
 .tab-nav button:hover { color: #156082; }
 .tab-nav button.selected {
-    color: #156082;
+    background: #156082 !important;
+    color: white !important;
     font-weight: 600;
     border-bottom: 2px solid #156082;
-    background: white;
 }
 
 /* ─── Buttons ─── */
 .gr-button-primary {
     background: #156082 !important;
+    color: white !important;
     border: none !important;
     border-radius: 4px !important;
     font-size: 0.83rem !important;
     font-weight: 500 !important;
     letter-spacing: 0.2px !important;
 }
-.gr-button-primary:hover { background: #0e4a63 !important; }
+.gr-button-primary:hover { background: #0e4a63 !important; color: white !important; }
 .gr-button-secondary, button.secondary {
     background: white !important;
-    border: 1px solid #c8dfe8 !important;
+    border: 1px solid #c2dbe4 !important;
     color: #374151 !important;
     border-radius: 4px !important;
     font-size: 0.83rem !important;
@@ -1033,7 +1034,7 @@ input, select, textarea {
     font-family: 'Inter', 'Segoe UI', sans-serif !important;
     font-size: 0.85rem !important;
     border-radius: 4px !important;
-    border-color: #c8dfe8 !important;
+    border-color: #c2dbe4 !important;
 }
 input:focus, select:focus, textarea:focus {
     border-color: #156082 !important;
@@ -1043,7 +1044,7 @@ label { font-size: 0.82rem !important; color: #374151 !important; font-weight: 5
 
 /* ─── Tables ─── */
 table th {
-    background: #e8f4f9 !important;
+    background: #c2dbe4 !important;
     color: #156082 !important;
     font-size: 0.78rem !important;
     font-weight: 600 !important;
@@ -1061,7 +1062,7 @@ with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 
     gr.Markdown("""
 # Cockpit MLOps — Securite Routiere
-Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
+Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
 """)
 
     with gr.Tabs():
@@ -1073,7 +1074,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 .accueil-pill {
     background: rgba(255,255,255,0.13);
     border: 1px solid rgba(255,255,255,0.28);
-    color: #fff;
+    color: #fff !important;
     padding: 6px 16px;
     border-radius: 20px;
     font-size: 0.78rem;
@@ -1081,7 +1082,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
     white-space: nowrap;
 }
 .accueil-card {
-    border: 1.5px solid #c8dfe8;
+    border: 1.5px solid #c2dbe4;
     border-radius: 10px;
     padding: 18px 20px;
     background: white;
@@ -1106,7 +1107,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 }
 .accueil-stack-card {
     background: white;
-    border: 1.5px solid #c8dfe8;
+    border: 1.5px solid #c2dbe4;
     border-radius: 10px;
     padding: 20px 16px;
     text-align: center;
@@ -1191,7 +1192,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
   </div>
 
   <!-- ── Les 4 piliers de la stack ───────────────────────────────── -->
-  <div style="background:#f4f8fb;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #c8dfe8;">
+  <div style="background:#f4f8fb;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #c2dbe4;">
       <div style="color:#156082;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Les 4 piliers de la stack</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
 
