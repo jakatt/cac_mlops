@@ -40,7 +40,7 @@ jobs:
             exit 0
           fi
           CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
-            | grep -cE '^(services/.+/Dockerfile|services/.+/requirements.*\.txt|services/api/app/.*\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
+            | grep -cE '^(services/.+/Dockerfile|services/.+/requirements.*\.txt|services/api/app/.*\.py|services/gradio/app_public\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
           if [ "${CHANGED:-0}" -gt 0 ]; then
             echo "needs_build=true" >> $GITHUB_OUTPUT
             echo "Code service ou Dockerfile modifié → build complet"
