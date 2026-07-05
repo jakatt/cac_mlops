@@ -74,6 +74,22 @@ _df      = None
 _df_full = None
 
 
+def _get_production_footer() -> str:
+    try:
+        mlflow.set_tracking_uri(MLFLOW_URI)
+        client = mlflow.tracking.MlflowClient()
+        for model_name in ALL_MODEL_NAMES:
+            try:
+                pv = client.get_model_version_by_alias(model_name, "Production")
+                algo = model_name.split("_")[0]
+                return f"*{model_name} — donnees ONISR 2021-2023 — {algo}:v{pv.version} @ Production*"
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return "*Modele @Production — donnees ONISR 2021-2023*"
+
+
 def _find_production_model() -> str | None:
     mlflow.set_tracking_uri(MLFLOW_URI)
     client = mlflow.tracking.MlflowClient()
@@ -987,6 +1003,17 @@ h3 {
 }
 h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
 
+/* ─── CSS variables (Gradio 4+ theme system) ─── */
+:root {
+    --button-primary-background-fill: #156082;
+    --button-primary-background-fill-hover: #0e4a63;
+    --button-primary-text-color: white;
+    --button-primary-border-color: transparent;
+    --color-accent: #156082;
+    --color-accent-soft: #c2dbe4;
+    --border-color-accent: #156082;
+}
+
 /* ─── Tabs ─── */
 .tab-nav { border-bottom: 1px solid #c2dbe4; background: #f4f8fb; }
 .tab-nav button {
@@ -996,10 +1023,12 @@ h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
     padding: 9px 18px;
     border-radius: 0;
     border-bottom: 2px solid transparent;
-    transition: color 0.15s;
+    transition: color 0.15s, background 0.15s;
 }
 .tab-nav button:hover { color: #156082; }
-.tab-nav button.selected {
+.tab-nav button.selected,
+.tab-nav button[aria-selected="true"],
+button[role="tab"][aria-selected="true"] {
     background: #156082 !important;
     color: white !important;
     font-weight: 600;
@@ -1007,7 +1036,10 @@ h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
 }
 
 /* ─── Buttons ─── */
-.gr-button-primary {
+.gr-button-primary,
+button.primary,
+button[data-testid="primary"],
+.btn-primary {
     background: #156082 !important;
     color: white !important;
     border: none !important;
@@ -1016,7 +1048,8 @@ h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
     font-weight: 500 !important;
     letter-spacing: 0.2px !important;
 }
-.gr-button-primary:hover { background: #0e4a63 !important; color: white !important; }
+.gr-button-primary:hover,
+button.primary:hover { background: #0e4a63 !important; color: white !important; }
 .gr-button-secondary, button.secondary {
     background: white !important;
     border: 1px solid #c2dbe4 !important;
@@ -1062,7 +1095,7 @@ with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 
     gr.Markdown("""
 # Cockpit MLOps — Securite Routiere
-Simulation, monitoring et gouvernance — modele ONISR LightGBM 2021-2023.
+Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — donnees ONISR 2021-2023.
 """)
 
     with gr.Tabs():
@@ -1763,9 +1796,9 @@ Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → pr
         with gr.Tab("Docs"):
             gr.HTML(value=build_docs_html())
 
-    gr.Markdown("""
+    gr.Markdown(f"""
 ---
-*lgbm_accidents — donnees ONISR 2021-2023 — lgbm:v3 @ Production*
+{_get_production_footer()}
 """)
 
 

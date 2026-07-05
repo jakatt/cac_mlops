@@ -394,17 +394,31 @@ h1 { color: #156082; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.3px
 h2 { color: #156082; font-size: 1rem; font-weight: 600; }
 h3 { color: #156082; font-size: 0.82rem; font-weight: 600;
      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
+/* ─── CSS variables (Gradio 4+ theme system) ─── */
+:root {
+    --button-primary-background-fill: #156082;
+    --button-primary-background-fill-hover: #0e4a63;
+    --button-primary-text-color: white;
+    --button-primary-border-color: transparent;
+    --color-accent: #156082;
+    --color-accent-soft: #c2dbe4;
+}
 .tab-nav { border-bottom: 1px solid #c2dbe4; background: #f4f8fb; }
 .tab-nav button { font-size: 0.83rem; font-weight: 500; color: #6B7280;
                   padding: 9px 18px; border-radius: 0; border-bottom: 2px solid transparent;
-                  transition: color 0.15s; }
+                  transition: color 0.15s, background 0.15s; }
 .tab-nav button:hover { color: #156082; }
-.tab-nav button.selected { background: #156082 !important; color: white !important;
-                           font-weight: 600; border-bottom: 2px solid #156082; }
-.gr-button-primary { background: #156082 !important; color: white !important;
-                     border: none !important; border-radius: 4px !important;
-                     font-size: 0.83rem !important; font-weight: 500 !important; }
-.gr-button-primary:hover { background: #0e4a63 !important; color: white !important; }
+.tab-nav button.selected,
+.tab-nav button[aria-selected="true"],
+button[role="tab"][aria-selected="true"] {
+    background: #156082 !important; color: white !important;
+    font-weight: 600; border-bottom: 2px solid #156082; }
+.gr-button-primary, button.primary, button[data-testid="primary"] {
+    background: #156082 !important; color: white !important;
+    border: none !important; border-radius: 4px !important;
+    font-size: 0.83rem !important; font-weight: 500 !important; }
+.gr-button-primary:hover, button.primary:hover {
+    background: #0e4a63 !important; color: white !important; }
 .gr-button-secondary, button.secondary {
     background: white !important; border: 1px solid #c2dbe4 !important;
     color: #374151 !important; border-radius: 4px !important; font-size: 0.83rem !important;
