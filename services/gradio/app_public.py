@@ -1,9 +1,10 @@
 """
-Cockpit public — 2 onglets métier accessibles sans authentification
+Cockpit public — 3 onglets métier accessibles sans authentification
   1. What-If      simulation de l'impact d'une mesure de sécurité routière
   2. Points Noirs carte de chaleur des zones à risque (données ONISR)
+  3. Simulateur   estimation de gravité par scénario véhicule
 
-Exposé via nginx:8090 (IP publique). Aucun outil MLOps interne.
+Exposé via nginx:8090 → Caddy TLS (mlops.jakat-inc.fr). Aucun outil MLOps interne.
 """
 from __future__ import annotations
 
