@@ -34,10 +34,10 @@ ALL_MODEL_NAMES  = ["lgbm_accidents", "rf_accidents", "xgb_accidents"]
 LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH", "")
 DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
 
-NAVY  = "#143B5E"
+NAVY  = "#156082"
 SLATE = "#374151"
 MUTED = "#6B7280"
-BLUE2 = "#2E86AB"
+BLUE2 = "#4a9fc4"
 
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
@@ -383,25 +383,42 @@ CATR_CHOICES = [
 ]
 
 CSS = """
+/* ─── Base ─── */
 .gradio-container {
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background-color: #F9FAFB;
+    background-color: #f4f8fb;
     color: #374151;
 }
-h1 { color: #143B5E; font-size: 1.2rem; font-weight: 600; letter-spacing: -0.2px;
-     border-bottom: 1px solid #E5E7EB; padding-bottom: 10px; margin-bottom: 4px; }
-h2 { color: #143B5E; font-size: 1rem; font-weight: 600; }
-h3 { color: #143B5E; font-size: 0.82rem; font-weight: 600;
+h1 { color: #156082; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.3px;
+     border-bottom: 2px solid #156082; padding-bottom: 8px; margin-bottom: 6px; }
+h2 { color: #156082; font-size: 1rem; font-weight: 600; }
+h3 { color: #156082; font-size: 0.82rem; font-weight: 600;
      text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 14px; }
+.tab-nav { border-bottom: 1px solid #c8dfe8; background: #f4f8fb; }
 .tab-nav button { font-size: 0.83rem; font-weight: 500; color: #6B7280;
-                  padding: 8px 18px; border-radius: 0; border-bottom: 2px solid transparent; }
-.tab-nav button.selected { color: #143B5E; font-weight: 600; border-bottom: 2px solid #143B5E; }
-.gr-button-primary { background: #143B5E !important; border: none !important;
-                     border-radius: 3px !important; font-size: 0.83rem !important; }
+                  padding: 9px 18px; border-radius: 0; border-bottom: 2px solid transparent;
+                  transition: color 0.15s; }
+.tab-nav button:hover { color: #156082; }
+.tab-nav button.selected { color: #156082; font-weight: 600; border-bottom: 2px solid #156082;
+                           background: white; }
+.gr-button-primary { background: #156082 !important; border: none !important;
+                     border-radius: 4px !important; font-size: 0.83rem !important;
+                     font-weight: 500 !important; }
+.gr-button-primary:hover { background: #0e4a63 !important; }
+.gr-button-secondary, button.secondary {
+    background: white !important; border: 1px solid #c8dfe8 !important;
+    color: #374151 !important; border-radius: 4px !important; font-size: 0.83rem !important;
+}
+.gr-button-secondary:hover, button.secondary:hover {
+    border-color: #156082 !important; color: #156082 !important;
+}
 input, select, textarea { font-family: 'Inter', 'Segoe UI', sans-serif !important;
-                          font-size: 0.85rem !important; border-radius: 3px !important; }
+                          font-size: 0.85rem !important; border-radius: 4px !important;
+                          border-color: #c8dfe8 !important; }
+input:focus, select:focus { border-color: #156082 !important;
+                            box-shadow: 0 0 0 2px rgba(21,96,130,0.12) !important; }
 label { font-size: 0.82rem !important; color: #374151 !important; font-weight: 500 !important; }
-table th { background: #F3F4F6 !important; color: #143B5E !important;
+table th { background: #e8f4f9 !important; color: #156082 !important;
            font-size: 0.78rem !important; font-weight: 600 !important; }
 table td { font-size: 0.83rem !important; color: #374151 !important; }
 footer { display: none !important; }

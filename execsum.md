@@ -15,7 +15,7 @@ DONNÉES & MODÈLE
   schema_validator.py   3 niveaux CRITICAL / WARNING / OK
   make_dataset.py       Paramétré --year/--cumul
   train_model.py        MLflow tracking · gate KPI · Model Registry
-  Modèle en prod        rf_accidents @ Production — cumul 2021+2022+2023 (RF)
+  Modèle en prod        lgbm_accidents @ Production — cumul 2021+2022+2023 (LightGBM)
   Expériences MLflow    accidents_severity_prod (officiel) · accidents_severity_dev (explore)
 
 INFRASTRUCTURE VPS (Scaleway · /data/cac_mlops)
@@ -33,7 +33,7 @@ CI/CD GitHub Actions    3 workflows : ci · deploy · cleanup
 
 ORCHESTRATION           14 flows Prefect · crons + déclenchements manuels + cockpit
 MONITORING              Prometheus + Loki/Promtail + Grafana · 7 alertes · SMTP ✓
-COCKPIT                 Gradio 9 onglets (Tailscale) + Gradio-public 3 onglets (internet)
+COCKPIT                 Gradio 11 onglets (Tailscale) + Gradio-public 3 onglets (internet)
 KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)
 ```
 
@@ -123,7 +123,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  Source production : données 2024 rejouées via                     │
   │  scripts/simulate_production.py (~4 600 req/mois × 12)             │
   │                                                                     │
-  │  Si drift CRITICAL ──► retrain_flow déclenché automatiquement      │
+  │  Si drift CRITICAL ──► alerte email → planifier cycle annuel manuellement │
   └─────────────────────────────────────────────────────────────────────┘
 
   ╔═════════════════════════════════════════════════════════════════════╗
@@ -168,7 +168,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  ENTRAÎNEMENT │         │  ORCHESTRATION  │         │   VERSIONING   │
   │               │         │                 │         │                │
   │  scikit-learn │         │  Prefect        │         │  Git  → code   │
-  │  RandomForest │◄────────│  · ETL flow     │         │  DVC  → data   │
+  │  LightGBM     │◄────────│  · ETL flow     │         │  DVC  → data   │
   │               │         │  · Train flow   │         │  MLflow→modèle │
   │  MLflow       │         │  · Retrain flow │         │                │
   │  · Tracking   │         │                 │         └────────────────┘
@@ -195,7 +195,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │                 simulate_production.py → POST /predict → logs DB       │
   │  Grafana    ──► dashboards performances + drift + alertes              │
   │                                                                         │
-  │  Drift CRITICAL ──► Prefect retrain_flow ──► nouveau modèle            │
+  │  Drift CRITICAL ──► alerte email — planifier cycle annuel manuellement │
   └─────────────────────────────────────────────────────────────────────────┘
 
   ┌──────────────────────────────────┬──────────────────────────────────────┐
@@ -206,7 +206,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  · MinIO → simule S3             │  · Scaleway Object Storage (S3)      │
   │  · PostgreSQL local              │  · Managed Database (PostgreSQL)     │
   │  · Prefect UI :4200              │  · Container Registry                │
-  │  · MLflow UI :5000               │                                      │
+  │  · MLflow UI :5001               │                                      │
   │                                  │  CI/CD : GitHub Actions              │
   │  Tests : pytest · flake8         │  lint → test → build → push → deploy │
   └──────────────────────────────────┴──────────────────────────────────────┘
