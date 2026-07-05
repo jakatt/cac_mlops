@@ -8,13 +8,13 @@
 
 | Interface | URL | Accès | Rôle |
 | --- | --- | --- | --- |
-| Gradio Cockpit | [http://100.117.99.62:7860](http://100.117.99.62:7860) | Tailscale | Cockpit MLOps 9 onglets |
+| Gradio Cockpit | [http://100.117.99.62:7860](http://100.117.99.62:7860) | Tailscale | Cockpit MLOps 11 onglets |
 | Prefect UI | [http://100.117.99.62:4200](http://100.117.99.62:4200) | Tailscale | Flows, runs, gates manuelles |
 | MLflow UI | [http://100.117.99.62:5001](http://100.117.99.62:5001) | Tailscale | Expériences, Model Registry |
 | Grafana | [http://100.117.99.62:3000](http://100.117.99.62:3000) | Tailscale | Métriques API, alertes |
 | Prometheus | [http://100.117.99.62:9090](http://100.117.99.62:9090) | Tailscale | PromQL brut |
-| API public | [http://51.159.187.132:8090](http://51.159.187.132:8090) | Internet | /predict rate-limité |
-| Gradio public | [http://51.159.187.132:8090](http://51.159.187.132:8090) | Internet | What-If + Points Noirs |
+| API public | [https://mlops.jakat-inc.fr](https://mlops.jakat-inc.fr) | Internet | /predict rate-limité |
+| Gradio public | [https://mlops.jakat-inc.fr](https://mlops.jakat-inc.fr) | Internet | What-If + Points Noirs |
 
 ---
 
@@ -151,7 +151,7 @@ Les alertes email arrivent sur `jacques.cattelin@gmail.com` pour : brute-force 4
 ```bash
 ssh deploy@51.159.187.132
 
-# État des conteneurs (14 attendus)
+# État des conteneurs (15 permanents attendus + minio-init EXIT)
 cd /data/cac_mlops && docker compose ps
 
 # Logs en temps réel

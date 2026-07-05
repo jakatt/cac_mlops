@@ -56,10 +56,10 @@ PUBLIC_URL       = os.getenv("PUBLIC_URL",            "https://mlops.jakat-inc.f
 GITHUB_REPO      = os.getenv("GITHUB_REPO",          "jakatt/cac_mlops")
 KAPSULE_STATE    = Path(os.getenv("KAPSULE_STATE",   "/app/state/kapsule_ips"))
 
-NAVY  = "#143B5E"
+NAVY  = "#156082"
 SLATE = "#374151"
 MUTED = "#6B7280"
-BLUE2 = "#2E86AB"
+BLUE2 = "#4a9fc4"
 
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
@@ -456,7 +456,7 @@ def load_drift_report(report_name: str) -> str:
         f'<div style="margin-bottom:8px;font-family:Inter,Segoe UI,sans-serif;font-size:0.88em;color:#6B7280;">'
         f'⚠️ Si les graphes interactifs apparaissent vides, '
         f'<a href="{report_url}" target="_blank" rel="noopener" '
-        f'style="color:#2E86AB;font-weight:600;">ouvrir le rapport complet ↗</a>'
+        f'style="color:#4a9fc4;font-weight:600;">ouvrir le rapport complet ↗</a>'
         f'</div>'
     )
     iframe = (
@@ -911,27 +911,74 @@ def build_links_html() -> str:
 SCENARIO_CHOICES = [(v["label"], k) for k, v in SCENARIOS.items()]
 CATR_CHOICES = [(1, "Autoroute"), (2, "Route nationale"), (3, "Route departementale"), (4, "Voie communale")]
 
+def build_docs_html() -> str:
+    GITHUB_BASE = f"https://github.com/{GITHUB_REPO}/blob/main"
+    docs = [
+        ("architecture.md",    "Architecture globale",
+         "Stack complète : VPS · Kapsule · CI/CD · monitoring · sécurité"),
+        ("execsum.md",         "Résumé exécutif",
+         "Synthèse du projet pour les décideurs"),
+        ("ds_guide.md",        "Guide Data Scientist",
+         "Workflow DS : expérimentation MLflow, blueprint, DVC"),
+        ("mlops_eng_guide.md", "Guide MLOps Engineer",
+         "Infrastructure, déploiement, maintenance VPS et Kapsule"),
+        ("mlops_lead_guide.md","Guide MLOps Lead",
+         "Gouvernance, pilotage, gate de promotion"),
+        ("data_dictionary.md", "Dictionnaire des données",
+         "Description des 28 features et de la cible binaire"),
+        ("README.md",          "README",
+         "Vue d'ensemble et démarrage rapide du repository"),
+    ]
+    cards = "".join(f"""
+  <a href="{GITHUB_BASE}/{fname}" target="_blank"
+     style="display:flex;flex-direction:column;gap:5px;padding:16px 20px;
+            background:white;border:1px solid #c8dfe8;border-radius:8px;
+            text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s;"
+     onmouseover="this.style.borderColor='#156082';this.style.boxShadow='0 2px 10px rgba(21,96,130,0.13)'"
+     onmouseout="this.style.borderColor='#c8dfe8';this.style.boxShadow='none'">
+    <span style="font-size:0.92rem;font-weight:600;color:#156082;
+                 font-family:Inter,'Segoe UI',sans-serif;">{title}</span>
+    <span style="font-size:0.80rem;color:#6B7280;
+                 font-family:Inter,'Segoe UI',sans-serif;">{desc}</span>
+    <span style="font-size:0.73rem;color:#a0c4d6;margin-top:2px;
+                 font-family:monospace;">{fname}</span>
+  </a>""" for fname, title, desc in docs)
+    return f"""
+<div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:860px;">
+  <p style="margin:0 0 20px;font-size:0.82rem;color:#6B7280;">
+    Documentation versionnée dans GitHub —
+    <a href="https://github.com/{GITHUB_REPO}" target="_blank"
+       style="color:#156082;text-decoration:none;font-weight:500;">
+      github.com/{GITHUB_REPO}
+    </a>
+  </p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    {cards}
+  </div>
+</div>"""
+
+
 CSS = """
-/* Typography */
+/* ─── Base ─── */
 .gradio-container {
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background-color: #F9FAFB;
+    background-color: #f4f8fb;
     color: #374151;
 }
 
-/* Headers */
+/* ─── Headers ─── */
 h1 {
-    color: #143B5E;
+    color: #156082;
     font-size: 1.2rem;
-    font-weight: 600;
-    letter-spacing: -0.2px;
-    border-bottom: 1px solid #E5E7EB;
-    padding-bottom: 10px;
-    margin-bottom: 4px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    border-bottom: 2px solid #156082;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
 }
-h2 { color: #143B5E; font-size: 1rem; font-weight: 600; }
+h2 { color: #156082; font-size: 1rem; font-weight: 600; }
 h3 {
-    color: #143B5E;
+    color: #156082;
     font-size: 0.82rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -940,51 +987,64 @@ h3 {
 }
 h4 { color: #374151; font-size: 0.85rem; font-weight: 600; }
 
-/* Tabs */
+/* ─── Tabs ─── */
+.tab-nav { border-bottom: 1px solid #c8dfe8; background: #f4f8fb; }
 .tab-nav button {
     font-size: 0.83rem;
     font-weight: 500;
     color: #6B7280;
-    padding: 8px 18px;
+    padding: 9px 18px;
     border-radius: 0;
     border-bottom: 2px solid transparent;
+    transition: color 0.15s;
 }
+.tab-nav button:hover { color: #156082; }
 .tab-nav button.selected {
-    color: #143B5E;
+    color: #156082;
     font-weight: 600;
-    border-bottom: 2px solid #143B5E;
+    border-bottom: 2px solid #156082;
+    background: white;
 }
 
-/* Buttons */
+/* ─── Buttons ─── */
 .gr-button-primary {
-    background: #143B5E !important;
+    background: #156082 !important;
     border: none !important;
-    border-radius: 3px !important;
+    border-radius: 4px !important;
     font-size: 0.83rem !important;
     font-weight: 500 !important;
     letter-spacing: 0.2px !important;
 }
+.gr-button-primary:hover { background: #0e4a63 !important; }
 .gr-button-secondary, button.secondary {
     background: white !important;
-    border: 1px solid #D1D5DB !important;
+    border: 1px solid #c8dfe8 !important;
     color: #374151 !important;
-    border-radius: 3px !important;
+    border-radius: 4px !important;
     font-size: 0.83rem !important;
 }
+.gr-button-secondary:hover, button.secondary:hover {
+    border-color: #156082 !important;
+    color: #156082 !important;
+}
 
-/* Inputs */
+/* ─── Inputs ─── */
 input, select, textarea {
     font-family: 'Inter', 'Segoe UI', sans-serif !important;
     font-size: 0.85rem !important;
-    border-radius: 3px !important;
-    border-color: #D1D5DB !important;
+    border-radius: 4px !important;
+    border-color: #c8dfe8 !important;
+}
+input:focus, select:focus, textarea:focus {
+    border-color: #156082 !important;
+    box-shadow: 0 0 0 2px rgba(21,96,130,0.12) !important;
 }
 label { font-size: 0.82rem !important; color: #374151 !important; font-weight: 500 !important; }
 
-/* Dataframe */
+/* ─── Tables ─── */
 table th {
-    background: #F3F4F6 !important;
-    color: #143B5E !important;
+    background: #e8f4f9 !important;
+    color: #156082 !important;
     font-size: 0.78rem !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
@@ -992,9 +1052,8 @@ table th {
 }
 table td { font-size: 0.83rem !important; color: #374151 !important; }
 
-/* Hide footer */
+/* ─── Footer ─── */
 footer { display: none !important; }
-
 
 """
 
@@ -1022,7 +1081,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
     white-space: nowrap;
 }
 .accueil-card {
-    border: 1.5px solid #E5E7EB;
+    border: 1.5px solid #c8dfe8;
     border-radius: 10px;
     padding: 18px 20px;
     background: white;
@@ -1030,7 +1089,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
     min-width: 0;
 }
 .accueil-card h3 {
-    color: #143B5E !important;
+    color: #156082 !important;
     font-size: 0.9rem !important;
     font-weight: 700 !important;
     margin: 0 0 8px 0 !important;
@@ -1047,7 +1106,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 }
 .accueil-stack-card {
     background: white;
-    border: 1.5px solid #E5E7EB;
+    border: 1.5px solid #c8dfe8;
     border-radius: 10px;
     padding: 20px 16px;
     text-align: center;
@@ -1066,7 +1125,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
       margin-bottom:22px;
       overflow:hidden;
       background:
-          linear-gradient(160deg, rgba(13,27,42,0.92) 0%, rgba(20,59,94,0.88) 55%, rgba(13,27,42,0.95) 100%),
+          linear-gradient(160deg, rgba(7,38,55,0.93) 0%, rgba(21,96,130,0.87) 55%, rgba(7,38,55,0.96) 100%),
           url('https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Car_crash_1.jpg/1280px-Car_crash_1.jpg')
           center/cover no-repeat;
   ">
@@ -1104,7 +1163,7 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
 
   <!-- ── Ce que vous pouvez faire ici ────────────────────────────── -->
   <div style="background:white;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #E5E7EB;">
-      <div style="color:#143B5E;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Ce que vous pouvez faire ici</div>
+      <div style="color:#156082;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Ce que vous pouvez faire ici</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
 
           <div class="accueil-card">
@@ -1132,31 +1191,31 @@ Simulation, monitoring et gouvernance — modele ONISR Random Forest 2021-2023.
   </div>
 
   <!-- ── Les 4 piliers de la stack ───────────────────────────────── -->
-  <div style="background:#F9FAFB;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #E5E7EB;">
-      <div style="color:#143B5E;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Les 4 piliers de la stack</div>
+  <div style="background:#f4f8fb;border-radius:14px;padding:26px 28px;margin-bottom:18px;border:1.5px solid #c8dfe8;">
+      <div style="color:#156082;font-size:0.95rem;font-weight:700;margin-bottom:18px;">Les 4 piliers de la stack</div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
 
           <div class="accueil-stack-card">
               <div style="font-size:2rem;margin-bottom:8px;">🌐</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Disponibilité API</div>
+              <div style="font-weight:700;color:#156082;font-size:0.88rem;">Disponibilité API</div>
               <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">FastAPI · Nginx · Prometheus<br>JWT · rate-limit · alertes latence</div>
           </div>
 
           <div class="accueil-stack-card">
               <div style="font-size:2rem;margin-bottom:8px;">📈</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Qualité modèle</div>
+              <div style="font-weight:700;color:#156082;font-size:0.88rem;">Qualité modèle</div>
               <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">MLflow · Evidently · Gate<br>drift PSI/KS · promote si meilleur</div>
           </div>
 
           <div class="accueil-stack-card">
               <div style="font-size:2rem;margin-bottom:8px;">🔀</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Orchestration</div>
+              <div style="font-weight:700;color:#156082;font-size:0.88rem;">Orchestration</div>
               <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Prefect · CI/CD GitHub Actions<br>auto · stop si KO · tests · rollback</div>
           </div>
 
           <div class="accueil-stack-card">
               <div style="font-size:2rem;margin-bottom:8px;">🔍</div>
-              <div style="font-weight:700;color:#143B5E;font-size:0.88rem;">Traçabilité</div>
+              <div style="font-weight:700;color:#156082;font-size:0.88rem;">Traçabilité</div>
               <div style="color:#6B7280;font-size:0.78rem;margin-top:4px;">Git · DVC · MLflow<br>code · données · modèles</div>
           </div>
 
@@ -1699,9 +1758,13 @@ Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → pr
 → `deploy-kapsule-flow` rolling update pods → `kapsule-down-flow` déprovision (économie coût).
 """)
 
+        # ── Onglet 11 : Docs ─────────────────────────────────────────────────
+        with gr.Tab("Docs"):
+            gr.HTML(value=build_docs_html())
+
     gr.Markdown("""
 ---
-*Random Forest — donnees ONISR 2021-2023 — rf:v3 @ Production*
+*lgbm_accidents — donnees ONISR 2021-2023 — lgbm:v3 @ Production*
 """)
 
 

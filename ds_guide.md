@@ -48,10 +48,14 @@ Les runs locaux remontent sur le **MLflow partagé du VPS** via un tunnel SSH.
 ### Ouvrir le tunnel (une fois par session)
 
 ```bash
+# Via Tailscale (recommandé — plus sécurisé, IP stable)
 ssh -L 5001:localhost:5001 \
     -L 9000:localhost:9000 \
     -L 9001:localhost:9001 \
-    deploy@51.159.187.132 -N &
+    deploy@100.117.99.62 -N &
+
+# Alternative : via IP publique (si Tailscale indisponible)
+# ssh -L 5001:localhost:5001 deploy@51.159.187.132 -N &
 ```
 
 MLflow UI : [http://localhost:5001](http://localhost:5001)

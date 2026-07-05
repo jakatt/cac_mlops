@@ -12,16 +12,16 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │  VPS Scaleway (51.159.187.132) — /data/cac_mlops                     │
 │                                                                       │
-│  nginx :8090 ──┬── api :8000          (FastAPI inference)             │
-│                └── gradio-public :7862 (What-If + Points Noirs)       │
+│  Caddy :443 ──► nginx :127.0.0.1:8090 ──┬── api :8000 (FastAPI)      │
+│                                          └── gradio-public :7862      │
 │                                                                       │
 │  prefect-server :4200   prefect-worker (process pool)                 │
-│  mlflow :5000           minio :9000/:9001  postgresql :5432           │
+│  mlflow :5001           minio :9000/:9001  postgresql :5432           │
 │  prometheus :9090       grafana :3000                                 │
 │  node-exporter :9100    nginx-exporter :9113                          │
 │  loki :3100             promtail (scrape Docker SD)                   │
 │                                                                       │
-│  gradio :7860  (cockpit MLOps 9 onglets — Tailscale only)             │
+│  gradio :7860  (cockpit MLOps 11 onglets — Tailscale only)            │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -142,8 +142,8 @@ Quatre images buildées par `deploy.yml` et pushées sur GHCR :
 |---|---|---|
 | `ghcr.io/jakatt/cac-mlops-api:latest` | `services/api/Dockerfile` | FastAPI + flows Prefect + scripts |
 | `ghcr.io/jakatt/cac-mlops-mlflow:latest` | `services/mlflow/Dockerfile` | MLflow server |
-| `ghcr.io/jakatt/cac-mlops-gradio:latest` | `services/gradio/Dockerfile` | Gradio cockpit (9 onglets, Tailscale) |
-| `ghcr.io/jakatt/cac-mlops-gradio-public:latest` | `services/gradio/Dockerfile` | Gradio public (3 onglets, internet via nginx:8090) |
+| `ghcr.io/jakatt/cac-mlops-gradio:latest` | `services/gradio/Dockerfile` | Gradio cockpit (11 onglets, Tailscale) |
+| `ghcr.io/jakatt/cac-mlops-gradio-public:latest` | `services/gradio/Dockerfile` | Gradio public (3 onglets, internet via https://mlops.jakat-inc.fr) |
 
 Le prefect-worker utilise `cac-mlops-api` (toutes les dépendances ML sont là).
 
@@ -174,9 +174,9 @@ docker compose up -d api
 
 ## 8. Monitoring
 
-- **Prometheus** : `http://51.159.187.132:9090` — métriques brutes PromQL
-- **Loki** : `http://51.159.187.132:3100` — logs agrégés (scrape Promtail via Docker SD)
-- **Grafana** : `http://51.159.187.132:3000` (admin/admin) — dashboards API perf + alertes
+- **Prometheus** : `http://100.117.99.62:9090` — métriques brutes PromQL
+- **Loki** : `http://100.117.99.62:3100` — logs agrégés (scrape Promtail via Docker SD)
+- **Grafana** : `http://100.117.99.62:3000` (admin/admin) — dashboards API perf + alertes
 - **Alertes** : 7 au total — 4 Prometheus (brute-force 401, DDoS 429, RAM < 10%, disk < 15%) + 3 Loki (erreurs API 5xx, OOM, crash conteneur)
 - **SMTP** : configuré dans `/data/cac_mlops/.env` (ne jamais commiter ce fichier)
 

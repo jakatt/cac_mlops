@@ -521,11 +521,11 @@ Personne ne le sait
 ║                      ║  │ minio-init       │ —          │ EXIT (init)    │ ║  prometheus · grafana      ║
 ║  Outils CLI          ║  │ mlflow           │ 5001       │ Tailscale      │ ║                            ║
 ║  ──────────────────  ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  LoadBalancers LB-S        ║
-║  git · dvc · pytest  ║  │ nginx            │ 8090       │ PUBLIC         │ ║  ─────────────────────     ║
+║  git · dvc · pytest  ║  │ nginx            │ 8090       │ localhost      │ ║  ─────────────────────     ║
 ║  flake8 · kubectl    ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  nginx   :80  → API pub.   ║
 ║                      ║  │ prefect-worker   │ —          │ process pool   │ ║  prefect :4200             ║
 ║  Cycle dev           ║  │ gradio           │ 7860       │ Tailscale      │ ║  grafana :3000             ║
-║  ──────────────────  ║  │ gradio-public    │ 7862(int.) │ via nginx:8090 │ ║                            ║
+║  ──────────────────  ║  │ gradio-public    │ 7862(int.) │ via Caddy/nginx│ ║                            ║
 ║  code → PR → CI      ║  │ node-exporter    │ 9100       │ interne        │ ║  HPA api                   ║
 ║  → merge → deploy    ║  │ nginx-exporter   │ 9113       │ interne        │ ║  CPU 70% / RAM 80%         ║
 ║  → validation VPS    ║  │ prometheus       │ 9090       │ Tailscale      │ ║  min 1 → max 8 pods        ║
@@ -565,8 +565,8 @@ Personne ne le sait
 ║                      ║  └─────────────────────────────────────────────┘   ║                            ║
 ║                      ║                                                     ║  MinIO (VPS)               ║
 ║                      ║  COCKPITS GRADIO                                    ║  → artefacts MLflow local  ║
-║                      ║  :7860 Tailscale — 8 onglets MLOps complets        ║                            ║
-║                      ║  :8090 PUBLIC    — 3 onglets (Predict+What-If+PN)  ║  data.gouv.fr (ONISR)      ║
+║                      ║  :7860 Tailscale — 11 onglets MLOps complets       ║                            ║
+║                      ║  mlops.jakat-inc.fr — 3 onglets (Predict+WI+PN)   ║  data.gouv.fr (ONISR)      ║
 ║                      ║                                                     ║  accidents 2021→2024       ║
 ╚══════════════════════╩═════════════════════════════════════════════════════╩════════════════════════════╝
 ```
@@ -606,7 +606,10 @@ Personne ne le sait
 [api service]       →  recharge modèle @Production (restart)
      │
      ▼
-[NGINX :8090]       ←  requêtes HTTP externes (rate-limited)
+[CADDY :443]        ←  requêtes HTTPS externes (TLS terminaison)
+     │  HTTP 127.0.0.1:8090
+     ▼
+[NGINX :8090]       ←  proxy interne (rate-limited)
      │
      ▼
 [simulate_prod]     →  rejoue ~55k accidents année N+1 via POST /predict
@@ -627,7 +630,7 @@ SCALEWAY VPS — ÉTAT ACTUEL
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
 │   Serveur    : DEV1-XL (Scaleway) — 4 vCPU / 12 GB RAM / 500 Mbps        │
-│   IP publique : 51.159.187.132   (exposée uniquement sur port 8090)       │
+│   IP publique : 51.159.187.132   (HTTPS via Caddy → mlops.jakat-inc.fr)   │
 │   IP Tailscale: 100.117.99.62    (ports admin — tailnet uniquement)       │
 │   Répertoire  : /data/cac_mlops  (symlink depuis /home/deploy)            │
 │                                                                            │
@@ -640,11 +643,11 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   │  minio-init        —           EXIT après init (crée bucket)     │   │
 │   │  mlflow            5001        http://100.117.99.62:5001        │   │
 │   │  api               8080/8000   http://100.117.99.62:8080/docs   │   │
-│   │  nginx             8090        http://51.159.187.132:8090 ←pub  │   │
+│   │  nginx             8090        127.0.0.1 (Caddy → https://mlops.jakat-inc.fr) │   │
 │   │  prefect-server    4200        http://100.117.99.62:4200        │   │
 │   │  prefect-worker    —           process pool (image api)          │   │
 │   │  gradio            7860        http://100.117.99.62:7860        │   │
-│   │  gradio-public     7862 (int.) via nginx → http://51.159.187.132:8090 ←pub │
+│   │  gradio-public     7862 (int.) via Caddy+nginx → https://mlops.jakat-inc.fr │
 │   │  node-exporter     9100        interne Docker (Prometheus)       │   │
 │   │  nginx-exporter    9113        interne Docker (Prometheus)       │   │
 │   │  prometheus        9090        http://100.117.99.62:9090        │   │
@@ -695,13 +698,13 @@ SCALEWAY VPS — ÉTAT ACTUEL
 ```text
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
-│  ACCÈS PUBLIC (internet)                                                   │
+│  ACCÈS PUBLIC (internet — HTTPS via Caddy)                                │
 │  ┌──────────────────────────────────────────────────────────────────┐    │
-│  │  http://51.159.187.132:8090/           → Cockpit public Gradio  │    │
+│  │  https://mlops.jakat-inc.fr/           → Cockpit public Gradio  │    │
 │  │     (Predict + What-If + Points Noirs — 3 onglets, aucun admin) │    │
-│  │  http://51.159.187.132:8090/predict    → NGINX → API (JWT req.) │    │
-│  │  http://51.159.187.132:8090/health     → healthcheck API        │    │
-│  │  http://51.159.187.132:8090/reports/drift/*   (rapports HTML)   │    │
+│  │  https://mlops.jakat-inc.fr/predict    → NGINX → API (JWT req.) │    │
+│  │  https://mlops.jakat-inc.fr/health     → healthcheck API        │    │
+│  │  https://mlops.jakat-inc.fr/reports/drift/* (rapports HTML)     │    │
 │  │  ssh deploy@51.159.187.132             → SSH (clé uniquement)   │    │
 │  └──────────────────────────────────────────────────────────────────┘    │
 │                                                                            │
@@ -745,7 +748,7 @@ IMPLÉMENTATION
        ufw allow 22/tcp     # SSH
        ufw allow 80/tcp     # HTTP autre appli
        ufw allow 443/tcp    # HTTPS autre appli
-       ufw allow 8090/tcp   # API publique NGINX
+       # port 8090 bind 127.0.0.1 — accessible uniquement en local (Caddy)
        ufw allow in on tailscale0  # toute l'équipe tailnet
 
   4. Variable d'environnement :
@@ -831,7 +834,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 
 ```text
   Image    : ghcr.io/jakatt/cac-mlops-api:latest
-  Port VPS : 100.117.99.62:8080 (admin/docs) — 51.159.187.132:8090 via NGINX (prod)
+  Port VPS : 100.117.99.62:8080 (admin/docs) — https://mlops.jakat-inc.fr via Caddy+NGINX (prod)
 
   ENDPOINTS
   ─────────
@@ -859,12 +862,15 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 
 ```text
   Configuration : services/nginx/nginx.conf
-  Port hôte VPS : 8090 (port 80 pris par Caddy de l'autre app)
+  Port hôte VPS : 127.0.0.1:8090 (bind localhost uniquement — accessible via Caddy :443)
 
   FLUX DES REQUÊTES
   ──────────────────
   Client externe
-       │  HTTP :8090
+       │  HTTPS :443
+       ▼
+  Caddy (service système — TLS Let's Encrypt, mlops.jakat-inc.fr)
+       │  HTTP 127.0.0.1:8090
        ▼
   NGINX (nginx:alpine)
        │
@@ -1085,7 +1091,7 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   COCKPIT PUBLIC (gradio-public — accès internet)
   ────────────────────────────────────────────────
   Image  : ghcr.io/jakatt/cac-mlops-gradio:latest
-  URL    : http://51.159.187.132:8090  (via nginx, port 7862 interne)
+  URL    : https://mlops.jakat-inc.fr  (Caddy :443 → nginx :8090, port 7862 interne)
   Script : services/gradio/app_public.py
 
   3 ONGLETS (sous-ensemble sans accès admin)
@@ -1095,7 +1101,7 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   3. Points Noirs: même heatmap
 
   Lazy loading modèle au 1er clic (~30s) puis cache mémoire
-  root_path=http://51.159.187.132:8090 (GRADIO_PUBLIC_URL) pour corriger
+  root_path=https://mlops.jakat-inc.fr (GRADIO_PUBLIC_URL) pour corriger
   les connexions SSE/WebSocket derrière le reverse proxy nginx
 ```
 
@@ -1469,8 +1475,8 @@ cac_mlops/
 │   ├── nginx/
 │   │   └── nginx.conf                     # rate limit 20r/min /predict + /reports/ alias
 │   ├── gradio/
-│   │   ├── app.py                         # Cockpit MLOps 8 onglets (Tailscale :7860)
-│   │   ├── app_public.py                  # Cockpit public 3 onglets (internet :8090)
+│   │   ├── app.py                         # Cockpit MLOps 11 onglets (Tailscale :7860)
+│   │   ├── app_public.py                  # Cockpit public 3 onglets (https://mlops.jakat-inc.fr)
 │   │   ├── scenarios.py                   # scénarios What-If
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
@@ -1619,7 +1625,8 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Sécurité réseau           │  Tailscale VPN mesh                           │
 │                            │  Ports admin : bind 100.117.99.62 (tailnet)   │
-│                            │  Port 8090 seul exposé publiquement           │
+│                            │  HTTPS :443 via Caddy (mlops.jakat-inc.fr)    │
+│                            │  nginx :8090 bind 127.0.0.1 (localhost seul)  │
 │                            │  UFW : allow in on tailscale0 (équipe)        │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Infrastructure VPS        │  Scaleway DEV1-XL (4 vCPU, 12 GB RAM)        │
