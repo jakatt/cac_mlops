@@ -1339,7 +1339,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     scenario_dd = gr.Dropdown(choices=SCENARIO_CHOICES, value=SCENARIO_CHOICES[0][1], label="Scenario")
                     mult_sl     = gr.Slider(minimum=0.1, maximum=10.0, step=0.1, value=2.0,
                                             label="Multiplicateur (× fois plus)", visible=False)
-                    _n_base = len(_get_data() or [])
+                    _df_base = _get_data(); _n_base = len(_df_base) if _df_base is not None else 0
                     sample_sl   = gr.Slider(minimum=2000, maximum=30000, step=1000, value=10000, label=f"Taille échantillon (base : {_n_base:,} accidents)")
                     run_btn     = gr.Button("Lancer l'analyse", variant="primary", size="lg")
                     stats_md    = gr.Markdown(value="*Les resultats s'afficheront ici apres l'analyse.*")
