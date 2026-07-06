@@ -25,7 +25,7 @@ REPORTS_DIR    = Path("reports/drift")
 # lat/long exclus : géographie déjà couverte par dep (Wasserstein 1D sur
 # coordonnées brutes n'est pas géographiquement interprétable)
 FEATURE_COLS = [
-    "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
+    "place", "catu", "sexe", "secu1", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
     "lum", "dep", "com", "agg_", "intersection_type", "atm", "col",
     "hour", "nb_victim", "nb_vehicules",
@@ -39,7 +39,7 @@ CATEGORICAL_COLS = [
     "intersection_type", "atm", "col",
 ]
 NUMERICAL_COLS = [
-    "year_acc", "victim_age", "vma", "jour", "mois",
+    "victim_age", "vma", "jour", "mois",
     "hour", "nb_victim", "nb_vehicules",
 ]
 
