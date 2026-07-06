@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from .import_raw_data import PROJECT_ROOT, training_years_up_to, discover_raw_files
+from .import_raw_data import PROJECT_ROOT, training_years_up_to, discover_raw_files  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +154,22 @@ def process_years(
     target = combined["grav"]
     feats  = combined.drop(columns=["grav"])
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        feats, target, test_size=0.3, random_state=42
-    )
+    if len(years) > 1:
+        # Split temporel : dernière année = test set, toutes les précédentes = train set.
+        # year_acc est utilisé comme clé de split puis supprimé des features
+        # (évite la fuite temporelle : le modèle ne doit pas connaître l'année de l'accident).
+        last_year = max(years)
+        mask_test = feats["year_acc"] == last_year
+        X_train = feats[~mask_test].drop(columns=["year_acc"]).copy()
+        X_test  = feats[ mask_test].drop(columns=["year_acc"]).copy()
+        y_train = target[~mask_test].copy()
+        y_test  = target[ mask_test].copy()
+    else:
+        # Année unique (simulation drift standalone) : split aléatoire 70/30
+        feats = feats.drop(columns=["year_acc"])
+        X_train, X_test, y_train, y_test = train_test_split(
+            feats, target, test_size=0.3, random_state=42
+        )
 
     # ── impute remaining NaN (on train stats) ────────────────────────────────
     impute_cols = ["surf", "circ", "col", "motor"]

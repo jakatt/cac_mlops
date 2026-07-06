@@ -134,7 +134,14 @@ Le benchmark entraîne **les 3 algorithmes** à chaque cycle. Le champion est s�
 
 ## 6. Seuils KPI (quality gate prod)
 
-Le nouveau modèle est promu uniquement s'il dépasse **tous** ces seuils ET améliore `@Production` d'au moins +0.01 sur F1 :
+Deux règles de promotion selon le trigger :
+
+**Trigger 3 (ton cas — nouveaux hyperparamètres, mêmes données) :**
+dépasser **tous** les seuils absolus ci-dessous **ET** améliorer `@Production` d'au moins +0.01 sur F1.
+
+**Trigger 1 (nouvelles données annuelles) :**
+dépasser **tous** les seuils absolus uniquement — la comparaison F1 avec `@Production` est ignorée
+car les test sets sont différents (années différentes → comparaison invalide).
 
 | Métrique | Seuil minimum |
 |---|---|

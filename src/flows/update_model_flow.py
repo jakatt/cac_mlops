@@ -60,7 +60,8 @@ def update_model_flow(
 
     extract_blueprint_task()
 
-    result = train_flow(year=year, cumul=cumul, promote=False)
+    # Trigger 3 : mêmes données, nouveaux hyperparamètres → comparaison F1 vs @Production valide
+    result = train_flow(year=year, cumul=cumul, promote=False, require_improvement=True)
 
     if result["champion"] is None:
         # Restaurer le blueprint précédent — les params DS n'ont pas battu @Production

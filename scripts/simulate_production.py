@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
-from src.data.import_raw_data import download_year as _download_raw
+from src.data.import_raw_data import download_year as _download_raw, get_drift_year
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def _data_paths(year: int) -> tuple[Path, Path]:
     return Path(f"data/raw/{year}"), Path(f"data/preprocessed/{year}")
 
 FEATURE_COLS = [
-    "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
+    "place", "catu", "sexe", "secu1", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
     "lum", "dep", "com", "agg_", "int", "atm", "col", "lat", "long",
     "hour", "nb_victim", "nb_vehicules",
@@ -71,13 +71,15 @@ def _load_production_data(year: int) -> pd.DataFrame:
 def simulate(
     api_url: str,
     token: str,
-    year: int = 2024,
+    year: int | None = None,
     month: str | None = None,
     dry_run: bool = False,
     delay_ms: int = 0,
     max_rows: int | None = None,
     sim_month: str | None = None,
 ) -> dict:
+    if year is None:
+        year = get_drift_year()
     df = _load_production_data(year)
 
     # Keep only feature columns (handle missing ones gracefully)
@@ -157,7 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--username", default=os.getenv("API_USERNAME", "admin"))
     parser.add_argument("--password", default=os.getenv("API_PASSWORD", "changeme"))
     parser.add_argument("--token",    default=None, help="JWT token (skips /token call)")
-    parser.add_argument("--year",     type=int, default=2024, help="Année des données à rejouer")
+    parser.add_argument("--year",     type=int, default=None, help="Année drift (défaut : auto-détectée)")
     parser.add_argument("--month",    default=None, help="YYYY-MM filter on 'mois' column")
     parser.add_argument("--dry-run",  action="store_true")
     parser.add_argument("--delay-ms", type=int, default=0, help="ms between requests")

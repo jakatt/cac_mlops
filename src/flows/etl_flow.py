@@ -10,7 +10,7 @@ from pathlib import Path
 
 from prefect import flow, task
 
-from src.data.import_raw_data import download_year, training_years_up_to
+from src.data.import_raw_data import download_year, training_years_up_to, get_training_years
 from src.utils.email_utils import send_alert
 
 logger = logging.getLogger(__name__)
@@ -87,15 +87,24 @@ def etl_flow(
     year: int = 2023,
     cumul: bool = True,
     urls: dict[str, str] | None = None,
+    explicit_years: list[int] | None = None,
 ) -> None:
     """
     Download, validate, push to DVC remote and preprocess ONISR data.
 
-    urls: pre-resolved {category: download_url} — passed by check-new-data-flow
-          to avoid a second API call. If None, URLs are resolved automatically.
+    urls: pre-resolved {category: download_url} — passed by check-new-data-flow.
+    explicit_years: liste d'années à préprocesser (full_retrain_flow — replay historique).
+                    Si None en mode cumul : auto-détection via get_training_years()
+                    (toutes les années disponibles sauf la dernière = drift).
     """
     download_task(year, urls=urls)
     validate_task(year)
     dvc_push_task(year)
-    years = training_years_up_to(year) if cumul else [year]
+    if explicit_years is not None:
+        years = explicit_years
+    elif cumul:
+        # Production : exclut automatiquement la dernière année (réservée drift)
+        years = get_training_years()
+    else:
+        years = [year]
     preprocess_task(years)

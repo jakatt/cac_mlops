@@ -91,11 +91,13 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 
 ## 4. Les 3 triggers de mise en production
 
-| # | Trigger | Déclencheur | Pipeline |
-|---|---------|-------------|----------|
-| 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate → promote → test-api → Kapsule |
-| 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images → VPS pull/up → smoke test → gate → test-api → Kapsule (si OK) |
-| 3 | Nouveau blueprint DS | push → PR → merge `main` (`src/models/**`, `config/**`) | backup config → extract_blueprint → train → si meilleur : garder config + gate + promote ; sinon : restaurer config + email DS |
+| # | Trigger | Déclencheur | Pipeline | Gate promotion |
+| --- | ------- | ----------- | -------- | -------------- |
+| 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate → promote → test-api → Kapsule | KPI absolus uniquement (F1≥0.64, AUC≥0.75, Recall≥0.60, Acc≥0.70) — comparaison @Production ignorée (test sets différents entre cycles) |
+| 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images → VPS pull/up → smoke test → gate → test-api → Kapsule (si OK) | Pas de réentraînement |
+| 3 | Nouveau blueprint DS | push → PR → merge `main` (`src/models/**`, `config/**`) | backup config → extract_blueprint → train → si meilleur : garder config + gate + promote ; sinon : restaurer config + email DS | KPI absolus + delta F1 > +0.01 vs @Production (même test set → comparaison valide) |
+
+**Split temporel (Triggers 1 & 3) :** `make_dataset.py` auto-détecte les années disponibles dans `data/raw/`. Dernière année = test set (~55k lignes). Toutes les précédentes = train. Aucune configuration manuelle nécessaire lors de l'ajout d'une nouvelle année. `year_acc` supprimé des features (évite fuite temporelle).
 
 ### Détecter trigger 2 vs trigger 3 dans `deploy.yml`
 

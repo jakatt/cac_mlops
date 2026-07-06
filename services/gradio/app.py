@@ -1432,7 +1432,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 },
                 "Réentraîner les modèles": {
                     "key": "full-retrain",
-                    "desc": "Réentraîne les modèles sur toutes les années disponibles (2021–2023) : ETL → benchmark RF/XGBoost/LGBM → gate manuelle → promote si meilleur. Durée ~15 min.",
+                    "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
                     "opts": None,
                 },
                 "Vérifier nouvelles données": {
@@ -1442,7 +1442,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 },
                 "Analyser le drift": {
                     "key": "drift-check",
-                    "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement 2021–2023 et les prédictions de production. Génère le rapport Evidently dans l'onglet Drift.",
+                    "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
                     "opts": None,
                 },
                 "Réinitialiser la solution": {
@@ -1661,8 +1661,8 @@ git pull && dvc pull          # sync code + données depuis S3
 | Flow | Déclencheur | Rôle |
 |---|---|---|
 | **etl** | manuel / cron | download data.gouv.fr + validation schéma + preprocessing |
-| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion |
-| **full-retrain** | manuel | tous les cycles depuis zéro (etl + train × 3 années + drift) |
+| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion (T1: gate KPI absolue · T3: +0.01 F1 vs @Prod) |
+| **full-retrain** | manuel | tous les cycles depuis zéro — détecte automatiquement les années dispo (etl + train × N cycles + drift) |
 | **drift-check** | hebdo | drift Evidently → alerte email si seuil dépassé |
 | **reset** | manuel | vide predictions + rapports drift (± MLflow selon options) |
 | **check-new-data** | cron lundi 8h UTC | détecte nouvelles données ONISR → déclenche etl + train |
