@@ -128,8 +128,8 @@
           <th></th>
           <th class="t1-col">
             <span class="th-label">Trigger 1</span>
-            <span class="th-name">Commit code</span>
-            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → Kapsule</span>
+            <span class="th-name">Nouvelles données</span>
+            <span class="th-desc">check-new-data détecte ONISR N<br>→ ETL → retrain → Kapsule</span>
           </th>
           <th class="t2-col">
             <span class="th-label">Trigger 2</span>
@@ -138,15 +138,15 @@
           </th>
           <th class="t3-col">
             <span class="th-label">Trigger 3</span>
-            <span class="th-name">Nouvelles données</span>
-            <span class="th-desc">check-new-data détecte ONISR N<br>→ ETL → retrain → Kapsule</span>
+            <span class="th-name">Commit code</span>
+            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → Kapsule</span>
           </th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><span class="row-label">Stops<br>volontaires</span></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
@@ -165,20 +165,22 @@
         <tr class="desc-row">
           <td><span class="row-label">Détail</span></td>
           <td>
-            <p class="desc-title">3 gates — 1 rollback — 0 interruption</p>
+            <p class="desc-title">5 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué + notification GitHub Actions</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : job deploy annulé avant tout contact Kapsule</li>
-              <li><strong>Gate 3</strong> — Readiness probe fail (<code>/health</code>) : K8s stoppe le rolling update, anciens pods maintenus + alerte Prometheus</li>
-              <li><strong>Rollback</strong> — <code>kubectl rollout undo deployment/api</code> : K8s revient à la ReplicaSet précédente automatiquement</li>
-              <li><span class="highlight">0 interruption</span> — nouveau pod Ready avant suppression de l'ancien, flux HTTP ininterrompu</li>
+              <li><strong>Gate 1</strong> — Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte — Kapsule jamais touché</li>
+              <li><strong>Gate 2</strong> — Contrôle qualité des fichiers : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</li>
+              <li><strong>Gate 3</strong> — Validation schéma Pandera CRITICAL : ETL stoppé + alerte email SMTP</li>
+              <li><strong>Gate 4</strong> — KPI gate failed : aucun champion + alerte Grafana, @Production inchangé — Kapsule non mis à jour</li>
+              <li><strong>Gate 5</strong> — Readiness probe fail : rolling update stoppé, anciens pods maintiennent le service</li>
+              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur le modèle précédent</li>
+              <li><span class="highlight">0 interruption</span> — ETL + train (~15 min) en tâche de fond, Kapsule continue de servir l'ancien modèle</li>
             </ul>
           </td>
           <td>
             <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T1</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T1</li>
+              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T3</li>
+              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T3</li>
               <li><strong>Gate 3</strong> — KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</li>
               <li><strong>Gate 4</strong> — Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</li>
               <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</li>
@@ -188,11 +190,11 @@
           <td>
             <p class="desc-title">3 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — Validation schéma Pandera CRITICAL : ETL stoppé + alerte email SMTP — Kapsule jamais touché</li>
-              <li><strong>Gate 2</strong> — KPI gate failed : aucun champion + alerte Grafana, @Production inchangé — Kapsule non mis à jour</li>
-              <li><strong>Gate 3</strong> — Readiness probe fail : rolling update stoppé, anciens pods maintiennent le service</li>
-              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur le modèle précédent</li>
-              <li><span class="highlight">0 interruption</span> — ETL + train (~15 min) en tâche de fond, Kapsule continue de servir l'ancien modèle</li>
+              <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué + notification GitHub Actions</li>
+              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : job deploy annulé avant tout contact Kapsule</li>
+              <li><strong>Gate 3</strong> — Readiness probe fail (<code>/health</code>) : K8s stoppe le rolling update, anciens pods maintenus + alerte Prometheus</li>
+              <li><strong>Rollback</strong> — <code>kubectl rollout undo deployment/api</code> : K8s revient à la ReplicaSet précédente automatiquement</li>
+              <li><span class="highlight">0 interruption</span> — nouveau pod Ready avant suppression de l'ancien, flux HTTP ininterrompu</li>
             </ul>
           </td>
         </tr>
@@ -201,7 +203,7 @@
   </div>
   <div class="footnote">
     <span>Alerte = email SMTP · notification GitHub Actions · alerte Grafana · événement K8s / Prometheus</span>
-    <span>Rollback = <code>kubectl rollout undo</code> (infra) + alias MLflow Registry (modèle)</span>
+    <span>Rollback T1 : alias MLflow Registry · Rollback T2/T3 : <code>kubectl rollout undo</code></span>
   </div>
 </div>
 </div>
