@@ -938,6 +938,16 @@ def build_links_html() -> str:
 SCENARIO_CHOICES = [(v["label"], k) for k, v in SCENARIOS.items()]
 CATR_CHOICES = [(1, "Autoroute"), (2, "Route nationale"), (3, "Route departementale"), (4, "Voie communale")]
 
+def _load_html_doc(rel_path: str) -> str:
+    """Read an HTML file from the repo root (relative path)."""
+    full = os.path.join(os.path.dirname(__file__), "..", "..", rel_path)
+    try:
+        with open(os.path.normpath(full), encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return f"<p style='color:#b91c1c'>Fichier introuvable : {rel_path}</p>"
+
+
 def build_docs_html() -> str:
     GITHUB_BASE = f"https://github.com/{GITHUB_REPO}/blob/main"
     docs = [
@@ -953,9 +963,13 @@ def build_docs_html() -> str:
          "Gouvernance, pilotage, gate de promotion"),
         ("data_dictionary.md",   "Dictionnaire des données",
          "Description des 27 features du modèle et de la cible binaire"),
-        ("tests_catalogue.md",   "Catalogue des tests",
+        ("tests_catalogue.md",          "Catalogue des tests",
          "36 tests unitaires CI · pipeline CD · 6 tests Prefect post-deploy"),
-        ("README.md",            "README",
+        ("docs/ci_cd_reliability_vps.html",     "Fiabilité CI/CD — VPS",
+         "Stops · rollbacks · interruptions par trigger (Docker Compose)"),
+        ("docs/ci_cd_reliability_kapsule.html", "Fiabilité CI/CD — Kapsule",
+         "Stops · rollbacks · 0 interruption par trigger (Kubernetes rolling update)"),
+        ("README.md",                  "README",
          "Vue d'ensemble et démarrage rapide du repository"),
     ]
     cards = "".join(f"""
@@ -1810,6 +1824,8 @@ Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → pr
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
         with gr.Tab("Docs"):
             gr.HTML(value=build_docs_html())
+            gr.HTML(value=_load_html_doc("docs/ci_cd_reliability_vps.html"))
+            gr.HTML(value=_load_html_doc("docs/ci_cd_reliability_kapsule.html"))
 
     gr.Markdown(f"""
 ---

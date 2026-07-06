@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Fiabilité CI/CD — Kapsule (K8s)</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  --bg:        #f0f7fb; --surface:   #ffffff; --border:    #c8dfe8;
+  --text:      #0d2233; --muted:     #5a7a8a; --accent:    #156082;
+  --accent-lt: #e6f2f7;
+  --stop-bg:   #fef2f2; --stop-num:  #b91c1c; --stop-bd:   #fca5a5;
+  --rb-bg:     #fffbeb; --rb-num:    #b45309; --rb-bd:     #fcd34d;
+  --int-bg:    #f0fdf4; --int-num:   #15803d; --int-bd:    #86efac;
+  --zero-bg:   #f3f4f6; --zero-num:  #9ca3af; --zero-bd:   #e5e7eb;
+  --t1: #156082; --t2: #0e7490; --t3: #0f766e;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
+    --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
+    --int-bg: #052e16; --int-num: #4ade80; --int-bd: #14532d;
+    --zero-bg: #1f2937; --zero-num: #6b7280; --zero-bd: #374151;
+    --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
+  --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
+  --int-bg: #052e16; --int-num: #4ade80; --int-bd: #14532d;
+  --zero-bg: #1f2937; --zero-num: #6b7280; --zero-bd: #374151;
+  --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
+  --rb-bg: #fffbeb; --rb-num: #b45309; --rb-bd: #fcd34d;
+  --int-bg: #f0fdf4; --int-num: #15803d; --int-bd: #86efac;
+  --zero-bg: #f3f4f6; --zero-num: #9ca3af; --zero-bd: #e5e7eb;
+  --t1: #156082; --t2: #0e7490; --t3: #0f766e;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 0 48px; color: var(--text); }
+.ci-doc .page-header { margin-bottom: 28px; }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:600px; }
+.ci-doc .k8s-banner { display:flex;align-items:flex-start;gap:12px;background:var(--int-bg);border:1px solid var(--int-bd);border-radius:8px;padding:14px 16px;margin-bottom:24px; }
+.ci-doc .k8s-banner-icon { font-size:1.1rem;flex-shrink:0;margin-top:1px; }
+.ci-doc .k8s-banner-title { font-size:.75rem;font-weight:700;color:var(--int-num);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px; }
+.ci-doc .k8s-banner-text { font-size:.76rem;color:var(--muted);line-height:1.45; }
+.ci-doc .legend { display:flex;flex-wrap:wrap;gap:10px 20px;margin-bottom:24px; }
+.ci-doc .legend-item { display:flex;align-items:center;gap:7px;font-size:.76rem;color:var(--muted); }
+.ci-doc .dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+.ci-doc .dot-stop { background:var(--stop-num); }
+.ci-doc .dot-rb   { background:var(--rb-num); }
+.ci-doc .dot-int  { background:var(--int-num); }
+.ci-doc .dot-zero { background:var(--zero-num); }
+.ci-doc .tbl-wrap { overflow-x:auto; }
+.ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem; }
+.ci-doc .trigger-header th { padding:18px 20px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
+.ci-doc .trigger-header th:first-child { width:150px;min-width:130px; }
+.ci-doc .th-label { font-size:.62rem;font-weight:600;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px; }
+.ci-doc .th-name { font-size:.92rem;font-weight:700;display:block;margin-bottom:2px; }
+.ci-doc .th-desc { font-size:.70rem;color:var(--muted);display:block;line-height:1.35; }
+.ci-doc .t1-col .th-name { color:var(--t1); }
+.ci-doc .t2-col .th-name { color:var(--t2); }
+.ci-doc .t3-col .th-name { color:var(--t3); }
+.ci-doc tbody tr { border-bottom:1px solid var(--border); }
+.ci-doc tbody tr:last-child { border-bottom:none; }
+.ci-doc tbody tr:hover { background:var(--accent-lt); }
+.ci-doc td { padding:16px 20px;vertical-align:top; }
+.ci-doc td:first-child { border-right:1px solid var(--border); }
+.ci-doc .row-label { font-size:.70rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap; }
+.ci-doc .count-cell { display:flex;flex-direction:column;gap:6px; }
+.ci-doc .badge { display:inline-flex;align-items:baseline;gap:5px;padding:6px 12px;border-radius:6px;border:1px solid;width:fit-content; }
+.ci-doc .badge-num { font-size:1.55rem;font-weight:800;font-variant-numeric:tabular-nums;line-height:1; }
+.ci-doc .badge-unit { font-size:.62rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;align-self:flex-end;padding-bottom:2px; }
+.ci-doc .badge-stop { background:var(--stop-bg);border-color:var(--stop-bd); }
+.ci-doc .badge-stop .badge-num  { color:var(--stop-num); }
+.ci-doc .badge-stop .badge-unit { color:var(--stop-num);opacity:.7; }
+.ci-doc .badge-rb   { background:var(--rb-bg);border-color:var(--rb-bd); }
+.ci-doc .badge-rb .badge-num    { color:var(--rb-num); }
+.ci-doc .badge-rb .badge-unit   { color:var(--rb-num);opacity:.7; }
+.ci-doc .badge-zero { background:var(--zero-bg);border-color:var(--zero-bd); }
+.ci-doc .badge-zero .badge-num  { color:var(--zero-num); }
+.ci-doc .badge-zero .badge-unit { color:var(--zero-num);opacity:.7; }
+.ci-doc .desc-row td { padding:12px 20px 20px;background:var(--accent-lt);border-top:1px solid var(--border); }
+.ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
+.ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:7px; }
+.ci-doc .desc-list { list-style:none;display:flex;flex-direction:column;gap:4px; }
+.ci-doc .desc-list li { font-size:.75rem;color:var(--muted);line-height:1.4;display:flex;gap:6px; }
+.ci-doc .desc-list li::before { content:"→";color:var(--accent);flex-shrink:0;font-size:.7rem;margin-top:1px; }
+.ci-doc .highlight { color:var(--int-num);font-weight:600; }
+.ci-doc .footnote { margin-top:20px;font-size:.70rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:16px; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header class="page-header">
+    <p class="eyebrow">MLOps · Accidents routiers — Scaleway Kapsule (Kubernetes)</p>
+    <h1 class="page-title">Procédures de fiabilité par trigger CI/CD</h1>
+    <p class="page-sub">Stops, rollbacks et interruptions de service pour les 3 triggers — déploiement Kubernetes avec rolling update.</p>
+  </header>
+  <div class="k8s-banner">
+    <span class="k8s-banner-icon">◎</span>
+    <div>
+      <p class="k8s-banner-title">Différence fondamentale vs VPS</p>
+      <p class="k8s-banner-text">Le rolling update Kubernetes remplace les pods un par un : le nouveau pod doit passer la <strong>readiness probe</strong> (<code>/health</code>) avant que l'ancien soit supprimé. Aucune requête n'est perdue — les interruptions de service tombent à <strong>0</strong> pour les 3 triggers. Le rollback passe de images Docker <code>:rollback</code> à <code>kubectl rollout undo</code>.</p>
+    </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><span class="dot dot-stop"></span> Stop volontaire + alerte</div>
+    <div class="legend-item"><span class="dot dot-rb"></span> Rollback automatique + alerte</div>
+    <div class="legend-item"><span class="dot dot-zero"></span> Zéro interruption (rolling update)</div>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr class="trigger-header">
+          <th></th>
+          <th class="t1-col">
+            <span class="th-label">Trigger 1</span>
+            <span class="th-name">Commit code</span>
+            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → Kapsule</span>
+          </th>
+          <th class="t2-col">
+            <span class="th-label">Trigger 2</span>
+            <span class="th-name">Blueprint DS</span>
+            <span class="th-desc">src/models/ modifié → CI/CD<br>→ update-model-flow → Kapsule</span>
+          </th>
+          <th class="t3-col">
+            <span class="th-label">Trigger 3</span>
+            <span class="th-name">Nouvelles données</span>
+            <span class="th-desc">check-new-data détecte ONISR N<br>→ ETL → retrain → Kapsule</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="row-label">Stops<br>volontaires</span></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
+        </tr>
+        <tr>
+          <td><span class="row-label">Rollbacks<br>auto</span></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
+        </tr>
+        <tr>
+          <td><span class="row-label">Interruptions<br>de service</span></td>
+          <td><div class="count-cell"><span class="badge badge-zero"><span class="badge-num">0</span><span class="badge-unit">rolling update</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-zero"><span class="badge-num">0</span><span class="badge-unit">rolling update</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-zero"><span class="badge-num">0</span><span class="badge-unit">rolling update</span></span></div></td>
+        </tr>
+        <tr class="desc-row">
+          <td><span class="row-label">Détail</span></td>
+          <td>
+            <p class="desc-title">3 gates — 1 rollback — 0 interruption</p>
+            <ul class="desc-list">
+              <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué + notification GitHub Actions</li>
+              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : job deploy annulé avant tout contact Kapsule</li>
+              <li><strong>Gate 3</strong> — Readiness probe fail (<code>/health</code>) : K8s stoppe le rolling update, anciens pods maintenus + alerte Prometheus</li>
+              <li><strong>Rollback</strong> — <code>kubectl rollout undo deployment/api</code> : K8s revient à la ReplicaSet précédente automatiquement</li>
+              <li><span class="highlight">0 interruption</span> — nouveau pod Ready avant suppression de l'ancien, flux HTTP ininterrompu</li>
+            </ul>
+          </td>
+          <td>
+            <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
+            <ul class="desc-list">
+              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T1</li>
+              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T1</li>
+              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</li>
+              <li><strong>Gate 4</strong> — Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</li>
+              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</li>
+              <li><span class="highlight">0 interruption</span> — le nouveau modèle est servi sans downtime une fois le pod Ready</li>
+            </ul>
+          </td>
+          <td>
+            <p class="desc-title">3 gates — 1 rollback — 0 interruption</p>
+            <ul class="desc-list">
+              <li><strong>Gate 1</strong> — Validation schéma Pandera CRITICAL : ETL stoppé + alerte email SMTP — Kapsule jamais touché</li>
+              <li><strong>Gate 2</strong> — KPI gate failed : aucun champion + alerte Grafana, @Production inchangé — Kapsule non mis à jour</li>
+              <li><strong>Gate 3</strong> — Readiness probe fail : rolling update stoppé, anciens pods maintiennent le service</li>
+              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur le modèle précédent</li>
+              <li><span class="highlight">0 interruption</span> — ETL + train (~15 min) en tâche de fond, Kapsule continue de servir l'ancien modèle</li>
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="footnote">
+    <span>Alerte = email SMTP · notification GitHub Actions · alerte Grafana · événement K8s / Prometheus</span>
+    <span>Rollback = <code>kubectl rollout undo</code> (infra) + alias MLflow Registry (modèle)</span>
+  </div>
+</div>
+</div>
+</body>
+</html>
