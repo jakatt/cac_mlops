@@ -41,7 +41,7 @@ MUTED = "#6B7280"
 BLUE2 = "#4a9fc4"
 
 FEATURE_COLS = [
-    "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
+    "place", "catu", "sexe", "secu1", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
     "lum", "dep", "com", "agg_", "intersection_type", "atm", "col",
     "lat", "long", "hour", "nb_victim", "nb_vehicules",
@@ -144,7 +144,6 @@ _PREDICT_LABELS = {
     "catu":              "Catég. usager (1=conducteur, 2=passager, 3=piéton)",
     "sexe":              "Sexe (1=masculin, 2=féminin)",
     "secu1":             "Équipement sécu (0=aucun, 1=ceinture, 2=casque, 8=autre)",
-    "year_acc":          "Année accident",
     "victim_age":        "Âge victime",
     "catv":              "Catég. véhicule (1=VL, 2=util., 3=PL/bus, 4=moto, 5=cycle, 6=EDP)",
     "obsm":              "Obstacle mobile (1=piéton, 2=véhicule, 4=animal)",
@@ -172,15 +171,15 @@ _PREDICT_LABELS = {
 
 _PREDICT_EXAMPLES = [
     ("Conducteur H, 26 ans, nuit, agglo 30 km/h",
-     1, 1, 1, 2.0, 2023, 26.0, 1.0, 2.0, 3.0, 3, 2.0, 1.0, 1.0, 30.0, 16, 12, 5, 61, 61001, 2, 2, 0.0, 3.0, 48.43534, 0.09162, 20, 2, 2),
+     1, 1, 1, 2.0, 26.0, 1.0, 2.0, 3.0, 3, 2.0, 1.0, 1.0, 30.0, 16, 12, 5, 61, 61001, 2, 2, 0.0, 3.0, 48.43534, 0.09162, 20, 2, 2),
     ("Conducteur H, 79 ans, route nationale, jour",
-     1, 1, 1, 1.0, 2023, 79.0, 2.0, 2.0, 1.0, 2, 2.0, 1.0, 1.0, 50.0, 23, 11, 1, 84, 84007, 1, 4, 0.0, 3.0, 43.89102, 4.91632, 16, 2, 2),
+     1, 1, 1, 1.0, 79.0, 2.0, 2.0, 1.0, 2, 2.0, 1.0, 1.0, 50.0, 23, 11, 1, 84, 84007, 1, 4, 0.0, 3.0, 43.89102, 4.91632, 16, 2, 2),
     ("Piéton F, 69 ans, agglo, matin",
-     10, 3, 2, 0.0, 2021, 69.0, 5.0, 1.0, 1.0, 3, 2.0, 2.0, 1.0, 30.0, 12, 1, 1, 92, 92023, 2, 1, 1.0, 6.0, 48.7883, 2.25826, 11, 2, 1),
+     10, 3, 2, 0.0, 69.0, 5.0, 1.0, 1.0, 3, 2.0, 2.0, 1.0, 30.0, 12, 1, 1, 92, 92023, 2, 1, 1.0, 6.0, 48.7883, 2.25826, 11, 2, 1),
     ("Conducteur F, 30 ans, voie urbaine, soir",
-     1, 1, 2, 8.0, 2021, 30.0, 1.0, 2.0, 1.0, 7, 1.0, 1.0, 1.0, 50.0, 7, 4, 1, 34, 34172, 2, 1, 0.0, 2.0, 43.57503, 3.86022, 19, 2, 2),
+     1, 1, 2, 8.0, 30.0, 1.0, 2.0, 1.0, 7, 1.0, 1.0, 1.0, 50.0, 7, 4, 1, 34, 34172, 2, 1, 0.0, 2.0, 43.57503, 3.86022, 19, 2, 2),
     ("Cycliste, 10 ans, parking, été",
-     2, 2, 1, 2.0, 2022, 10.0, 1.0, 2.0, 3.0, 6, 2.0, 9.0, 3.0, 50.0, 29, 8, 1, 25, 25512, 2, 9, 0.0, 3.0, 47.163298, 6.728774, 17, 4, 2),
+     2, 2, 1, 2.0, 10.0, 1.0, 2.0, 3.0, 6, 2.0, 9.0, 3.0, 50.0, 29, 8, 1, 25, 25512, 2, 9, 0.0, 3.0, 47.163298, 6.728774, 17, 4, 2),
 ]
 
 
@@ -207,13 +206,13 @@ def _predict_with_proba(df: pd.DataFrame) -> tuple[int, float | None]:
     return pred, proba
 
 
-def run_predict(place, catu, sexe, secu1, year_acc, victim_age, catv,
+def run_predict(place, catu, sexe, secu1, victim_age, catv,
                 obsm, motor, catr, circ, surf, situ, vma, jour, mois,
                 lum, dep, com, agg_, intersection_type, atm, col,
                 lat, long, hour, nb_victim, nb_vehicules) -> str:
     try:
         row = dict(zip(FEATURE_COLS, [
-            int(place), int(catu), int(sexe), float(secu1), int(year_acc), float(victim_age),
+            int(place), int(catu), int(sexe), float(secu1), float(victim_age),
             float(catv), float(obsm), float(motor), int(catr), float(circ), float(surf),
             float(situ), float(vma), int(jour), int(mois), int(lum), int(dep), int(com),
             int(agg_), int(intersection_type), float(atm), float(col),
@@ -468,7 +467,6 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                     _inp_victim_age = gr.Number(value=30.0,    label=_PREDICT_LABELS["victim_age"])
                     _inp_place      = gr.Number(value=1,       label=_PREDICT_LABELS["place"])
                     _inp_secu1      = gr.Number(value=1.0,     label=_PREDICT_LABELS["secu1"])
-                    _inp_year_acc   = gr.Number(value=2023,    label=_PREDICT_LABELS["year_acc"])
                 with gr.Column():
                     gr.Markdown("#### Véhicule")
                     _inp_catv         = gr.Number(value=1.0,  label=_PREDICT_LABELS["catv"])
@@ -503,7 +501,7 @@ Modele LightGBM — *outil de recherche, non operationnel.*
             _predict_out = gr.Markdown()
 
             _pred_inputs = [
-                _inp_place, _inp_catu, _inp_sexe, _inp_secu1, _inp_year_acc, _inp_victim_age,
+                _inp_place, _inp_catu, _inp_sexe, _inp_secu1, _inp_victim_age,
                 _inp_catv, _inp_obsm, _inp_motor, _inp_catr, _inp_circ, _inp_surf, _inp_situ,
                 _inp_vma, _inp_jour, _inp_mois, _inp_lum, _inp_dep, _inp_com, _inp_agg_, _inp_int,
                 _inp_atm, _inp_col, _inp_lat, _inp_long, _inp_hour, _inp_nb_victim, _inp_nb_vehicules,

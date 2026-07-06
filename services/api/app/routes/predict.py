@@ -14,7 +14,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 FEATURE_ORDER = [
-    "place", "catu", "sexe", "secu1", "year_acc", "victim_age", "catv",
+    "place", "catu", "sexe", "secu1", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
     "lum", "dep", "com", "agg_", "int", "atm", "col", "lat", "long", "hour",
     "nb_victim", "nb_vehicules",
