@@ -61,6 +61,20 @@ SLATE = "#374151"
 MUTED = "#6B7280"
 BLUE2 = "#4a9fc4"
 
+
+def _onisr_year_range() -> str:
+    try:
+        from src.data.import_raw_data import discover_available_years
+        years = discover_available_years()
+        if years:
+            return f"{min(years)}-{max(years)}"
+    except Exception:
+        pass
+    return "2021-2024"
+
+
+_YEAR_RANGE = _onisr_year_range()
+
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
@@ -82,12 +96,12 @@ def _get_production_footer() -> str:
             try:
                 pv = client.get_model_version_by_alias(model_name, "Production")
                 algo = model_name.split("_")[0]
-                return f"*{model_name} — donnees ONISR 2021-2023 — {algo}:v{pv.version} @ Production*"
+                return f"*{model_name} — donnees ONISR {_YEAR_RANGE} — {algo}:v{pv.version} @ Production*"
             except Exception:
                 continue
     except Exception:
         pass
-    return "*Modele @Production — donnees ONISR 2021-2023*"
+    return f"*Modele @Production — donnees ONISR {_YEAR_RANGE}*"
 
 
 def _find_production_model() -> str | None:
@@ -1090,9 +1104,9 @@ footer { display: none !important; }
 
 with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 
-    gr.Markdown("""
+    gr.Markdown(f"""
 # Cockpit MLOps — Securite Routiere
-Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — donnees ONISR 2021-2023.
+Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — donnees ONISR {_YEAR_RANGE}.
 """)
 
     with gr.Tabs():
@@ -1491,7 +1505,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     action_result = gr.Textbox(
                         label="Résultat", lines=22, interactive=False,
                     )
-                    clear_btn = gr.Button("✕", variant="secondary", elem_id="pipe-clear-btn")
+                    clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
 
             # Table pleine largeur
             runs_table = gr.Dataframe(
