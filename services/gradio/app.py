@@ -1427,7 +1427,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             _FLOW_CONFIGS = {
                 "Tester l'API (6 vérifications)": {
                     "key": "test-api",
-                    "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=130 vs 110), rate-limit 429.",
+                    "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=90 vs 50 — route dept nuit), rate-limit 429.",
                     "opts": None,
                 },
                 "Diagnostiquer le VPS": {
