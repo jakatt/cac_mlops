@@ -1,4 +1,4 @@
-"""Pydantic input schema — 28 features expected by the RandomForest model."""
+"""Pydantic input schema — 27 features expected by the model (year_acc supprimé en #87)."""
 from pydantic import BaseModel, Field
 
 
@@ -7,7 +7,6 @@ class AccidentFeatures(BaseModel):
     catu:              int   = Field(..., description="Catégorie d'usager (1=conducteur…)")
     sexe:              int   = Field(..., description="Sexe (1=M, 2=F)")
     secu1:             float = Field(..., description="Équipement de sécurité 1")
-    year_acc:          int   = Field(..., description="Année de l'accident")
     victim_age:        float = Field(..., description="Âge de la victime (calculé)")
     catv:              int   = Field(..., description="Catégorie du véhicule (recodé 0-6)")
     obsm:              int   = Field(..., description="Obstacle mobile heurté")
