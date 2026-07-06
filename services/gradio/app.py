@@ -952,7 +952,7 @@ def build_docs_html() -> str:
         ("mlops_lead_guide.md","Guide MLOps Lead",
          "Gouvernance, pilotage, gate de promotion"),
         ("data_dictionary.md", "Dictionnaire des données",
-         "Description des 28 features et de la cible binaire"),
+         "Description des 27 features du modèle et de la cible binaire"),
         ("README.md",          "README",
          "Vue d'ensemble et démarrage rapide du repository"),
     ]

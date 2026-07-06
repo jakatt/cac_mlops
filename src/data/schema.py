@@ -1,5 +1,5 @@
 """
-Pandera schemas for the 4 ONISR CSV files (format stable 2021-2023).
+Pandera schemas for the 4 ONISR CSV files (format stable 2021-2024).
 
 strict=False  → unknown columns trigger WARNING, not CRITICAL
 strict=True   → would raise SchemaError on any unknown column
