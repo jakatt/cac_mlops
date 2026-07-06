@@ -41,12 +41,16 @@ MÉTRIQUES DE PERFORMANCE MODÈLE
 ────────────────────────────────
   Métrique          Seuil minimum     Pourquoi ce choix
   ───────────────   ───────────────   ──────────────────────────────────────
-  F1-score          ≥ 0.66            Équilibre précision/rappel sur classes
+  F1-score          ≥ 0.60            Équilibre précision/rappel sur classes
                                       déséquilibrées (plus de cas légers)
-  AUC-ROC           ≥ 0.75            Capacité discriminante globale
-  Accuracy          ≥ 0.70            Indicateur de référence global
-  Recall (grav=1)   ≥ 0.63            Minimiser les faux négatifs :
+  AUC-ROC           ≥ 0.77            Capacité discriminante globale
+  Accuracy          ≥ 0.72            Indicateur de référence global
+  Recall (grav=1)   ≥ 0.58            Minimiser les faux négatifs :
                                       ne pas manquer un blessé grave
+
+  Seuils calibrés sur split temporel (test = dernière année ONISR disponible).
+  Modèle @Production actuel : acc=0.783 · f1=0.664 · auc=0.839 · recall=0.631
+  Marge ~8% pour absorber la variance inter-années.
 
   Seuil de régression : si le nouveau modèle est inférieur à ces seuils
   OU inférieur au modèle en production sur ≥ 2 métriques, la promotion
@@ -494,7 +498,7 @@ Personne ne le sait
 ```text
   lgbm_accidents@Production — LightGBM champion du benchmark RF/XGB/LGBM
   Données : cumul 2021+2022+2023 (~166 000 lignes, 27 features)
-  Métriques : accuracy=0.785  f1=0.678  auc=0.847  recall=0.652
+  Métriques : accuracy=0.783  f1=0.664  auc=0.839  recall=0.631
   DVC tag : data-v3
 ```
 
