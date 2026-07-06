@@ -25,15 +25,50 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "vehicules":        ["vehicules", "vehicul"],
 }
 
-# ── Known training years — informational; training range is derived from FIRST_TRAINING_YEAR
-TRAINING_YEARS = [2021, 2022, 2023]
 FIRST_TRAINING_YEAR = 2021
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def discover_available_years() -> list[int]:
+    """
+    Détecte dynamiquement les années disponibles dans data/raw/.
+    Critère : répertoire avec >= 4 CSV et année >= FIRST_TRAINING_YEAR.
+    """
+    raw_base = PROJECT_ROOT / "data" / "raw"
+    available = []
+    if raw_base.exists():
+        for d in sorted(raw_base.iterdir()):
+            if d.is_dir() and d.name.isdigit():
+                year = int(d.name)
+                if year >= FIRST_TRAINING_YEAR and len(list(d.glob("*.csv"))) >= 4:
+                    available.append(year)
+    return sorted(available)
+
+
+def get_training_years() -> list[int]:
+    """
+    Années d'entraînement = toutes sauf la dernière (réservée drift).
+    Requiert >= 2 années disponibles.
+    """
+    available = discover_available_years()
+    if len(available) < 2:
+        raise RuntimeError(
+            f"Minimum 2 années requises (train + drift). Disponibles : {available}"
+        )
+    return available[:-1]
+
+
+def get_drift_year() -> int:
+    """Dernière année disponible — réservée à la simulation de drift en production."""
+    available = discover_available_years()
+    if not available:
+        raise RuntimeError("Aucune année disponible dans data/raw/")
+    return available[-1]
+
+
 def training_years_up_to(year: int) -> list[int]:
-    """Return [FIRST_TRAINING_YEAR, ..., year] inclusive."""
+    """[FIRST_TRAINING_YEAR, ..., year] — utilisé par full_retrain_flow (replay historique)."""
     return list(range(FIRST_TRAINING_YEAR, year + 1))
 
 

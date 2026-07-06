@@ -2,7 +2,7 @@
 
 ## En deux phrases
 
-Système MLOps complet de prédiction de gravité d'accidents routiers, entraîné sur les données officielles ONISR 2021-2023 (data.gouv.fr). Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise les données 2024 comme flux de production réel pour alimenter le monitoring drift Evidently (via `scripts/simulate_production.py`).
+Système MLOps complet de prédiction de gravité d'accidents routiers, entraîné sur les données officielles ONISR 2021-2023 (data.gouv.fr). Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise la dernière année disponible (2024) comme flux de production réel pour alimenter le monitoring drift Evidently (via `scripts/simulate_production.py`). L'année drift est auto-détectée : quand 2025 sera disponible, elle deviendra automatiquement l'année drift et 2024 rejoindra le train set.
 
 ## Statut d'implémentation
 
@@ -74,7 +74,8 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  ÉTAPE 2 — PREPROCESSING                    (make_dataset.py)      │
   │                                                                     │
   │  Fusion des 4 tables  →  ~55 000 lignes × 28 features             │
-  │  Feature engineering, nettoyage, train/test split 70/30            │
+  │  Feature engineering, nettoyage, split temporel (N-1 ans train /   │
+  │  dernière année test) — ~55k lignes/an, ratio stable               │
   └──────────────────────────────────┬──────────────────────────────────┘
                                      │
                           ┌──────────┘

@@ -444,7 +444,7 @@ with gr.Blocks(title="Securite Routiere — Simulation & Zones a risque") as dem
     gr.Markdown("""
 # Securite Routiere — Simulation & Analyse
 
-Exploration des donnees d'accidents ONISR 2021-2023.
+Exploration des donnees d'accidents ONISR — split temporel automatique (derniere annee = test).
 Modele LightGBM — *outil de recherche, non operationnel.*
 """)
 

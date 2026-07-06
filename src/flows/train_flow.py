@@ -63,15 +63,21 @@ def get_metrics_task(run_id: str, algorithm: str = "") -> dict[str, float]:
 
 
 @task(name="select-champion")
-def select_champion_task(all_metrics: dict[str, dict[str, float]]) -> str | None:
+def select_champion_task(
+    all_metrics: dict[str, dict[str, float]],
+    require_improvement: bool = True,
+) -> str | None:
     """
-    Sélectionne le champion en 3 étapes :
-      1. Filtre les algos passant tous les seuils KPI
-      2. Retient le meilleur sur PRIMARY_METRIC
-      3. Vérifie qu'il dépasse @Production d'au moins MIN_IMPROVEMENT
-    Retourne None si aucun algo ne justifie un changement de @Production.
+    Sélectionne le champion :
+      1. Filtre les algos passant tous les seuils KPI absolus
+      2. Retient le meilleur sur PRIMARY_METRIC parmi les qualifiés
+      3. Si require_improvement=True (Trigger 3) : vérifie delta > MIN_IMPROVEMENT vs @Production
+         Si require_improvement=False (Trigger 1) : promeu le meilleur qualifié directement —
+         les test sets étant différents entre l'ancien et le nouveau modèle, la comparaison
+         de F1 n'est pas valide (nouveau modèle évalué sur une année plus récente).
+    Retourne None si aucun algo ne passe les seuils KPI.
     """
-    # ── Étape 1 : quality gate ────────────────────────────────────────────────
+    # ── Étape 1 : quality gate (seuils absolus, indépendants de @Production) ──
     passing: dict[str, float] = {}
     for algo, metrics in all_metrics.items():
         fails = [k for k, thr in KPI_THRESHOLDS.items() if metrics.get(k, 0.0) < thr]
@@ -102,7 +108,16 @@ def select_champion_task(all_metrics: dict[str, dict[str, float]]) -> str | None
         champion, PRIMARY_METRIC, champion_score, others or "aucun",
     )
 
-    # ── Étape 3 : seuil delta vs @Production ──────────────────────────────────
+    # ── Étape 3 : comparaison vs @Production (Trigger 3 seulement) ───────────
+    if not require_improvement:
+        # Trigger 1 : nouveau modèle entraîné sur plus de données, évalué sur une
+        # année différente → comparaison F1 invalide. Gate KPI suffit.
+        logger.info(
+            "Trigger 1 — gate KPI passée, comparaison @Production ignorée "
+            "(test sets incomparables). Champion : %s", champion,
+        )
+        return champion
+
     client = mlflow.tracking.MlflowClient()
     prod_score = _get_production_score(client)
 
@@ -165,17 +180,30 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
 
 
 @flow(name="train-flow", flow_run_name="train-upto-{year}", log_prints=True)
-def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> dict:
+def train_flow(
+    year: int = 2023,
+    cumul: bool = True,
+    promote: bool = True,
+    require_improvement: bool = True,
+) -> dict:
     """
     Benchmark RF / XGBoost / LGBM sur les mêmes données.
-    Promotion en 3 conditions : seuils KPI + meilleur f1 + delta > MIN_IMPROVEMENT vs @Production.
+
+    require_improvement=True  (défaut, Trigger 3) : le champion doit dépasser @Production
+                               d'au moins MIN_IMPROVEMENT sur le même test set.
+    require_improvement=False (Trigger 1) : gate KPI absolue suffit — les test sets
+                               entre l'ancien et le nouveau modèle sont différents
+                               (années différentes), la comparaison F1 n'est pas valide.
 
     Returns dict with keys: champion (str|None), run_ids, metrics, promoted (bool).
-    When promote=False, champion and metrics are returned but @Production is not updated —
-    the caller (deploy_vps_flow) promotes after the manual gate.
+    When promote=False, champion is identified but @Production is not updated —
+    le caller (deploy_vps_flow) gère la gate manuelle avant de promouvoir.
     """
     years = training_years_up_to(year) if cumul else [year]
-    logger.info("Benchmark : years=%s  algorithms=%s", years, ALGORITHMS)
+    logger.info(
+        "Benchmark : years=%s  algorithms=%s  require_improvement=%s",
+        years, ALGORITHMS, require_improvement,
+    )
 
     run_ids: dict[str, str] = {}
     for algo in ALGORITHMS:
@@ -186,7 +214,7 @@ def train_flow(year: int = 2023, cumul: bool = True, promote: bool = True) -> di
         algo: get_metrics_task(run_id, algorithm=algo) for algo, run_id in run_ids.items()
     }
 
-    champion = select_champion_task(all_metrics)
+    champion = select_champion_task(all_metrics, require_improvement=require_improvement)
 
     promoted = False
     if champion is not None and promote:

@@ -28,6 +28,9 @@
 ETL → validation schéma → train → sélection champion → GATE MANUELLE → promote → test-api → Kapsule (si OK)
 ```
 
+**Règle de promotion T1 :** gate KPI absolue uniquement (F1≥0.64, AUC≥0.75, Recall≥0.60, Acc≥0.70).
+La comparaison avec @Production est ignorée — les test sets sont différents d'un cycle annuel à l'autre.
+
 **Ton rôle** : valider la gate dans Prefect UI quand tu reçois la notification email.
 
 ### Trigger 2 — Nouveau code MLOps
@@ -46,9 +49,11 @@ Quand un DS pousse un nouveau blueprint (hyperparamètres optimisés) :
 
 ```text
 extract blueprint → train avec nouveaux params → compare @Production
-  → si meilleur : GATE MANUELLE → promote → test-api → Kapsule (si OK)
+  → si meilleur (+0.01 F1, même test set) : GATE MANUELLE → promote → test-api → Kapsule (si OK)
   → si non meilleur : @Production inchangé, email notification
 ```
+
+**Règle de promotion T3 :** KPI absolus + delta F1 > +0.01 vs @Production. Ici la comparaison est valide car les deux modèles utilisent le même test set (même année).
 
 **Ton rôle** : valider la gate si un champion est trouvé.
 

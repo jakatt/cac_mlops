@@ -16,7 +16,7 @@ from datetime import datetime
 import requests as _req
 from prefect import flow, task
 
-from src.data.import_raw_data import TRAINING_YEARS
+from src.data.import_raw_data import discover_available_years, training_years_up_to
 from src.flows.drift_monitoring_flow import drift_monitoring_flow
 from src.flows.etl_flow import etl_flow
 from src.flows.train_flow import train_flow
@@ -26,10 +26,22 @@ logger = logging.getLogger(__name__)
 
 @task(name="detect-dvc-cycles")
 def detect_cycles_task() -> list[tuple[int, bool]]:
-    """Return ordered (year, cumul) pairs from TRAINING_YEARS — single source of truth."""
-    years = sorted(TRAINING_YEARS)
-    cycles = [(y, i > 0) for i, y in enumerate(years)]
-    logger.info("Detected %d cycles: %s", len(cycles), cycles)
+    """
+    Détecte les cycles d'entraînement depuis data/raw/.
+    Training years = toutes les années disponibles sauf la dernière (drift).
+    Exemple : [2021, 2022, 2023, 2024] dispo → cycles sur [2021, 2022, 2023].
+    """
+    available = discover_available_years()
+    if len(available) < 2:
+        raise RuntimeError(
+            f"full_retrain_flow requiert >= 2 années dans data/raw/. Disponibles : {available}"
+        )
+    training_years = available[:-1]  # exclut la dernière (drift)
+    cycles = [(y, i > 0) for i, y in enumerate(sorted(training_years))]
+    logger.info(
+        "Années disponibles : %s — drift year : %d — cycles : %s",
+        available, available[-1], cycles,
+    )
     return cycles
 
 
@@ -111,8 +123,11 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
             i + 1, len(cycles), year, cumul,
         )
 
-        etl_flow(year=year, cumul=cumul)
-        train_flow(year=year, cumul=cumul, promote=True)
+        # explicit_years = replay historique incrémental (pas auto-detect)
+        explicit_years = training_years_up_to(year)
+        etl_flow(year=year, cumul=cumul, explicit_years=explicit_years)
+        # Trigger 1 : gate KPI absolue, pas de comparaison F1 vs @Production
+        train_flow(year=year, cumul=cumul, promote=True, require_improvement=False)
 
         if i > 0:
             sim_month = f"{sim_year}-06"
