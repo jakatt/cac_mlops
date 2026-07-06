@@ -16,10 +16,10 @@ API_PASSWORD = os.getenv("API_PASSWORD", "changeme")
 
 _SAMPLE_PAYLOAD = {
     "place": 1, "catu": 1, "sexe": 1, "secu1": 0.0,
-    "year_acc": 2023, "victim_age": 35.0, "catv": 7.0, "obsm": 0.0,
+    "victim_age": 35.0, "catv": 7.0, "obsm": 0.0,
     "motor": 0.0, "catr": 3.0, "circ": 2.0, "surf": 1.0, "situ": 1.0,
     "vma": 80.0, "jour": 3, "mois": 6, "lum": 1, "dep": 75, "com": 75056,
-    "agg_": 1, "intersection_type": 0, "atm": 1.0, "col": 3.0,
+    "agg_": 1, "int": 0, "atm": 1.0, "col": 3.0,
     "lat": 48.866667, "long": 2.333333, "hour": 14,
     "nb_victim": 2, "nb_vehicules": 1,
 }
