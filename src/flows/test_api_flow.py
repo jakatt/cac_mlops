@@ -67,31 +67,33 @@ def test_with_auth(token: str) -> str:
     return "OK"
 
 
-@task(name="test-whatif-vitesse-130-vs-110")
+@task(name="test-whatif-vitesse-90-vs-50")
 def test_whatif_speed(token: str) -> str:
-    """Vérifie la cohérence métier : vma=130 → proba gravité > vma=110 (autoroute)."""
+    """Cohérence métier : route dept de nuit, hors agglo — vma=90 → proba > vma=50."""
     headers = {"Authorization": f"Bearer {token}"}
-    autoroute = {
+    route_dept_nuit = {
         **_SAMPLE_PAYLOAD,
-        "catr": 1.0,   # autoroute
-        "agg_": 0,     # hors agglomération
+        "catr": 3.0,   # route départementale
+        "agg_": 1,     # hors agglomération
         "lum": 5,      # nuit sans éclairage public
-        "hour": 22,    # 22h
-        "col": 6,      # collision frontale
+        "hour": 23,
+        "mois": 12,
+        "col": 6.0,    # collision frontale
+        "nb_vehicules": 2,
     }
-    r130 = http.post(f"{NGINX_URL}/predict", json={**autoroute, "vma": 130.0},
-                     headers=headers, timeout=10)
-    r110 = http.post(f"{NGINX_URL}/predict", json={**autoroute, "vma": 110.0},
-                     headers=headers, timeout=10)
-    assert r130.status_code == 200, f"Predict vma=130: HTTP {r130.status_code}"
-    assert r110.status_code == 200, f"Predict vma=110: HTTP {r110.status_code}"
-    p130 = r130.json()["probability"]
-    p110 = r110.json()["probability"]
-    print(f"✓ What-If vitesse — proba(vma=130)={p130:.3f}  proba(vma=110)={p110:.3f}  Δ={p130 - p110:+.3f}")
-    assert p130 > p110, (
-        f"Cohérence métier KO : proba(vma=130)={p130:.3f} ≤ proba(vma=110)={p110:.3f}"
+    r90 = http.post(f"{NGINX_URL}/predict", json={**route_dept_nuit, "vma": 90.0},
+                    headers=headers, timeout=10)
+    r50 = http.post(f"{NGINX_URL}/predict", json={**route_dept_nuit, "vma": 50.0},
+                    headers=headers, timeout=10)
+    assert r90.status_code == 200, f"Predict vma=90: HTTP {r90.status_code}"
+    assert r50.status_code == 200, f"Predict vma=50: HTTP {r50.status_code}"
+    p90 = r90.json()["probability"]
+    p50 = r50.json()["probability"]
+    print(f"✓ What-If vitesse — proba(vma=90)={p90:.3f}  proba(vma=50)={p50:.3f}  Δ={p90 - p50:+.3f}")
+    assert p90 > p50, (
+        f"Cohérence métier KO : proba(vma=90)={p90:.3f} <= proba(vma=50)={p50:.3f}"
     )
-    return f"OK (Δ={p130 - p110:+.3f})"
+    return f"OK (Δ={p90 - p50:+.3f})"
 
 
 @task(name="test-429-rate-limit")
@@ -125,7 +127,7 @@ def test_api_flow(skip_rate_limit: bool = False) -> dict[str, str]:
       2. obtention d'un token JWT
       3. 401 sans token
       4. 200 avec token
-      5. What-If vitesse : proba(vma=130) > proba(vma=110) (cohérence métier)
+      5. What-If vitesse : proba(vma=90) > proba(vma=50) — route dept nuit hors agglo
 
     Optionnel (6) :
       6. 429 rate-limit après 22 requêtes (skip si skip_rate_limit=True)
