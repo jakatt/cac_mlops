@@ -115,8 +115,8 @@
           <th></th>
           <th class="t1-col">
             <span class="th-label">Trigger 1</span>
-            <span class="th-name">Commit code</span>
-            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → VPS</span>
+            <span class="th-name">Nouvelles données</span>
+            <span class="th-desc">check-new-data détecte ONISR N<br>→ ETL → retrain → deploy</span>
           </th>
           <th class="t2-col">
             <span class="th-label">Trigger 2</span>
@@ -125,15 +125,15 @@
           </th>
           <th class="t3-col">
             <span class="th-label">Trigger 3</span>
-            <span class="th-name">Nouvelles données</span>
-            <span class="th-desc">check-new-data détecte ONISR N<br>→ ETL → retrain → deploy</span>
+            <span class="th-name">Commit code</span>
+            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → VPS</span>
           </th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td><span class="row-label">Stops<br>volontaires</span></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
@@ -145,12 +145,35 @@
         </tr>
         <tr>
           <td><span class="row-label">Interruptions<br>de service</span></td>
+          <td><div class="count-cell"><span class="badge badge-int"><span class="badge-num">1</span><span class="badge-unit">~30 s</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-int"><span class="badge-num">1</span><span class="badge-unit">~30 s</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-int"><span class="badge-num">1</span><span class="badge-unit">~1–30 s</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-int"><span class="badge-num">1</span><span class="badge-unit">~30 s</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-int"><span class="badge-num">1</span><span class="badge-unit">~30 s</span></span></div></td>
         </tr>
         <tr class="desc-row">
           <td><span class="row-label">Détail</span></td>
+          <td>
+            <p class="desc-title">5 gates — 1 rollback — 1 interruption</p>
+            <ul class="desc-list">
+              <li><strong>Gate 1</strong> — Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte</li>
+              <li><strong>Gate 2</strong> — Contrôle qualité des fichiers : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</li>
+              <li><strong>Gate 3</strong> — Validation schéma Pandera CRITICAL : ETL stoppé + alerte email SMTP</li>
+              <li><strong>Gate 4</strong> — KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</li>
+              <li><strong>Gate 5</strong> — Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</li>
+              <li><strong>Rollback</strong> — alias MLflow @Production repointe vers la version précédente (Prefect UI ou CLI)</li>
+              <li><strong>Interruption</strong> — API redémarre après promotion du nouveau modèle ≈30 s</li>
+            </ul>
+          </td>
+          <td>
+            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
+            <ul class="desc-list">
+              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T3</li>
+              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T3</li>
+              <li><strong>Gate 3</strong> — KPI gate failed (train_flow) : aucun champion, @Production inchangé + alerte Grafana</li>
+              <li><strong>Gate 4</strong> — Smoke test timeout : identique T3</li>
+              <li><strong>Rollback</strong> — smoke test fail + new images → :rollback restaurées (images Docker)</li>
+              <li><strong>Interruption</strong> — API redémarre pour charger le nouveau modèle depuis MLflow Registry ≈30 s</li>
+            </ul>
+          </td>
           <td>
             <p class="desc-title">3 gates — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
@@ -161,34 +184,13 @@
               <li><strong>Interruption</strong> — redémarrages ciblés des conteneurs modifiés (nginx ≈1 s, gradio ≈5 s, api ≈30 s si image reconstruite)</li>
             </ul>
           </td>
-          <td>
-            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
-            <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T1</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T1</li>
-              <li><strong>Gate 3</strong> — KPI gate failed (train_flow) : aucun champion, @Production inchangé + alerte Grafana</li>
-              <li><strong>Gate 4</strong> — Smoke test timeout : identique T1</li>
-              <li><strong>Rollback</strong> — smoke test fail + new images → :rollback restaurées (images Docker)</li>
-              <li><strong>Interruption</strong> — API redémarre pour charger le nouveau modèle depuis MLflow Registry ≈30 s</li>
-            </ul>
-          </td>
-          <td>
-            <p class="desc-title">3 gates — 1 rollback — 1 interruption</p>
-            <ul class="desc-list">
-              <li><strong>Gate 1</strong> — Validation schéma Pandera CRITICAL : ETL stoppé + alerte email SMTP</li>
-              <li><strong>Gate 2</strong> — KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</li>
-              <li><strong>Gate 3</strong> — Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</li>
-              <li><strong>Rollback</strong> — alias MLflow @Production repointe vers la version précédente (Prefect UI ou CLI)</li>
-              <li><strong>Interruption</strong> — API redémarre après promotion du nouveau modèle ≈30 s</li>
-            </ul>
-          </td>
         </tr>
       </tbody>
     </table>
   </div>
   <div class="footnote">
     <span>Alerte = email SMTP · notification GitHub Actions · alerte Grafana selon le contexte</span>
-    <span>Rollback T1/T2 : images Docker · Rollback T3 : alias MLflow Registry</span>
+    <span>Rollback T1 : alias MLflow Registry · Rollback T2/T3 : images Docker</span>
   </div>
 </div>
 </div>
