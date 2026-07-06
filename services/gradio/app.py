@@ -938,42 +938,36 @@ def build_links_html() -> str:
 SCENARIO_CHOICES = [(v["label"], k) for k, v in SCENARIOS.items()]
 CATR_CHOICES = [(1, "Autoroute"), (2, "Route nationale"), (3, "Route departementale"), (4, "Voie communale")]
 
-def _load_html_doc(rel_path: str) -> str:
-    """Read an HTML file from the repo root (relative path)."""
-    full = os.path.join(os.path.dirname(__file__), "..", "..", rel_path)
-    try:
-        with open(os.path.normpath(full), encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return f"<p style='color:#b91c1c'>Fichier introuvable : {rel_path}</p>"
-
-
 def build_docs_html() -> str:
     GITHUB_BASE = f"https://github.com/{GITHUB_REPO}/blob/main"
+    PUBLIC_BASE  = os.getenv("PUBLIC_URL", "https://mlops.jakat-inc.fr")
+    # (url, title, desc, label)
     docs = [
-        ("architecture.md",    "Architecture globale",
-         "Stack complète : VPS · Kapsule · CI/CD · monitoring · sécurité"),
-        ("execsum.md",         "Résumé exécutif",
-         "Synthèse du projet pour les décideurs"),
-        ("ds_guide.md",        "Guide Data Scientist",
-         "Workflow DS : expérimentation MLflow, blueprint, DVC"),
-        ("mlops_eng_guide.md", "Guide MLOps Engineer",
-         "Infrastructure, déploiement, maintenance VPS et Kapsule"),
-        ("mlops_lead_guide.md","Guide MLOps Lead",
-         "Gouvernance, pilotage, gate de promotion"),
-        ("data_dictionary.md",   "Dictionnaire des données",
-         "Description des 27 features du modèle et de la cible binaire"),
-        ("tests_catalogue.md",          "Catalogue des tests",
-         "36 tests unitaires CI · pipeline CD · 6 tests Prefect post-deploy"),
-        ("docs/ci_cd_reliability_vps.html",     "Fiabilité CI/CD — VPS",
-         "Stops · rollbacks · interruptions par trigger (Docker Compose)"),
-        ("docs/ci_cd_reliability_kapsule.html", "Fiabilité CI/CD — Kapsule",
-         "Stops · rollbacks · 0 interruption par trigger (Kubernetes rolling update)"),
-        ("README.md",                  "README",
-         "Vue d'ensemble et démarrage rapide du repository"),
+        (f"{GITHUB_BASE}/architecture.md",    "Architecture globale",
+         "Stack complète : VPS · Kapsule · CI/CD · monitoring · sécurité",   "architecture.md"),
+        (f"{GITHUB_BASE}/execsum.md",         "Résumé exécutif",
+         "Synthèse du projet pour les décideurs",                              "execsum.md"),
+        (f"{GITHUB_BASE}/ds_guide.md",        "Guide Data Scientist",
+         "Workflow DS : expérimentation MLflow, blueprint, DVC",               "ds_guide.md"),
+        (f"{GITHUB_BASE}/mlops_eng_guide.md", "Guide MLOps Engineer",
+         "Infrastructure, déploiement, maintenance VPS et Kapsule",           "mlops_eng_guide.md"),
+        (f"{GITHUB_BASE}/mlops_lead_guide.md","Guide MLOps Lead",
+         "Gouvernance, pilotage, gate de promotion",                           "mlops_lead_guide.md"),
+        (f"{GITHUB_BASE}/data_dictionary.md", "Dictionnaire des données",
+         "Description des 27 features du modèle et de la cible binaire",      "data_dictionary.md"),
+        (f"{GITHUB_BASE}/tests_catalogue.md", "Catalogue des tests",
+         "36 tests unitaires CI · pipeline CD · 6 tests Prefect post-deploy", "tests_catalogue.md"),
+        (f"{PUBLIC_BASE}/ci-docs/ci_cd_reliability_vps.html",     "Fiabilité CI/CD — VPS",
+         "Stops · rollbacks · interruptions par trigger (Docker Compose)",
+         "ci_cd_reliability_vps.html"),
+        (f"{PUBLIC_BASE}/ci-docs/ci_cd_reliability_kapsule.html", "Fiabilité CI/CD — Kapsule",
+         "Stops · rollbacks · 0 interruption par trigger (Kubernetes rolling update)",
+         "ci_cd_reliability_kapsule.html"),
+        (f"{GITHUB_BASE}/README.md",          "README",
+         "Vue d'ensemble et démarrage rapide du repository",                   "README.md"),
     ]
     cards = "".join(f"""
-  <a href="{GITHUB_BASE}/{fname}" target="_blank"
+  <a href="{url}" target="_blank"
      style="display:flex;flex-direction:column;gap:5px;padding:16px 20px;
             background:white;border:1px solid #c2dbe4;border-radius:8px;
             text-decoration:none;transition:border-color 0.15s,box-shadow 0.15s;"
@@ -984,8 +978,8 @@ def build_docs_html() -> str:
     <span style="font-size:0.80rem;color:#6B7280;
                  font-family:Inter,'Segoe UI',sans-serif;">{desc}</span>
     <span style="font-size:0.73rem;color:#a0c4d6;margin-top:2px;
-                 font-family:monospace;">{fname}</span>
-  </a>""" for fname, title, desc in docs)
+                 font-family:monospace;">{label}</span>
+  </a>""" for url, title, desc, label in docs)
     return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:860px;">
   <p style="margin:0 0 20px;font-size:0.82rem;color:#6B7280;">
@@ -1824,8 +1818,6 @@ Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → pr
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
         with gr.Tab("Docs"):
             gr.HTML(value=build_docs_html())
-            gr.HTML(value=_load_html_doc("docs/ci_cd_reliability_vps.html"))
-            gr.HTML(value=_load_html_doc("docs/ci_cd_reliability_kapsule.html"))
 
     gr.Markdown(f"""
 ---
