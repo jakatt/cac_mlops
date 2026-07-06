@@ -113,8 +113,9 @@ class TestEngineer:
         assert df["lat"].dtype == float
         assert df["long"].dtype == float
 
-    def test_28_features_plus_target(self):
+    def test_features_present_after_engineering(self):
         df = _engineer(*_minimal_dfs())
+        # year_acc is intermediate (split key), present here but dropped before model training
         expected_features = {
             "place", "catu", "sexe", "secu1", "year_acc", "victim_age",
             "catv", "obsm", "motor", "catr", "circ", "surf", "situ", "vma",

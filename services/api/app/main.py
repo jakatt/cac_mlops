@@ -2,7 +2,7 @@
 FastAPI application — Prédiction gravité accidents routiers.
 
 Endpoints:
-  POST /predict   →  inference (28 features → 0/1 + probabilité)
+  POST /predict   →  inference (27 features → 0/1 + probabilité)
   GET  /health    →  liveness + readiness probe
   GET  /metrics   →  Prometheus metrics
 """

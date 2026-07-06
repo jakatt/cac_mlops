@@ -47,6 +47,18 @@ FEATURE_COLS = [
     "lat", "long", "hour", "nb_victim", "nb_vehicules",
 ]
 
+def _onisr_year_range() -> str:
+    try:
+        from src.data.import_raw_data import discover_available_years
+        years = discover_available_years()
+        if years:
+            return f"{min(years)}-{max(years)}"
+    except Exception:
+        pass
+    return "2021-2024"
+
+_YEAR_RANGE = _onisr_year_range()
+
 # ── Lazy loading ───────────────────────────────────────────────────────────────
 _model   = None
 _df      = None
@@ -572,7 +584,7 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                 outputs=[map_out, top_table, stats_map],
             )
 
-    gr.Markdown("---\n*Donnees ONISR 2021-2023 — Ministere de l'Interieur*")
+    gr.Markdown(f"---\n*Donnees ONISR {_YEAR_RANGE} — Ministere de l'Interieur*")
 
 
 if __name__ == "__main__":

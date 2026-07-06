@@ -2,7 +2,7 @@
 
 ## En deux phrases
 
-Système MLOps complet de prédiction de gravité d'accidents routiers, entraîné sur les données officielles ONISR 2021-2023 (data.gouv.fr). Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise la dernière année disponible (2024) comme flux de production réel pour alimenter le monitoring drift Evidently (via `scripts/simulate_production.py`). L'année drift est auto-détectée : quand 2025 sera disponible, elle deviendra automatiquement l'année drift et 2024 rejoindra le train set.
+Système MLOps complet de prédiction de gravité d'accidents routiers, entraîné sur les données officielles ONISR (data.gouv.fr) — années auto-détectées dans `data/raw/`. Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise la dernière année disponible (2024) comme flux de production réel pour alimenter le monitoring drift Evidently (via `scripts/simulate_production.py`). L'année drift est auto-détectée : quand 2025 sera disponible, elle deviendra automatiquement l'année drift et 2024 rejoindra le train set.
 
 ## Statut d'implémentation
 
@@ -73,7 +73,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   ┌─────────────────────────────────────────────────────────────────────┐
   │  ÉTAPE 2 — PREPROCESSING                    (make_dataset.py)      │
   │                                                                     │
-  │  Fusion des 4 tables  →  ~55 000 lignes × 28 features             │
+  │  Fusion des 4 tables  →  ~55 000 lignes × 27 features             │
   │  Feature engineering, nettoyage, split temporel (N-1 ans train /   │
   │  dernière année test) — ~55k lignes/an, ratio stable               │
   └──────────────────────────────────┬──────────────────────────────────┘
@@ -118,7 +118,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  ÉTAPE 7 — MONITORING CONTINU                                      │
   │                                                                     │
   │  Prometheus  →  latence API, volume, erreurs                       │
-  │  Evidently   →  drift : X_train (2021-2023) vs requêtes prod       │
+  │  Evidently   →  drift : X_train (train set) vs requêtes prod       │
   │  Grafana     →  dashboards + alertes                               │
   │                                                                     │
   │  Source production : données 2024 rejouées via                     │
@@ -182,7 +182,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │                                                                         │
   │  Internet ──► NGINX ──────────────────────────► FastAPI                │
   │               · TLS / HTTPS     POST /predict   · charge modèle MLflow │
-  │               · Rate limiting   GET  /health    · 28 features → 0/1   │
+  │               · Rate limiting   GET  /health    · 27 features → 0/1   │
   │               · Auth JWT        GET  /metrics   · Pydantic validation  │
   │               · Compression                                             │
   └──────────────────────────────────┬──────────────────────────────────────┘
@@ -192,7 +192,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  MONITORING                                                             │
   │                                                                         │
   │  Prometheus ──► collecte métriques API + pipeline                      │
-  │  Evidently  ──► drift : X_train 2021-2023 vs données 2024 prod        │
+  │  Evidently  ──► drift : X_train (train set) vs données drift prod      │
   │                 simulate_production.py → POST /predict → logs DB       │
   │  Grafana    ──► dashboards performances + drift + alertes              │
   │                                                                         │

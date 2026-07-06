@@ -57,7 +57,7 @@ def _get_conn():
 def fetch_production_data(year: str) -> pd.DataFrame:
     """Fetch predictions logged during year (format: YYYY)."""
     query = """
-        SELECT place, catu, sexe, secu1, year_acc, victim_age, catv, obsm, motor,
+        SELECT place, catu, sexe, secu1, victim_age, catv, obsm, motor,
                catr, circ, surf, situ, vma, jour, mois, lum, dep, com, agg_,
                intersection_type, atm, col, lat, long, hour, nb_victim, nb_vehicules,
                prediction, probability, model_version, created_at

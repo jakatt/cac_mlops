@@ -31,7 +31,7 @@ def client():
 
 VALID_PAYLOAD = {
     "place": 10, "catu": 3, "sexe": 1, "secu1": 0.0,
-    "year_acc": 2021, "victim_age": 60, "catv": 2, "obsm": 1,
+    "victim_age": 60, "catv": 2, "obsm": 1,
     "motor": 1, "catr": 3, "circ": 2.0, "surf": 1.0, "situ": 1.0,
     "vma": 50.0, "jour": 7, "mois": 12, "lum": 5, "dep": 77,
     "com": 77317, "agg_": 2, "int": 1, "atm": 0.0, "col": 6.0,

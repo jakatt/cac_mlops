@@ -1,8 +1,10 @@
-# Dictionnaire de données — 28 features du modèle
+# Dictionnaire de données — 27 features du modèle
 
 Toutes les features sont issues de la fusion des 4 fichiers ONISR (`caracteristiques`, `lieux`, `usagers`, `vehicules`) après preprocessing par `src/data/make_dataset.py`.
 
 La variable cible **`grav`** (binaire, non incluse dans le dictionnaire) vaut `1` si la victime la plus grave de l'accident a subi une blessure grave ou un décès, `0` sinon.
+
+> **Note sur `year_acc`** : l'année de l'accident est extraite des données brutes et utilisée comme **clé de split temporel** (dernière année disponible = test set). Elle est supprimée des features avant l'entraînement pour éviter toute fuite temporelle. Elle n'est pas envoyée à l'API de prédiction.
 
 ---
 
@@ -10,7 +12,6 @@ La variable cible **`grav`** (binaire, non incluse dans le dictionnaire) vaut `1
 
 | Feature | Type | Source | Description | Modalités / plage |
 |---|---|---|---|---|
-| `year_acc` | int | `usagers` | Année de l'accident, extraite des 4 premiers chiffres de `Num_Acc` | 2021, 2022, 2023 |
 | `mois` | int | `caracteristiques` | Mois de l'accident | 1 – 12 |
 | `jour` | int | `caracteristiques` | Jour de la semaine (1 = lundi, 7 = dimanche) | 1 – 7 |
 | `hour` | int | `caracteristiques` | Heure de l'accident, extraite de la colonne `hrmn` (format HHMM) | 0 – 23 |
@@ -60,7 +61,7 @@ La variable cible **`grav`** (binaire, non incluse dans le dictionnaire) vaut `1
 | `catu` | int | `usagers` | Catégorie d'usager | 1 = conducteur, 2 = passager, 3 = piéton |
 | `sexe` | int | `usagers` | Sexe de l'usager | 1 = masculin, 2 = féminin |
 | `secu1` | float | `usagers` | Présence et usage du dispositif de sécurité 1 (ceinture, casque…) | 1 = ceinture, 2 = casque, 3 = dispositif enfant, 4 = équipement réfléchissant, 5 = autre, 9 = non déterminable |
-| `victim_age` | float | `usagers` | Âge de la victime au moment de l'accident, calculé : `year_acc − an_nais` | 0 – 120 (valeurs hors plage → NaN) |
+| `victim_age` | float | `usagers` | Âge de la victime au moment de l'accident, calculé : `year_acc − an_nais` (year_acc intermédiaire, non feature) | 0 – 120 (valeurs hors plage → NaN) |
 
 ---
 
@@ -121,12 +122,12 @@ Dans les fichiers ONISR, `−1` signifie « non renseigné » et `0` peut signif
 
 ---
 
-## Exemple de requête API (test_features.json)
+## Exemple de requête API (27 features)
 
 ```json
 {
   "place": 10, "catu": 3, "sexe": 1, "secu1": 0.0,
-  "year_acc": 2021, "victim_age": 60, "catv": 2, "obsm": 1,
+  "victim_age": 60, "catv": 2, "obsm": 1,
   "motor": 1, "catr": 3, "circ": 2, "surf": 1, "situ": 1,
   "vma": 50, "jour": 7, "mois": 12, "lum": 5, "dep": 77,
   "com": 77317, "agg_": 2, "int": 1, "atm": 0, "col": 6,

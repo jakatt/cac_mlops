@@ -153,7 +153,7 @@ footer a{{color:var(--blue);text-decoration:none}}
       <div class="step-num">03</div>
       <div class="step-icon">🔧</div>
       <div class="step-name">Preprocessing</div>
-      <div class="step-tool">Pandas · 28 features<br>~55k lignes × 28 col</div>
+      <div class="step-tool">Pandas · 27 features<br>~55k lignes × 27 col</div>
       <div class="links">
         <a class="lnk lnk-blue" href="{GITHUB_URL}/actions" target="_blank">CI Logs</a>
       </div>

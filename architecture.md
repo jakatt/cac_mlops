@@ -152,7 +152,7 @@ Les données ONISR ont connu une refonte majeure de schéma en 2019 :
   • Avant 2019  : séparateur virgule, encodage Latin-1, colonne "secu" unique,
                   nommage différent de dizaines de colonnes
   • 2019-2020   : nouveau schéma, quelques différences résiduelles
-  • 2021-2023   : schéma STABLE et IDENTIQUE ← périmètre d'entraînement
+  • 2021-2024   : schéma STABLE et IDENTIQUE ← données disponibles (train 2021-2023 · drift 2024)
 
 CYCLE ANNUEL — USE CASE RÉALISTE
 ──────────────────────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ def discover_raw_files(year: int, raw_dir: Path) -> dict[str, Path]:
 ### Volume des données
 
 ```text
-FICHIERS PAR ANNÉE (format 2021-2023)
+FICHIERS PAR ANNÉE (format 2021-2024)
 ──────────────────────────────────────
 
   caracteristiques-{year}.csv  ·  ~56 500 lignes  ·  1 ligne par accident
@@ -236,7 +236,7 @@ FICHIERS PAR ANNÉE (format 2021-2023)
 
   APRÈS FUSION ET PREPROCESSING
   ─────────────────────────────
-  ~55 450 lignes × 28 features + 1 cible (par année)
+  ~55 450 lignes × 27 features + 1 cible (par année)
   Cumul 3 années : ~166 000 lignes (train + test)
 ```
 
@@ -285,7 +285,7 @@ FICHIERS PAR ANNÉE (format 2021-2023)
  [ÉTAPE 5] NORMALISATION
  ────────────────────────
  Script  : src/data/normalizer/normalize.py
- Pour 2021-2023 : quasi no-op (schéma identique)
+ Pour 2021-2024 : quasi no-op (schéma identique)
  Pour années futures : dispatcher selon année détectée
  Sortie  : DataFrames normalisés, format 2021-standard
       │
@@ -355,12 +355,12 @@ vehicules-{year}.csv
      ↓ Résultat
 ┌───────────────────────────────────────────────────────────────┐
 │  TABLE FINALE PAR ANNÉE                                       │
-│  ~55 450 lignes × 28 features + 1 cible                       │
+│  ~55 450 lignes × 27 features + 1 cible                       │
 │                                                               │
-│  Features : place, catu, sexe, secu1, year_acc, victim_age,  │
-│             catv, obsm, motor, catr, circ, surf, situ, vma,  │
-│             jour, mois, lum, dep, com, agg_, int, atm, col,  │
-│             lat, long, hour, nb_victim, nb_vehicules          │
+│  Features : place, catu, sexe, secu1, victim_age, catv,      │
+│             obsm, motor, catr, circ, surf, situ, vma, jour,  │
+│             mois, lum, dep, com, agg_, int, atm, col, lat,   │
+│             long, hour, nb_victim, nb_vehicules               │
 │  Cible    : grav (0=non prioritaire, 1=prioritaire)           │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -493,7 +493,7 @@ Personne ne le sait
 
 ```text
   lgbm_accidents@Production — LightGBM champion du benchmark RF/XGB/LGBM
-  Données : cumul 2021+2022+2023 (~166 000 lignes, 28 features)
+  Données : cumul 2021+2022+2023 (~166 000 lignes, 27 features)
   Métriques : accuracy=0.785  f1=0.678  auc=0.847  recall=0.652
   DVC tag : data-v3
 ```
@@ -1074,7 +1074,7 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
 
   8 ONGLETS
   ──────────
-  1. Predict    : saisie des 28 features → prédiction @Production + probabilité
+  1. Predict    : saisie des 27 features → prédiction @Production + probabilité
                   5 exemples préremplis (données 2023), résultat 🟢/🔴
   2. What-If    : applique scénarios (météo/nuit/alcool/vitesse),
                   compare % graves avant vs après sur échantillon
@@ -1096,7 +1096,7 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
 
   3 ONGLETS (sous-ensemble sans accès admin)
   ──────────────────────────────────────────
-  1. Predict     : même interface de prédiction que le cockpit (28 features + exemples)
+  1. Predict     : même interface de prédiction que le cockpit (27 features + exemples)
   2. What-If     : mêmes scénarios que le cockpit MLOps
   3. Points Noirs: même heatmap
 
@@ -1467,7 +1467,7 @@ cac_mlops/
 │   │   │   │   ├── health.py              # GET /health
 │   │   │   │   └── dashboard.py           # GET /metrics (Prometheus)
 │   │   │   └── schemas/
-│   │   │       └── accident.py            # Pydantic — 28 features
+│   │   │       └── accident.py            # Pydantic — 27 features
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   ├── mlflow/
