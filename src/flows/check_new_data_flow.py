@@ -36,15 +36,15 @@ def _versioned_years() -> set[int]:
     Remplace l'ancienne détection par git tags (data-v*) qui échouait
     silencieusement dans le container Prefect (pas de .git à /app).
     """
-    from src.data.import_raw_data import PROJECT_ROOT, TRAINING_YEARS
+    from src.data.import_raw_data import PROJECT_ROOT, FIRST_TRAINING_YEAR
     raw_root = PROJECT_ROOT / "data" / "raw"
     known: set[int] = set()
     if raw_root.exists():
         for d in raw_root.iterdir():
-            if d.is_dir() and d.name.isdigit() and 2020 <= int(d.name) <= 2030:
+            if d.is_dir() and d.name.isdigit() and FIRST_TRAINING_YEAR <= int(d.name) <= 2030:
                 if len(list(d.glob("*.csv"))) >= 4:
                     known.add(int(d.name))
-    return known if known else set(TRAINING_YEARS)
+    return known
 
 
 @task(name="fetch-datagouv-resources")
