@@ -99,7 +99,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  ÉTAPE 5 — VALIDATION DU MODÈLE             (validate_model.py)    │
   │                                                                     │
   │  Comparaison avec le modèle en production                          │
-  │  F1 ≥ 0.68  ·  AUC ≥ 0.75  ·  Recall ≥ 0.65                     │
+  │  F1 ≥ 0.60  ·  AUC ≥ 0.77  ·  Recall ≥ 0.58  (calibrés split temporel)                     │
   │                                                                     │
   │  ✅ Meilleur ──► Staging → Production  (MLflow Registry)           │
   │  ❌ Dégradé  ──► Alerte + blocage déploiement                     │
