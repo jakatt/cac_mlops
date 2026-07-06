@@ -951,9 +951,11 @@ def build_docs_html() -> str:
          "Infrastructure, déploiement, maintenance VPS et Kapsule"),
         ("mlops_lead_guide.md","Guide MLOps Lead",
          "Gouvernance, pilotage, gate de promotion"),
-        ("data_dictionary.md", "Dictionnaire des données",
+        ("data_dictionary.md",   "Dictionnaire des données",
          "Description des 27 features du modèle et de la cible binaire"),
-        ("README.md",          "README",
+        ("tests_catalogue.md",   "Catalogue des tests",
+         "36 tests unitaires CI · pipeline CD · 6 tests Prefect post-deploy"),
+        ("README.md",            "README",
          "Vue d'ensemble et démarrage rapide du repository"),
     ]
     cards = "".join(f"""
