@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, recall_score
 
-from src.data.import_raw_data import PROJECT_ROOT, TRAINING_YEARS
+from src.data.import_raw_data import PROJECT_ROOT, discover_available_years
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +248,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Entraîne un modèle de gravité accidents sur données ONISR"
     )
-    parser.add_argument("--year",          type=int, required=True, choices=TRAINING_YEARS)
+    parser.add_argument("--year",          type=int, required=True)
     parser.add_argument("--cumul",         action="store_true")
     parser.add_argument("--algorithm",     default="rf", choices=["rf", "xgboost", "lgbm"],
                         help="Algorithme : rf (défaut) | xgboost | lgbm")
@@ -262,7 +262,7 @@ def main() -> None:
     parser.add_argument("--no-register",   action="store_true")
     args = parser.parse_args()
 
-    years = [y for y in TRAINING_YEARS if y <= args.year] if args.cumul else [args.year]
+    years = [y for y in discover_available_years() if y <= args.year] if args.cumul else [args.year]
     train(
         years=years,
         algorithm=args.algorithm,
