@@ -134,7 +134,7 @@
         <tr>
           <td><span class="row-label">Stops<br>volontaires</span></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
         <tr>
@@ -163,12 +163,13 @@
             </ul>
           </td>
           <td>
-            <p class="desc-title">3 gates — 1 rollback — 1 interruption</p>
+            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
               <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué par branch protection + notification GitHub Actions</li>
               <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS + annotation erreur</li>
-              <li><strong>Gate 3</strong> — Smoke test timeout (120 s) : deploy bloqué + rollback images Docker déclenché</li>
-              <li><strong>Rollback</strong> — smoke test fail + nouvelles images buildées : tags :rollback restaurés automatiquement via docker compose up</li>
+              <li><strong>Gate 3</strong> — Smoke test deploy.yml (120 s) : <code>curl /health</code> loop → si fail : tags :rollback restaurés + <code>docker compose up -d</code> + exit 1</li>
+              <li><strong>Gate 4</strong> — Smoke test Prefect deploy-vps-flow (90 s + test-api 6 tâches) : si fail : flow stoppé, Kapsule non déclenché (pas de rollback modèle — T2 code seul)</li>
+              <li><strong>Rollback</strong> — Gate 3 fail + nouvelles images buildées : tags :rollback restaurés automatiquement via docker compose</li>
               <li><strong>Interruption</strong> — redémarrages ciblés des conteneurs modifiés (nginx ≈1 s, gradio ≈5 s, api ≈30 s si image reconstruite)</li>
             </ul>
           </td>
