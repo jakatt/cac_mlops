@@ -176,6 +176,8 @@ services:
       # Deploy VPS flow — authentification ghcr.io pour docker compose pull
       GHCR_TOKEN:             ${GHCR_TOKEN:-}
       GHCR_USER:              ${GHCR_USER:-jakatt}
+      # Rollback Docker T2 — chemin projet sur le host pour docker compose up -d
+      COMPOSE_PROJECT_DIR:    ${COMPOSE_PROJECT_DIR:-/home/deploy/cac_mlops}
       # Alertes email (même config que Grafana SMTP)
       SMTP_HOST:              ${GF_SMTP_HOST:-smtp.gmail.com:587}
       SMTP_USER:              ${GF_SMTP_USER:-}
@@ -191,6 +193,7 @@ services:
       - ./reports:/app/reports
       - ./state:/app/state
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/app/docker-compose.yml:ro               # rollback Docker T2 (docker compose up -d)
     depends_on:
       prefect-server:
         condition: service_healthy

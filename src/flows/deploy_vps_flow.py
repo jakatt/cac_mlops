@@ -6,7 +6,7 @@ script SSH de deploy.yml (côté HOST) avant que ce flow soit déclenché.
 Ce flow ne fait plus que :
   smoke test → gate → promote (si nouveau modèle) → test-api → Kapsule (si OK)
 
-Rollback du promote si test-api KO (Triggers 1 & 3 uniquement).
+Rollback si test-api KO : alias MLflow pour T1/T3, images Docker :rollback pour T2.
 Kapsule n'est déclenché que si test-api OK.
 
 Deux modes d'appel :
@@ -89,6 +89,35 @@ def get_current_production_task(champion: str) -> dict | None:
     return None
 
 
+@task(name="docker-rollback")
+def docker_rollback_task(sha_tag: str = "") -> None:
+    """Restaure les images :rollback + recrée les conteneurs (Trigger 2 — code seul)."""
+    import subprocess
+    log = get_run_logger()
+    ghcr_user = os.getenv("GHCR_USER", "jakatt")
+    registry = f"ghcr.io/{ghcr_user}"
+    images = ["cac-mlops-api", "cac-mlops-mlflow", "cac-mlops-gradio"]
+    compose_file = "/app/docker-compose.yml"
+    project_dir = os.getenv("COMPOSE_PROJECT_DIR", "/home/deploy/cac_mlops")
+    for img in images:
+        try:
+            subprocess.run(
+                ["docker", "tag", f"{registry}/{img}:rollback", f"{registry}/{img}:latest"],
+                check=True, capture_output=True, text=True,
+            )
+            log.info("Retaggé %s:rollback → :latest", img)
+        except subprocess.CalledProcessError as e:
+            log.warning("Tag échoué pour %s — ignoré : %s", img, e.stderr.strip())
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "--project-directory", project_dir, "up", "-d"],
+            check=True, capture_output=True, text=True,
+        )
+        log.info("Docker rollback OK — conteneurs recréés avec :rollback (SHA annulé : %s)", sha_tag or "N/A")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"docker compose up -d rollback échoué:\n{e.stderr}")
+
+
 @task(name="rollback-promote")
 def rollback_promote_task(previous: dict | None, champion: str) -> None:
     """Restaure @Production vers la version précédente après échec test-api."""
@@ -123,8 +152,8 @@ def deploy_vps_flow(
     smoke test → gate manuelle → promote @Production (si nouveau modèle)
     → test-api (validation finale) → Kapsule (seulement si test-api OK).
 
-    Triggers 1 & 3 : si test-api KO → rollback du promote + stop (pas de Kapsule).
-    Trigger 2 (code seul) : si test-api KO → stop (pas de Kapsule, pas de rollback modèle).
+    Triggers 1 & 3 : si test-api KO → rollback du promote MLflow + stop (pas de Kapsule).
+    Trigger 2 (code seul) : si test-api KO → rollback Docker :rollback + stop (pas de Kapsule).
 
     champion / run_ids / metrics / year : renseignés par check-new-data-flow.
     sha_tag : SHA du commit buildé, passé par GitHub Actions.
@@ -196,17 +225,21 @@ def deploy_vps_flow(
             log.info("Rollback promote @Production...")
             rollback_promote_task(previous_production, champion)
             restart_api_task()
+        else:
+            log.info("Rollback Docker images :rollback (T2 — code seul)...")
+            docker_rollback_task(sha_tag)
         send_alert(
             "Deploy VPS — test-api ÉCHOUÉ",
             f"Tests fonctionnels KO après deploy.\nSHA: {sha_tag or 'N/A'}\nErreur: {exc}"
-            + ("\nPromote @Production annulé — rollback effectué." if champion else ""),
+            + ("\nPromote @Production annulé — rollback effectué."
+               if champion else "\nRollback Docker :rollback effectué — conteneurs recréés."),
         )
         raise RuntimeError(
             f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
             f"SHA déployé : {sha_tag or 'N/A'}\n"
             f"Erreur : {exc}\n"
             + ("@Production rollback effectué — l'ancienne version est restaurée.\n"
-               if champion else "Pas de rollback modèle (trigger code seul).\n")
+               if champion else "Rollback Docker effectué — images :rollback recréées.\n")
             + "Actions requises :\n"
             "  1. docker compose logs api --tail=100\n"
             "  2. Vérifier que le modèle @Production est accessible dans MLflow\n"
