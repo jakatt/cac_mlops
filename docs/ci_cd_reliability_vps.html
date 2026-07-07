@@ -133,7 +133,7 @@
       <tbody>
         <tr>
           <td><span class="row-label">Stops<br>volontaires</span></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
@@ -152,13 +152,12 @@
         <tr class="desc-row">
           <td><span class="row-label">Détail</span></td>
           <td>
-            <p class="desc-title">5 gates — 1 rollback — 1 interruption</p>
+            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
               <li><strong>Gate 1</strong> — Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte</li>
-              <li><strong>Gate 2</strong> — Contrôle qualité des fichiers : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</li>
-              <li><strong>Gate 3</strong> — Validation schéma Pandera CRITICAL : ETL stoppé + alerte email SMTP</li>
-              <li><strong>Gate 4</strong> — KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</li>
-              <li><strong>Gate 5</strong> — Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</li>
+              <li><strong>Gate 2</strong> — Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</li>
+              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</li>
+              <li><strong>Gate 4</strong> — Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</li>
               <li><strong>Rollback</strong> — alias MLflow @Production repointe vers la version précédente (Prefect UI ou CLI)</li>
               <li><strong>Interruption</strong> — API redémarre après promotion du nouveau modèle ≈30 s</li>
             </ul>
