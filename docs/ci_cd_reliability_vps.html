@@ -159,23 +159,15 @@
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
+                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</span>
+                <span class="item-desc">KPI gate failed : aucun champion RF/XGB/LGBM → @Production inchangé + alerte Grafana</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</span>
-              </li>
-              <li>
-                <span class="item-label">Rollback</span>
-                <span class="item-desc">alias MLflow @Production repointe vers la version précédente (Prefect UI ou CLI)</span>
-              </li>
-              <li>
-                <span class="item-label">Interruption</span>
-                <span class="item-desc">API redémarre après promotion du nouveau modèle ≈30 s</span>
+                <span class="item-desc">Smoke test deploy-vps-flow (90 s) après redémarrage API ≈30 s (promotion @Production) : si fail → rollback alias MLflow @Production + alerte Prefect</span>
               </li>
             </ul>
           </td>
@@ -184,27 +176,19 @@
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail : merge bloqué par branch protection + notification GitHub Actions</span>
+                <span class="item-desc">CI lint/pytest fail → merge bloqué par branch protection + notification GitHub Actions</span>
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS + annotation erreur</span>
+                <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS + annotation erreur</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">Smoke test deploy.yml (120 s) : <code>curl /health</code> loop → si fail : tags :rollback restaurés + <code>docker compose up -d</code> + exit 1</span>
+                <span class="item-desc">Smoke test deploy.yml (120 s) après redémarrage des conteneurs (api ≈30 s, gradio ≈5 s, nginx ≈1 s) : si fail → :rollback restaurés + <code>docker compose up -d</code> + exit 1</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
                 <span class="item-desc">Smoke test Prefect deploy-vps-flow (90 s + test-api 6 tâches) : si fail → rollback Docker :rollback + <code>docker compose up -d</code>, Kapsule non déclenché</span>
-              </li>
-              <li>
-                <span class="item-label">Rollback</span>
-                <span class="item-desc">Gate 3 ou Gate 4 fail : tags :rollback restaurés + <code>docker compose up -d</code> — conteneurs recréés avec l'image précédente</span>
-              </li>
-              <li>
-                <span class="item-label">Interruption</span>
-                <span class="item-desc">redémarrages ciblés des conteneurs modifiés (nginx ≈1 s, gradio ≈5 s, api ≈30 s si image reconstruite)</span>
               </li>
             </ul>
           </td>
@@ -221,19 +205,11 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed (train_flow) : aucun champion, @Production inchangé + alerte Grafana</span>
+                <span class="item-desc">KPI gate failed (train_flow) : aucun champion → @Production inchangé + alerte Grafana</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Smoke test timeout : identique T2</span>
-              </li>
-              <li>
-                <span class="item-label">Rollback</span>
-                <span class="item-desc">smoke test fail + new images → :rollback restaurées (images Docker)</span>
-              </li>
-              <li>
-                <span class="item-label">Interruption</span>
-                <span class="item-desc">API redémarre pour charger le nouveau modèle depuis MLflow Registry ≈30 s</span>
+                <span class="item-desc">Smoke test deploy-vps-flow (90 s + test-api) après redémarrage API ≈30 s (nouveau modèle @Production) : si fail → rollback alias MLflow @Production + alerte Prefect</span>
               </li>
             </ul>
           </td>

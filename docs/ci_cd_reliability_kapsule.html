@@ -171,27 +171,19 @@
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
-                <span class="item-desc">Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte — Kapsule jamais touché</span>
+                <span class="item-desc">Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte, Kapsule jamais touché</span>
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
+                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion + alerte Grafana, @Production inchangé — Kapsule non mis à jour</span>
+                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, Kapsule non mis à jour + alerte Grafana</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Readiness probe fail : rolling update stoppé, anciens pods maintiennent le service</span>
-              </li>
-              <li>
-                <span class="item-label">Rollback</span>
-                <span class="item-desc"><code>kubectl rollout undo</code> + alias MLflow @Production repointe sur le modèle précédent</span>
-              </li>
-              <li>
-                <span class="item-label highlight">0 interruption</span>
-                <span class="item-desc">ETL + train (~15 min) en tâche de fond, Kapsule continue de servir l'ancien modèle</span>
+                <span class="item-desc">Readiness probe K8s (<code>/health</code>) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production</span>
               </li>
             </ul>
           </td>
@@ -200,27 +192,19 @@
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail : merge bloqué + notification GitHub Actions</span>
+                <span class="item-desc">CI lint/pytest fail → merge bloqué + notification GitHub Actions</span>
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS/Kapsule</span>
+                <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS/Kapsule</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">Smoke test VPS deploy.yml (120 s) : <code>curl /health</code> loop → si fail : :rollback Docker VPS, exit 1, Kapsule non déclenché</span>
+                <span class="item-desc">Smoke test VPS deploy.yml (120 s) : si fail → Docker VPS :rollback + <code>docker compose up -d</code>, Kapsule non déclenché</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Readiness probe K8s (<code>/health</code>) : rolling update stoppé si fail, anciens pods maintenus + alerte Prometheus — si Prefect VPS smoke test/test-api KO avant K8s → Docker :rollback VPS + Kapsule non déclenché</span>
-              </li>
-              <li>
-                <span class="item-label">Rollback</span>
-                <span class="item-desc">Gate 3 ou Prefect VPS test-api fail : images Docker VPS :rollback + <code>docker compose up -d</code> (Kapsule non touché) · Gate 4 : <code>kubectl rollout undo deployment/api</code></span>
-              </li>
-              <li>
-                <span class="item-label highlight">0 interruption</span>
-                <span class="item-desc">nouveau pod K8s Ready avant suppression de l'ancien, flux HTTP ininterrompu</span>
+                <span class="item-desc">Readiness probe K8s (<code>/health</code>) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo deployment/api</code> — si Prefect VPS test-api KO avant K8s : Docker VPS :rollback + Kapsule non déclenché</span>
               </li>
             </ul>
           </td>
@@ -237,19 +221,11 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</span>
+                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, deploy-kapsule non déclenché + alerte Grafana</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</span>
-              </li>
-              <li>
-                <span class="item-label">Rollback</span>
-                <span class="item-desc"><code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</span>
-              </li>
-              <li>
-                <span class="item-label highlight">0 interruption</span>
-                <span class="item-desc">le nouveau modèle est servi sans downtime une fois le pod Ready</span>
+                <span class="item-desc">Readiness probe K8s (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production</span>
               </li>
             </ul>
           </td>
