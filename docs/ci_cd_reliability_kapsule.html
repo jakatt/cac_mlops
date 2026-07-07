@@ -133,13 +133,13 @@
           </th>
           <th class="t2-col">
             <span class="th-label">Trigger 2</span>
-            <span class="th-name">Blueprint DS</span>
-            <span class="th-desc">src/models/ modifié → CI/CD<br>→ update-model-flow → Kapsule</span>
+            <span class="th-name">Nouveau code</span>
+            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → Kapsule</span>
           </th>
           <th class="t3-col">
             <span class="th-label">Trigger 3</span>
-            <span class="th-name">Commit code</span>
-            <span class="th-desc">push mlops → PR → merge main<br>→ CI + deploy.yml → Kapsule</span>
+            <span class="th-name">Nouveau blueprint</span>
+            <span class="th-desc">src/models/ modifié → CI/CD<br>→ update-model-flow → Kapsule</span>
           </th>
         </tr>
       </thead>
@@ -147,8 +147,8 @@
         <tr>
           <td><span class="row-label">Stops<br>volontaires</span></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span><span class="badge-unit">gates</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
         <tr>
           <td><span class="row-label">Rollbacks<br>auto</span></td>
@@ -177,17 +177,6 @@
             </ul>
           </td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
-            <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T3</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T3</li>
-              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</li>
-              <li><strong>Gate 4</strong> — Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</li>
-              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</li>
-              <li><span class="highlight">0 interruption</span> — le nouveau modèle est servi sans downtime une fois le pod Ready</li>
-            </ul>
-          </td>
-          <td>
             <p class="desc-title">3 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué + notification GitHub Actions</li>
@@ -195,6 +184,17 @@
               <li><strong>Gate 3</strong> — Readiness probe fail (<code>/health</code>) : K8s stoppe le rolling update, anciens pods maintenus + alerte Prometheus</li>
               <li><strong>Rollback</strong> — <code>kubectl rollout undo deployment/api</code> : K8s revient à la ReplicaSet précédente automatiquement</li>
               <li><span class="highlight">0 interruption</span> — nouveau pod Ready avant suppression de l'ancien, flux HTTP ininterrompu</li>
+            </ul>
+          </td>
+          <td>
+            <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
+            <ul class="desc-list">
+              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T2</li>
+              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T2</li>
+              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</li>
+              <li><strong>Gate 4</strong> — Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</li>
+              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</li>
+              <li><span class="highlight">0 interruption</span> — le nouveau modèle est servi sans downtime une fois le pod Ready</li>
             </ul>
           </td>
         </tr>
