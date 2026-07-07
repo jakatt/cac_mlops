@@ -13,7 +13,6 @@
   --stop-bg:   #fef2f2; --stop-num:  #b91c1c; --stop-bd:   #fca5a5;
   --rb-bg:     #fffbeb; --rb-num:    #b45309; --rb-bd:     #fcd34d;
   --int-bg:    #eff6ff; --int-num:   #1d4ed8; --int-bd:    #93c5fd;
-  --zero-bg:   #f3f4f6; --zero-num:  #9ca3af; --zero-bd:   #e5e7eb;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,7 +22,6 @@
     --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
     --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
     --int-bg: #0a1a38; --int-num: #60a5fa; --int-bd: #1e3a8a;
-    --zero-bg: #1f2937; --zero-num: #6b7280; --zero-bd: #374151;
     --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
   }
 }
@@ -33,7 +31,6 @@
   --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
   --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
   --int-bg: #0a1a38; --int-num: #60a5fa; --int-bd: #1e3a8a;
-  --zero-bg: #1f2937; --zero-num: #6b7280; --zero-bd: #374151;
   --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
 }
 :root[data-theme="light"] .ci-doc {
@@ -42,11 +39,10 @@
   --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
   --rb-bg: #fffbeb; --rb-num: #b45309; --rb-bd: #fcd34d;
   --int-bg: #eff6ff; --int-num: #1d4ed8; --int-bd: #93c5fd;
-  --zero-bg: #f3f4f6; --zero-num: #9ca3af; --zero-bd: #e5e7eb;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
-.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 0 48px; color: var(--text); }
+.ci-doc .wrapper { max-width: 900px; margin: 0 auto; padding: 32px 0 48px; color: var(--text); }
 .ci-doc .page-header { margin-bottom: 28px; }
 .ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
 .ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
@@ -58,9 +54,9 @@
 .ci-doc .dot-rb   { background:var(--rb-num); }
 .ci-doc .dot-int  { background:var(--int-num); }
 .ci-doc .tbl-wrap { overflow-x:auto; }
-.ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem; }
-.ci-doc .trigger-header th { padding:18px 20px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
-.ci-doc .trigger-header th:first-child { width:150px;min-width:130px; }
+.ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem;table-layout:fixed; }
+.ci-doc .trigger-header th { padding:18px 14px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
+.ci-doc .trigger-header th:first-child { width:100px;min-width:80px; }
 .ci-doc .th-label { font-size:.62rem;font-weight:600;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px; }
 .ci-doc .th-name { font-size:.92rem;font-weight:700;display:block;margin-bottom:2px; }
 .ci-doc .th-desc { font-size:.70rem;color:var(--muted);display:block;line-height:1.35; }
@@ -70,7 +66,7 @@
 .ci-doc tbody tr { border-bottom:1px solid var(--border); }
 .ci-doc tbody tr:last-child { border-bottom:none; }
 .ci-doc tbody tr:hover { background:var(--accent-lt); }
-.ci-doc td { padding:16px 20px;vertical-align:top; }
+.ci-doc td { padding:12px 14px;vertical-align:top; }
 .ci-doc td:first-child { border-right:1px solid var(--border); }
 .ci-doc .row-label { font-size:.70rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap; }
 .ci-doc .count-cell { display:flex;flex-direction:column;gap:6px; }
@@ -86,12 +82,15 @@
 .ci-doc .badge-int  { background:var(--int-bg);border-color:var(--int-bd); }
 .ci-doc .badge-int .badge-num   { color:var(--int-num); }
 .ci-doc .badge-int .badge-unit  { color:var(--int-num);opacity:.7; }
-.ci-doc .desc-row td { padding:12px 20px 20px;background:var(--accent-lt);border-top:1px solid var(--border); }
+.ci-doc .desc-row td { padding:12px 14px 18px;background:var(--accent-lt);border-top:1px solid var(--border); }
 .ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
-.ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:7px; }
-.ci-doc .desc-list { list-style:none;display:flex;flex-direction:column;gap:4px; }
-.ci-doc .desc-list li { font-size:.75rem;color:var(--muted);line-height:1.4;display:flex;gap:6px; }
-.ci-doc .desc-list li::before { content:"→";color:var(--accent);flex-shrink:0;font-size:.7rem;margin-top:1px; }
+.ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:10px; }
+.ci-doc .desc-list { list-style:none;display:flex;flex-direction:column;gap:8px; }
+.ci-doc .desc-list li { display:flex;flex-direction:column;gap:2px; }
+.ci-doc .item-label { font-size:.76rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:5px; }
+.ci-doc .item-label::before { content:"→";color:var(--accent);font-size:.68rem;flex-shrink:0; }
+.ci-doc .item-desc { font-size:.73rem;color:var(--muted);line-height:1.4;padding-left:14px; }
+.ci-doc .item-desc code { font-size:.68rem;background:var(--border);color:var(--accent);padding:1px 4px;border-radius:3px;font-family:monospace; }
 .ci-doc .footnote { margin-top:20px;font-size:.70rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:16px; }
 </style>
 </head>
@@ -154,34 +153,88 @@
           <td>
             <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte</li>
-              <li><strong>Gate 2</strong> — Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</li>
-              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</li>
-              <li><strong>Gate 4</strong> — Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</li>
-              <li><strong>Rollback</strong> — alias MLflow @Production repointe vers la version précédente (Prefect UI ou CLI)</li>
-              <li><strong>Interruption</strong> — API redémarre après promotion du nouveau modèle ≈30 s</li>
+              <li>
+                <span class="item-label">Gate 1</span>
+                <span class="item-desc">Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 2</span>
+                <span class="item-desc">Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 3</span>
+                <span class="item-desc">KPI gate failed : aucun champion parmi RF/XGB/LGBM + alerte Grafana, @Production inchangé</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 4</span>
+                <span class="item-desc">Smoke test timeout (deploy-vps-flow) : flow Prefect en échec + alerte Prefect</span>
+              </li>
+              <li>
+                <span class="item-label">Rollback</span>
+                <span class="item-desc">alias MLflow @Production repointe vers la version précédente (Prefect UI ou CLI)</span>
+              </li>
+              <li>
+                <span class="item-label">Interruption</span>
+                <span class="item-desc">API redémarre après promotion du nouveau modèle ≈30 s</span>
+              </li>
             </ul>
           </td>
           <td>
             <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué par branch protection + notification GitHub Actions</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS + annotation erreur</li>
-              <li><strong>Gate 3</strong> — Smoke test deploy.yml (120 s) : <code>curl /health</code> loop → si fail : tags :rollback restaurés + <code>docker compose up -d</code> + exit 1</li>
-              <li><strong>Gate 4</strong> — Smoke test Prefect deploy-vps-flow (90 s + test-api 6 tâches) : si fail : flow stoppé, Kapsule non déclenché (pas de rollback modèle — T2 code seul)</li>
-              <li><strong>Rollback</strong> — Gate 3 fail + nouvelles images buildées : tags :rollback restaurés automatiquement via docker compose</li>
-              <li><strong>Interruption</strong> — redémarrages ciblés des conteneurs modifiés (nginx ≈1 s, gradio ≈5 s, api ≈30 s si image reconstruite)</li>
+              <li>
+                <span class="item-label">Gate 1</span>
+                <span class="item-desc">CI lint/pytest fail : merge bloqué par branch protection + notification GitHub Actions</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 2</span>
+                <span class="item-desc">Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS + annotation erreur</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 3</span>
+                <span class="item-desc">Smoke test deploy.yml (120 s) : <code>curl /health</code> loop → si fail : tags :rollback restaurés + <code>docker compose up -d</code> + exit 1</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 4</span>
+                <span class="item-desc">Smoke test Prefect deploy-vps-flow (90 s + test-api 6 tâches) : si fail → rollback Docker :rollback + <code>docker compose up -d</code>, Kapsule non déclenché</span>
+              </li>
+              <li>
+                <span class="item-label">Rollback</span>
+                <span class="item-desc">Gate 3 ou Gate 4 fail : tags :rollback restaurés + <code>docker compose up -d</code> — conteneurs recréés avec l'image précédente</span>
+              </li>
+              <li>
+                <span class="item-label">Interruption</span>
+                <span class="item-desc">redémarrages ciblés des conteneurs modifiés (nginx ≈1 s, gradio ≈5 s, api ≈30 s si image reconstruite)</span>
+              </li>
             </ul>
           </td>
           <td>
             <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T2</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T2</li>
-              <li><strong>Gate 3</strong> — KPI gate failed (train_flow) : aucun champion, @Production inchangé + alerte Grafana</li>
-              <li><strong>Gate 4</strong> — Smoke test timeout : identique T2</li>
-              <li><strong>Rollback</strong> — smoke test fail + new images → :rollback restaurées (images Docker)</li>
-              <li><strong>Interruption</strong> — API redémarre pour charger le nouveau modèle depuis MLflow Registry ≈30 s</li>
+              <li>
+                <span class="item-label">Gate 1</span>
+                <span class="item-desc">CI lint/pytest fail : identique T2</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 2</span>
+                <span class="item-desc">Trivy CVE CRITICAL : identique T2</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 3</span>
+                <span class="item-desc">KPI gate failed (train_flow) : aucun champion, @Production inchangé + alerte Grafana</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 4</span>
+                <span class="item-desc">Smoke test timeout : identique T2</span>
+              </li>
+              <li>
+                <span class="item-label">Rollback</span>
+                <span class="item-desc">smoke test fail + new images → :rollback restaurées (images Docker)</span>
+              </li>
+              <li>
+                <span class="item-label">Interruption</span>
+                <span class="item-desc">API redémarre pour charger le nouveau modèle depuis MLflow Registry ≈30 s</span>
+              </li>
             </ul>
           </td>
         </tr>

@@ -46,7 +46,7 @@
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
-.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 0 48px; color: var(--text); }
+.ci-doc .wrapper { max-width: 900px; margin: 0 auto; padding: 32px 0 48px; color: var(--text); }
 .ci-doc .page-header { margin-bottom: 28px; }
 .ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
 .ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
@@ -60,12 +60,11 @@
 .ci-doc .dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
 .ci-doc .dot-stop { background:var(--stop-num); }
 .ci-doc .dot-rb   { background:var(--rb-num); }
-.ci-doc .dot-int  { background:var(--int-num); }
 .ci-doc .dot-zero { background:var(--zero-num); }
 .ci-doc .tbl-wrap { overflow-x:auto; }
-.ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem; }
-.ci-doc .trigger-header th { padding:18px 20px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
-.ci-doc .trigger-header th:first-child { width:150px;min-width:130px; }
+.ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem;table-layout:fixed; }
+.ci-doc .trigger-header th { padding:18px 14px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
+.ci-doc .trigger-header th:first-child { width:100px;min-width:80px; }
 .ci-doc .th-label { font-size:.62rem;font-weight:600;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px; }
 .ci-doc .th-name { font-size:.92rem;font-weight:700;display:block;margin-bottom:2px; }
 .ci-doc .th-desc { font-size:.70rem;color:var(--muted);display:block;line-height:1.35; }
@@ -75,7 +74,7 @@
 .ci-doc tbody tr { border-bottom:1px solid var(--border); }
 .ci-doc tbody tr:last-child { border-bottom:none; }
 .ci-doc tbody tr:hover { background:var(--accent-lt); }
-.ci-doc td { padding:16px 20px;vertical-align:top; }
+.ci-doc td { padding:12px 14px;vertical-align:top; }
 .ci-doc td:first-child { border-right:1px solid var(--border); }
 .ci-doc .row-label { font-size:.70rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap; }
 .ci-doc .count-cell { display:flex;flex-direction:column;gap:6px; }
@@ -91,13 +90,16 @@
 .ci-doc .badge-zero { background:var(--zero-bg);border-color:var(--zero-bd); }
 .ci-doc .badge-zero .badge-num  { color:var(--zero-num); }
 .ci-doc .badge-zero .badge-unit { color:var(--zero-num);opacity:.7; }
-.ci-doc .desc-row td { padding:12px 20px 20px;background:var(--accent-lt);border-top:1px solid var(--border); }
+.ci-doc .desc-row td { padding:12px 14px 18px;background:var(--accent-lt);border-top:1px solid var(--border); }
 .ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
-.ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:7px; }
-.ci-doc .desc-list { list-style:none;display:flex;flex-direction:column;gap:4px; }
-.ci-doc .desc-list li { font-size:.75rem;color:var(--muted);line-height:1.4;display:flex;gap:6px; }
-.ci-doc .desc-list li::before { content:"→";color:var(--accent);flex-shrink:0;font-size:.7rem;margin-top:1px; }
-.ci-doc .highlight { color:var(--int-num);font-weight:600; }
+.ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:10px; }
+.ci-doc .desc-list { list-style:none;display:flex;flex-direction:column;gap:8px; }
+.ci-doc .desc-list li { display:flex;flex-direction:column;gap:2px; }
+.ci-doc .item-label { font-size:.76rem;font-weight:700;color:var(--text);display:flex;align-items:center;gap:5px; }
+.ci-doc .item-label::before { content:"→";color:var(--accent);font-size:.68rem;flex-shrink:0; }
+.ci-doc .item-desc { font-size:.73rem;color:var(--muted);line-height:1.4;padding-left:14px; }
+.ci-doc .item-desc code { font-size:.68rem;background:var(--border);color:var(--accent);padding:1px 4px;border-radius:3px;font-family:monospace; }
+.ci-doc .highlight { color:var(--int-num);font-weight:700; }
 .ci-doc .footnote { margin-top:20px;font-size:.70rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:16px; }
 </style>
 </head>
@@ -167,34 +169,88 @@
           <td>
             <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte — Kapsule jamais touché</li>
-              <li><strong>Gate 2</strong> — Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</li>
-              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion + alerte Grafana, @Production inchangé — Kapsule non mis à jour</li>
-              <li><strong>Gate 4</strong> — Readiness probe fail : rolling update stoppé, anciens pods maintiennent le service</li>
-              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur le modèle précédent</li>
-              <li><span class="highlight">0 interruption</span> — ETL + train (~15 min) en tâche de fond, Kapsule continue de servir l'ancien modèle</li>
+              <li>
+                <span class="item-label">Gate 1</span>
+                <span class="item-desc">Vérification source data.gouv : URL inaccessible ou fichier absent → flow Prefect stoppé + alerte — Kapsule jamais touché</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 2</span>
+                <span class="item-desc">Validation schéma Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 3</span>
+                <span class="item-desc">KPI gate failed : aucun champion + alerte Grafana, @Production inchangé — Kapsule non mis à jour</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 4</span>
+                <span class="item-desc">Readiness probe fail : rolling update stoppé, anciens pods maintiennent le service</span>
+              </li>
+              <li>
+                <span class="item-label">Rollback</span>
+                <span class="item-desc"><code>kubectl rollout undo</code> + alias MLflow @Production repointe sur le modèle précédent</span>
+              </li>
+              <li>
+                <span class="item-label highlight">0 interruption</span>
+                <span class="item-desc">ETL + train (~15 min) en tâche de fond, Kapsule continue de servir l'ancien modèle</span>
+              </li>
             </ul>
           </td>
           <td>
             <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : merge bloqué + notification GitHub Actions</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS/Kapsule</li>
-              <li><strong>Gate 3</strong> — Smoke test VPS deploy.yml (120 s) : <code>curl /health</code> loop → si fail : :rollback Docker VPS, exit 1, Kapsule non déclenché</li>
-              <li><strong>Gate 4</strong> — Readiness probe K8s (<code>/health</code>) : rolling update stoppé si fail, anciens pods maintiennent le service + alerte Prometheus (note : si Prefect VPS smoke test KO avant K8s → Kapsule non déclenché)</li>
-              <li><strong>Rollback</strong> — Gate 3 : images Docker VPS :rollback (Kapsule non touché) · Gate 4 : <code>kubectl rollout undo deployment/api</code></li>
-              <li><span class="highlight">0 interruption</span> — nouveau pod K8s Ready avant suppression de l'ancien, flux HTTP ininterrompu</li>
+              <li>
+                <span class="item-label">Gate 1</span>
+                <span class="item-desc">CI lint/pytest fail : merge bloqué + notification GitHub Actions</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 2</span>
+                <span class="item-desc">Trivy CVE CRITICAL : job deploy annulé avant tout contact VPS/Kapsule</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 3</span>
+                <span class="item-desc">Smoke test VPS deploy.yml (120 s) : <code>curl /health</code> loop → si fail : :rollback Docker VPS, exit 1, Kapsule non déclenché</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 4</span>
+                <span class="item-desc">Readiness probe K8s (<code>/health</code>) : rolling update stoppé si fail, anciens pods maintenus + alerte Prometheus — si Prefect VPS smoke test/test-api KO avant K8s → Docker :rollback VPS + Kapsule non déclenché</span>
+              </li>
+              <li>
+                <span class="item-label">Rollback</span>
+                <span class="item-desc">Gate 3 ou Prefect VPS test-api fail : images Docker VPS :rollback + <code>docker compose up -d</code> (Kapsule non touché) · Gate 4 : <code>kubectl rollout undo deployment/api</code></span>
+              </li>
+              <li>
+                <span class="item-label highlight">0 interruption</span>
+                <span class="item-desc">nouveau pod K8s Ready avant suppression de l'ancien, flux HTTP ininterrompu</span>
+              </li>
             </ul>
           </td>
           <td>
             <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
-              <li><strong>Gate 1</strong> — CI lint/pytest fail : identique T2</li>
-              <li><strong>Gate 2</strong> — Trivy CVE CRITICAL : identique T2</li>
-              <li><strong>Gate 3</strong> — KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</li>
-              <li><strong>Gate 4</strong> — Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</li>
-              <li><strong>Rollback</strong> — <code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</li>
-              <li><span class="highlight">0 interruption</span> — le nouveau modèle est servi sans downtime une fois le pod Ready</li>
+              <li>
+                <span class="item-label">Gate 1</span>
+                <span class="item-desc">CI lint/pytest fail : identique T2</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 2</span>
+                <span class="item-desc">Trivy CVE CRITICAL : identique T2</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 3</span>
+                <span class="item-desc">KPI gate failed : aucun champion, @Production inchangé, deploy-kapsule-flow non déclenché + alerte Grafana</span>
+              </li>
+              <li>
+                <span class="item-label">Gate 4</span>
+                <span class="item-desc">Readiness probe fail sur le pod avec nouveau modèle : rolling update stoppé, anciens pods maintenus</span>
+              </li>
+              <li>
+                <span class="item-label">Rollback</span>
+                <span class="item-desc"><code>kubectl rollout undo</code> + alias MLflow @Production repointe sur la version précédente</span>
+              </li>
+              <li>
+                <span class="item-label highlight">0 interruption</span>
+                <span class="item-desc">le nouveau modèle est servi sans downtime une fois le pod Ready</span>
+              </li>
             </ul>
           </td>
         </tr>
