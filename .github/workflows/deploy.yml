@@ -196,7 +196,14 @@ jobs:
             echo "$CHANGED_FILES" | grep -qE '^infrastructure/prometheus/prometheus\.yml$'      && RESTART_SERVICES="${RESTART_SERVICES}prometheus,"
             echo "$CHANGED_FILES" | grep -qE '^infrastructure/loki/loki-config\.yml$'           && RESTART_SERVICES="${RESTART_SERVICES}loki,"
             echo "$CHANGED_FILES" | grep -qE '^infrastructure/promtail/promtail-config\.yml$'   && RESTART_SERVICES="${RESTART_SERVICES}promtail,"
-            echo "$CHANGED_FILES" | grep -qE '^services/monitoring/drift_detection\.py$'        && RESTART_SERVICES="${RESTART_SERVICES}prefect-worker,"
+            # Pas de règle pour prefect-worker : ce service exécute lui-même
+            # compose_up_task (deploy_vps_flow.py) après la gate. Se
+            # redémarrer soi-même tue le processus qui l'exécute avant qu'il
+            # ait pu continuer (test-api, Kapsule, alerte finale) — le run
+            # reste orphelin en RUNNING. Inutile de toute façon : le work
+            # pool "process" lance chaque flow run dans un sous-processus
+            # neuf, donc le code bind-monté (services/, src/) est déjà
+            # rechargé sans restart sur le prochain déclenchement.
             RESTART_SERVICES="${RESTART_SERVICES%,}"
             echo "==> Services à redémarrer après la gate : ${RESTART_SERVICES:-aucun}"
 
