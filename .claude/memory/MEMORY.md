@@ -8,6 +8,7 @@
 - [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
 - [Train cycles fixes](project_train_cycles_fixes.md) — 4 bugs corrigés train.yml lgbm
 - [Full-retrain historique](project_pending_fullretrain.md) — COMPLETED 2026-06-29, bugs corrigés documentés
+- [iCloud sync gotcha](feedback_icloud_sync.md) — repo dans ~/Documents synchronisé iCloud, fichiers dataless bloquent git status
 - [Branching rules](feedback_branching.md) — toujours sur `mlops`, jamais commiter sur `main` directement
 - [PR workflow](feedback_pr_workflow.md) — une PR à la fois, ne jamais ajouter commits sur PR ouverte, attendre merge + resync avant suivante
 - [Deployment rules](feedback_deployment.md) — mounts override image baked, GRADIO_PUBLIC_URL HTTPS, scenarios.py monté gradio-public
