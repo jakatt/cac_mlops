@@ -1,12 +1,21 @@
 """
 Full retrain flow — chains all training cycles from scratch.
-Auto-detects available data versions from git DVC tags (data-v1, data-v2, ...).
+Auto-détecte les années disponibles dans data/raw/ (toutes, y compris la
+plus récente — elle sert de test set temporel dans process_years, elle
+n'est plus exclue de l'entraînement).
 Benchmarks RF / XGBoost / LGBM each cycle, promotes the champion.
 
-Cycle sequence (3 DVC tags):
+Cycle sequence (exemple avec 2021-2024 disponibles) :
   Cycle 1 : year=2021 cumul=false → benchmark → promote champion
-  Cycle 2 : year=2022 cumul=true  → benchmark → promote champion → restart API → simulate 2023 → drift 2023
-  Cycle 3 : year=2023 cumul=true  → benchmark → promote champion → restart API → simulate 2024 → drift 2024
+  Cycle 2 : year=2022 cumul=true  → benchmark → promote → restart API
+            → simulate 2022 (démo monitoring) → drift 2022 vs [2021]
+  Cycle 3 : year=2023 cumul=true  → idem → drift 2023 vs [2021,2022]
+  Cycle 4 : year=2024 cumul=true  → idem → drift 2024 vs [2021,2022,2023]
+
+Le drift de chaque cycle est un drift de features pur (comparaison de la
+nouvelle année vs les précédentes, cf. drift_detection.py) — indépendant du
+modèle. simulate_task() sert uniquement à peupler des métriques de
+monitoring réalistes (Grafana/API), plus à générer la donnée du drift.
 """
 import logging
 import os
@@ -28,20 +37,17 @@ logger = logging.getLogger(__name__)
 def detect_cycles_task() -> list[tuple[int, bool]]:
     """
     Détecte les cycles d'entraînement depuis data/raw/.
-    Training years = toutes les années disponibles sauf la dernière (drift).
-    Exemple : [2021, 2022, 2023, 2024] dispo → cycles sur [2021, 2022, 2023].
+    Training years = toutes les années disponibles (la plus récente sert de
+    test set temporel dans process_years, cf. get_training_years()).
+    Exemple : [2021, 2022, 2023, 2024] dispo → cycles sur les 4 années.
     """
     available = discover_available_years()
     if len(available) < 2:
         raise RuntimeError(
             f"full_retrain_flow requiert >= 2 années dans data/raw/. Disponibles : {available}"
         )
-    training_years = available[:-1]  # exclut la dernière (drift)
-    cycles = [(y, i > 0) for i, y in enumerate(sorted(training_years))]
-    logger.info(
-        "Années disponibles : %s — drift year : %d — cycles : %s",
-        available, available[-1], cycles,
-    )
+    cycles = [(y, i > 0) for i, y in enumerate(sorted(available))]
+    logger.info("Années disponibles : %s — cycles : %s", available, cycles)
     return cycles
 
 
@@ -110,14 +116,15 @@ def simulate_task(sim_year: int, sim_month: str, max_rows: int = 100) -> dict:
 def full_retrain_flow(max_sim_rows: int = 100) -> None:
     """
     Full from-scratch retrain pipeline.
-    For each detected DVC cycle: ETL → train → promote → simulate → drift.
-    Cycle 1 skips simulation/drift (no prior @Production reference to compare against).
+    Pour chaque cycle détecté : ETL → train (année incluse, test set temporel)
+    → promote → restart API → simulate (démo monitoring) → drift de features
+    (année du cycle vs années précédentes, indépendant du modèle).
+    Cycle 1 (première année) saute simulate/drift : aucune référence antérieure.
     Run reset-flow first to clear predictions table and drift reports.
     """
     cycles = detect_cycles_task()
 
     for i, (year, cumul) in enumerate(cycles):
-        sim_year = year + 1
         logger.info(
             "=== Cycle %d/%d — year=%d cumul=%s ===",
             i + 1, len(cycles), year, cumul,
@@ -126,13 +133,14 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
         # explicit_years = replay historique incrémental (pas auto-detect)
         explicit_years = training_years_up_to(year)
         etl_flow(year=year, cumul=cumul, explicit_years=explicit_years)
-        # Trigger 1 : gate KPI absolue, pas de comparaison F1 vs @Production
+        # Trigger 1 : gate KPI absolue, tolérance de régression ≤1 métrique vs @Production
         train_flow(year=year, cumul=cumul, promote=True, require_improvement=False)
+        restart_api_task()
 
         if i > 0:
-            sim_month = f"{sim_year}-06"
-            restart_api_task()
-            simulate_task(sim_year=sim_year, sim_month=sim_month, max_rows=max_sim_rows)
-            drift_monitoring_flow(year=str(sim_year))
+            # Simulation trafic (démo monitoring Grafana/API) — indépendante du drift
+            simulate_task(sim_year=year, sim_month=f"{year}-06", max_rows=max_sim_rows)
+            # Drift de features : year vs années précédentes (même dossier cumulatif)
+            drift_monitoring_flow(year=year)
 
     logger.info("Full retrain complete — %d cycles", len(cycles))

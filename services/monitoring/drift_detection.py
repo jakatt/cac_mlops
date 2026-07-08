@@ -1,26 +1,32 @@
 """
-Evidently drift detection — compare X_train reference vs production predictions.
+Evidently drift detection — compare les features d'une année vs la référence
+des années précédentes (drift de features pur, indépendant du modèle).
+
+Les deux jeux de données proviennent du MÊME dossier preprocessed cumulatif
+que celui utilisé pour l'entraînement (data/preprocessed/cumul_.../) : grâce
+au split temporel de make_dataset.process_years() ("dernière année = test"),
+X_train = toutes les années précédentes combinées (référence), X_test =
+l'année analysée seule (current). Aucune dépendance à PostgreSQL/predictions
+ni à des requêtes API simulées — le drift ne dépend ni du modèle ni de ses
+prédictions.
 
 Usage:
     python -m services.monitoring.drift_detection --year 2024
-    python -m services.monitoring.drift_detection          # uses last full year
+    python -m services.monitoring.drift_detection          # dernière année disponible
 """
 import argparse
 import json
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-import psycopg2
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-REFERENCE_DIR  = Path("data/preprocessed/cumul_2021_2022_2023")
-REPORTS_DIR    = Path("reports/drift")
+REPORTS_DIR = Path("reports/drift")
 
 # lat/long exclus : géographie déjà couverte par dep (Wasserstein 1D sur
 # coordonnées brutes n'est pas géographiquement interprétable)
@@ -44,88 +50,63 @@ NUMERICAL_COLS = [
 ]
 
 
-def _get_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgresql"),
-        port=int(os.getenv("POSTGRES_PORT", 5432)),
-        user=os.getenv("POSTGRES_USER", "mlops"),
-        password=os.getenv("POSTGRES_PASSWORD", "mlops"),
-        dbname=os.getenv("POSTGRES_DB", "mlops"),
-    )
+def _preprocessed_dir(years: list[int]) -> Path:
+    """Même convention que src/models/train_model.py::_preprocessed_dir."""
+    label = "_".join(str(y) for y in sorted(years))
+    if len(years) == 1:
+        return Path("data/preprocessed") / label
+    return Path("data/preprocessed") / f"cumul_{label}"
 
 
-def fetch_production_data(year: str) -> pd.DataFrame:
-    """Fetch predictions logged during year (format: YYYY)."""
-    query = """
-        SELECT place, catu, sexe, secu1, victim_age, catv, obsm, motor,
-               catr, circ, surf, situ, vma, jour, mois, lum, dep, com, agg_,
-               intersection_type, atm, col, lat, long, hour, nb_victim, nb_vehicules,
-               prediction, probability, model_version, created_at
-        FROM predictions
-        WHERE EXTRACT(year FROM created_at) = %s
+def run_drift_report(year: int | str) -> dict:
     """
-    conn = _get_conn()
-    try:
-        df = pd.read_sql(query, conn, params=(int(year),))
-        logger.info("Fetched %d production records for %s", len(df), year)
-        return df
-    finally:
-        conn.close()
-
-
-def run_drift_report(year: str, reference_path: Path | str | None = None) -> dict:
-    """Run Evidently drift report for a given year. Returns summary dict."""
+    Drift de features pour `year` vs la référence (années précédentes).
+    Lit X_train.csv (référence) et X_test.csv (année analysée, isolée par le
+    split temporel de process_years) dans le même dossier cumulatif que celui
+    utilisé pour l'entraînement — aucune requête PostgreSQL, aucune simulation
+    API : le résultat ne dépend ni du modèle ni de ses prédictions.
+    """
     try:
         from evidently.report import Report
         from evidently.metric_preset import DataDriftPreset
         from evidently.metrics import DatasetDriftMetric
+        from evidently import ColumnMapping
     except ImportError:
         logger.error("evidently not installed — pip install evidently")
         sys.exit(1)
 
-    from evidently import ColumnMapping
+    from src.data.import_raw_data import training_years_up_to
 
-    ref_dir = reference_path or REFERENCE_DIR
-    x_path  = Path(ref_dir) / "X_train.csv"
-    y_path  = Path(ref_dir) / "y_train.csv"
-    if not x_path.exists():
-        logger.error("Reference dataset not found: %s", x_path)
-        sys.exit(1)
-
-    reference = pd.read_csv(x_path).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
-    if y_path.exists():
-        y_train = pd.read_csv(y_path)
-        # Colonne cible : "grav" ou première colonne de y_train
-        target_col = "grav" if "grav" in y_train.columns else y_train.columns[0]
-        reference["prediction"] = y_train[target_col].values
-
-    production = fetch_production_data(year)
-
-    if production.empty:
-        logger.warning("No production data for %s — skipping drift check", year)
+    year = int(year)
+    years = training_years_up_to(year)
+    if len(years) < 2:
+        logger.warning(
+            "Année %d = première année disponible — pas de référence antérieure, drift ignoré",
+            year,
+        )
         return {"year": year, "rows": 0, "drift_detected": False, "drifted_features": []}
 
-    production = production[FEATURE_COLS + (["prediction"] if "prediction" in production.columns else [])]
+    reference_years = years[:-1]
+    prep_dir = _preprocessed_dir(years)
+    x_train_path = prep_dir / "X_train.csv"
+    x_test_path  = prep_dir / "X_test.csv"
+    if not x_train_path.exists() or not x_test_path.exists():
+        logger.error(
+            "Données preprocessées introuvables : %s — lancer etl_flow/train_flow pour year=%d d'abord",
+            prep_dir, year,
+        )
+        sys.exit(1)
+
+    reference = pd.read_csv(x_train_path).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
+    current   = pd.read_csv(x_test_path).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
 
     column_mapping = ColumnMapping(
         categorical_features=CATEGORICAL_COLS,
         numerical_features=NUMERICAL_COLS,
-        prediction="prediction" if "prediction" in reference.columns else None,
     )
 
-    from evidently.metrics import ColumnDriftMetric
-    extra_metrics = (
-        [ColumnDriftMetric("prediction")]
-        if "prediction" in reference.columns
-        else []
-    )
-
-    report = Report(metrics=[
-        DataDriftPreset(),
-        DatasetDriftMetric(),
-        *extra_metrics,
-    ])
-    report.run(reference_data=reference, current_data=production, column_mapping=column_mapping)
+    report = Report(metrics=[DataDriftPreset(), DatasetDriftMetric()])
+    report.run(reference_data=reference, current_data=current, column_mapping=column_mapping)
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     html_path = REPORTS_DIR / f"drift_{year}.html"
@@ -159,7 +140,8 @@ def run_drift_report(year: str, reference_path: Path | str | None = None) -> dic
 
     summary = {
         "year": year,
-        "rows": len(production),
+        "reference_years": reference_years,
+        "rows": len(current),
         "drift_detected": detected,
         "drifted_features": drifted_features,
         "drifted_count": drifted,
@@ -176,8 +158,8 @@ def run_drift_report(year: str, reference_path: Path | str | None = None) -> dic
         json.dump(summary, f)
 
     logger.info(
-        "Drift %s — %d/%d features drifted (share=%.1f%%) for %s",
-        level, drifted, total, share * 100, year,
+        "Drift %s — %d/%d features drifted (share=%.1f%%) pour %d vs référence %s",
+        level, drifted, total, share * 100, year, reference_years,
     )
     if drifted_features:
         logger.info("Drifted features: %s", drifted_features)
@@ -185,21 +167,19 @@ def run_drift_report(year: str, reference_path: Path | str | None = None) -> dic
     return summary
 
 
-def _default_year() -> str:
-    now = datetime.now(timezone.utc)
-    return str(now.year - 1)
+def _default_year() -> int:
+    """Dernière année disponible dans data/raw/ (cf. get_drift_year)."""
+    from src.data.import_raw_data import get_drift_year
+    return get_drift_year()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--year", default=_default_year(),
-                        help="Year to analyze (YYYY). Defaults to last full year.")
-    parser.add_argument("--reference-path", default=None,
-                        help="Répertoire contenant X_train.csv + y_train.csv. "
-                             "Par défaut: data/preprocessed/cumul_2021_2022_2023/")
+    parser.add_argument("--year", type=int, default=None,
+                        help="Année à analyser (YYYY). Défaut : dernière année disponible dans data/raw/.")
     args = parser.parse_args()
 
-    ref = Path(args.reference_path) if args.reference_path else None
-    summary = run_drift_report(args.year, reference_path=ref)
+    year = args.year if args.year is not None else _default_year()
+    summary = run_drift_report(year)
     print(json.dumps(summary, indent=2))
     sys.exit(0)

@@ -48,23 +48,44 @@ def discover_available_years() -> list[int]:
 
 def get_training_years() -> list[int]:
     """
-    Années d'entraînement = toutes sauf la dernière (réservée drift).
+    Années d'entraînement = toutes les années disponibles.
+
+    La plus récente sert de test set temporel dans process_years() (split
+    "dernière année = test", évite la fuite temporelle) — elle n'est PAS
+    exclue du pipeline pour autant : le drift est mesuré indépendamment du
+    modèle (comparaison de features, cf. get_drift_reference_years() et
+    services/monitoring/drift_detection.py), pas en réservant une année
+    entière hors entraînement.
+
     Requiert >= 2 années disponibles.
     """
     available = discover_available_years()
     if len(available) < 2:
         raise RuntimeError(
-            f"Minimum 2 années requises (train + drift). Disponibles : {available}"
+            f"Minimum 2 années requises (train + validation temporelle). Disponibles : {available}"
         )
-    return available[:-1]
+    return available
 
 
 def get_drift_year() -> int:
-    """Dernière année disponible — réservée à la simulation de drift en production."""
+    """Année la plus récente — utilisée pour le calcul de drift (comparaison de
+    features vs la référence des années précédentes) en plus d'être incluse
+    dans l'entraînement (test set temporel de process_years)."""
     available = discover_available_years()
     if not available:
         raise RuntimeError("Aucune année disponible dans data/raw/")
     return available[-1]
+
+
+def get_drift_reference_years() -> list[int]:
+    """Années de référence pour le drift = toutes sauf la plus récente —
+    l'état des données avant l'ajout de la nouvelle année."""
+    available = discover_available_years()
+    if len(available) < 2:
+        raise RuntimeError(
+            f"Minimum 2 années requises pour une référence de drift. Disponibles : {available}"
+        )
+    return available[:-1]
 
 
 def training_years_up_to(year: int) -> list[int]:

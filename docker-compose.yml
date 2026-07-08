@@ -118,7 +118,7 @@ services:
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./reports:/srv/reports:ro   # Evidently drift reports (HTML statique)
-      - ./docs:/srv/ci-docs:ro      # Documentation HTML statique (fiabilité CI/CD)
+      - ./docs:/srv/ci-docs:ro      # Documentation HTML statique (mécanismes de résilience)
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/health"]
       interval: 15s

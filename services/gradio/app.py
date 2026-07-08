@@ -802,8 +802,34 @@ def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool
         "clear_mlflow": clear_mlflow,
     })
 
-def trigger_full_retrain() -> str:
-    return _prefect_trigger("full-retrain", wait_s=0)
+def trigger_full_retrain(max_sim_rows: int = 2000) -> str:
+    return _prefect_trigger("full-retrain", {"max_sim_rows": int(max_sim_rows or 2000)}, wait_s=0)
+
+
+def show_last_full_retrain_logs() -> str:
+    """full-retrain tourne en fire-and-forget (~15 min, trop long pour bloquer la
+    requête) — ce bouton permet de consulter les logs du dernier run à tout moment,
+    pendant l'exécution ou après, sans avoir à ouvrir Prefect UI."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/filter",
+            json={
+                "flows": {"name": {"any_": ["full-retrain-flow"]}},
+                "sort": "START_TIME_DESC",
+                "limit": 1,
+            },
+            timeout=5,
+        )
+        runs = r.json()
+        if not runs:
+            return "Aucun run full-retrain trouvé."
+        run = runs[0]
+        state_name = (run.get("state") or {}).get("name", "?")
+        header = f"{run.get('name', '?')} — {state_name} ({_parse_ts(run.get('start_time') or '')})"
+        logs = _fetch_run_logs(run["id"], max_lines=60)
+        return f"{header}\n\n{logs}" if logs else header
+    except Exception as e:
+        return f"Erreur Prefect API : {e}"
 
 def trigger_check_new_data() -> str:
     return _prefect_trigger("check-new-data")
@@ -1158,12 +1184,12 @@ def build_docs_html() -> str:
          "Description des 27 features du modèle et de la cible binaire",      "data_dictionary.md"),
         (f"{GITHUB_BASE}/tests_catalogue.md", "Catalogue des tests",
          "36 tests unitaires CI · pipeline CD · 6 tests Prefect post-deploy", "tests_catalogue.md"),
-        (f"{PUBLIC_BASE}/ci-docs/ci_cd_reliability_vps.html",     "Fiabilité CI/CD — VPS",
-         "Stops · rollbacks · interruptions par trigger (Docker Compose)",
-         "ci_cd_reliability_vps.html"),
-        (f"{PUBLIC_BASE}/ci-docs/ci_cd_reliability_kapsule.html", "Fiabilité CI/CD — Kapsule",
-         "Stops · rollbacks · 0 interruption par trigger (Kubernetes rolling update)",
-         "ci_cd_reliability_kapsule.html"),
+        (f"{PUBLIC_BASE}/ci-docs/resilience_mechanisms_vps.html",     "Mécanismes de résilience — VPS",
+         "Garde-fous · rollbacks · interruptions par trigger (Docker Compose)",
+         "resilience_mechanisms_vps.html"),
+        (f"{PUBLIC_BASE}/ci-docs/resilience_mechanisms_kapsule.html", "Mécanismes de résilience — Kapsule",
+         "Garde-fous · rollbacks · 0 interruption par trigger (Kubernetes rolling update)",
+         "resilience_mechanisms_kapsule.html"),
         (f"{GITHUB_BASE}/README.md",          "README",
          "Vue d'ensemble et démarrage rapide du repository",                   "README.md"),
     ]
@@ -1423,24 +1449,31 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
 
           <div class="accueil-card">
+              <h3>Cockpit &nbsp;→</h3>
+              <p>Validez les <strong>déploiements en attente</strong> (GO / STOP) avant toute
+              interruption de service sur le VPS — métriques du modèle candidat ou SHA/commit
+              selon le trigger, quel que soit le déclencheur (data, code, blueprint DS).</p>
+          </div>
+
+          <div class="accueil-card">
               <h3>Pipeline &nbsp;→</h3>
-              <p>Déclenchez les <strong>8 flows Prefect</strong> depuis l'interface : tests API,
-              réentraînement complet, diagnostic VPS, nettoyage disque, cluster Kapsule K8s et
-              réinitialisation de la solution.</p>
+              <p>Déclenchez les <strong>9 flows Prefect</strong> depuis l'interface : tests API,
+              diagnostic VPS, nettoyage disque, réentraînement complet, vérification nouvelles
+              données, analyse du drift, réinitialisation et cluster Kapsule K8s (démarrage/arrêt).</p>
           </div>
 
           <div class="accueil-card">
               <h3>Modèles &nbsp;→</h3>
-              <p>Suivez <strong>rf_accidents @ Production</strong> dans MLflow. Comparez les
+              <p>Suivez le modèle <strong>@Production</strong> actuel dans MLflow. Comparez les
               benchmarks RF / XGBoost / LightGBM, consultez les métriques par année et
               visualisez les features importances.</p>
           </div>
 
           <div class="accueil-card">
               <h3>Drift &amp; Healthcheck &nbsp;→</h3>
-              <p>Détectez les <strong>dérives de distribution</strong> (PSI, KS) par variable et
-              supervisez la santé de l'API en temps réel — latence, taux d'erreur, charge CPU
-              et utilisation disque.</p>
+              <p>Détectez les <strong>dérives de features</strong> (Wasserstein, Chi²) d'une
+              nouvelle année vs les précédentes — indépendant du modèle — et supervisez la santé
+              de l'API en temps réel — latence, taux d'erreur, charge CPU et utilisation disque.</p>
           </div>
 
       </div>
@@ -1696,7 +1729,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 "Réentraîner les modèles": {
                     "key": "full-retrain",
                     "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
-                    "opts": None,
+                    "opts": "full-retrain",
                 },
                 "Vérifier nouvelles données": {
                     "key": "check-new-data",
@@ -1753,12 +1786,22 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
                         reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
 
+                    with gr.Group(visible=False) as retrain_opts:
+                        retrain_sim_rows = gr.Number(
+                            value=2000, precision=0,
+                            label="Lignes simulées par cycle (défaut deployment : 2000)",
+                        )
+
                 # ── Colonne droite : résultat ─────────────────────────────
                 with gr.Column(scale=1):
                     action_result = gr.Textbox(
                         label="Résultat", lines=22, interactive=False,
                     )
-                    clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
+                    with gr.Row():
+                        clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
+                        retrain_logs_btn = gr.Button(
+                            "Voir logs full-retrain", variant="secondary",
+                        )
 
             # Table pleine largeur
             runs_table = gr.Dataframe(
@@ -1790,9 +1833,10 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     desc,
                     gr.update(visible=(opts == "kapsule")),
                     gr.update(visible=(opts == "reset")),
+                    gr.update(visible=(opts == "full-retrain")),
                 )
 
-            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf):
+            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf, sim_rows):
                 key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
                 if key == "kapsule-up":
                     return trigger_kapsule_up(node_type, int(node_count or 2))
@@ -1807,7 +1851,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 if key == "disk-cleanup":
                     return trigger_disk_cleanup()
                 if key == "full-retrain":
-                    return trigger_full_retrain()
+                    return trigger_full_retrain(sim_rows)
                 if key == "check-new-data":
                     return trigger_check_new_data()
                 if key == "drift-check":
@@ -1817,16 +1861,17 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             flow_dd.change(
                 fn=_on_flow_select,
                 inputs=flow_dd,
-                outputs=[flow_desc, kapsule_opts, reset_opts],
+                outputs=[flow_desc, kapsule_opts, reset_opts, retrain_opts],
             )
             run_btn.click(
                 fn=_run_flow,
-                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf],
+                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf, retrain_sim_rows],
                 outputs=action_result,
             )
             pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
             table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
             clear_btn.click(fn=lambda: "", outputs=action_result)
+            retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
 
         # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):
@@ -1891,7 +1936,7 @@ git pull && dvc pull          # sync code + données depuis S3
 |---|---|---|---|
 | **api** | 8080 / 8000 | Tailscale + Prometheus | FastAPI — prédiction + JWT + métriques |
 | **mlflow** | 5001 | Tailscale | Tracking + Registry (image custom boto3/psycopg2) |
-| **gradio** | 7860 | Tailscale | Cockpit MLOps admin — 8 onglets |
+| **gradio** | 7860 | Tailscale | Cockpit MLOps admin — 12 onglets (dont Cockpit — gate GO/STOP) |
 | **gradio-public** | 7862 (int.) | via nginx → PUBLIC | Cockpit public — 3 onglets (Predict, What-If, Points Noirs) |
 """)
 
@@ -1926,9 +1971,9 @@ git pull && dvc pull          # sync code + données depuis S3
 | Flow | Déclencheur | Rôle |
 |---|---|---|
 | **etl** | manuel / cron | download data.gouv.fr + validation schéma + preprocessing |
-| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion (T1: gate KPI absolue · T3: +0.01 F1 vs @Prod) |
-| **full-retrain** | manuel | tous les cycles depuis zéro — détecte automatiquement les années dispo (etl + train × N cycles + drift) |
-| **drift-check** | hebdo | drift Evidently → alerte email si seuil dépassé |
+| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion (T1: gate KPI + tolérance régression ≤1 métrique · T3: +0.01 F1 vs @Prod) |
+| **full-retrain** | manuel | tous les cycles depuis zéro — détecte automatiquement les années dispo, toutes entraînées (etl + train × N cycles + drift) |
+| **drift-check** | manuel / fin de cycle (check-new-data, full-retrain) | drift de features (indépendant du modèle) → alerte email si seuil dépassé |
 | **reset** | manuel | vide predictions + rapports drift (± MLflow selon options) |
 | **check-new-data** | cron lundi 8h UTC | détecte nouvelles données ONISR → déclenche etl + train |
 | **update-model** | trigger 3 CI/CD | extrait blueprint DS → train → gate manuelle → promote |
@@ -1938,7 +1983,7 @@ git pull && dvc pull          # sync code + données depuis S3
                         gr.Markdown("""
 | Flow | Déclencheur | Rôle |
 |---|---|---|
-| **deploy-vps** | CI/CD (trigger 1 & 2) | smoke test → **gate manuelle** → promote @Production → test-api → Kapsule |
+| **deploy-vps** | nœud commun triggers 1, 2 & 3 | smoke test → **gate manuelle** (avant toute interruption VPS) → promote (T1/T3) + compose up (T2/T3 code) → test-api → Kapsule |
 | **deploy-kapsule** | post deploy-vps | rolling update pods K8s (sans gate) |
 | **kapsule-up** | manuel | provision cluster Kapsule + upload modèle S3 |
 | **kapsule-down** | manuel | déprovision cluster Kapsule |
@@ -1986,14 +2031,17 @@ Promtail scrape les logs de tous les conteneurs → Loki → Grafana Explore
 | Workflow | Déclencheur | Étapes |
 |---|---|---|
 | **ci.yml** | push mlops/DS + PR → main | flake8 → pytest → bloque PR si ✗ |
-| **deploy.yml** | push → main | build 3 images → Trivy CRITICAL → SSH VPS → git pull → compose up → smoke test → Prefect |
+| **deploy.yml** | push → main | build images (si nécessaire) → Trivy CRITICAL → SSH VPS : git pull + pull images (préparation, sans interruption) → déclenche Prefect |
 | **cleanup.yml** | cron hebdo | purge anciennes images GHCR |
 
 **3 images Docker buildées et publiées sur GHCR**
 `ghcr.io/jakatt/cac-mlops-api:latest` · `cac-mlops-mlflow:latest` · `cac-mlops-gradio:latest`
+(gradio-public réutilise l'image gradio — commande différente au démarrage)
 
-**Rollback automatique** : images taguées `:sha-xxxxxxxx` + `:rollback` avant chaque deploy.
-Smoke test KO → restore `:rollback` + exit 1.
+**Rollback automatique** : images taguées `:sha-xxxxxxxx` + `:rollback` avant chaque build.
+`docker compose up` et le smoke test s'exécutent désormais **dans le flow Prefect**
+(`deploy-vps-flow`), après la gate manuelle — pas dans le script SSH. Smoke test KO
+→ restore `:rollback` (Docker) et/ou alias MLflow (modèle), selon ce qui a été appliqué.
 
 **Sécurité** : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).
 """)

@@ -147,7 +147,7 @@ Disponibilité historique : 2005 → 2024 (20 années)
   ❌ Ne prouve rien sur l'année N+1    ✅ Prouve que le système est opérationnel
 ```
 
-### Périmètre retenu : 2021 → 2022 → 2023 (entraînement) + cycle annuel de drift
+### Périmètre retenu : 2021 → 2024 (entraînement cumulatif, toutes les années)
 
 ```text
 POURQUOI PAS DEPUIS 2005 ?
@@ -156,34 +156,40 @@ Les données ONISR ont connu une refonte majeure de schéma en 2019 :
   • Avant 2019  : séparateur virgule, encodage Latin-1, colonne "secu" unique,
                   nommage différent de dizaines de colonnes
   • 2019-2020   : nouveau schéma, quelques différences résiduelles
-  • 2021-2024   : schéma STABLE et IDENTIQUE ← données disponibles (train 2021-2023 · drift 2024)
+  • 2021-2024   : schéma STABLE et IDENTIQUE ← données disponibles, toutes entraînées
 
 CYCLE ANNUEL — USE CASE RÉALISTE
 ──────────────────────────────────────────────────────────────────────────────
 L'ONISR publie les données de l'année N avec ~2 ans de délai. Le cycle
-de mise à jour du modèle suit ce rythme :
+de mise à jour du modèle suit ce rythme. Chaque nouvelle année entre dans
+l'entraînement (cumulatif) — elle sert de test set temporel pour l'évaluation
+(split "dernière année = test" dans make_dataset.py, évite la fuite
+temporelle) ET son drift de features est mesuré vs les années précédentes.
+Le drift est indépendant du modèle et de ses prédictions (comparaison de
+features pure, cf. section 4) — aucune année n'est réservée/exclue de
+l'entraînement pour permettre cette mesure.
 
   ┌─────────────────────────────────────────────────────────────────────┐
   │  CYCLE DE VIE DU MODÈLE                                             │
   │                                                                     │
-  │  Année calendaire  Action                           Données drift   │
-  │  ────────────────  ───────────────────────────────  ─────────────── │
-  │  2023              Entraînement sur 2021            Simulation 2022 │
-  │  (1ère mise        → Modèle v1 @Production          sur modèle v1   │
-  │  en prod)          → Drift check : 2022 vs ref 2021                │
+  │  Année calendaire  Entraînement (cumulatif)     Drift de features    │
+  │  ────────────────  ───────────────────────────  ──────────────────  │
+  │  2023 (1ère mise   2021 → Modèle v1 @Production  —  (pas de réf.)    │
+  │  en prod)                                                            │
   │                                                                     │
-  │  2024              Entraînement sur 2021+2022       Simulation 2023 │
-  │                    → Modèle v2 @Production          sur modèle v2   │
-  │                    → Drift check : 2023 vs ref 2021+2022           │
+  │  2024              2021+2022 → Modèle v2         2022 vs réf. 2021  │
   │                                                                     │
-  │  2025              Entraînement sur 2021+2022+2023  Simulation 2024 │
-  │                    → Modèle v3 @Production          sur modèle v3   │
-  │                    → Drift check : 2024 vs ref 2021+2022+2023      │
+  │  2025              2021+2022+2023 → Modèle v3    2023 vs réf.       │
+  │                                                   2021+2022         │
+  │                                                                     │
+  │  2026              2021+2022+2023+2024 → v4      2024 vs réf.       │
+  │                                                   2021+2022+2023    │
   └─────────────────────────────────────────────────────────────────────┘
 
   Principe :
   • Chaque année, les nouvelles données ONISR (N-2) enrichissent le modèle
-  • Evidently compare les données de l'année suivante vs la référence d'entraînement
+    ET sont comparées (features) aux années précédentes — les deux
+    opérations sont indépendantes, la même année sert aux deux à la fois
   • Le drift est RÉEL : la référence change à chaque cycle (pas un seuil fixe)
   • On peut suivre l'évolution du drift d'une année sur l'autre
 ```
@@ -448,25 +454,29 @@ Personne ne le sait
 │   GIT          DVC (données)          MLflow (modèles)     Drift Evidently  │
 │   ───          ─────────────          ───────────────      ───────────────  │
 │                                                                             │
-│   commit       tag: data-v1           run: lgbm_2021        drift 2022      │
-│   "data:       data/raw/2021/         F1=0.66 → @Prod        vs ref 2021   │
-│    train 2021" data/preprocessed/                           → rapport HTML  │
-│                  2021/                                                      │
+│   commit       tag: data-v1           run: lgbm_2021        — (pas de       │
+│   "data:       data/raw/2021/         F1=0.66 → @Prod        référence      │
+│    train 2021" data/preprocessed/     (X_test = split         antérieure)   │
+│                  2021/                aléatoire, 1 an seul)                │
 │                                                                             │
 │       ↓              ↓                        ↓                  ↓         │
 │                                                                             │
-│   commit       tag: data-v2           run: lgbm_2021_2022   drift 2023    │
-│   "data:       data/raw/2022/         F1=0.67 → @Prod         vs ref       │
-│    train 2022" data/preprocessed/     +1 pt vs v1            2021_2022    │
-│                  cumul_2021_2022/                            → rapport HTML │
+│   commit       tag: data-v2           run: lgbm_2021_2022   drift 2022    │
+│   "data:       data/raw/2022/         F1=0.67 → @Prod         vs ref 2021 │
+│    train 2022" data/preprocessed/     X_test=2022 (temporel)  → rapport    │
+│                  cumul_2021_2022/     +1 pt vs v1             HTML         │
 │                                                                             │
 │       ↓              ↓                        ↓                  ↓         │
 │                                                                             │
-│   commit       tag: data-v3           run: lgbm_2021_2023   drift 2024    │
+│   commit       tag: data-v3           run: lgbm_2021_2023   drift 2023    │
 │   "data:       data/raw/2023/         F1=0.678 → @Prod        vs ref       │
-│    train 2023" data/preprocessed/     champion benchmark     2021_2023    │
-│                  cumul_2021_2023/                            → rapport HTML │
+│    train 2023" data/preprocessed/     X_test=2023 (temporel) 2021_2022    │
+│                  cumul_2021_2023/     champion benchmark     → rapport HTML│
 │                                                                             │
+│  → Chaque année sert deux fois : test set temporel du cycle qui l'ajoute   │
+│    (évaluation F1/AUC/etc., cf. make_dataset.py) ET sujet du drift de      │
+│    features vs les années précédentes — indépendant du modèle, jamais      │
+│    exclue de l'entraînement pour autant (cf. section 4)                   │
 │  → Le drift est comparable d'un cycle à l'autre                            │
 │  → Réentraînement automatique : NON — les labels N+1 n'existent pas encore │
 │    (ONISR publie avec ~2 ans de délai). L'alerte drift informe le ML       │
@@ -931,10 +941,10 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   ─────────────────────────────────────────
   etl            → etl_flow.py              : download data.gouv.fr + preprocessing
   train          → train_flow.py            : benchmark RF/XGBoost/LGBM, retourne dict metrics
-  drift-check    → drift_monitoring_flow.py : drift annuel Evidently + alerte email (pas de retrain auto)
-  full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro
+  drift-check    → drift_monitoring_flow.py : drift de features (indépendant du modèle) + alerte email (pas de retrain auto)
+  full-retrain   → full_retrain_flow.py     : tous les cycles depuis zéro (toutes années entraînées)
   reset          → reset_flow.py            : vide predictions + rapports drift + MLflow
-  check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h UTC)
+  check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train (année incluse) → deploy → drift (lundi 8h UTC)
   update-model   → update_model_flow.py     : trigger 3 — extract blueprint → train → gate
   deploy-vps     → deploy_vps_flow.py       : smoke test → gate → promote (T1/T3) + compose up (T2/T3 code)
                                                → test-api (6 tests) → Kapsule (si OK)
@@ -1053,10 +1063,16 @@ DASHBOARDS GRAFANA
   model-drift.json      → drift_share évolution, features driftées,
                           dernière date de détection
 
-EVIDENTLY — DÉTECTION DE DÉRIVE
-────────────────────────────────
-  Référence : X_train cumul jusqu'à l'année N (stocké dans data/preprocessed/)
-  Production : prédictions loggées dans PostgreSQL (mois courant)
+EVIDENTLY — DÉTECTION DE DÉRIVE (drift de features, indépendant du modèle)
+────────────────────────────────────────────────────────────────────────
+  Référence : X_train du dossier preprocessed cumulatif de l'année analysée
+              (= toutes les années précédentes combinées)
+  Current   : X_test du même dossier (= l'année analysée seule, isolée par
+              le split temporel de make_dataset.process_years)
+  Aucune dépendance à PostgreSQL/predictions ni à une simulation API — les
+  deux jeux de données sont déjà produits par le pipeline d'entraînement lui-même
+  (cf. src/data/import_raw_data.py::get_training_years/get_drift_reference_years,
+  services/monitoring/drift_detection.py)
 
   Test par feature :
     Continues (victim_age, vma, hour...)  → Wasserstein distance
@@ -1065,7 +1081,7 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   Seuils : drift_share > 10% → WARNING
             drift_share > 25% → CRITICAL
 
-  Sortie : rapport HTML → reports/drift/drift_YYYY-MM.html
+  Sortie : rapport HTML → reports/drift/drift_{year}.html
            JSON summary → reports/drift/latest_summary.json
            métriques    → Prometheus via /metrics (6 gauges)
 
@@ -1538,7 +1554,7 @@ cac_mlops/
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   └── monitoring/
-│       └── drift_detection.py             # Evidently drift + rapport HTML/JSON + Prometheus
+│       └── drift_detection.py             # Evidently drift de features (année vs référence précédente) + rapport HTML/JSON + Prometheus
 │
 ├── src/
 │   ├── data/
