@@ -113,7 +113,7 @@ Ouvre une PR vers `main`. Le MLOps lead review et merge.
 2. Lit le run tagué `export_to_prod=true` → écrit `config/model_params.yml` avec tes hyperparamètres
 3. Entraîne les 3 algos avec ce nouveau blueprint sur données prod
 4. Compare vs `@Production` :
-   - **Meilleur** → `config/model_params.yml` conservé (tes params sont adoptés) + gate manuelle Prefect UI + promote `@Production` + restart API
+   - **Meilleur** → `config/model_params.yml` conservé (tes params sont adoptés) + gate manuelle (onglet Cockpit ou Prefect UI) + promote `@Production` + restart API
    - **Pas meilleur** → `config/model_params.yml` restauré à son état précédent + email de notification
 
 **Si aucun run n'est tagué** `export_to_prod=true` : le pipeline s'entraîne avec les params actuels de `config/model_params.yml` (utile si seul le code de feature engineering a changé).
@@ -140,15 +140,15 @@ Deux règles de promotion selon le trigger :
 dépasser **tous** les seuils absolus ci-dessous **ET** améliorer `@Production` d'au moins +0.01 sur F1.
 
 **Trigger 1 (nouvelles données annuelles) :**
-dépasser **tous** les seuils absolus uniquement — la comparaison F1 avec `@Production` est ignorée
-car les test sets sont différents (années différentes → comparaison invalide).
+dépasser **tous** les seuils absolus — promu même en légère régression vs `@Production`
+(test sets différents d'une année à l'autre), tant qu'il ne régresse pas sur ≥2 métriques.
 
 | Métrique | Seuil minimum |
 |---|---|
-| F1 | ≥ 0.64 |
-| AUC | ≥ 0.75 |
-| Recall | ≥ 0.60 |
-| Accuracy | ≥ 0.70 |
+| F1 | ≥ 0.60 |
+| AUC | ≥ 0.77 |
+| Recall | ≥ 0.58 |
+| Accuracy | ≥ 0.72 |
 
 ---
 

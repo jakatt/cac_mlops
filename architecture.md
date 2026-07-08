@@ -949,9 +949,12 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   ────────────────────
   3 algos entraînés séquentiellement (RF → XGBoost → LGBM)
   gc.collect() entre chaque algo pour libérer mémoire
-  Sélection champion : quality gate KPI + meilleur F1 + delta > +0.01 vs @Prod
+  Sélection champion (select_champion_task) : quality gate KPI absolue, puis
+    require_improvement=True  (T3, défaut) : doit dépasser @Production de +0.01 F1
+    require_improvement=False (T1) : promu même si légère régression, tant que
+      ≤1 métrique régresse vs @Production (régression sur ≥2 métriques → aucune promotion)
   promote=True  (déclenchement direct) : @Production mis à jour dans train_flow
-  promote=False (via check-new-data) : champion sélectionné, promote différé → gate manuelle
+  promote=False (via check-new-data / update-model) : champion sélectionné, promote différé → gate manuelle
 ```
 
 ### Monitoring — Stack PLG (Prometheus · Loki · Grafana) + Evidently
@@ -1376,7 +1379,7 @@ Dans les 3 tableaux ci-dessous, la ligne **Gate manuelle** est le seul point de 
 | Preprocessing | Fusion 4 tables, feature engineering, split | `src/data/make_dataset.py` | `etl_flow` |
 | DVC push | Versionnement données sur Scaleway S3 | DVC | `etl_flow` — `dvc_push_task` |
 | Entraînement | Benchmark RF / XGBoost / LightGBM + MLflow tracking | `src/models/train_model.py` | `train_flow` |
-| Sélection | Quality gate KPI + delta > +0.01 F1 vs @Production | `src/models/validate_model.py` | `train_flow` — `select_champion_task` |
+| Sélection | Quality gate KPI absolue — promu même en légère régression, tant que ≤1 métrique régresse vs @Production (≥2 → aucune promotion) | `src/flows/train_flow.py` | `train_flow` — `select_champion_task` |
 | Smoke test baseline | GET /health avant tout changement (retry 18×5s) | `src/flows/deploy_vps_flow.py` — `smoke_test_task` | `deploy-vps-flow` |
 | Gate manuelle | Opérateur valide métriques champion (F1/Recall/AUC) — AVANT promote | Prefect UI / Cockpit Gradio — `pause_flow_run` | `deploy-vps-flow` |
 | Promote | Alias @Production MLflow + Docker restart API — seule interruption de ce trigger | MLflow Registry | `deploy-vps-flow` — `promote_task` |
@@ -1413,7 +1416,7 @@ Dans les 3 tableaux ci-dessous, la ligne **Gate manuelle** est le seul point de 
 | Détection | `git diff HEAD~1` détecte fichiers model/features/config → trigger 3 | SSH script | `deploy.yml` JOB 2 |
 | Extract blueprint | Backup config actuel + lit run tagué → écrit `config/model_params.yml` | `src/scripts/extract_blueprint.py` | `update-model-flow` |
 | Entraînement | Benchmark 3 algos avec nouveaux hyperparamètres | `src/models/train_model.py` | `update-model-flow` |
-| Sélection | Compare vs @Production — si pas meilleur : restaure config + email DS (stop, jamais de gate) | `src/models/validate_model.py` | `update-model-flow` |
+| Sélection | Compare vs @Production (require_improvement=True, delta > +0.01 F1) — si pas meilleur : restaure config + email DS (stop, jamais de gate) | `src/flows/train_flow.py` | `update-model-flow` |
 | Gate manuelle | Opérateur valide AVANT toute interruption — modèle (F1/Recall/AUC) et/ou code (SHA, flags) selon le merge | Prefect UI / Cockpit Gradio — `pause_flow_run` | `deploy-vps-flow` |
 | Promote | Alias @Production MLflow + Docker restart API (si champion) | MLflow Registry | `deploy-vps-flow` — `promote_task` |
 | Compose up | `docker compose up -d` + redémarrages ciblés (si le merge inclut aussi du code) | `src/flows/deploy_vps_flow.py` — `compose_up_task` | `deploy-vps-flow` |
@@ -1546,7 +1549,7 @@ cac_mlops/
 │   ├── models/
 │   │   ├── train_model.py                 # LightGBM/RF/XGB + MLflow tracking + Registry
 │   │   ├── predict_model.py
-│   │   └── validate_model.py              # compare candidat vs @Production, promote si OK
+│   │   └── validate_model.py              # KPI_THRESHOLDS (source de vérité) + CLI manuel `--run-id` — pas utilisé par les flows automatiques (voir train_flow.py::select_champion_task)
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   └── email_utils.py                 # alertes email SMTP (send_alert — silent si non configuré)

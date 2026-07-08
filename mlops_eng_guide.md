@@ -21,7 +21,7 @@
 │  node-exporter :9100    nginx-exporter :9113                          │
 │  loki :3100             promtail (scrape Docker SD)                   │
 │                                                                       │
-│  gradio :7860  (cockpit MLOps 11 onglets — Tailscale only)            │
+│  gradio :7860  (cockpit MLOps 12 onglets, dont Cockpit — Tailscale)   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -71,7 +71,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 | Workflow | Trigger | Rôle |
 |---|---|---|
 | `ci.yml` | push/PR → `main`, branches `mlops` et `DS` | Tests unitaires + intégration |
-| `deploy.yml` | push → `main` | Build 4 images → VPS pull/up → smoke test → déclenche `deploy-vps-flow` (Prefect) |
+| `deploy.yml` | push → `main` | Build images (si changées) → VPS prépare (git pull, pull images, calcul flags) → déclenche `deploy-vps-flow`/`update-model-flow` (Prefect) — l'interruption (compose up) a lieu **après** la gate manuelle, dans le flow |
 | `cleanup.yml` | cron dimanche 3h UTC | Nettoyage NVMe (docker prune, logs) |
 
 ### Secrets GitHub requis
@@ -93,9 +93,9 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 
 | # | Trigger | Déclencheur | Pipeline | Gate promotion |
 | --- | ------- | ----------- | -------- | -------------- |
-| 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate → promote → test-api → Kapsule | KPI absolus uniquement (F1≥0.64, AUC≥0.75, Recall≥0.60, Acc≥0.70) — comparaison @Production ignorée (test sets différents entre cycles) |
-| 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images → VPS pull/up → smoke test → gate → test-api → Kapsule (si OK) | Pas de réentraînement |
-| 3 | Nouveau blueprint DS | push → PR → merge `main` (`src/models/**`, `config/**`) | backup config → extract_blueprint → train → si meilleur : garder config + gate + promote ; sinon : restaurer config + email DS | KPI absolus + delta F1 > +0.01 vs @Production (même test set → comparaison valide) |
+| 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate (avant promote) → promote → test-api → Kapsule | KPI absolus (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72) — promu même en légère régression vs @Production, tant que ≤1 métrique régresse (≥2 → aucune promotion) |
+| 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images (si nécessaire) → VPS prépare (pull code+images, flags) → gate (avant toute interruption) → compose up + smoke test → test-api → Kapsule (si OK) | Pas de réentraînement |
+| 3 | Nouveau blueprint DS | push → PR → merge `main` (`src/models/**`, `config/**`) | backup config → extract_blueprint → train → si meilleur : garder config + gate (avant promote/compose up) ; sinon : restaurer config + email DS | KPI absolus + delta F1 > +0.01 vs @Production (même test set → comparaison valide) |
 
 **Split temporel (Triggers 1 & 3) :** `make_dataset.py` auto-détecte les années disponibles dans `data/raw/`. Dernière année = test set (~55k lignes). Toutes les précédentes = train. Aucune configuration manuelle nécessaire lors de l'ajout d'une nouvelle année. `year_acc` supprimé des features (évite fuite temporelle).
 
@@ -138,14 +138,13 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all
 
 ## 6. Images Docker
 
-Quatre images buildées par `deploy.yml` et pushées sur GHCR :
+Trois images buildées par `deploy.yml` et pushées sur GHCR :
 
 | Image | Dockerfile | Contient |
 |---|---|---|
-| `ghcr.io/jakatt/cac-mlops-api:latest` | `services/api/Dockerfile` | FastAPI + flows Prefect + scripts |
+| `ghcr.io/jakatt/cac-mlops-api:latest` | `services/api/Dockerfile` | FastAPI + flows Prefect + scripts + CLI docker/docker-compose (prefect-worker réutilise cette image) |
 | `ghcr.io/jakatt/cac-mlops-mlflow:latest` | `services/mlflow/Dockerfile` | MLflow server |
-| `ghcr.io/jakatt/cac-mlops-gradio:latest` | `services/gradio/Dockerfile` | Gradio cockpit (11 onglets, Tailscale) |
-| `ghcr.io/jakatt/cac-mlops-gradio-public:latest` | `services/gradio/Dockerfile` | Gradio public (3 onglets, internet via https://mlops.jakat-inc.fr) |
+| `ghcr.io/jakatt/cac-mlops-gradio:latest` | `services/gradio/Dockerfile` | Gradio cockpit (12 onglets, Tailscale) **et** Gradio public (3 onglets, internet) — même image, le service `gradio-public` override juste la `command:` (`app_public.py`) dans `docker-compose.yml` |
 
 Le prefect-worker utilise `cac-mlops-api` (toutes les dépendances ML sont là).
 
@@ -207,7 +206,9 @@ Pour ignorer un CVE légitimement non-fixable : ajouter dans `.trivyignore`.
 |---|---|---|
 | Flow Prefect ne démarre pas | Worker déconnecté | `docker compose restart prefect-worker` |
 | `prefect deploy --all` échoue | Fichier flow absent sur VPS host | SCP le fichier manquant |
-| Smoke test échec dans deploy.yml | Image corrompue ou service en crash | Vérifier `docker compose logs <service>` — rollback manuel si nécessaire |
+| Déploiement "Completed" mais rien n'a changé (ex : onglet Cockpit absent) | `restart_services`/`needs_build` a échoué silencieusement dans `compose_up_task` (log `WARNING`, pas d'exception) | Consulter les logs du flow run (Prefect UI ou `_fetch_run_logs`) — chercher `Restart échoué` ou `unknown shorthand flag` |
+| `docker: 'compose' is not a docker command` dans les logs Prefect | Plugin `docker-compose` absent/cassé dans l'image `api` (réutilisée par `prefect-worker`) | Vérifier `services/api/Dockerfile` — le plugin doit être dans `/usr/local/lib/docker/cli-plugins/docker-compose` |
+| Smoke test échec (dans `deploy-vps-flow`, plus dans deploy.yml) | Image corrompue ou service en crash après `compose_up_task` | Vérifier `docker compose logs <service>` — rollback Docker `:rollback` automatique (test-api KO) sinon manuel |
 | `docker compose pull` échoue | Token GHCR expiré | Vérifier `GHCR_TOKEN` dans `/data/cac_mlops/.env` |
 | `config/model_params.yml` non mis à jour | `./config` pas bind-mounté | Vérifier `docker compose up -d prefect-worker` après changement compose |
 | Grafana alertes "DatasourceError" | `expression: "A"` manquant dans alerting.yaml | Vérifier `infrastructure/grafana/provisioning/alerting/alerting.yaml` |

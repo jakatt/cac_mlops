@@ -8,7 +8,7 @@
 
 | Interface | URL | Accès | Rôle |
 | --- | --- | --- | --- |
-| Gradio Cockpit | [http://100.117.99.62:7860](http://100.117.99.62:7860) | Tailscale | Cockpit MLOps 11 onglets |
+| Gradio Cockpit | [http://100.117.99.62:7860](http://100.117.99.62:7860) | Tailscale | Cockpit MLOps 12 onglets, dont **Cockpit** (valider les gates GO/STOP) |
 | Prefect UI | [http://100.117.99.62:4200](http://100.117.99.62:4200) | Tailscale | Flows, runs, gates manuelles |
 | MLflow UI | [http://100.117.99.62:5001](http://100.117.99.62:5001) | Tailscale | Expériences, Model Registry |
 | Grafana | [http://100.117.99.62:3000](http://100.117.99.62:3000) | Tailscale | Métriques API, alertes |
@@ -28,20 +28,30 @@
 ETL → validation schéma → train → sélection champion → GATE MANUELLE → promote → test-api → Kapsule (si OK)
 ```
 
-**Règle de promotion T1 :** gate KPI absolue uniquement (F1≥0.64, AUC≥0.75, Recall≥0.60, Acc≥0.70).
-La comparaison avec @Production est ignorée — les test sets sont différents d'un cycle annuel à l'autre.
+**Règle de promotion T1 :** gate KPI absolue (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72).
+Le nouveau modèle est promu même s'il régresse légèrement vs @Production — les test sets
+diffèrent d'un cycle annuel à l'autre, mais plus de données a de la valeur en soi. Tolérance :
+régression sur **au plus 1 métrique**. Régression sur ≥2 métriques → @Production inchangé.
 
-**Ton rôle** : valider la gate dans Prefect UI quand tu reçois la notification email.
+**Ton rôle** : valider la gate — onglet **Cockpit** du cockpit Gradio (bouton GO/STOP) ou
+Prefect UI — quand tu reçois la notification email.
 
 ### Trigger 2 — Nouveau code MLOps
 
 Quand un développeur pousse du code (API, flows, infra), après merge sur `main` :
 
 ```text
-build images → git pull VPS → docker compose up → smoke test → GATE MANUELLE → test-api (5 tests) → Kapsule (si OK)
+build images (si nécessaire) → git pull VPS + pull images (préparation, sans interruption)
+  → GATE MANUELLE (avant toute interruption VPS) → docker compose up + redémarrages ciblés
+  → smoke test → test-api (6 tests) → Kapsule (si OK)
 ```
 
-**Ton rôle** : valider la gate (confirm que le déploiement est sain) dans Prefect UI.
+La gate intervient **avant** que quoi que ce soit soit appliqué sur le VPS — contrairement à
+l'ancien comportement, rien n'est interrompu tant que tu n'as pas validé. Un **STOP** annule
+proprement sans rollback à faire (rien n'a encore tourné).
+
+**Ton rôle** : valider la gate — onglet **Cockpit** (SHA du commit, images à reconstruire,
+services à redémarrer affichés) ou Prefect UI — **avant** que le code ne soit appliqué sur le VPS.
 
 ### Trigger 3 — Nouveau modèle DS
 
@@ -55,17 +65,29 @@ extract blueprint → train avec nouveaux params → compare @Production
 
 **Règle de promotion T3 :** KPI absolus + delta F1 > +0.01 vs @Production. Ici la comparaison est valide car les deux modèles utilisent le même test set (même année).
 
-**Ton rôle** : valider la gate si un champion est trouvé.
+**Ton rôle** : valider la gate (onglet **Cockpit** ou Prefect UI) si un champion est trouvé.
+Si le merge inclut aussi du code, la gate affiche en plus le SHA/les services à redémarrer —
+tout est appliqué (promote et/ou compose up) seulement après validation.
 
 ---
 
-## 3. Valider une gate manuelle (Prefect UI)
+## 3. Valider une gate manuelle
+
+### Via Gradio Cockpit — onglet Cockpit (recommandé)
+
+1. Onglet **Cockpit** → la file d'attente liste les déploiements `deploy-vps-flow` en pause
+2. Sélectionner le run dans le menu déroulant → le détail affiche les métriques du champion
+   (F1/Recall/AUC vs @Production) pour un modèle, ou le SHA/commit + services impactés pour du code
+3. **GO** → applique le déploiement (promote et/ou compose up selon le trigger) → test-api → Kapsule (si OK)
+4. **STOP** → annule proprement — rien n'a encore été appliqué en prod, aucun rollback nécessaire
+
+### Via Prefect UI (alternative)
 
 1. Ouvrir Prefect UI → **Flow Runs**
 2. Trouver le run `deploy-vps-flow` ou `update-model-flow` en état **Paused**
-3. Vérifier les métriques affichées dans les logs (F1, Recall, AUC du champion)
-4. Cliquer **Resume** pour valider → promote @Production (si nouveau modèle) → test-api → Kapsule (si OK)
-5. En cas de doute : laisser le run expiré (24h timeout) ou cliquer **Cancel**
+3. Vérifier les métriques affichées dans les logs (F1, Recall, AUC du champion, ou SHA/flags si code)
+4. Cliquer **Resume** pour valider → promote (si nouveau modèle) et/ou compose up (si code) → test-api → Kapsule (si OK)
+5. En cas de doute : laisser le run expirer (24h timeout) ou cliquer **Cancel**
 
 ---
 
