@@ -29,22 +29,25 @@ PRIMARY_METRIC = "f1"
 MIN_IMPROVEMENT = 0.01  # +1 point absolu minimum sur f1 pour remplacer @Production
 
 
-def _get_production_score(client: mlflow.MlflowClient) -> float | None:
-    """Return the PRIMARY_METRIC of the current @Production model (any family), or None."""
+def _get_production_metrics(client: mlflow.MlflowClient) -> dict[str, float] | None:
+    """Return all KPI metrics of the current @Production model (any family), or None."""
     for model_name in MODEL_NAMES.values():
         try:
             mv = client.get_model_version_by_alias(model_name, "Production")
             run = client.get_run(mv.run_id)
-            val = run.data.metrics.get(PRIMARY_METRIC)
-            if val is not None:
-                logger.info(
-                    "@Production actuel : %s v%s  %s=%.4f",
-                    model_name, mv.version, PRIMARY_METRIC, val,
-                )
-                return float(val)
+            metrics = {k: float(v) for k, v in run.data.metrics.items() if k in KPI_THRESHOLDS}
+            if metrics:
+                logger.info("@Production actuel : %s v%s  %s", model_name, mv.version, metrics)
+                return metrics
         except Exception:
             continue
     return None
+
+
+def _get_production_score(client: mlflow.MlflowClient) -> float | None:
+    """Return the PRIMARY_METRIC of the current @Production model (any family), or None."""
+    metrics = _get_production_metrics(client)
+    return metrics.get(PRIMARY_METRIC) if metrics else None
 
 
 @task(name="train-model", task_run_name="train-model-{algorithm}")
@@ -108,17 +111,38 @@ def select_champion_task(
         champion, PRIMARY_METRIC, champion_score, others or "aucun",
     )
 
-    # ── Étape 3 : comparaison vs @Production (Trigger 3 seulement) ───────────
+    # ── Étape 3 : comparaison vs @Production ─────────────────────────────────
+    client = mlflow.tracking.MlflowClient()
+
     if not require_improvement:
-        # Trigger 1 : nouveau modèle entraîné sur plus de données, évalué sur une
-        # année différente → comparaison F1 invalide. Gate KPI suffit.
+        # Trigger 1 : nouveau modèle entraîné sur plus de données (année différente,
+        # comparaison F1 stricte non valide) — mais on tolère une régression sur au
+        # plus 1 métrique vs @Production. Régression sur ≥2 métriques → pas de promotion.
+        prod_metrics = _get_production_metrics(client)
+        if prod_metrics is None:
+            logger.info("Pas de @Production existant — %s promu directement", champion)
+            return champion
+
+        champion_metrics = all_metrics[champion]
+        regressions = [
+            k for k in KPI_THRESHOLDS
+            if champion_metrics.get(k, 0.0) < prod_metrics.get(k, 0.0)
+        ]
+        if len(regressions) >= 2:
+            logger.info(
+                "Champion %s régresse sur %d métriques vs @Production (%s) "
+                "— seuil de régression dépassé — @Production inchangé",
+                champion, len(regressions), regressions,
+            )
+            return None
+
         logger.info(
-            "Trigger 1 — gate KPI passée, comparaison @Production ignorée "
-            "(test sets incomparables). Champion : %s", champion,
+            "Trigger 1 — gate KPI passée, régression sur %d métrique(s) max (%s) "
+            "— promotion validée. Champion : %s",
+            len(regressions), regressions or "aucune", champion,
         )
         return champion
 
-    client = mlflow.tracking.MlflowClient()
     prod_score = _get_production_score(client)
 
     if prod_score is None:

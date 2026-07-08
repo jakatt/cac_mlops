@@ -141,11 +141,15 @@ def check_new_data_flow() -> None:
     etl_flow(year=new_year, cumul=True, urls=matched_urls)
 
     # Train : benchmark + sélection champion, sans promote (gate d'abord)
-    result = train_flow(year=new_year, cumul=True, promote=False)
+    # require_improvement=False (Trigger 1) : gate KPI absolue + tolérance de
+    # régression ≤1 métrique vs @Production (nouvelles données = valeur ajoutée
+    # même sans strict dépassement du F1 actuel — cf. select_champion_task).
+    result = train_flow(year=new_year, cumul=True, promote=False, require_improvement=False)
 
     if result["champion"] is None:
         msg = (
-            f"Training année {new_year} terminé mais aucun modèle ne dépasse @Production.\n"
+            f"Training année {new_year} terminé mais aucun algorithme ne passe la gate KPI "
+            f"absolue, ou tous régressent sur ≥2 métriques vs @Production.\n"
             f"Métriques : {result['metrics']}"
         )
         logger.warning(msg)
