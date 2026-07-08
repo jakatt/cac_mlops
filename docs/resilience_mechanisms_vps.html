@@ -13,6 +13,7 @@
   --stop-bg:   #fef2f2; --stop-num:  #b91c1c; --stop-bd:   #fca5a5;
   --rb-bg:     #fffbeb; --rb-num:    #b45309; --rb-bd:     #fcd34d;
   --int-bg:    #eff6ff; --int-num:   #1d4ed8; --int-bd:    #93c5fd;
+  --man-bg:    #f5f3ff; --man-num:   #7c3aed; --man-bd:    #c4b5fd;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 @media (prefers-color-scheme: dark) {
@@ -22,6 +23,7 @@
     --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
     --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
     --int-bg: #0a1a38; --int-num: #60a5fa; --int-bd: #1e3a8a;
+    --man-bg: #241b3d; --man-num: #a78bfa; --man-bd: #4c1d95;
     --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
   }
 }
@@ -31,6 +33,7 @@
   --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
   --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
   --int-bg: #0a1a38; --int-num: #60a5fa; --int-bd: #1e3a8a;
+  --man-bg: #241b3d; --man-num: #a78bfa; --man-bd: #4c1d95;
   --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
 }
 :root[data-theme="light"] .ci-doc {
@@ -39,6 +42,7 @@
   --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
   --rb-bg: #fffbeb; --rb-num: #b45309; --rb-bd: #fcd34d;
   --int-bg: #eff6ff; --int-num: #1d4ed8; --int-bd: #93c5fd;
+  --man-bg: #f5f3ff; --man-num: #7c3aed; --man-bd: #c4b5fd;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,6 +57,7 @@
 .ci-doc .dot-stop { background:var(--stop-num); }
 .ci-doc .dot-rb   { background:var(--rb-num); }
 .ci-doc .dot-int  { background:var(--int-num); }
+.ci-doc .dot-man  { background:var(--man-num); }
 .ci-doc .tbl-wrap { overflow-x:auto; }
 .ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem;table-layout:fixed; }
 .ci-doc .trigger-header th { padding:18px 14px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
@@ -82,6 +87,9 @@
 .ci-doc .badge-int  { background:var(--int-bg);border-color:var(--int-bd); }
 .ci-doc .badge-int .badge-num   { color:var(--int-num); }
 .ci-doc .badge-int .badge-unit  { color:var(--int-num);opacity:.7; }
+.ci-doc .badge-man  { background:var(--man-bg);border-color:var(--man-bd); }
+.ci-doc .badge-man .badge-num   { color:var(--man-num); }
+.ci-doc .badge-man .badge-unit  { color:var(--man-num);opacity:.7; }
 .ci-doc .desc-row td { padding:12px 14px 18px;background:var(--accent-lt);border-top:1px solid var(--border); }
 .ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
 .ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:10px; }
@@ -91,6 +99,10 @@
 .ci-doc .item-label::before { content:"→";color:var(--accent);font-size:.68rem;flex-shrink:0; }
 .ci-doc .item-desc { font-size:.73rem;color:var(--muted);line-height:1.4;padding-left:14px; }
 .ci-doc .item-desc code { font-size:.68rem;background:var(--border);color:var(--accent);padding:1px 4px;border-radius:3px;font-family:monospace; }
+.ci-doc .item-manual { background:var(--man-bg);border:1px dashed var(--man-bd);border-radius:6px;padding:8px 10px 8px 12px; }
+.ci-doc .item-manual .item-label { color:var(--man-num); }
+.ci-doc .item-manual .item-label::before { content:"⏸";color:var(--man-num); }
+.ci-doc .item-manual .item-desc { color:var(--text); }
 .ci-doc .footnote { margin-top:20px;font-size:.70rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:16px; }
 </style>
 </head>
@@ -100,10 +112,11 @@
   <header class="page-header">
     <p class="eyebrow">MLOps · Accidents routiers — VPS Docker Compose</p>
     <h1 class="page-title">Mécanismes de résilience par trigger</h1>
-    <p class="page-sub">Nombre de gates, rollbacks et interruptions de service pour chacun des 3 scénarios de déclenchement du pipeline.</p>
+    <p class="page-sub">Nombre de gates, rollbacks et interruptions de service pour chacun des 3 scénarios de déclenchement du pipeline. La gate manuelle (point de contrôle humain, Prefect UI ou onglet Cockpit) intervient toujours <strong>avant</strong> la première interruption de service — pour les 3 triggers.</p>
   </header>
   <div class="legend">
     <div class="legend-item"><span class="dot dot-stop"></span> Stop volontaire + alerte</div>
+    <div class="legend-item"><span class="dot dot-man"></span> Gate manuelle (validation humaine)</div>
     <div class="legend-item"><span class="dot dot-rb"></span> Rollback automatique + alerte</div>
     <div class="legend-item"><span class="dot dot-int"></span> Interruption de service</div>
   </div>
@@ -137,6 +150,12 @@
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
         <tr>
+          <td><span class="row-label">Validation<br>humaine</span></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant interruption</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant interruption</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant interruption</span></span></div></td>
+        </tr>
+        <tr>
           <td><span class="row-label">Rollbacks<br>auto</span></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
@@ -151,7 +170,7 @@
         <tr class="desc-row">
           <td><span class="row-label">Détail</span></td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
+            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -165,14 +184,18 @@
                 <span class="item-label">Gate 3</span>
                 <span class="item-desc">KPI gate failed : aucun champion RF/XGB/LGBM → @Production inchangé + alerte Grafana</span>
               </li>
+              <li class="item-manual">
+                <span class="item-label">Gate manuelle</span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause (<code>pause_flow_run</code>) : métriques du champion (f1/recall/auc/accuracy) affichées dans l'onglet Cockpit ou Prefect UI. <strong>Rien n'est encore appliqué en prod à ce stade.</strong> GO → promotion. STOP → run annulé, @Production inchangé, aucun impact.</span>
+              </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Smoke test deploy-vps-flow (90 s) après redémarrage API ≈30 s (promotion @Production) : si fail → rollback alias MLflow @Production + alerte Prefect</span>
+                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s) puis test-api (6 tâches) : si fail → rollback alias MLflow @Production + restart API + alerte Prefect</span>
               </li>
             </ul>
           </td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
+            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -182,18 +205,22 @@
                 <span class="item-label">Gate 2</span>
                 <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS + annotation erreur</span>
               </li>
+              <li class="item-manual">
+                <span class="item-label">Gate manuelle</span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : SHA, image à builder, services à redémarrer affichés dans l'onglet Cockpit ou Prefect UI. Images déjà <code>pull</code>-ées mais <strong>pas encore appliquées</strong>. GO → <code>docker compose up -d</code>. STOP → run annulé, aucun conteneur touché.</span>
+              </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">Smoke test deploy.yml (120 s) après redémarrage des conteneurs (api ≈30 s, gradio ≈5 s, nginx ≈1 s) : si fail → :rollback restaurés + <code>docker compose up -d</code> + exit 1</span>
+                <span class="item-desc">Après GO : smoke test (90 s) une fois <code>docker compose up -d --remove-orphans</code> appliqué (redémarrage ciblé des services impactés) : si fail → rollback Docker :rollback + alerte Prefect</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Smoke test Prefect deploy-vps-flow (90 s + test-api 6 tâches) : si fail → rollback Docker :rollback + <code>docker compose up -d</code>, Kapsule non déclenché</span>
+                <span class="item-desc">test-api (6 tâches) après le smoke test : si fail → rollback Docker :rollback, Kapsule non déclenché + alerte Prefect</span>
               </li>
             </ul>
           </td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 1 interruption</p>
+            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 1 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -207,9 +234,13 @@
                 <span class="item-label">Gate 3</span>
                 <span class="item-desc">KPI gate failed (train_flow) : aucun champion → @Production inchangé + alerte Grafana</span>
               </li>
+              <li class="item-manual">
+                <span class="item-label">Gate manuelle</span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint + SHA/services à redémarrer affichés dans l'onglet Cockpit ou Prefect UI. <strong>Rien n'est encore appliqué en prod.</strong> GO → promotion + (si code impacté) <code>docker compose up -d</code>. STOP → run annulé, aucun impact.</span>
+              </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Smoke test deploy-vps-flow (90 s + test-api) après redémarrage API ≈30 s (nouveau modèle @Production) : si fail → rollback alias MLflow @Production + alerte Prefect</span>
+                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s), puis si code impacté <code>docker compose up -d</code> + smoke test (90 s), puis test-api (6 tâches) : si fail → rollback alias MLflow @Production ET/OU rollback Docker :rollback + alerte Prefect</span>
               </li>
             </ul>
           </td>

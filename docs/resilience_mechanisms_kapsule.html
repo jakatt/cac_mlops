@@ -14,6 +14,7 @@
   --rb-bg:     #fffbeb; --rb-num:    #b45309; --rb-bd:     #fcd34d;
   --int-bg:    #f0fdf4; --int-num:   #15803d; --int-bd:    #86efac;
   --zero-bg:   #f3f4f6; --zero-num:  #9ca3af; --zero-bd:   #e5e7eb;
+  --man-bg:    #f5f3ff; --man-num:   #7c3aed; --man-bd:    #c4b5fd;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 @media (prefers-color-scheme: dark) {
@@ -24,6 +25,7 @@
     --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
     --int-bg: #052e16; --int-num: #4ade80; --int-bd: #14532d;
     --zero-bg: #1f2937; --zero-num: #6b7280; --zero-bd: #374151;
+    --man-bg: #241b3d; --man-num: #a78bfa; --man-bd: #4c1d95;
     --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
   }
 }
@@ -34,6 +36,7 @@
   --rb-bg: #2a1f00; --rb-num: #fbbf24; --rb-bd: #78350f;
   --int-bg: #052e16; --int-num: #4ade80; --int-bd: #14532d;
   --zero-bg: #1f2937; --zero-num: #6b7280; --zero-bd: #374151;
+  --man-bg: #241b3d; --man-num: #a78bfa; --man-bd: #4c1d95;
   --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
 }
 :root[data-theme="light"] .ci-doc {
@@ -43,6 +46,7 @@
   --rb-bg: #fffbeb; --rb-num: #b45309; --rb-bd: #fcd34d;
   --int-bg: #f0fdf4; --int-num: #15803d; --int-bd: #86efac;
   --zero-bg: #f3f4f6; --zero-num: #9ca3af; --zero-bd: #e5e7eb;
+  --man-bg: #f5f3ff; --man-num: #7c3aed; --man-bd: #c4b5fd;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -61,6 +65,7 @@
 .ci-doc .dot-stop { background:var(--stop-num); }
 .ci-doc .dot-rb   { background:var(--rb-num); }
 .ci-doc .dot-zero { background:var(--zero-num); }
+.ci-doc .dot-man  { background:var(--man-num); }
 .ci-doc .tbl-wrap { overflow-x:auto; }
 .ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem;table-layout:fixed; }
 .ci-doc .trigger-header th { padding:18px 14px 14px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
@@ -90,6 +95,9 @@
 .ci-doc .badge-zero { background:var(--zero-bg);border-color:var(--zero-bd); }
 .ci-doc .badge-zero .badge-num  { color:var(--zero-num); }
 .ci-doc .badge-zero .badge-unit { color:var(--zero-num);opacity:.7; }
+.ci-doc .badge-man  { background:var(--man-bg);border-color:var(--man-bd); }
+.ci-doc .badge-man .badge-num   { color:var(--man-num); }
+.ci-doc .badge-man .badge-unit  { color:var(--man-num);opacity:.7; }
 .ci-doc .desc-row td { padding:12px 14px 18px;background:var(--accent-lt);border-top:1px solid var(--border); }
 .ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
 .ci-doc .desc-title { font-size:.62rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:10px; }
@@ -99,6 +107,10 @@
 .ci-doc .item-label::before { content:"→";color:var(--accent);font-size:.68rem;flex-shrink:0; }
 .ci-doc .item-desc { font-size:.73rem;color:var(--muted);line-height:1.4;padding-left:14px; }
 .ci-doc .item-desc code { font-size:.68rem;background:var(--border);color:var(--accent);padding:1px 4px;border-radius:3px;font-family:monospace; }
+.ci-doc .item-manual { background:var(--man-bg);border:1px dashed var(--man-bd);border-radius:6px;padding:8px 10px 8px 12px; }
+.ci-doc .item-manual .item-label { color:var(--man-num); }
+.ci-doc .item-manual .item-label::before { content:"⏸";color:var(--man-num); }
+.ci-doc .item-manual .item-desc { color:var(--text); }
 .ci-doc .highlight { color:var(--int-num);font-weight:700; }
 .ci-doc .footnote { margin-top:20px;font-size:.70rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:16px; }
 </style>
@@ -116,10 +128,12 @@
     <div>
       <p class="k8s-banner-title">Différence fondamentale vs VPS</p>
       <p class="k8s-banner-text">Le rolling update Kubernetes remplace les pods un par un : le nouveau pod doit passer la <strong>readiness probe</strong> (<code>/health</code>) avant que l'ancien soit supprimé. Aucune requête n'est perdue — les interruptions de service tombent à <strong>0</strong> pour les 3 triggers. Le rollback passe de images Docker <code>:rollback</code> à <code>kubectl rollout undo</code>.</p>
+      <p class="k8s-banner-text" style="margin-top:8px;">Kapsule ne possède pas de gate manuelle propre : le point de contrôle humain a lieu <strong>en amont, côté VPS</strong> (<code>deploy-vps-flow</code> — cf. <code>resilience_mechanisms_vps.html</code>). <code>deploy-kapsule-flow</code> n'est déclenché qu'une fois ce run VPS validé (GO) et son <code>test-api</code> passé.</p>
     </div>
   </div>
   <div class="legend">
     <div class="legend-item"><span class="dot dot-stop"></span> Stop volontaire + alerte</div>
+    <div class="legend-item"><span class="dot dot-man"></span> Gate manuelle (validation humaine, côté VPS)</div>
     <div class="legend-item"><span class="dot dot-rb"></span> Rollback automatique + alerte</div>
     <div class="legend-item"><span class="dot dot-zero"></span> Zéro interruption (rolling update)</div>
   </div>
@@ -153,6 +167,12 @@
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
         <tr>
+          <td><span class="row-label">Validation<br>humaine</span></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">amont VPS</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">amont VPS</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">amont VPS</span></span></div></td>
+        </tr>
+        <tr>
           <td><span class="row-label">Rollbacks<br>auto</span></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
@@ -167,7 +187,7 @@
         <tr class="desc-row">
           <td><span class="row-label">Détail</span></td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
+            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -181,6 +201,10 @@
                 <span class="item-label">Gate 3</span>
                 <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, Kapsule non mis à jour + alerte Grafana</span>
               </li>
+              <li class="item-manual">
+                <span class="item-label">Gate manuelle</span>
+                <span class="item-desc">Côté VPS (<code>deploy-vps-flow</code> mis en pause) : métriques du champion affichées dans l'onglet Cockpit ou Prefect UI. <code>deploy-kapsule-flow</code> n'est déclenché qu'après GO + <code>test-api</code> VPS réussi. STOP → aucun impact, Kapsule jamais atteint.</span>
+              </li>
               <li>
                 <span class="item-label">Gate 4</span>
                 <span class="item-desc">Readiness probe K8s (<code>/health</code>) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production</span>
@@ -188,7 +212,7 @@
             </ul>
           </td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
+            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -198,18 +222,22 @@
                 <span class="item-label">Gate 2</span>
                 <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS/Kapsule</span>
               </li>
+              <li class="item-manual">
+                <span class="item-label">Gate manuelle</span>
+                <span class="item-desc">Côté VPS (<code>deploy-vps-flow</code> mis en pause) : SHA/services à redémarrer affichés dans l'onglet Cockpit ou Prefect UI, avant toute interruption VPS. <code>deploy-kapsule-flow</code> n'est déclenché qu'après GO + smoke test + <code>test-api</code> VPS réussis. STOP → aucun impact, Kapsule jamais atteint.</span>
+              </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">Smoke test VPS deploy.yml (120 s) : si fail → Docker VPS :rollback + <code>docker compose up -d</code>, Kapsule non déclenché</span>
+                <span class="item-desc">Smoke test VPS post-gate (90 s) après <code>docker compose up -d</code> ciblé, puis test-api (6 tâches) : si fail → Docker VPS :rollback, Kapsule non déclenché + alerte Prefect</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Readiness probe K8s (<code>/health</code>) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo deployment/api</code> — si Prefect VPS test-api KO avant K8s : Docker VPS :rollback + Kapsule non déclenché</span>
+                <span class="item-desc">Readiness probe K8s (<code>/health</code>) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo deployment/api</code></span>
               </li>
             </ul>
           </td>
           <td>
-            <p class="desc-title">4 gates — 1 rollback — 0 interruption</p>
+            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -222,6 +250,10 @@
               <li>
                 <span class="item-label">Gate 3</span>
                 <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, deploy-kapsule non déclenché + alerte Grafana</span>
+              </li>
+              <li class="item-manual">
+                <span class="item-label">Gate manuelle</span>
+                <span class="item-desc">Côté VPS (<code>deploy-vps-flow</code> mis en pause) : métriques du nouveau blueprint + SHA/services affichés dans l'onglet Cockpit ou Prefect UI, avant toute interruption. <code>deploy-kapsule-flow</code> n'est déclenché qu'après GO + <code>test-api</code> VPS réussi. STOP → aucun impact, Kapsule jamais atteint.</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
