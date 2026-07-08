@@ -19,6 +19,13 @@ RUN curl -sL "https://github.com/scaleway/scaleway-cli/releases/latest/download/
 RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker
 
+# docker compose v2 plugin (compose_up_task / docker_rollback_task — "docker compose ...")
+# Le binaire statique docker/docker ci-dessus ne fournit pas le sous-commande "compose".
+RUN mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -fsSL https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-x86_64 \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
 COPY services/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
