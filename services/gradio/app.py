@@ -802,8 +802,8 @@ def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool
         "clear_mlflow": clear_mlflow,
     })
 
-def trigger_full_retrain() -> str:
-    return _prefect_trigger("full-retrain", wait_s=0)
+def trigger_full_retrain(max_sim_rows: int = 2000) -> str:
+    return _prefect_trigger("full-retrain", {"max_sim_rows": int(max_sim_rows or 2000)}, wait_s=0)
 
 def trigger_check_new_data() -> str:
     return _prefect_trigger("check-new-data")
@@ -1696,7 +1696,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 "Réentraîner les modèles": {
                     "key": "full-retrain",
                     "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
-                    "opts": None,
+                    "opts": "full-retrain",
                 },
                 "Vérifier nouvelles données": {
                     "key": "check-new-data",
@@ -1753,6 +1753,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
                         reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
 
+                    with gr.Group(visible=False) as retrain_opts:
+                        retrain_sim_rows = gr.Number(
+                            value=2000, precision=0,
+                            label="Lignes simulées par cycle (défaut deployment : 2000)",
+                        )
+
                 # ── Colonne droite : résultat ─────────────────────────────
                 with gr.Column(scale=1):
                     action_result = gr.Textbox(
@@ -1790,9 +1796,10 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     desc,
                     gr.update(visible=(opts == "kapsule")),
                     gr.update(visible=(opts == "reset")),
+                    gr.update(visible=(opts == "full-retrain")),
                 )
 
-            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf):
+            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf, sim_rows):
                 key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
                 if key == "kapsule-up":
                     return trigger_kapsule_up(node_type, int(node_count or 2))
@@ -1807,7 +1814,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 if key == "disk-cleanup":
                     return trigger_disk_cleanup()
                 if key == "full-retrain":
-                    return trigger_full_retrain()
+                    return trigger_full_retrain(sim_rows)
                 if key == "check-new-data":
                     return trigger_check_new_data()
                 if key == "drift-check":
@@ -1817,11 +1824,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             flow_dd.change(
                 fn=_on_flow_select,
                 inputs=flow_dd,
-                outputs=[flow_desc, kapsule_opts, reset_opts],
+                outputs=[flow_desc, kapsule_opts, reset_opts, retrain_opts],
             )
             run_btn.click(
                 fn=_run_flow,
-                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf],
+                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf, retrain_sim_rows],
                 outputs=action_result,
             )
             pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
