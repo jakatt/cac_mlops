@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true   # garde uniquement le deploy du dernier commit
 
 permissions:
-  contents: read
+  contents: write  # push vers ghcr.io + tag mobile last-image-build
   packages: write   # push vers ghcr.io
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          fetch-depth: 0   # historique complet — nécessaire pour differ contre un tag ancien
 
       - name: Vérifier si Dockerfiles / requirements ont changé
         id: check
@@ -39,14 +39,27 @@ jobs:
             echo "Build forcé (workflow_dispatch)"
             exit 0
           fi
-          CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
+
+          # Compare au dernier commit pour lequel un build a RÉELLEMENT réussi
+          # (tag mobile last-image-build), pas seulement au commit précédent.
+          # Évite de manquer un rebuild si un push précédent a été annulé par
+          # `concurrency: cancel-in-progress` avant la fin de son propre build.
+          git fetch origin 'refs/tags/last-image-build:refs/tags/last-image-build' 2>/dev/null || true
+          if git rev-parse -q --verify refs/tags/last-image-build >/dev/null; then
+            BASE_REF="last-image-build"
+          else
+            BASE_REF="HEAD~1"
+            echo "Tag last-image-build introuvable — comparaison à HEAD~1 (premier run)"
+          fi
+
+          CHANGED=$(git diff "$BASE_REF" --name-only 2>/dev/null \
             | grep -cE '^(services/.+/Dockerfile|services/.+/requirements.*\.txt|services/api/app/.*\.py|services/gradio/app_public\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
           if [ "${CHANGED:-0}" -gt 0 ]; then
             echo "needs_build=true" >> $GITHUB_OUTPUT
-            echo "Code service ou Dockerfile modifié → build complet"
+            echo "Code service ou Dockerfile modifié depuis $BASE_REF → build complet"
           else
             echo "needs_build=false" >> $GITHUB_OUTPUT
-            echo "Pas de changement image → skip build"
+            echo "Pas de changement image depuis $BASE_REF → skip build"
           fi
 
   # ── Job 1 : build et push des images (seulement si Dockerfile a changé) ───
@@ -109,6 +122,13 @@ jobs:
             echo "::error::CVE CRITICAL détectée — deploy bloqué"
             exit 1
           fi
+
+      - name: Marquer ce commit comme dernier build réussi
+        run: |
+          # Déplace le tag mobile sur ce commit — sert de référence à check-changes
+          # pour savoir depuis quand comparer, au lieu de HEAD~1 uniquement.
+          git tag -f last-image-build
+          git push origin last-image-build --force
 
   # ── Job 2 : git pull + pull images + déclenchement Prefect (SSH) ───────────
   # docker compose up / restarts / smoke test sont exécutés par le flow Prefect
