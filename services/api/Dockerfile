@@ -19,10 +19,11 @@ RUN curl -sL "https://github.com/scaleway/scaleway-cli/releases/latest/download/
 RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz \
     | tar xz --strip-components=1 -C /usr/local/bin docker/docker
 
-# docker compose v2 plugin (compose_up_task / docker_rollback_task — "docker compose ...")
+# docker compose plugin (compose_up_task / docker_rollback_task — "docker compose ...")
 # Le binaire statique docker/docker ci-dessus ne fournit pas le sous-commande "compose".
+# v5.3.1 (pas v2.32.4) : embarque grpc-go >=1.79.3, corrige CVE-2026-33186 (CRITICAL).
 RUN mkdir -p /usr/local/lib/docker/cli-plugins && \
-    curl -fsSL https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-x86_64 \
+    curl -fsSL https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64 \
     -o /usr/local/lib/docker/cli-plugins/docker-compose && \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
