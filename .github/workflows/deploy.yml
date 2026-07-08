@@ -110,14 +110,16 @@ jobs:
             exit 1
           fi
 
-  # ── Job 2 : git pull + docker compose up + smoke test + Prefect (SSH) ──────
+  # ── Job 2 : git pull + pull images + déclenchement Prefect (SSH) ───────────
+  # docker compose up / restarts / smoke test sont exécutés par le flow Prefect
+  # après la gate manuelle (voir deploy_vps_flow.py) — ce job ne fait que préparer.
   trigger-deploy:
     needs: [check-changes, build]
     if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy sur VPS (pull + up + smoke + Prefect gate)
+      - name: Deploy sur VPS (pull + trigger Prefect)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SCALEWAY_HOST }}
@@ -157,67 +159,43 @@ jobs:
               echo "==> Pas de build — images existantes conservées"
             fi
 
-            docker compose up -d --remove-orphans
+            # Pas de docker compose up / restart ici : appliqué par deploy-vps-flow /
+            # update-model-flow APRÈS la gate manuelle, pour que la gate protège bien
+            # toute interruption de service (voir compose_up_task dans deploy_vps_flow.py).
+            # Cette étape ne fait que préparer (images pull-ées ci-dessus) et calculer
+            # les flags transmis en paramètres au flow Prefect.
 
-            # ── Restarts ciblés selon fichiers modifiés (fast lane) ───────────
+            # ── Calcul des redémarrages ciblés selon fichiers modifiés (fast lane) ────
             CHANGED_FILES=$(git diff HEAD~1 --name-only 2>/dev/null || true)
 
-            NGINX_CONF=$(echo "$CHANGED_FILES"     | grep -cE '^services/nginx/nginx\.conf$' || true)
-            GRADIO_MAIN=$(echo "$CHANGED_FILES"    | grep -cE '^services/gradio/(app\.py|scenarios\.py)$' || true)
-            GRADIO_PUBLIC=$(echo "$CHANGED_FILES"  | grep -cE '^services/gradio/(app_public\.py|scenarios\.py)$' || true)
-            GRAFANA_PROV=$(echo "$CHANGED_FILES"   | grep -cE '^infrastructure/grafana/provisioning/' || true)
-            PROMETHEUS=$(echo "$CHANGED_FILES"     | grep -cE '^infrastructure/prometheus/prometheus\.yml$' || true)
-            LOKI=$(echo "$CHANGED_FILES"           | grep -cE '^infrastructure/loki/loki-config\.yml$' || true)
-            PROMTAIL=$(echo "$CHANGED_FILES"       | grep -cE '^infrastructure/promtail/promtail-config\.yml$' || true)
-            DRIFT_PY=$(echo "$CHANGED_FILES"       | grep -cE '^services/monitoring/drift_detection\.py$' || true)
-
-            [ "${NGINX_CONF:-0}"    -gt 0 ] && docker compose restart nginx       && echo "restart nginx ✓"
-            [ "${GRADIO_MAIN:-0}"   -gt 0 ] && docker compose restart gradio      && echo "restart gradio ✓"
-            [ "${GRADIO_PUBLIC:-0}" -gt 0 ] && docker compose restart gradio-public && echo "restart gradio-public ✓"
-            [ "${GRAFANA_PROV:-0}"  -gt 0 ] && docker compose restart grafana     && echo "restart grafana ✓"
-            [ "${PROMETHEUS:-0}"    -gt 0 ] && docker compose restart prometheus  && echo "restart prometheus ✓"
-            [ "${LOKI:-0}"          -gt 0 ] && docker compose restart loki        && echo "restart loki ✓"
-            [ "${PROMTAIL:-0}"      -gt 0 ] && docker compose restart promtail    && echo "restart promtail ✓"
+            RESTART_SERVICES=""
+            echo "$CHANGED_FILES" | grep -qE '^services/nginx/nginx\.conf$'                    && RESTART_SERVICES="${RESTART_SERVICES}nginx,"
+            echo "$CHANGED_FILES" | grep -qE '^services/gradio/(app\.py|scenarios\.py)$'        && RESTART_SERVICES="${RESTART_SERVICES}gradio,"
+            echo "$CHANGED_FILES" | grep -qE '^services/gradio/(app_public\.py|scenarios\.py)$' && RESTART_SERVICES="${RESTART_SERVICES}gradio-public,"
+            echo "$CHANGED_FILES" | grep -qE '^infrastructure/grafana/provisioning/'            && RESTART_SERVICES="${RESTART_SERVICES}grafana,"
+            echo "$CHANGED_FILES" | grep -qE '^infrastructure/prometheus/prometheus\.yml$'      && RESTART_SERVICES="${RESTART_SERVICES}prometheus,"
+            echo "$CHANGED_FILES" | grep -qE '^infrastructure/loki/loki-config\.yml$'           && RESTART_SERVICES="${RESTART_SERVICES}loki,"
+            echo "$CHANGED_FILES" | grep -qE '^infrastructure/promtail/promtail-config\.yml$'   && RESTART_SERVICES="${RESTART_SERVICES}promtail,"
+            echo "$CHANGED_FILES" | grep -qE '^services/monitoring/drift_detection\.py$'        && RESTART_SERVICES="${RESTART_SERVICES}prefect-worker,"
+            RESTART_SERVICES="${RESTART_SERVICES%,}"
+            echo "==> Services à redémarrer après la gate : ${RESTART_SERVICES:-aucun}"
 
             # Re-synchroniser les schémas de deployments Prefect (paramètres, entrypoints)
+            # Doit tourner avant le trigger pour que Prefect connaisse needs_build/restart_services
             docker compose exec -T prefect-worker prefect deploy --all \
               && echo "prefect deploy --all ✓" \
               || echo "::warning::prefect deploy --all échoué — schémas potentiellement périmés"
 
-            # Smoke test (120s max — API charge le modèle MLflow au démarrage)
-            HEALTHY=false
-            for i in $(seq 1 24); do
-              if curl -sf http://localhost:8090/health >/dev/null 2>&1; then
-                HEALTHY=true
-                echo "  Stack healthy après $((i * 5))s"
-                break
-              fi
-              sleep 5
-            done
-
-            if [ "$HEALTHY" = "false" ]; then
-              echo "::error::Smoke test échoué après 120s — stack non opérationnelle"
-              if [ "$NEEDS_BUILD" = "true" ]; then
-                echo "Rollback images :rollback"
-                for img in cac-mlops-api cac-mlops-mlflow cac-mlops-gradio; do
-                  docker tag "ghcr.io/jakatt/$img:rollback" "ghcr.io/jakatt/$img:latest" 2>/dev/null || true
-                done
-                docker compose up -d
-              fi
-              exit 1
-            fi
-
-            [ "${DRIFT_PY:-0}" -gt 0 ] && docker compose restart prefect-worker && echo "restart prefect-worker ✓"
-
             # Détecter si les fichiers blueprint/modèle ont changé (trigger 3)
-            BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null \
-              | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
+            BLUEPRINT_CHANGED=$(echo "$CHANGED_FILES" | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
 
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
               echo "==> Blueprint DS modifié — déclenchement update-model-flow"
               docker compose exec -T prefect-worker \
                 prefect deployment run 'update-model-flow/update-model' \
                   --param "sha_tag=${SHA_SHORT}" \
+                  --param "needs_build=${NEEDS_BUILD}" \
+                  --param "restart_services=${RESTART_SERVICES}" \
               && echo "update-model-flow déclenché ✓" \
               || echo "::warning::update-model-flow non déclenché — relancer depuis Prefect UI"
             else
@@ -226,6 +204,8 @@ jobs:
                 prefect deployment run \
                   'deploy-vps-flow/deploy-vps' \
                   --param "sha_tag=${SHA_SHORT}" \
+                  --param "needs_build=${NEEDS_BUILD}" \
+                  --param "restart_services=${RESTART_SERVICES}" \
               && echo "deploy-vps-flow déclenché ✓" \
               || echo "::warning::Échec du déclenchement Prefect — relancer manuellement depuis l'UI"
             fi

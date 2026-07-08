@@ -41,6 +41,8 @@ def update_model_flow(
     year: int = 2023,
     cumul: bool = True,
     sha_tag: str = "",
+    needs_build: bool = False,
+    restart_services: str = "",
 ) -> bool:
     """
     Trigger 3 — DS a poussé un nouveau blueprint vers MLflow explore.
@@ -99,4 +101,6 @@ def update_model_flow(
         metrics=result["metrics"],
         year=year,
         sha_tag=sha_tag,
+        needs_build=needs_build,
+        restart_services=restart_services,
     )
