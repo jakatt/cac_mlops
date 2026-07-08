@@ -506,7 +506,19 @@ def refresh_drift_reports():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _dvc_tag(year: str, cumul: str) -> str:
-    return {"2021": "data-v1", "2022": "data-v2", "2023": "data-v3"}.get(str(year), f"year={year}")
+    """Label DVC cosmétique — data-vN où N = année - FIRST_TRAINING_YEAR + 1.
+    Aucun tag git data-vN n'est plus créé automatiquement (la détection des
+    années disponibles scanne data/raw/, cf. import_raw_data.py) — ce label
+    reste purement indicatif, mais formulé pour rester cohérent sur toutes
+    les années passées et futures (2021→data-v1, 2022→data-v2, 2024→data-v4…)."""
+    from src.data.import_raw_data import FIRST_TRAINING_YEAR
+    try:
+        n = int(year) - FIRST_TRAINING_YEAR + 1
+        if n >= 1:
+            return f"data-v{n}"
+    except (ValueError, TypeError):
+        pass
+    return f"year={year}"
 
 
 def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
