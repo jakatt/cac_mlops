@@ -119,6 +119,14 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
             raise RuntimeError(f"docker compose up -d échoué:\n{e.stderr}")
 
     for service in filter(None, restart_services.split(",")):
+        if service == "prefect-worker":
+            # Se redémarrer soi-même tuerait ce processus avant qu'il ait pu
+            # continuer (test-api, Kapsule, alerte finale) — run orphelin en
+            # RUNNING pour toujours. Inutile de toute façon : le work pool
+            # "process" lance chaque flow run dans un sous-processus neuf,
+            # le code bind-monté est déjà rechargé sans restart.
+            log.warning("Restart de prefect-worker ignoré (auto-référence dangereuse depuis ce flow)")
+            continue
         try:
             subprocess.run(
                 ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
