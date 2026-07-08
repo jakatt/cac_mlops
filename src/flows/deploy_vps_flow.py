@@ -1,17 +1,22 @@
 """
-Deploy VPS flow — smoke test + gate manuelle + promote MLflow + test-api + deploy Kapsule.
+Deploy VPS flow — smoke test + gate manuelle + promote MLflow + compose up + test-api + deploy Kapsule.
 
-Depuis correctif 5 : git pull / docker compose pull / up sont gérés par le
-script SSH de deploy.yml (côté HOST) avant que ce flow soit déclenché.
-Ce flow ne fait plus que :
-  smoke test → gate → promote (si nouveau modèle) → test-api → Kapsule (si OK)
+git pull / docker compose pull (téléchargement des images, sans interruption) sont
+gérés par le script SSH de deploy.yml (côté HOST) avant que ce flow soit déclenché.
+`docker compose up -d` / les redémarrages ciblés (impact VPS) sont en revanche
+exécutés par ce flow, après la gate manuelle — pour que la gate protège bien
+toute interruption de service, sur les 3 triggers :
+  smoke test → gate → promote (T1/T3) + compose up (T2/T3 avec code) → test-api → Kapsule (si OK)
 
-Rollback si test-api KO : alias MLflow pour T1/T3, images Docker :rollback pour T2.
+Rollback si test-api KO : alias MLflow (T1/T3) et/ou images Docker :rollback (T2/T3 avec code),
+les deux étant appliqués indépendamment si le run cumule modèle + code.
 Kapsule n'est déclenché que si test-api OK.
 
-Deux modes d'appel :
-  1. Depuis GitHub Actions (changement code) : sha_tag renseigné, pas de champion.
+Modes d'appel :
+  1. Depuis GitHub Actions (changement code seul) : sha_tag + needs_build/restart_services, pas de champion.
   2. Depuis check-new-data-flow (nouvelle data) : champion + métriques affichés à la gate.
+  3. Depuis update-model-flow (nouveau blueprint) : champion + métriques + éventuellement
+     sha_tag/needs_build/restart_services si le merge inclut aussi du code.
 """
 import logging
 import os
@@ -89,6 +94,42 @@ def get_current_production_task(champion: str) -> dict | None:
     return None
 
 
+@task(name="compose-up")
+def compose_up_task(needs_build: bool, restart_services: str) -> None:
+    """Applique l'interruption VPS après la gate : up -d (si nouvelles images) + restarts ciblés.
+
+    Les images ont déjà été pull-ées côté SSH (deploy.yml) avant la gate — cette étape
+    ne fait qu'appliquer le changement (recréation des conteneurs), donc c'est bien ici
+    que doit se situer la seule interruption de service du trigger 2/3.
+    """
+    import subprocess
+    log = get_run_logger()
+    compose_file = "/app/docker-compose.yml"
+    project_dir = os.getenv("COMPOSE_PROJECT_DIR", "/home/deploy/cac_mlops")
+
+    if needs_build:
+        try:
+            subprocess.run(
+                ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
+                 "up", "-d", "--remove-orphans"],
+                check=True, capture_output=True, text=True,
+            )
+            log.info("docker compose up -d --remove-orphans OK")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"docker compose up -d échoué:\n{e.stderr}")
+
+    for service in filter(None, restart_services.split(",")):
+        try:
+            subprocess.run(
+                ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
+                 "restart", service],
+                check=True, capture_output=True, text=True,
+            )
+            log.info("Restart ciblé OK : %s", service)
+        except subprocess.CalledProcessError as e:
+            log.warning("Restart échoué pour %s — ignoré : %s", service, e.stderr.strip())
+
+
 @task(name="docker-rollback")
 def docker_rollback_task(sha_tag: str = "") -> None:
     """Restaure les images :rollback + recrée les conteneurs (Trigger 2 — code seul)."""
@@ -147,16 +188,21 @@ def deploy_vps_flow(
     metrics: dict | None = None,
     year: int | None = None,
     sha_tag: str = "",
+    needs_build: bool = False,
+    restart_services: str = "",
 ) -> bool:
     """
-    smoke test → gate manuelle → promote @Production (si nouveau modèle)
+    smoke test → gate manuelle → promote @Production + compose up (selon trigger)
     → test-api (validation finale) → Kapsule (seulement si test-api OK).
 
-    Triggers 1 & 3 : si test-api KO → rollback du promote MLflow + stop (pas de Kapsule).
-    Trigger 2 (code seul) : si test-api KO → rollback Docker :rollback + stop (pas de Kapsule).
+    Si test-api KO → rollback indépendant de chaque changement appliqué après la gate :
+    alias MLflow restauré si un modèle a été promu, images :rollback si compose up a tourné
+    (un run peut cumuler les deux — merge blueprint + code). Pas de Kapsule dans tous les cas.
 
-    champion / run_ids / metrics / year : renseignés par check-new-data-flow.
+    champion / run_ids / metrics / year : renseignés par check-new-data-flow / update-model-flow.
     sha_tag : SHA du commit buildé, passé par GitHub Actions.
+    needs_build / restart_services : calculés côté SSH (deploy.yml) à partir du diff git,
+    appliqués ici (après la gate) plutôt que dans le script SSH (avant la gate).
     """
     log = get_run_logger()
 
@@ -199,14 +245,14 @@ def deploy_vps_flow(
         )
     else:
         log.info(
-            "Deploy code OK (SHA: %s)\n"
-            "→ Resume dans Prefect UI pour déployer sur Kapsule",
-            sha_tag or "N/A",
+            "Deploy code (SHA: %s) — needs_build=%s restart_services=%s\n"
+            "→ Resume dans Prefect UI (ou onglet Cockpit) pour appliquer sur le VPS",
+            sha_tag or "N/A", needs_build, restart_services or "aucun",
         )
 
     pause_flow_run(timeout=86400)
 
-    # ── 3. Promote MLflow (uniquement Triggers 1 & 3 — nouveau modèle) ────────
+    # ── 3. Promote MLflow (Triggers 1 & 3 — nouveau modèle) ────────────────────
     previous_production: dict | None = None
     if champion and run_ids:
         previous_production = get_current_production_task(champion)
@@ -215,31 +261,53 @@ def deploy_vps_flow(
         restart_api_task()
         log.info("API redémarrée avec le nouveau modèle @Production")
 
+    # ── 3bis. Compose up (Triggers 2 & 3 — changement de code) ─────────────────
+    # Seule étape qui interrompt le VPS pour le code — désormais après la gate.
+    if needs_build or restart_services:
+        compose_up_task(needs_build, restart_services)
+        ok = smoke_test_task()
+        if not ok:
+            send_alert(
+                "Deploy VPS — smoke test ÉCHOUÉ après compose up",
+                f"Stack non opérationnelle après application du code.\nSHA: {sha_tag or 'N/A'}\n"
+                "Vérifier les logs : docker compose logs api nginx",
+            )
+            docker_rollback_task(sha_tag)
+            raise RuntimeError(
+                f"Smoke test ÉCHOUÉ après compose up — {NGINX_URL}/health ne répond pas après 90s.\n"
+                f"SHA déployé : {sha_tag or 'N/A'}\n"
+                "Rollback Docker :rollback effectué — conteneurs recréés."
+            )
+
     # ── 4. Test-api — validation finale en production ─────────────────────────
     try:
         test_api_flow(skip_rate_limit=True)
         log.info("test-api OK ✓")
     except Exception as exc:
         log.error("test-api ÉCHOUÉ : %s", exc)
+        rolled_back_model = False
+        rolled_back_code = False
         if champion and run_ids:
             log.info("Rollback promote @Production...")
             rollback_promote_task(previous_production, champion)
             restart_api_task()
-        else:
-            log.info("Rollback Docker images :rollback (T2 — code seul)...")
+            rolled_back_model = True
+        if needs_build or restart_services:
+            log.info("Rollback Docker images :rollback (code)...")
             docker_rollback_task(sha_tag)
+            rolled_back_code = True
         send_alert(
             "Deploy VPS — test-api ÉCHOUÉ",
             f"Tests fonctionnels KO après deploy.\nSHA: {sha_tag or 'N/A'}\nErreur: {exc}"
-            + ("\nPromote @Production annulé — rollback effectué."
-               if champion else "\nRollback Docker :rollback effectué — conteneurs recréés."),
+            + ("\nPromote @Production annulé — rollback effectué." if rolled_back_model else "")
+            + ("\nRollback Docker :rollback effectué — conteneurs recréés." if rolled_back_code else ""),
         )
         raise RuntimeError(
             f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
             f"SHA déployé : {sha_tag or 'N/A'}\n"
             f"Erreur : {exc}\n"
-            + ("@Production rollback effectué — l'ancienne version est restaurée.\n"
-               if champion else "Rollback Docker effectué — images :rollback recréées.\n")
+            + ("@Production rollback effectué — l'ancienne version est restaurée.\n" if rolled_back_model else "")
+            + ("Rollback Docker effectué — images :rollback recréées.\n" if rolled_back_code else "")
             + "Actions requises :\n"
             "  1. docker compose logs api --tail=100\n"
             "  2. Vérifier que le modèle @Production est accessible dans MLflow\n"

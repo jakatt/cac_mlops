@@ -1,0 +1,18 @@
+- [Project setup](project_setup.md) — fork de DataScientest, venv `my_env`, notes de récupération historique
+- [MLOps architecture](project_mlops_architecture.md) — stack (FastAPI, MLflow, DVC, Prefect, Scaleway)
+- [VPS access](user_vps_access.md) — SSH user=`deploy`, IP=51.159.187.132, fail2ban, Tailscale
+- [VPS & stack state](project_state_vps.md) — 16 conteneurs, cockpit 11 onglets, thème #156082, lgbm@Production 27 features, _YEAR_RANGE dynamique
+- [CI/CD state](project_cicd_state.md) — PRs #35→#95, 36 tests CI, what-if vma=90vs50, catalogue tests
+- [KPI thresholds](project_kpi_thresholds.md) — f1≥0.60 · auc≥0.77 · acc≥0.72 · recall≥0.58 (split temporel, ~8% marge)
+- [Soutenance schemas](project_soutenance_schemas.md) — 3 triggers CI/CD, blueprint mécanisme, slide sécurité + archi à updater
+- [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
+- [Train cycles fixes](project_train_cycles_fixes.md) — 4 bugs corrigés train.yml lgbm
+- [Full-retrain historique](project_pending_fullretrain.md) — COMPLETED 2026-06-29, bugs corrigés documentés
+- [iCloud sync gotcha](feedback_icloud_sync.md) — repo dans ~/Documents synchronisé iCloud, fichiers dataless bloquent git status
+- [Branching rules](feedback_branching.md) — toujours sur `mlops`, jamais commiter sur `main` directement
+- [PR workflow](feedback_pr_workflow.md) — une PR à la fois, ne jamais ajouter commits sur PR ouverte, attendre merge + resync avant suivante
+- [Deployment rules](feedback_deployment.md) — mounts override image baked, GRADIO_PUBLIC_URL HTTPS, scenarios.py monté gradio-public
+- [Autonomy preference](feedback_autonomy.md) — user délègue totalement, ne jamais interrompre mid-task
+- [Docker prune caution](feedback_image_prune.md) — jamais `docker image prune -af`, autre app sur le VPS
+- [Prefect logs API](feedback_prefect_logs_api.md) — wrapper "logs" obligatoire, limit max 200, print() vs get_run_logger()
+- [DataFrame None check](feedback_dataframe_none_check.md) — jamais `df or []`, toujours `df is not None` explicite

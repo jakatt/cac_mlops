@@ -816,6 +816,207 @@ def refresh_recent_runs() -> pd.DataFrame:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Cockpit — gate manuelle décisionnelle (deploy-vps-flow en pause)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Seuils requis pour la promotion d'un champion — dupliqués depuis
+# src/models/validate_model.py::KPI_THRESHOLDS (service Gradio séparé, pas d'import possible).
+_KPI_THRESHOLDS = {"f1": 0.60, "auc": 0.77, "accuracy": 0.72, "recall": 0.58}
+
+
+def _current_production_summary() -> dict | None:
+    """Résumé du modèle @Production courant — réutilise _load_models_data (onglet Modèles)."""
+    df, _ = _load_models_data()
+    if "Production" not in df.columns:
+        return None
+    prod = df[df["Production"] == "oui"]
+    if prod.empty:
+        return None
+    row = prod.iloc[0]
+    return {"version": row["Version"], "f1": row["F1"], "auc": row["AUC"]}
+
+
+def _prefect_paused_runs() -> list[dict]:
+    """Flow runs deploy-vps-flow en pause (gate manuelle en attente de décision)."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/filter",
+            json={
+                "flows": {"name": {"any_": ["deploy-vps-flow"]}},
+                "flow_runs": {"state": {"type": {"any_": ["PAUSED"]}}},
+                "sort": "START_TIME_DESC",
+            },
+            timeout=5,
+        )
+        runs = r.json()
+        if not isinstance(runs, list):
+            return []
+        for run in runs:
+            if "parameters" not in run:
+                try:
+                    r2 = requests.get(f"{PREFECT_API}/flow_runs/{run['id']}", timeout=5)
+                    run["parameters"] = r2.json().get("parameters", {})
+                except Exception:
+                    run["parameters"] = {}
+        return runs
+    except Exception:
+        return []
+
+
+def _trigger_label(params: dict) -> str:
+    champion = params.get("champion")
+    sha_tag  = params.get("sha_tag") or ""
+    if champion and sha_tag:
+        return "Trigger 3 — Blueprint"
+    if champion:
+        return "Trigger 1 — Nouvelles données"
+    return "Trigger 2 — Code"
+
+
+def _paused_runs_choices() -> list[tuple[str, str]]:
+    """[(label affiché, run_id)] pour peupler le Dropdown de sélection."""
+    choices = []
+    for run in _prefect_paused_runs():
+        params = run.get("parameters") or {}
+        label = f"{_trigger_label(params)} — {_parse_ts(run.get('start_time') or '')}"
+        choices.append((label, run.get("id", "")))
+    return choices
+
+
+def _paused_runs_table() -> pd.DataFrame:
+    rows = []
+    for run in _prefect_paused_runs():
+        params = run.get("parameters") or {}
+        rows.append({
+            "Trigger":  _trigger_label(params),
+            "Démarré":  _parse_ts(run.get("start_time") or ""),
+            "Run ID":   run.get("id", "")[:8],
+        })
+    if not rows:
+        return pd.DataFrame({"Info": ["Aucune gate en attente"]})
+    return pd.DataFrame(rows)
+
+
+def _render_gate_card(run_id: str) -> str:
+    if not run_id:
+        return f"<p style='color:{MUTED};'>Sélectionnez un déploiement en attente.</p>"
+    runs = {r.get("id"): r for r in _prefect_paused_runs()}
+    run = runs.get(run_id)
+    if not run:
+        return f"<p style='color:{MUTED};'>Run introuvable — déjà traité ou expiré.</p>"
+
+    params            = run.get("parameters") or {}
+    champion          = params.get("champion")
+    metrics           = params.get("metrics") or {}
+    year              = params.get("year")
+    sha_tag           = params.get("sha_tag") or ""
+    needs_build       = params.get("needs_build", False)
+    restart_services  = params.get("restart_services", "")
+
+    parts = ['<div style="font-family:\'Inter\',system-ui,sans-serif;">']
+
+    if champion:
+        label = "Trigger 3 — Nouveau blueprint DS" if sha_tag else "Trigger 1 — Nouvelles données"
+        parts.append(f'<p style="font-weight:700;color:{NAVY};margin-bottom:6px;">{label} — année {year}</p>')
+
+        rows_html = ""
+        for algo, m in metrics.items():
+            is_champ = (algo == champion)
+            bg = "background:#e6f2f7;" if is_champ else ""
+            weight = 700 if is_champ else 400
+            rows_html += (
+                f'<tr style="{bg}"><td style="padding:4px 10px;font-weight:{weight};color:{SLATE};">'
+                f'{algo}{" 🏆" if is_champ else ""}</td>'
+                f'<td style="padding:4px 10px;">{m.get("f1", 0):.4f}</td>'
+                f'<td style="padding:4px 10px;">{m.get("recall", 0):.4f}</td>'
+                f'<td style="padding:4px 10px;">{m.get("auc", 0):.4f}</td>'
+                f'<td style="padding:4px 10px;">{m.get("accuracy", 0):.4f}</td></tr>'
+            )
+        parts.append(
+            '<table style="border-collapse:collapse;font-size:.85rem;margin-bottom:8px;">'
+            f'<tr style="color:{MUTED};font-size:.72rem;text-transform:uppercase;">'
+            '<td style="padding:4px 10px;">Algo</td><td style="padding:4px 10px;">F1</td>'
+            '<td style="padding:4px 10px;">Recall</td><td style="padding:4px 10px;">AUC</td>'
+            '<td style="padding:4px 10px;">Accuracy</td></tr>'
+            f'{rows_html}</table>'
+        )
+        parts.append(
+            f'<p style="font-size:.78rem;color:{MUTED};">Seuils requis : '
+            f'F1≥{_KPI_THRESHOLDS["f1"]} · AUC≥{_KPI_THRESHOLDS["auc"]} · '
+            f'Accuracy≥{_KPI_THRESHOLDS["accuracy"]} · Recall≥{_KPI_THRESHOLDS["recall"]}</p>'
+        )
+
+        prod = _current_production_summary()
+        if prod:
+            parts.append(
+                f'<p style="font-size:.82rem;color:{SLATE};">@Production actuel : '
+                f'<b>{prod["version"]}</b> — F1={prod["f1"]} · AUC={prod["auc"]}</p>'
+            )
+
+    if sha_tag:
+        header = (
+            f'<p style="font-weight:700;color:{NAVY};margin-top:10px;">Code inclus dans ce merge</p>'
+            if champion else
+            f'<p style="font-weight:700;color:{NAVY};margin-bottom:6px;">Trigger 2 — Nouveau code</p>'
+        )
+        parts.append(header)
+        commit_url = f"https://github.com/{GITHUB_REPO}/commit/{sha_tag}"
+        parts.append(
+            f'<p style="font-size:.85rem;color:{SLATE};">SHA : '
+            f'<a href="{commit_url}" target="_blank" style="color:{NAVY};">{sha_tag[:8]}</a></p>'
+        )
+        parts.append(
+            f'<p style="font-size:.85rem;color:{SLATE};">Images à reconstruire : '
+            f'{"oui" if needs_build else "non"} · Services à redémarrer : {restart_services or "aucun"}</p>'
+        )
+
+    logs = _fetch_run_logs(run_id, max_lines=15)
+    if logs:
+        parts.append(
+            f'<p style="font-size:.72rem;color:{MUTED};text-transform:uppercase;margin-top:12px;">Derniers logs</p>'
+            f'<pre style="font-size:.72rem;background:#F3F4F6;padding:8px;border-radius:6px;'
+            f'overflow-x:auto;white-space:pre-wrap;">{logs}</pre>'
+        )
+
+    parts.append('</div>')
+    return "".join(parts)
+
+
+def resume_run(run_id: str) -> str:
+    if not run_id:
+        return "Sélectionnez un déploiement avant de valider."
+    try:
+        r = requests.post(f"{PREFECT_API}/flow_runs/{run_id}/resume", json={}, timeout=5)
+        if r.status_code >= 400:
+            return f"Erreur GO ({r.status_code}) : {r.text[:300]}"
+        return f"GO envoyé — déploiement en cours pour {run_id[:8]}."
+    except Exception as e:
+        return f"Erreur Prefect API : {e}"
+
+
+def cancel_run(run_id: str) -> str:
+    if not run_id:
+        return "Sélectionnez un déploiement avant d'interrompre."
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/{run_id}/set_state",
+            json={"state": {"type": "CANCELLING", "name": "Cancelling"}, "force": True},
+            timeout=5,
+        )
+        if r.status_code >= 400:
+            return f"Erreur STOP ({r.status_code}) : {r.text[:300]}"
+        return f"STOP envoyé — déploiement {run_id[:8]} annulé, rien n'a été appliqué en prod."
+    except Exception as e:
+        return f"Erreur Prefect API : {e}"
+
+
+def refresh_gate_queue():
+    choices = _paused_runs_choices()
+    default = choices[0][1] if choices else None
+    return _paused_runs_table(), gr.Dropdown(choices=choices, value=default), _render_gate_card(default)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — Healthcheck
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1388,6 +1589,48 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     map_out = gr.Plot(label="Zones a risque — France")
             top_table = gr.Dataframe(label="Top 10 zones", headers=["Latitude", "Longitude", "Nb accidents", "% graves reel"], interactive=False)
             map_btn.click(fn=run_heatmap, inputs=[grav_sl, acc_sl, catr_cb, samp_sl2], outputs=[map_out, top_table, stats_map])
+
+        # ── Onglet Cockpit : gate manuelle décisionnelle ─────────────────────
+        with gr.Tab("Cockpit"):
+            gr.Markdown(
+                "### Cockpit — validation des déploiements en attente\n"
+                "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
+                "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
+                "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
+            )
+            _gate_choices = _paused_runs_choices()
+            _gate_default = _gate_choices[0][1] if _gate_choices else None
+
+            gate_queue = gr.Dataframe(
+                value=_paused_runs_table(), label="File d'attente", interactive=False,
+            )
+            with gr.Row():
+                gate_dd = gr.Dropdown(
+                    choices=_gate_choices, value=_gate_default,
+                    label="Déploiement à traiter", scale=3,
+                )
+                gate_refresh = gr.Button("Rafraîchir", scale=1)
+            gate_card = gr.HTML(value=_render_gate_card(_gate_default))
+            with gr.Row():
+                go_btn   = gr.Button("GO — Déployer", variant="primary")
+                stop_btn = gr.Button("STOP — Annuler", variant="stop")
+            gate_status = gr.Markdown()
+
+            gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
+            gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
+
+            def _gate_go(run_id):
+                msg = resume_run(run_id)
+                table, dd, card = refresh_gate_queue()
+                return msg, table, dd, card
+
+            def _gate_stop(run_id):
+                msg = cancel_run(run_id)
+                table, dd, card = refresh_gate_queue()
+                return msg, table, dd, card
+
+            go_btn.click(fn=_gate_go, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
+            stop_btn.click(fn=_gate_stop, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
 
         # ── Onglet 3 : Drift ─────────────────────────────────────────────────
         with gr.Tab("Drift"):

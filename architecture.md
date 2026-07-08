@@ -542,7 +542,7 @@ Personne ne le sait
 ║                      ║  ┌─────────────────────────────────────────────┐   ║                            ║
 ║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster               ║
 ║                      ║  │ prefect-worker  image api + kubectl+scw+docker│  ║  state/kapsule_ips (VPS)   ║
-║                      ║  │                                             │   ║  lu par Gradio onglet Infra ║
+║                      ║  │                                             │   ║  lu par Gradio onglet Liens ║
 ║                      ║  │ ML / ETL  : etl · train · full-retrain     │   ║                            ║
 ║                      ║  │             drift-check · check-new-data    │   ╠════════════════════════════╣
 ║                      ║  │             full-retrain · reset            │   ║  PARTAGÉ                   ║
@@ -569,7 +569,8 @@ Personne ne le sait
 ║                      ║  └─────────────────────────────────────────────┘   ║                            ║
 ║                      ║                                                     ║  MinIO (VPS)               ║
 ║                      ║  COCKPITS GRADIO                                    ║  → artefacts MLflow local  ║
-║                      ║  :7860 Tailscale — 11 onglets MLOps complets       ║                            ║
+║                      ║  :7860 Tailscale — 12 onglets MLOps complets       ║                            ║
+║                      ║  (dont Cockpit — gate manuelle GO/STOP)            ║                            ║
 ║                      ║  mlops.jakat-inc.fr — 3 onglets (Predict+WI+PN)   ║  data.gouv.fr (ONISR)      ║
 ║                      ║                                                     ║  accidents 2021→2024       ║
 ╚══════════════════════╩═════════════════════════════════════════════════════╩════════════════════════════╝
@@ -604,7 +605,9 @@ Personne ne le sait
 [select_champion]   →  meilleur sur F1, qualité gate KPI, delta vs @Production
      │ champion qualifié (promote=False si via check-new-data-flow)
      ▼
-[deploy-vps-flow]   →  gate manuelle Prefect UI → promote @Production (après validation)
+[deploy-vps-flow]   →  gate manuelle (Prefect UI ou cockpit Gradio) AVANT toute
+                        interruption → promote @Production (T1/T3) et/ou compose up
+                        (T2/T3 code), après validation
      │
      ▼
 [api service]       →  recharge modèle @Production (restart)
@@ -685,8 +688,9 @@ SCALEWAY VPS — ÉTAT ACTUEL
 │   │  mlflow-k8s/ → artefacts MLflow dans Kapsule                     │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Deploy : GH Actions deploy.yml (CI+Build+Trivy) → SSH trigger →         │
-│            Prefect deploy-vps-flow (gate manuelle) → deploy-kapsule-flow  │
+│   Deploy : GH Actions deploy.yml (CI+Build+Trivy) → SSH (pull images,     │
+│            pas d'interruption) → Prefect deploy-vps-flow (gate manuelle   │
+│            AVANT compose up) → deploy-kapsule-flow                        │
 │   Images : ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:latest           │
 │            + tag :sha-xxxxxxxx par commit (rollback ciblé possible)       │
 │                                                                            │
@@ -825,7 +829,7 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 │   app-creds: JWT_SECRET_KEY · API_USERNAME · API_PASSWORD                 │
 │              POSTGRES_PASSWORD                                             │
 │                                                                            │
-│   IPs dynamiques → state/kapsule_ips sur VPS (lu par Gradio onglet 6)    │
+│   IPs dynamiques → state/kapsule_ips sur VPS (lu par Gradio onglet Liens) │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -932,7 +936,8 @@ COMPORTEMENT AU REDÉMARRAGE VPS
   reset          → reset_flow.py            : vide predictions + rapports drift + MLflow
   check-new-data → check_new_data_flow.py   : détection ONISR → ETL → train → deploy (lundi 8h UTC)
   update-model   → update_model_flow.py     : trigger 3 — extract blueprint → train → gate
-  deploy-vps     → deploy_vps_flow.py       : smoke test → gate → promote → test-api → Kapsule (si OK)
+  deploy-vps     → deploy_vps_flow.py       : smoke test → gate → promote (T1/T3) + compose up (T2/T3 code)
+                                               → test-api (6 tests) → Kapsule (si OK)
   deploy-kapsule → deploy_kapsule_flow.py   : rolling update K8s (si Kapsule actif, sans gate)
   kapsule-up     → kapsule_up_flow.py       : provision cluster K8s + upload modèle S3
   kapsule-down   → kapsule_down_flow.py     : déprovision cluster K8s
@@ -1076,21 +1081,29 @@ EVIDENTLY — DÉTECTION DE DÉRIVE
   Image : ghcr.io/jakatt/cac-mlops-gradio:latest
   URL   : http://100.117.99.62:7860
 
-  8 ONGLETS
-  ──────────
-  1. Predict    : saisie des 27 features → prédiction @Production + probabilité
-                  5 exemples préremplis (données 2023), résultat 🟢/🔴
-  2. What-If    : applique scénarios (météo/nuit/alcool/vitesse),
-                  compare % graves avant vs après sur échantillon
-  3. Points Noirs: density_mapbox accidents France, filtres gravité/catr
-  4. Drift      : sélecteur rapports Evidently, iframe HTML report
-  5. Modèles    : versions MLflow (toutes familles), métriques, promotion @Production
-  6. Pipeline   : déclenchement Prefect flows depuis le cockpit
-                  kapsule-up/down, test-api, diag, disk-cleanup, reset, full-retrain,
-                  check-new-data — tableau des 20 derniers runs (état, durée, heure locale)
-                  filtre texte temps réel, tri par colonne
-  7. Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
-  8. Infra      : URLs Tailscale admin + API publique + IPs Kapsule
+  12 ONGLETS
+  ───────────
+  1.  Accueil    : présentation du projet, liens rapides
+  2.  Predict    : saisie des 27 features → prédiction @Production + probabilité
+                   5 exemples préremplis (données 2023), résultat 🟢/🔴
+  3.  What-If    : applique scénarios (météo/nuit/alcool/vitesse),
+                   compare % graves avant vs après sur échantillon
+  4.  Points Noirs: density_mapbox accidents France, filtres gravité/catr
+  5.  Cockpit    : gate manuelle décisionnelle — file d'attente des déploiements
+                   deploy-vps-flow en pause (PAUSED), métriques modèle (T1/T3) ou
+                   SHA/commit + services impactés (T2/T3-code) pour chaque run,
+                   bouton GO (resume — applique le déploiement) et STOP (annule,
+                   rien n'a encore été appliqué en prod à ce stade)
+  6.  Drift      : sélecteur rapports Evidently, iframe HTML report
+  7.  Modèles    : versions MLflow (toutes familles), métriques, promotion @Production
+  8.  Orchestration : déclenchement Prefect flows depuis le cockpit
+                   kapsule-up/down, test-api, diag, disk-cleanup, reset, full-retrain,
+                   check-new-data — tableau des 20 derniers runs (état, durée, heure locale)
+                   filtre texte temps réel, tri par colonne
+  9.  Healthcheck: healthcheck HTTP tous services VPS + cluster Kapsule
+  10. Liens      : URLs Tailscale admin + API publique + IPs Kapsule
+  11. Architecture: ce document (architecture.md) rendu en HTML dans le cockpit
+  12. Docs       : guides DS / MLOps dev / MLOps prod rendus en HTML
 
   COCKPIT PUBLIC (gradio-public — accès internet)
   ────────────────────────────────────────────────
@@ -1207,28 +1220,41 @@ deploy.yml — push/merge dans main
        ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}:{latest,sha-xxxx}
     2. Scan Trivy CRITICAL (ignore-unfixed) sur les 3 images
        → bloque le deploy si CVE critique détectée
-  JOB 2 — deploy (SSH sur l'hôte VPS — /data/cac_mlops)
-    1. Login GHCR (GHCR_TOKEN depuis .env VPS)
-    2. Tag images courantes → :rollback (sauvegarde avant tout changement)
-    3. git pull origin main (code + config sur le host VPS)
-    4. docker compose pull + up -d --remove-orphans
-    5. Smoke test : curl /health (retry 18×5s — 90s max)
-       → KO : restore :rollback + docker compose up -d + exit 1
-    6. Détection trigger 2 vs trigger 3 :
+  JOB 2 — trigger-deploy (SSH sur l'hôte VPS — /data/cac_mlops)
+    Ce job ne fait que PRÉPARER le déploiement — aucune interruption de service
+    n'a lieu ici. L'interruption (docker compose up -d + redémarrages ciblés)
+    est appliquée par le flow Prefect, APRÈS la gate manuelle (voir section 13).
+    1. git stash + git pull origin main (code + config sur le host VPS)
+    2. Si build détecté : login GHCR · tag images courantes → :rollback ·
+       docker compose pull (télécharge les images — sans les activer)
+    3. Calcul RESTART_SERVICES : services à redémarrer selon `git diff HEAD~1`
+       (nginx si nginx.conf change, gradio/gradio-public si app*.py change,
+       grafana/prometheus/loki/promtail si leur config change, etc.)
+    4. docker compose exec prefect-worker prefect deploy --all
+       (resynchronise les schémas de deployments — paramètres needs_build/restart_services)
+    5. Détection trigger 2 vs trigger 3 :
        BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -cE '^(src/models/|src/features/|config/model_params\.yml)')
-       → BLUEPRINT_CHANGED > 0 : prefect run update-model-flow/update-model (Trigger 3)
-       → Sinon : prefect run deploy-vps-flow/deploy-vps --param sha_tag=${SHA_TAG::8}  (Trigger 2)
+       → BLUEPRINT_CHANGED > 0 : prefect run update-model-flow/update-model
+            --param sha_tag=… needs_build=… restart_services=…  (Trigger 3)
+       → Sinon : prefect run deploy-vps-flow/deploy-vps
+            --param sha_tag=${SHA_TAG::8} needs_build=… restart_services=…  (Trigger 2)
+    Le job réussit dès que le déploiement Prefect est déclenché (fire-and-forget) —
+    le suivi réel (succès/échec/rollback) se fait via Prefect + alertes email +
+    l'onglet Cockpit Gradio, pas via le check GitHub.
 
 cleanup.yml — planifié (cron dimanche 03h00 UTC)
   Nettoyage Docker VPS (dangling images/volumes, optionnellement logs+tmp)
 
 NOTE CD  : le déploiement effectif est entièrement géré par Prefect :
-           deploy-vps-flow : gate → promote (si nouveau modèle) → test-api → Kapsule (si OK)
-           GitHub Actions deploy.yml JOB 2 gère : git pull, compose up, prefect deploy --all,
-           smoke test /health, détection trigger, déclenchement Prefect.
+           deploy-vps-flow : smoke test → gate manuelle (AVANT toute interruption) →
+           promote (T1/T3) + compose up (T2/T3 code) → test-api (6 tests) → Kapsule (si OK)
+           GitHub Actions deploy.yml JOB 2 gère uniquement : git pull, pull images,
+           prefect deploy --all, calcul des flags, déclenchement Prefect.
 
 NOTE Prefect : kapsule-up · kapsule-down · test-api · diag déclenchables
-               depuis le cockpit Gradio onglet Pipeline.
+               depuis le cockpit Gradio onglet Orchestration. La gate manuelle de
+               deploy-vps-flow se traite depuis l'onglet Cockpit (GO/STOP) ou
+               directement dans Prefect UI.
 ```
 
 ---
@@ -1267,12 +1293,15 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║  [deploy.yml — JOB 1 — build]                                                      │  ║
 ║    Build 3 images → ghcr.io/jakatt/ :latest + :sha-xxxxxxxx                       │  ║
 ║    Trivy CRITICAL scan (ignore-unfixed) → bloque si CVE critique                  │  ║
-║  [deploy.yml — JOB 2 — SSH sur l'hôte VPS]                                        │  ║
-║    1. Login GHCR · tag images courantes → :rollback                                │  ║
-║    2. git pull origin main + docker compose pull + up -d                           │  ║
-║    3. Smoke test : curl /health (retry 18×5s) → KO : restore :rollback + exit 1   │  ║
-║    4. Détection : git diff HEAD~1 — pas de blueprint changé                        │  ║
-║    → prefect run deploy-vps-flow/deploy-vps --param sha_tag=xxxxxxxx ─────────► │  │  ║
+║  [deploy.yml — JOB 2 — trigger-deploy — SSH sur l'hôte VPS]                       │  ║
+║    1. git stash + git pull origin main                                            │  ║
+║    2. Si build détecté : login GHCR · tag :rollback · docker compose pull         │  ║
+║       (télécharge les images — AUCUNE interruption à ce stade)                    │  ║
+║    3. Calcul RESTART_SERVICES (git diff → nginx/gradio/grafana/prometheus/…)      │  ║
+║    4. prefect deploy --all (resync schémas — needs_build/restart_services)        │  ║
+║    5. Détection : git diff HEAD~1 — pas de blueprint changé                        │  ║
+║    → prefect run deploy-vps-flow/deploy-vps --param sha_tag=xxxxxxxx              │  ║
+║        needs_build=… restart_services=… ──────────────────────────────────────► │  │  ║
 ║                                                                                 │  │  ║
 ╠═════════════════════════════════════════════════════════════════════════════════╪══╪══╣
 ║                                                                                 │  │  ║
@@ -1283,28 +1312,35 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║    DS tagge run champion : mlflow set_tag("export_to_prod", "true")             │  │  ║
 ║    PR vers main : src/models/ ou src/features/ ou config/model_params.yml       │  │  ║
 ║  [deploy.yml — JOB 2 — SSH VPS — détection BLUEPRINT_CHANGED > 0]              │  │  ║
-║    → prefect run update-model-flow/update-model                                 │  │  ║
+║    (mêmes étapes 1-4 que Trigger 2 — build/restart calculés dans tous les cas) │  │  ║
+║    → prefect run update-model-flow/update-model --param sha_tag=…               │  │  ║
+║        needs_build=… restart_services=…                                         │  │  ║
 ║  [update-model-flow]                                                            │  │  ║
 ║    1. Backup config/model_params.yml courant                                    │  │  ║
 ║    2. extract_blueprint_task() → lit run tagué → écrit config/model_params.yml  │  │  ║
 ║    3. train_flow(year, cumul, promote=False)                                    │  │  ║
 ║    4a. → Pas de champion : restaurer backup + send_alert DS + stop              │  │  ║
 ║    4b. → Champion : garder config/model_params.yml (params DS gagnants)         │  │  ║
-║         deploy-vps-flow(champion, run_ids, ...) ────────────────────────────── ┘  │  ║
-║                                                                                    │  ║
+║         deploy-vps-flow(champion, run_ids, metrics, year,                       │  │  ║
+║                          sha_tag, needs_build, restart_services) ────────────── ┘  │  ║
+║         (needs_build/restart_services non-nuls si le merge inclut aussi du code)   │  ║
 ╠════════════════════════════════════════════════════════════════════════════════════╪══╣
 ║                                                                                    │  ║
 ║  [Prefect — deploy-vps-flow]   (nœud commun triggers 1, 2, 3)  ◄─────────────────┘  ║
 ║  ─────────────────────────────────────────────────────────────────                   ║
-║    1. Smoke test : GET /health (urllib — retry 18×5s)                               ║
-║       → KO : send_alert() + return False                                            ║
-║    2. ★ GATE MANUELLE : pause_flow_run(timeout=86400s)                             ║
-║       Si champion : affiche métriques F1, AUC, Recall pour validation              ║
-║       Opérateur → Prefect UI → clic "Resume"                                        ║
-║    3. Si champion : sauvegarde @Production actuel → promote MLflow → restart api    ║
-║    4. test-api (5 tests, skip_rate_limit=True)                                      ║
-║       → KO (Triggers 1&3) : rollback promote @Production + restart api + stop      ║
-║       → KO (Trigger 2)    : stop (pas de Kapsule)                                  ║
+║    1. Smoke test baseline : GET /health (urllib — retry 18×5s)                       ║
+║       → KO : send_alert() + stop                                                     ║
+║    2. ★ GATE MANUELLE : pause_flow_run(timeout=86400s) — AVANT toute interruption   ║
+║       Si champion : affiche métriques F1, Recall, AUC pour validation               ║
+║       Sinon (code seul) : affiche SHA, needs_build, restart_services                ║
+║       Opérateur → Prefect UI "Resume" OU cockpit Gradio onglet Cockpit (GO/STOP)    ║
+║    3a. Si champion : sauvegarde @Production actuel → promote MLflow → restart api    ║
+║    3b. Si needs_build/restart_services : compose_up_task (docker compose up -d      ║
+║        --remove-orphans + redémarrages ciblés) → 2nd smoke test                    ║
+║        → KO : rollback Docker :rollback + stop (pas de Kapsule)                    ║
+║    4. test-api (6 tests, skip_rate_limit=True)                                      ║
+║       → KO : rollback promote @Production (si modèle promu) ET/OU rollback Docker  ║
+║         :rollback (si compose up appliqué) — indépendamment, selon ce qui a tourné  ║
 ║    5. ─────────────────────────────────────────────────────────────────────► │      ║
 ║                                                                              │      ║
 ║  [Prefect — deploy-kapsule-flow]   (seulement si test-api OK)  ◄─────────── ┘      ║
@@ -1318,12 +1354,17 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║                                                                                    ║
 ╠════════════════════════════════════════════════════════════════════════════════════╣
 ║  INTERRUPTION DE SERVICE                                                           ║
-║  VPS Scaleway : ~30–90s pendant docker compose up -d                              ║
+║  VPS Scaleway : ~30–90s pendant compose_up_task (docker compose up -d) — toujours  ║
+║                 APRÈS la gate manuelle, sur les 3 triggers (aucune interruption    ║
+║                 avant validation humaine, y compris pour un simple changement de   ║
+║                 code seul)                                                        ║
 ║  Kapsule K8s  : ZÉRO — RollingUpdate + readiness probes (HPA min 1 pod actif)    ║
-╚════════════════════════════════════════════════════════════════════════════════════╝
+╚══════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ### Tableaux récapitulatifs — 3 use cases
+
+Dans les 3 tableaux ci-dessous, la ligne **Gate manuelle** est le seul point de contrôle humain — elle intervient systématiquement **avant** la première interruption de service sur le VPS, quel que soit le trigger (modèle promu et/ou code appliqué). Elle se valide soit dans Prefect UI (clic "Resume"), soit depuis le cockpit Gradio, onglet **Cockpit** (bouton **GO** = resume, **STOP** = annule — dans ce cas rien n'a encore été appliqué en prod, aucun rollback n'est nécessaire).
 
 #### Use case 1 — Nouvelle data ONISR (trigger automatique)
 
@@ -1336,9 +1377,10 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | DVC push | Versionnement données sur Scaleway S3 | DVC | `etl_flow` — `dvc_push_task` |
 | Entraînement | Benchmark RF / XGBoost / LightGBM + MLflow tracking | `src/models/train_model.py` | `train_flow` |
 | Sélection | Quality gate KPI + delta > +0.01 F1 vs @Production | `src/models/validate_model.py` | `train_flow` — `select_champion_task` |
-| Gate manuelle | Opérateur valide métriques champion dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
-| Promote | Alias @Production MLflow + Docker restart API | MLflow Registry | `deploy-vps-flow` — `promote_task` |
-| test-api | 5 tests fonctionnels (skip_rate_limit=True) — rollback promote si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
+| Smoke test baseline | GET /health avant tout changement (retry 18×5s) | `src/flows/deploy_vps_flow.py` — `smoke_test_task` | `deploy-vps-flow` |
+| Gate manuelle | Opérateur valide métriques champion (F1/Recall/AUC) — AVANT promote | Prefect UI / Cockpit Gradio — `pause_flow_run` | `deploy-vps-flow` |
+| Promote | Alias @Production MLflow + Docker restart API — seule interruption de ce trigger | MLflow Registry | `deploy-vps-flow` — `promote_task` |
+| test-api | 6 tests fonctionnels (skip_rate_limit=True) — rollback promote si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
 | Kapsule | Rolling update pods K8s — seulement si test-api OK | `kubectl` | `deploy-kapsule-flow` |
 
 #### Use case 2 — Nouveau code MLOps (trigger push vers main)
@@ -1348,11 +1390,16 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | CI | lint + tests sur la branche | pytest, flake8, pip-audit | `ci.yml` |
 | Build images | 3 images Docker → GHCR :latest + :sha-8chrs | `services/*/Dockerfile` | `deploy.yml` JOB 1 |
 | Scan CVE | Trivy CRITICAL sur 3 images — bloque si CRITICAL | `.trivyignore` | `deploy.yml` JOB 1 |
-| VPS pull | Login GHCR · tag :rollback · git pull · compose up | SSH script | `deploy.yml` JOB 2 |
-| Smoke test | GET /health retry 18×5s (90s max) — rollback auto si KO | SSH script | `deploy.yml` JOB 2 |
+| VPS pull | git pull · si build : login GHCR · tag :rollback · docker compose pull (images seulement, **aucune interruption**) | SSH script | `deploy.yml` JOB 2 |
+| Calcul des flags | `git diff HEAD~1` → `needs_build` (bool) + `restart_services` (CSV : nginx, gradio…) | SSH script | `deploy.yml` JOB 2 |
+| Resync schémas | `prefect deploy --all` — enregistre les nouveaux paramètres du flow | Prefect CLI | `deploy.yml` JOB 2 |
 | Détection | `git diff HEAD~1` → pas de blueprint changé → trigger 2 | SSH script | `deploy.yml` JOB 2 |
-| Gate manuelle | Opérateur confirme déploiement sain dans Prefect UI | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
-| test-api | 5 tests fonctionnels (skip_rate_limit=True) — stop si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
+| Déclenchement | `prefect deployment run` avec `sha_tag` + `needs_build` + `restart_services` | SSH script | `deploy.yml` JOB 2 |
+| Smoke test baseline | GET /health sur les conteneurs encore inchangés (retry 18×5s) | `src/flows/deploy_vps_flow.py` — `smoke_test_task` | `deploy-vps-flow` |
+| Gate manuelle | Opérateur valide AVANT toute interruption VPS (SHA, images à builder, services à redémarrer affichés) | Prefect UI / Cockpit Gradio — `pause_flow_run` | `deploy-vps-flow` |
+| Compose up | `docker compose up -d --remove-orphans` + redémarrages ciblés — **seule interruption de ce trigger, après la gate** | `src/flows/deploy_vps_flow.py` — `compose_up_task` | `deploy-vps-flow` |
+| Smoke test post-appli | GET /health après compose up — rollback Docker `:rollback` si KO | `src/flows/deploy_vps_flow.py` — `smoke_test_task` | `deploy-vps-flow` |
+| test-api | 6 tests fonctionnels (skip_rate_limit=True) — rollback Docker `:rollback` si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
 | Kapsule | Rolling update pods K8s — seulement si test-api OK | `kubectl` | `deploy-kapsule-flow` |
 
 #### Use case 3 — Nouveau blueprint DS (trigger modèle)
@@ -1361,14 +1408,16 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 | --- | --- | --- | --- |
 | Exploration | Expériences locales dans `accidents_severity_dev` | `src/models/train_model.py` | local (MLFLOW_RUN_MODE=explore) |
 | Tag champion | DS tagge run MLflow : `export_to_prod=true` | MLflow client API | DS — action manuelle |
-| CI + merge | PR avec `src/models/` ou `config/model_params.yml` | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
-| Détection | `git diff HEAD~1` détecte fichiers model/features/config | SSH script | `deploy.yml` JOB 2 |
+| CI + merge | PR avec `src/models/` ou `config/model_params.yml` (éventuellement du code en plus) | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
+| VPS pull + flags | Mêmes étapes que use case 2 (git pull, images, `needs_build`/`restart_services`) | SSH script | `deploy.yml` JOB 2 |
+| Détection | `git diff HEAD~1` détecte fichiers model/features/config → trigger 3 | SSH script | `deploy.yml` JOB 2 |
 | Extract blueprint | Backup config actuel + lit run tagué → écrit `config/model_params.yml` | `src/scripts/extract_blueprint.py` | `update-model-flow` |
 | Entraînement | Benchmark 3 algos avec nouveaux hyperparamètres | `src/models/train_model.py` | `update-model-flow` |
-| Sélection | Compare vs @Production — si pas meilleur : restaure config + email DS | `src/models/validate_model.py` | `update-model-flow` |
-| Gate manuelle | Opérateur valide si champion trouvé | Prefect UI — `pause_flow_run` | `deploy-vps-flow` |
-| Promote | Alias @Production MLflow + Docker restart API | MLflow Registry | `deploy-vps-flow` — `promote_task` |
-| test-api | 5 tests fonctionnels (skip_rate_limit=True) — rollback promote si KO | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
+| Sélection | Compare vs @Production — si pas meilleur : restaure config + email DS (stop, jamais de gate) | `src/models/validate_model.py` | `update-model-flow` |
+| Gate manuelle | Opérateur valide AVANT toute interruption — modèle (F1/Recall/AUC) et/ou code (SHA, flags) selon le merge | Prefect UI / Cockpit Gradio — `pause_flow_run` | `deploy-vps-flow` |
+| Promote | Alias @Production MLflow + Docker restart API (si champion) | MLflow Registry | `deploy-vps-flow` — `promote_task` |
+| Compose up | `docker compose up -d` + redémarrages ciblés (si le merge inclut aussi du code) | `src/flows/deploy_vps_flow.py` — `compose_up_task` | `deploy-vps-flow` |
+| test-api | 6 tests fonctionnels — si KO : rollback promote ET/OU rollback Docker, indépendamment selon ce qui a tourné | `src/flows/test_api_flow.py` | `deploy-vps-flow` |
 | Kapsule | Rolling update pods K8s — seulement si test-api OK | `kubectl` | `deploy-kapsule-flow` |
 
 ---
@@ -1409,8 +1458,9 @@ AUTOMATIQUE (via check-new-data-flow — lundi 8h UTC)
    (aucune MAJ manuelle requise — fuzzy-match CATEGORY_KEYWORDS automatique)
 2. etl_flow déclenché automatiquement (download, validation schéma, preprocessing, dvc push)
 3. train_flow lancé (benchmark 3 algos, gate KPI, promote=False)
-4. deploy-vps-flow : gate manuelle dans Prefect UI → valider métriques du nouveau modèle
-   → clic "Resume" → promote @Production + restart api → test-api → Kapsule (si OK)
+4. deploy-vps-flow : gate manuelle dans Prefect UI ou cockpit Gradio (onglet Cockpit)
+   → valider métriques du nouveau modèle → GO/Resume → promote @Production + restart api
+   → test-api (6 tests) → Kapsule (si OK)
 5. Commiter le .dvc pointer généré → PR → main  (seule action manuelle restante)
 
 MANUEL (déclenchement hors-cycle ou urgence)
@@ -1419,7 +1469,7 @@ MANUEL (déclenchement hors-cycle ou urgence)
 2. Lancer etl deployment (Prefect UI)  →  download, validation, preprocessing, dvc push
 3. Lancer train deployment (year=N, cumul=true, promote=true)
    → benchmark 3 algos, gate KPI, promotion @Production si meilleur
-4. Vérifier rapport drift dans Gradio onglet 3
+4. Vérifier rapport drift dans Gradio onglet Drift
 5. Commiter le .dvc pointer → PR → main
 ```
 
@@ -1479,7 +1529,7 @@ cac_mlops/
 │   ├── nginx/
 │   │   └── nginx.conf                     # rate limit 20r/min /predict + /reports/ alias
 │   ├── gradio/
-│   │   ├── app.py                         # Cockpit MLOps 11 onglets (Tailscale :7860)
+│   │   ├── app.py                         # Cockpit MLOps 12 onglets, dont Cockpit (Tailscale :7860)
 │   │   ├── app_public.py                  # Cockpit public 3 onglets (https://mlops.jakat-inc.fr)
 │   │   ├── scenarios.py                   # scénarios What-If
 │   │   ├── Dockerfile
@@ -1510,7 +1560,7 @@ cac_mlops/
 │       ├── reset_flow.py                  # vide predictions + rapports drift
 │       ├── check_new_data_flow.py         # détection ONISR → ETL → train → deploy (hebdo lundi 8h)
 │       ├── update_model_flow.py           # trigger 3 — extract blueprint → train → gate (blueprint DS)
-│       ├── deploy_vps_flow.py             # smoke test → gate manuelle → promote → kapsule
+│       ├── deploy_vps_flow.py             # smoke test → gate manuelle (avant interruption) → promote/compose up → kapsule
 │       ├── deploy_kapsule_flow.py         # rolling update K8s (vérifie kapsule_ips, sans gate)
 │       ├── kapsule_up_flow.py             # provision cluster K8s + upload modèle S3
 │       ├── kapsule_down_flow.py           # déprovision cluster K8s
@@ -1603,11 +1653,15 @@ cac_mlops/
 │  Orchestration             │  Prefect (plus léger qu'Airflow)              │
 │                            │  14 deployments, process pool                 │
 │                            │  Gate manuelle : pause_flow_run() natif 3.x  │
+│                            │  → AVANT toute interruption VPS (3 triggers)  │
+│                            │  → Prefect UI ou cockpit Gradio (GO/STOP)     │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  3 triggers production     │  Trigger 1 : cron Prefect (nouvelle data)     │
 │                            │  Trigger 2 : push code → deploy.yml → Prefect │
 │                            │  Trigger 3 : DS blueprint → extract_blueprint  │
 │                            │              → update-model-flow → gate        │
+│                            │  Interruption VPS (promote/compose up) après  │
+│                            │  la gate, jamais avant — pour les 3 triggers  │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  Blueprint DS              │  DS tagge run MLflow : export_to_prod=true    │
 │                            │  update-model-flow : backup config → extract  │
@@ -1620,7 +1674,9 @@ cac_mlops/
 │                            │  3 workflows GH Actions (ci, deploy, cleanup) │
 │                            │                                               │
 │                            │  Sécurité : Trivy CRITICAL + pip-audit        │
-│                            │  Rollback VPS : images :sha-xxxx + :rollback  │
+│                            │  Rollback VPS : alias MLflow (modèle) et/ou   │
+│                            │  images :rollback (code), appliqués           │
+│                            │  indépendamment selon ce qui a été déployé    │
 │                            │  Gate manuelle : pause_flow_run() Prefect 3.x │
 │                            │  Branch protection main activée (gh CLI)      │
 ├────────────────────────────┼────────────────────────────────────────────────┤
