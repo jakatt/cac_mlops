@@ -16,6 +16,12 @@ Le drift de chaque cycle est un drift de features pur (comparaison de la
 nouvelle année vs les précédentes, cf. drift_detection.py) — indépendant du
 modèle. simulate_task() sert uniquement à peupler des métriques de
 monitoring réalistes (Grafana/API), plus à générer la donnée du drift.
+
+Chaque cycle promeut son meilleur qualifié (gate KPI absolue uniquement,
+compare_to_production=False) — pas de comparaison à @Production : celui-ci
+serait fixé par le cycle précédent de ce même run compressé, pas une vraie
+référence de production stable (bloquerait à tort les cycles suivants sur
+une régression mineure et non représentative).
 """
 import logging
 import os
@@ -133,8 +139,12 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
         # explicit_years = replay historique incrémental (pas auto-detect)
         explicit_years = training_years_up_to(year)
         etl_flow(year=year, cumul=cumul, explicit_years=explicit_years)
-        # Trigger 1 : gate KPI absolue, tolérance de régression ≤1 métrique vs @Production
-        train_flow(year=year, cumul=cumul, promote=True, require_improvement=False)
+        # compare_to_production=False : chaque cycle promeut son meilleur qualifié
+        # sans comparer à l'@Production fixé par le cycle précédent de ce même
+        # replay compressé (pas une vraie référence stable — bloquerait à tort
+        # les cycles suivants sur une régression mineure et non représentative).
+        train_flow(year=year, cumul=cumul, promote=True,
+                   require_improvement=False, compare_to_production=False)
         restart_api_task()
 
         if i > 0:
