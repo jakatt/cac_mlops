@@ -190,6 +190,10 @@ jobs:
 
             RESTART_SERVICES=""
             echo "$CHANGED_FILES" | grep -qE '^services/nginx/nginx\.conf$'                    && RESTART_SERVICES="${RESTART_SERVICES}nginx,"
+            # docs/ est servi en bind-mount statique par nginx (/ci-docs/) : un
+            # ajout/renommage/suppression de fichier peut figer le montage sur
+            # une vue périmée (vécu en prod : 404 après un git mv) — restart préventif.
+            echo "$CHANGED_FILES" | grep -qE '^docs/'                                          && RESTART_SERVICES="${RESTART_SERVICES}nginx,"
             echo "$CHANGED_FILES" | grep -qE '^services/gradio/(app\.py|scenarios\.py)$'        && RESTART_SERVICES="${RESTART_SERVICES}gradio,"
             echo "$CHANGED_FILES" | grep -qE '^services/gradio/(app_public\.py|scenarios\.py)$' && RESTART_SERVICES="${RESTART_SERVICES}gradio-public,"
             echo "$CHANGED_FILES" | grep -qE '^infrastructure/grafana/provisioning/'            && RESTART_SERVICES="${RESTART_SERVICES}grafana,"
