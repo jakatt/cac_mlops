@@ -69,15 +69,23 @@ def get_metrics_task(run_id: str, algorithm: str = "") -> dict[str, float]:
 def select_champion_task(
     all_metrics: dict[str, dict[str, float]],
     require_improvement: bool = True,
+    compare_to_production: bool = True,
 ) -> str | None:
     """
     Sélectionne le champion :
       1. Filtre les algos passant tous les seuils KPI absolus
       2. Retient le meilleur sur PRIMARY_METRIC parmi les qualifiés
-      3. Si require_improvement=True (Trigger 3) : vérifie delta > MIN_IMPROVEMENT vs @Production
-         Si require_improvement=False (Trigger 1) : promeu le meilleur qualifié directement —
-         les test sets étant différents entre l'ancien et le nouveau modèle, la comparaison
-         de F1 n'est pas valide (nouveau modèle évalué sur une année plus récente).
+      3. Si compare_to_production=False (full-retrain — replay historique) : promeut le
+         meilleur qualifié directement, sans comparaison. Chaque cycle du replay compare
+         sinon à un @Production fixé par le cycle précédent du MÊME run compressé — pas
+         une vraie référence de production stable, ce qui bloquerait à tort les cycles
+         suivants sur une régression mineure et non représentative.
+         Si require_improvement=True (Trigger 3) : vérifie delta > MIN_IMPROVEMENT vs @Production
+         Si require_improvement=False (Trigger 1) : tolère une régression sur ≤1 métrique vs
+         @Production — les test sets étant différents entre l'ancien et le nouveau modèle,
+         la comparaison stricte de F1 n'est pas valide (nouveau modèle évalué sur une année
+         plus récente), mais une comparaison approximative reste pertinente ici car
+         @Production est une vraie référence de production (pas un artefact de replay).
     Retourne None si aucun algo ne passe les seuils KPI.
     """
     # ── Étape 1 : quality gate (seuils absolus, indépendants de @Production) ──
@@ -110,6 +118,13 @@ def select_champion_task(
         "Meilleur qualifié : %s  %s=%.4f  (autres : %s)",
         champion, PRIMARY_METRIC, champion_score, others or "aucun",
     )
+
+    if not compare_to_production:
+        logger.info(
+            "compare_to_production=False (replay historique) — %s promu directement, "
+            "sans comparaison à @Production", champion,
+        )
+        return champion
 
     # ── Étape 3 : comparaison vs @Production ─────────────────────────────────
     client = mlflow.tracking.MlflowClient()
@@ -209,6 +224,7 @@ def train_flow(
     cumul: bool = True,
     promote: bool = True,
     require_improvement: bool = True,
+    compare_to_production: bool = True,
 ) -> dict:
     """
     Benchmark RF / XGBoost / LGBM sur les mêmes données.
@@ -218,6 +234,11 @@ def train_flow(
     require_improvement=False (Trigger 1) : gate KPI absolue suffit — les test sets
                                entre l'ancien et le nouveau modèle sont différents
                                (années différentes), la comparaison F1 n'est pas valide.
+    compare_to_production=False (full-retrain — replay historique) : ignore toute
+                               comparaison à @Production (require_improvement n'a alors
+                               plus d'effet) — chaque cycle du replay promeut son meilleur
+                               qualifié, sans être bloqué par l'@Production fixé par le
+                               cycle précédent du même run compressé.
 
     Returns dict with keys: champion (str|None), run_ids, metrics, promoted (bool).
     When promote=False, champion is identified but @Production is not updated —
@@ -225,8 +246,8 @@ def train_flow(
     """
     years = training_years_up_to(year) if cumul else [year]
     logger.info(
-        "Benchmark : years=%s  algorithms=%s  require_improvement=%s",
-        years, ALGORITHMS, require_improvement,
+        "Benchmark : years=%s  algorithms=%s  require_improvement=%s  compare_to_production=%s",
+        years, ALGORITHMS, require_improvement, compare_to_production,
     )
 
     run_ids: dict[str, str] = {}
@@ -238,7 +259,11 @@ def train_flow(
         algo: get_metrics_task(run_id, algorithm=algo) for algo, run_id in run_ids.items()
     }
 
-    champion = select_champion_task(all_metrics, require_improvement=require_improvement)
+    champion = select_champion_task(
+        all_metrics,
+        require_improvement=require_improvement,
+        compare_to_production=compare_to_production,
+    )
 
     promoted = False
     if champion is not None and promote:
