@@ -1,11 +1,12 @@
 """
-Drift monitoring flow — Evidently report comparing production predictions
-vs X_train reference.
+Drift monitoring flow — Evidently report comparant les features d'une année
+à la référence des années précédentes (drift pur, indépendant du modèle et
+des prédictions — cf. services/monitoring/drift_detection.py).
 
-Triggered manually after simulate_production.py has populated the
-predictions table (or automatically at the end of the retrain pipeline).
-No cron schedule : drift is checked once per retrain cycle (annual),
-not monthly, since we have no real continuous production traffic.
+Déclenché automatiquement à la fin de check-new-data-flow (nouvelle année) et
+de chaque cycle de full-retrain-flow (i>0), ou manuellement depuis l'onglet
+Orchestration. No cron dédié : le drift est vérifié une fois par cycle
+(annuel), pas en continu, puisqu'on n'a pas de trafic de production réel.
 
 On drift CRITICAL : alert email only. Retraining is NOT triggered
 automatically — labels N+1 are unavailable (ONISR publishes with ~2yr
@@ -54,11 +55,13 @@ def check_threshold_task(summary: dict) -> str:
 
 
 @flow(name="drift-monitoring-flow", flow_run_name="drift-{year}", log_prints=True)
-def drift_monitoring_flow(year: str | None = None) -> dict:
+def drift_monitoring_flow(year: int | str | None = None) -> dict:
     """
     Annual drift detection:
-    1. Fetch year's predictions from PostgreSQL
-    2. Compare with X_train reference (Evidently)
+    1. Charge les features preprocessées de `year` (X_test) vs la référence
+       des années précédentes (X_train, même dossier cumulatif — cf.
+       drift_detection.py::run_drift_report)
+    2. Compare via Evidently (drift de features, indépendant du modèle)
     3. Alert email sur WARNING / CRITICAL
 
     Aucun réentraînement automatique : les labels N+1 sont indisponibles
@@ -86,17 +89,19 @@ def drift_monitoring_flow(year: str | None = None) -> dict:
         logger.warning("CRITICAL drift detected — alerte envoyée, action manuelle requise")
         send_alert(
             f"Drift CRITICAL {year} — action manuelle requise",
-            f"Dérive critique détectée sur les prédictions de production.\n\n"
+            f"Dérive critique détectée sur les features de l'année {year} "
+            f"vs les années précédentes ({summary.get('reference_years', [])}).\n\n"
             f"{drift_info}\n\n"
-            f"Action : quand les données ONISR de l'année N seront disponibles,\n"
-            f"déclencher manuellement le cycle annuel via Prefect UI ou train.yml.",
+            f"Action : vérifier si les seuils KPI restent pertinents, planifier\n"
+            f"le prochain cycle annuel si nécessaire.",
         )
 
     elif level == "WARNING":
         logger.warning("WARNING drift detected — monitoring conseillé")
         send_alert(
             f"Drift WARNING {year} — surveillance recommandée",
-            f"Dérive modérée détectée sur les prédictions de production.\n\n{drift_info}",
+            f"Dérive modérée détectée sur les features de l'année {year} "
+            f"vs les années précédentes ({summary.get('reference_years', [])}).\n\n{drift_info}",
         )
 
     return summary

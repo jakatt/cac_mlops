@@ -95,7 +95,8 @@ def etl_flow(
     urls: pre-resolved {category: download_url} — passed by check-new-data-flow.
     explicit_years: liste d'années à préprocesser (full_retrain_flow — replay historique).
                     Si None en mode cumul : auto-détection via get_training_years()
-                    (toutes les années disponibles sauf la dernière = drift).
+                    (toutes les années disponibles — la plus récente sert de test set
+                    temporel dans process_years, sans être exclue du pipeline).
     """
     download_task(year, urls=urls)
     validate_task(year)
@@ -103,7 +104,7 @@ def etl_flow(
     if explicit_years is not None:
         years = explicit_years
     elif cumul:
-        # Production : exclut automatiquement la dernière année (réservée drift)
+        # Production : toutes les années disponibles (cf. get_training_years())
         years = get_training_years()
     else:
         years = [year]

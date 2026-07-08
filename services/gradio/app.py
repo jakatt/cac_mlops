@@ -805,6 +805,32 @@ def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool
 def trigger_full_retrain(max_sim_rows: int = 2000) -> str:
     return _prefect_trigger("full-retrain", {"max_sim_rows": int(max_sim_rows or 2000)}, wait_s=0)
 
+
+def show_last_full_retrain_logs() -> str:
+    """full-retrain tourne en fire-and-forget (~15 min, trop long pour bloquer la
+    requête) — ce bouton permet de consulter les logs du dernier run à tout moment,
+    pendant l'exécution ou après, sans avoir à ouvrir Prefect UI."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/filter",
+            json={
+                "flows": {"name": {"any_": ["full-retrain-flow"]}},
+                "sort": "START_TIME_DESC",
+                "limit": 1,
+            },
+            timeout=5,
+        )
+        runs = r.json()
+        if not runs:
+            return "Aucun run full-retrain trouvé."
+        run = runs[0]
+        state_name = (run.get("state") or {}).get("name", "?")
+        header = f"{run.get('name', '?')} — {state_name} ({_parse_ts(run.get('start_time') or '')})"
+        logs = _fetch_run_logs(run["id"], max_lines=60)
+        return f"{header}\n\n{logs}" if logs else header
+    except Exception as e:
+        return f"Erreur Prefect API : {e}"
+
 def trigger_check_new_data() -> str:
     return _prefect_trigger("check-new-data")
 
@@ -1764,7 +1790,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     action_result = gr.Textbox(
                         label="Résultat", lines=22, interactive=False,
                     )
-                    clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
+                    with gr.Row():
+                        clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
+                        retrain_logs_btn = gr.Button(
+                            "Voir logs full-retrain", variant="secondary",
+                        )
 
             # Table pleine largeur
             runs_table = gr.Dataframe(
@@ -1834,6 +1864,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
             table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
             clear_btn.click(fn=lambda: "", outputs=action_result)
+            retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
 
         # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):

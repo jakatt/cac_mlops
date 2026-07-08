@@ -14,8 +14,11 @@ Full automation chain (nouvelle data → prod):
   check-new-data-flow
     → etl-flow(year=N, urls={...})       — download par URL, pas de FILENAMES
     → train-flow(year=N, cumul=True)     — benchmark, champion sélectionné sans promote
+                                            (N inclus dans l'entraînement — test set temporel)
     → deploy-vps-flow(champion, metrics) — gate manuelle dans Prefect UI
     → deploy-kapsule-flow()              — rolling update automatique si Kapsule actif
+    → drift-monitoring-flow(year=N)      — drift de features N vs années précédentes
+                                            (indépendant du modèle, alerte seulement)
 """
 import logging
 
@@ -108,6 +111,7 @@ def check_new_data_flow() -> None:
     from src.flows.etl_flow import etl_flow
     from src.flows.train_flow import train_flow
     from src.flows.deploy_vps_flow import deploy_vps_flow
+    from src.flows.drift_monitoring_flow import drift_monitoring_flow
 
     resources = fetch_resources_task()
     new_year, matched_urls = detect_new_year_task(resources)
@@ -163,3 +167,8 @@ def check_new_data_flow() -> None:
         metrics=result["metrics"],
         year=new_year,
     )
+
+    # Drift de features new_year vs années précédentes — indépendant du modèle,
+    # calculé même si le champion n'a pas encore été validé/promu (alerte seule,
+    # jamais de retrain automatique).
+    drift_monitoring_flow(year=str(new_year))

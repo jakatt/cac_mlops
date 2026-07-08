@@ -25,7 +25,8 @@
 `check-new-data-flow` tourne chaque lundi 8h. S'il détecte une nouvelle année sur data.gouv.fr (4/4 fichiers disponibles) :
 
 ```text
-ETL → validation schéma → train → sélection champion → GATE MANUELLE → promote → test-api → Kapsule (si OK)
+ETL → validation schéma → train (année incluse, test set temporel) → sélection champion
+  → GATE MANUELLE → promote → test-api → Kapsule (si OK) → drift (features vs années précédentes)
 ```
 
 **Règle de promotion T1 :** gate KPI absolue (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72).
