@@ -191,6 +191,17 @@ services:
       - ./state:/app/state
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/app/docker-compose.yml:ro               # rollback Docker T2 (docker compose up -d)
+      # `docker compose` exécuté DEPUIS ce conteneur (compose_up_task,
+      # docker_rollback_task) tourne avec --project-directory pointant sur
+      # le chemin HOST (COMPOSE_PROJECT_DIR ci-dessus) — nécessaire pour
+      # que le daemon (côté host) résolve correctement les volumes relatifs
+      # d'un service fraîchement recréé. Mais le process compose lui-même
+      # tourne DANS ce conteneur : sans ce montage, il ne peut pas lire le
+      # .env à ce même chemin et TOUTES les variables ${VAR:-défaut} du
+      # fichier retombent sur leur valeur par défaut — y compris
+      # DOCKER_VOLUMES_PATH, ce qui a fait pointer postgresql/minio sur des
+      # volumes vides lors d'un déploiement (incident vécu, 2026-07-09).
+      - ./.env:${COMPOSE_PROJECT_DIR:-/home/deploy/cac_mlops}/.env:ro
     depends_on:
       prefect-server:
         condition: service_healthy
