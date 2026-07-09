@@ -128,12 +128,21 @@ def clear_drift_reports_task() -> int:
 async def clear_postgres_full_task() -> int:
     """TRUNCATE toutes les tables du schéma public — predictions + tout MLflow
     (registry, runs, experiments, traces...). CASCADE gère les FK entre tables
-    MLflow automatiquement. RESTART IDENTITY remet à zéro les séquences."""
+    MLflow automatiquement. RESTART IDENTITY remet à zéro les séquences.
+
+    `alembic_version` est explicitement exclue : elle contient la seule ligne
+    qui dit à MLflow "le schéma est déjà à la dernière migration". La vider
+    ferait croire à MLflow, au redémarrage, qu'aucune migration n'a jamais
+    tourné — il tenterait de toutes les rejouer sur des tables qui existent
+    déjà (ALTER TABLE ADD COLUMN sur une colonne déjà présente, etc.), ce qui
+    échoue. Les données, elles, sont bien effacées comme les autres tables."""
     import asyncpg
     log = get_run_logger()
     conn = await asyncpg.connect(_build_dsn())
     try:
-        rows = await conn.fetch("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        rows = await conn.fetch(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'alembic_version'"
+        )
         names = [r["tablename"] for r in rows]
         if names:
             quoted = ", ".join(f'"{n}"' for n in names)
