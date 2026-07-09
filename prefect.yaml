@@ -88,9 +88,9 @@ deployments:
     parameters:
       max_sim_rows: 2000
 
-  # ── Reset (RAZ) — vide la table predictions + rapports drift ─────────────────
-  # clear_mlflow=true supprime tous les runs et versions MLflow de
-  # accidents_severity (accidents_severity_explore préservé).
+  # ── Reset (RAZ) — options indépendantes par composant + full_reset ───────────
+  # Le Cockpit passe toujours les 8 booléens explicitement ; ces valeurs ne
+  # servent que si le déploiement est lancé sans paramètres (Prefect UI, CLI).
   - name: reset
     entrypoint: src/flows/reset_flow.py:reset_flow
     work_pool:
@@ -99,6 +99,11 @@ deployments:
       clear_predictions: true
       clear_drift: true
       clear_mlflow: false
+      clear_postgres_full: false
+      clear_minio: false
+      clear_grafana: false
+      clear_loki: false
+      full_reset: false
 
   # ── Kapsule Up — crée node pool + déploie stack K8s ─────────────────────────
   # node_type : type de nœud Scaleway (BASIC3-X2C-8G, GP1-S, ...)
