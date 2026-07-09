@@ -215,17 +215,6 @@ def clear_loki_task() -> None:
     log.warning("event=reset severity=info component=loki volumes_removed=%s", vols)
 
 
-@task(name="restart-mlflow-api")
-def restart_mlflow_api_task() -> None:
-    """Après un reset postgres_full/minio, mlflow et l'api gardent en cache
-    l'ancien état (registry, modèle chargé) — un restart force une reconnexion
-    propre à la base/au bucket désormais vides."""
-    log = get_run_logger()
-    _compose("restart", "mlflow")
-    _compose("restart", "api")
-    log.info("mlflow + api redémarrés après reset")
-
-
 @flow(name="reset-flow", log_prints=True)
 async def reset_flow(
     clear_predictions: bool = True,
@@ -268,9 +257,14 @@ async def reset_flow(
         clear_loki_task()
         result["loki_reset"] = True
 
-    if clear_postgres_full or clear_minio:
-        restart_mlflow_api_task()
-        result["mlflow_api_restarted"] = True
+    # Ni mlflow ni l'api ne sont redémarrés ici volontairement : l'api garde en
+    # mémoire le modèle déjà chargé (il n'est pas rechargé à chaque prédiction)
+    # et continue de servir normalement, même si son registre/artefacts viennent
+    # d'être vidés. Ça évite une fenêtre de /predict en 503 et les logs
+    # d'erreur associés entre la RAZ et le premier cycle du full-retrain qui
+    # suit — celui-ci fait déjà son propre restart_api_task() après avoir
+    # promu un premier champion. Seuls les événements du full-retrain restent
+    # visibles dans Loki/Grafana après une RAZ totale.
 
     logger.info("Reset complete: %s", result)
     return result
