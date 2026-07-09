@@ -9,7 +9,6 @@ Chaîne : extract blueprint → train avec nouveaux hyperparamètres
 Déclenché par deploy.yml quand src/models/, src/features/ ou
 config/model_params.yml changent lors d'un push → PR → merge main.
 """
-import logging
 from pathlib import Path
 
 from prefect import flow, task, get_run_logger
@@ -17,8 +16,6 @@ from prefect import flow, task, get_run_logger
 from src.flows.deploy_vps_flow import deploy_vps_flow
 from src.flows.train_flow import train_flow
 from src.utils.email_utils import send_alert
-
-logger = logging.getLogger(__name__)
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "model_params.yml"
 

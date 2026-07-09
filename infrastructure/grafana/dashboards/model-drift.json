@@ -1,6 +1,7 @@
 {
   "title": "cac-mlops — Model Drift",
   "uid": "cac-mlops-drift",
+  "tags": ["cac-mlops"],
   "schemaVersion": 38,
   "refresh": "5m",
   "time": { "from": "now-7d", "to": "now" },

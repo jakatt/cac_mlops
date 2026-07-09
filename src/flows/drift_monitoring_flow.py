@@ -14,27 +14,26 @@ delay), so retraining on the same data produces an identical model.
 Drift is an early warning for the next annual cycle.
 """
 import json
-import logging
 
-from prefect import flow, task
+from prefect import flow, task, get_run_logger
 
 from services.monitoring.drift_detection import run_drift_report, _default_year
 from src.utils.email_utils import send_alert
 
-logger = logging.getLogger(__name__)
-
 
 @task(name="run-evidently-report")
 def drift_report_task(year: str) -> dict:
-    logger.info("Running Evidently drift report for %s", year)
+    log = get_run_logger()
+    log.info("Running Evidently drift report for %s", year)
     summary = run_drift_report(year)
-    logger.info("Report summary: %s", json.dumps(summary))
+    log.info("Report summary: %s", json.dumps(summary))
     return summary
 
 
 @task(name="check-drift-threshold")
 def check_threshold_task(summary: dict) -> str:
     """Returns severity: OK / WARNING / CRITICAL."""
+    log = get_run_logger()
     share = summary.get("drift_share", 0.0)
 
     if share > 0.25:
@@ -44,7 +43,7 @@ def check_threshold_task(summary: dict) -> str:
     else:
         level = "OK"
 
-    logger.info(
+    log.info(
         "Drift level=%s share=%.1f%% drifted=%s/%s",
         level,
         share * 100,
@@ -70,10 +69,11 @@ def drift_monitoring_flow(year: int | str | None = None) -> dict:
 
     Returns summary dict with drift metrics.
     """
+    log = get_run_logger()
     if year is None:
         year = _default_year()
 
-    logger.info("Drift monitoring for year=%s", year)
+    log.info("Drift monitoring for year=%s", year)
 
     summary = drift_report_task(year)
     level   = check_threshold_task(summary)
@@ -86,7 +86,10 @@ def drift_monitoring_flow(year: int | str | None = None) -> dict:
     )
 
     if level == "CRITICAL":
-        logger.warning("CRITICAL drift detected — alerte envoyée, action manuelle requise")
+        log.warning(
+            "event=alert severity=critical topic=drift year=%s share=%.3f",
+            year, summary.get("drift_share", 0.0),
+        )
         send_alert(
             f"Drift CRITICAL {year} — action manuelle requise",
             f"Dérive critique détectée sur les features de l'année {year} "
@@ -97,7 +100,10 @@ def drift_monitoring_flow(year: int | str | None = None) -> dict:
         )
 
     elif level == "WARNING":
-        logger.warning("WARNING drift detected — monitoring conseillé")
+        log.warning(
+            "event=alert severity=warning topic=drift year=%s share=%.3f",
+            year, summary.get("drift_share", 0.0),
+        )
         send_alert(
             f"Drift WARNING {year} — surveillance recommandée",
             f"Dérive modérée détectée sur les features de l'année {year} "

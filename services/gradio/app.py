@@ -1043,6 +1043,15 @@ def cancel_run(run_id: str) -> str:
         )
         if r.status_code >= 400:
             return f"Erreur STOP ({r.status_code}) : {r.text[:300]}"
+        # Loggué ici (service=gradio), pas côté flow : un cancel termine le
+        # process avant qu'il ait une chance de logguer sa propre résolution
+        # (contrairement au GO, qui reprend l'exécution — loggué dans deploy_vps_flow.py).
+        runs = {r2.get("id"): r2 for r2 in _prefect_paused_runs()}
+        params = (runs.get(run_id) or {}).get("parameters") or {}
+        logger.warning(
+            "event=gate_resolved decision=STOP trigger=%s sha=%s run_id=%s",
+            _trigger_label(params), params.get("sha_tag") or "-", run_id[:8],
+        )
         return f"STOP envoyé — déploiement {run_id[:8]} annulé, rien n'a été appliqué en prod."
     except Exception as e:
         return f"Erreur Prefect API : {e}"
@@ -2015,16 +2024,18 @@ git pull && dvc pull          # sync code + données depuis S3
 | node-exporter:9100 | CPU / RAM / disk VPS |
 | nginx-exporter:9113 | connexions nginx, taux 4xx/5xx |
 
-**Grafana** `:3000` (Tailscale) — 4 dashboards provisionnés
+**Grafana** `:3000` (Tailscale) — 5 dashboards provisionnés (dossier `cac-mlops`)
+- `home` — vue d'ensemble (modèle en prod, RAM/disque, disponibilité API, liens vers les 4 autres)
+- `resilience` — gates (GO/STOP), interruptions, rollbacks, erreurs flow, disponibilité API
 - `api-performance` — latence, taux erreur, throughput
 - `model-drift` — drift_share, features driftées (Evidently → Prometheus)
 - `system-health` — CPU / RAM / disk VPS en temps réel
-- `prefect-logs` — logs flows via datasource Loki
 
 **Loki + Promtail** (interne Docker)
-Promtail scrape les logs de tous les conteneurs → Loki → Grafana Explore
+Promtail scrape les logs de tous les conteneurs (dont les événements logfmt structurés
+`event=gate_open/gate_resolved/interruption_*/rollback/alert`) → Loki → Grafana
 
-**7 alertes email (SMTP)**
+**9 règles d'alerte Grafana (email SMTP)**
 
 | Type | Alerte | Seuil |
 |---|---|---|
@@ -2032,9 +2043,11 @@ Promtail scrape les logs de tous les conteneurs → Loki → Grafana Explore
 | Prometheus | DDoS 429 | > 50 / 5 min |
 | Prometheus | RAM critique | < 10% |
 | Prometheus | Disk /data | < 15% |
-| Loki | Erreur flow Prefect | pattern ERROR dans logs |
-| Loki | Taux erreur API | > 5% sur 5 min |
-| Loki | OOMKilled | pattern OOMKilled |
+| Loki | Erreur flow Prefect | `ERROR`\\|`CRITICAL` dans les logs |
+| Loki | Aucun champion sélectionné | `event=alert topic=no_champion` |
+| Loki | Drift critique | `event=alert topic=drift severity=critical` |
+| Loki | Gate refusée (STOP) | `event=gate_resolved decision=STOP` |
+| Loki | Rollback déclenché | `event=rollback` |
 """)
 
                 # CI/CD

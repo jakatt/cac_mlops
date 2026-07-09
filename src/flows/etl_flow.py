@@ -4,33 +4,33 @@ ETL flow — download raw ONISR data, validate, push to DVC, preprocess.
 Triggered manually, from check-new-data-flow (with pre-resolved URLs),
 or as the first step of full_retrain_flow.
 """
-import logging
 import subprocess
 from pathlib import Path
 
-from prefect import flow, task
+from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import download_year, training_years_up_to, get_training_years
 from src.utils.email_utils import send_alert
 
-logger = logging.getLogger(__name__)
-
 
 @task(name="download-raw-data", retries=2, retry_delay_seconds=30)
 def download_task(year: int, urls: dict[str, str] | None = None) -> None:
-    logger.info("Downloading ONISR data for year %d", year)
+    log = get_run_logger()
+    log.info("Downloading ONISR data for year %d", year)
     download_year(year, urls=urls)
-    logger.info("Download complete for year %d", year)
+    log.info("Download complete for year %d", year)
 
 
 @task(name="validate-schema")
 def validate_task(year: int) -> None:
     """3-level schema validation. Raises RuntimeError on CRITICAL — stoppe le pipeline."""
     from src.data.schema_validator import validate
+    log = get_run_logger()
     report = validate(year)
     level = report.overall_level
 
     if level == "CRITICAL":
+        log.error("event=alert severity=critical topic=schema_validation year=%d", year)
         send_alert(
             f"Validation CRITICAL — année {year}",
             f"Le pipeline ETL est stoppé.\n\n{report.summary()}",
@@ -41,17 +41,19 @@ def validate_task(year: int) -> None:
         )
 
     if level == "WARNING":
+        log.warning("event=alert severity=warning topic=schema_validation year=%d", year)
         send_alert(
             f"Validation WARNING — année {year}",
             f"Pipeline continue mais des anomalies ont été détectées.\n\n{report.summary()}",
         )
 
-    logger.info("Validation level=%s year=%d", level, year)
+    log.info("Validation level=%s year=%d", level, year)
 
 
 @task(name="dvc-push", retries=1, retry_delay_seconds=30)
 def dvc_push_task(year: int) -> None:
     """Track raw data with DVC and push to Scaleway S3 (source de vérité partagée)."""
+    log = get_run_logger()
     raw_path = f"data/raw/{year}"
     dvc_file = Path(f"data/raw/{year}.dvc")
 
@@ -60,7 +62,7 @@ def dvc_push_task(year: int) -> None:
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        logger.warning("dvc add failed: %s", r.stderr.strip())
+        log.warning("dvc add failed: %s", r.stderr.strip())
         return
 
     push_target = str(dvc_file) if dvc_file.exists() else raw_path
@@ -69,17 +71,18 @@ def dvc_push_task(year: int) -> None:
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        logger.warning("dvc push failed: %s", r.stderr.strip())
+        log.warning("dvc push failed: %s", r.stderr.strip())
     else:
-        logger.info("dvc push OK — data/raw/%d → Scaleway S3", year)
+        log.info("dvc push OK — data/raw/%d → Scaleway S3", year)
 
 
 @task(name="preprocess-data")
 def preprocess_task(years: list[int]) -> None:
     from src.data.make_dataset import process_years
-    logger.info("Preprocessing years: %s", years)
+    log = get_run_logger()
+    log.info("Preprocessing years: %s", years)
     process_years(years)
-    logger.info("Preprocessing complete — %d years", len(years))
+    log.info("Preprocessing complete — %d years", len(years))
 
 
 @flow(name="etl-flow", flow_run_name="etl-year{year}", log_prints=True)

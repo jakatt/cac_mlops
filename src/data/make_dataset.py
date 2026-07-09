@@ -18,7 +18,10 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from .import_raw_data import PROJECT_ROOT, training_years_up_to, discover_raw_files  # noqa: F401
+from src.utils.logging_utils import init_logging
 
+init_logging()  # au niveau module : fixe le niveau INFO que ce fichier soit importé
+                # par un flow Prefect ou exécuté en CLI via main()
 logger = logging.getLogger(__name__)
 
 
@@ -202,12 +205,6 @@ def process_years(
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s  %(levelname)-8s  %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
     parser = argparse.ArgumentParser(description="Preprocess ONISR data")
     parser.add_argument("--year", type=int, required=True,
                         help="Most recent year to include")

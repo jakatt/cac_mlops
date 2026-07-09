@@ -237,7 +237,7 @@ groups:
               to: 0
             datasourceUid: loki
             model:
-              expr: 'count_over_time({service="prefect-worker"} |= "Aucun algorithme" [10m])'
+              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="alert", topic="no_champion" [10m])'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -279,7 +279,7 @@ groups:
               to: 0
             datasourceUid: loki
             model:
-              expr: 'count_over_time({service="prefect-worker"} |= "CRITICAL drift detected" [5m])'
+              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="alert", topic="drift", severity="critical" [5m])'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -310,3 +310,87 @@ groups:
           summary: "Drift critique détecté par Evidently — action manuelle requise, rapport disponible dans Grafana"
         labels:
           severity: critical
+
+      - uid: gate-stop
+        title: "Prefect — gate refusée (STOP)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service=~"prefect-worker|gradio"} | logfmt | event="gate_resolved", decision="STOP" [5m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Un déploiement en attente de gate a été refusé (STOP) depuis le Cockpit — rien n'a été appliqué en prod"
+        labels:
+          severity: info
+
+      - uid: rollback-triggered
+        title: "Prefect — rollback déclenché"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="rollback" [5m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Rollback automatique déclenché (alias MLflow, image Docker ou Kapsule) — un smoke test/test-api a échoué après application"
+        labels:
+          severity: warning

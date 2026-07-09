@@ -17,11 +17,9 @@ import sys
 
 import mlflow
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    datefmt="%H:%M:%S",
-)
+from src.utils.logging_utils import init_logging
+
+init_logging()
 logger = logging.getLogger(__name__)
 
 KPI_THRESHOLDS = {

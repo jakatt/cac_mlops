@@ -61,7 +61,40 @@ DRIFT_REPORT_TIMESTAMP = Gauge(
     registry=REGISTRY,
 )
 
+# ── Modèle en production (mis à jour paresseusement à chaque scrape /metrics) ─
+MODEL_INFO = Gauge(
+    "mlops_model_info",
+    "Modèle actuellement @Production (valeur=1, identité portée par les labels)",
+    ["model", "version"],
+    registry=REGISTRY,
+)
+
 _LEVEL_MAP = {"OK": 0, "WARNING": 1, "CRITICAL": 2}
+
+
+def update_model_info() -> None:
+    """Interroge MLflow pour l'alias @Production et met à jour MODEL_INFO.
+
+    L'API tourne en continu (contrairement aux flows Prefect, éphémères) —
+    c'est le seul endroit qui peut exposer "quel modèle est en prod" à
+    Prometheus sans dépendre des logs ni d'un datasource MLflow (inexistant
+    dans Grafana). No-op silencieux si MLflow est injoignable.
+    """
+    try:
+        import mlflow
+        from src.models.train_model import MODEL_NAMES
+
+        client = mlflow.tracking.MlflowClient()
+        MODEL_INFO.clear()
+        for model_name in MODEL_NAMES.values():
+            try:
+                mv = client.get_model_version_by_alias(model_name, "Production")
+                MODEL_INFO.labels(model=model_name, version=mv.version).set(1)
+                return
+            except Exception:
+                continue
+    except Exception:
+        pass
 
 
 def update_drift_metrics_from_file(reports_path: Path) -> None:
