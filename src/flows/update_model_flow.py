@@ -6,8 +6,11 @@ Chaîne : extract blueprint → train avec nouveaux hyperparamètres
 → si meilleur  : promote @Production + config/model_params.yml conservé (params DS gagnants)
 → si pas meilleur : config/model_params.yml restauré + notification DS
 
-Déclenché par deploy.yml quand src/models/, src/features/ ou
-config/model_params.yml changent lors d'un push → PR → merge main.
+Déclenché par deploy.yml uniquement quand config/model_params.yml change lors
+d'un push → PR → merge main — le seul artefact qui représente une vraie
+décision DS (hyperparamètres rf/xgboost/lgbm). Un changement de code dans
+src/models/ ou src/features/ (fix, logging, refactor) est traité comme un
+déploiement de code normal (Trigger 2), pas comme un nouveau blueprint.
 """
 from pathlib import Path
 

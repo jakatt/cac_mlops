@@ -248,8 +248,16 @@ jobs:
               && echo "prefect deploy --all ✓" \
               || echo "::warning::prefect deploy --all échoué — schémas potentiellement périmés"
 
-            # Détecter si les fichiers blueprint/modèle ont changé (trigger 3)
-            BLUEPRINT_CHANGED=$(echo "$CHANGED_FILES" | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
+            # Détecter si le blueprint DS a changé (trigger 3) — uniquement
+            # config/model_params.yml, le seul artefact qui représente une
+            # vraie décision DS (hyperparamètres rf/xgboost/lgbm). src/models/
+            # et src/features/ sont du CODE : un changement technique (fix,
+            # logging, refactor) n'est pas un nouveau blueprint à valider —
+            # confondre les deux déclenche un benchmark complet + comparaison
+            # stricte à @Production pour rien (vécu : fix de logging touchant
+            # src/models/train_model.py → update-model-flow déclenché à tort,
+            # échoué proprement mais sans raison de tourner).
+            BLUEPRINT_CHANGED=$(echo "$CHANGED_FILES" | grep -cE '^config/model_params\.yml$' || true)
 
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
               echo "==> Blueprint DS modifié — déclenchement update-model-flow"

@@ -1329,7 +1329,7 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║  [DS local — MLflow explore]                                                    │  │  ║
 ║    Expériences MLFLOW_RUN_MODE=explore → accidents_severity_dev                 │  │  ║
 ║    DS tagge run champion : mlflow set_tag("export_to_prod", "true")             │  │  ║
-║    PR vers main : src/models/ ou src/features/ ou config/model_params.yml       │  │  ║
+║    PR vers main : config/model_params.yml modifié (seul artefact "blueprint")   │  │  ║
 ║  [deploy.yml — JOB 2 — SSH VPS — détection BLUEPRINT_CHANGED > 0]              │  │  ║
 ║    (mêmes étapes 1-4 que Trigger 2 — build/restart calculés dans tous les cas) │  │  ║
 ║    → prefect run update-model-flow/update-model --param sha_tag=…               │  │  ║
