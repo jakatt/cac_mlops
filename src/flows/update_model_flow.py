@@ -6,8 +6,11 @@ Chaîne : extract blueprint → train avec nouveaux hyperparamètres
 → si meilleur  : promote @Production + config/model_params.yml conservé (params DS gagnants)
 → si pas meilleur : config/model_params.yml restauré + notification DS
 
-Déclenché par deploy.yml quand src/models/, src/features/ ou
-config/model_params.yml changent lors d'un push → PR → merge main.
+Déclenché par deploy.yml uniquement quand config/model_params.yml change lors
+d'un push → PR → merge main — le seul artefact qui représente une vraie
+décision DS (hyperparamètres rf/xgboost/lgbm). Un changement de code dans
+src/models/ ou src/features/ (fix, logging, refactor) est traité comme un
+déploiement de code normal (Trigger 2), pas comme un nouveau blueprint.
 """
 from pathlib import Path
 
@@ -15,7 +18,6 @@ from prefect import flow, task, get_run_logger
 
 from src.flows.deploy_vps_flow import deploy_vps_flow
 from src.flows.train_flow import train_flow
-from src.utils.email_utils import send_alert
 
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "model_params.yml"
 
@@ -64,16 +66,10 @@ def update_model_flow(
 
     if result["champion"] is None:
         # Restaurer le blueprint précédent — les params DS n'ont pas battu @Production
+        # (event=alert topic=no_champion déjà émis par select_champion_task)
         if config_backup is not None:
             CONFIG_PATH.write_text(config_backup)
             log.info("config/model_params.yml restauré (params DS non retenus)")
-        msg = (
-            f"Blueprint DS testé (SHA: {sha_tag or 'N/A'}) "
-            f"— aucun algorithme ne dépasse @Production.\n"
-            f"config/model_params.yml restauré. Métriques : {result['metrics']}"
-        )
-        log.warning(msg)
-        send_alert("Update modèle — blueprint DS non retenu", msg)
         raise RuntimeError(
             f"Blueprint DS non retenu — aucun algorithme ne dépasse @Production "
             f"(SHA: {sha_tag or 'N/A'}).\n"

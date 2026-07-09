@@ -24,7 +24,6 @@ import requests
 from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import CATEGORY_KEYWORDS, _DATASET_ID, training_years_up_to
-from src.utils.email_utils import send_alert
 
 _DATA_GOUV_API = f"https://www.data.gouv.fr/api/1/datasets/{_DATASET_ID}/"
 
@@ -121,14 +120,10 @@ def check_new_data_flow() -> None:
 
     if len(matched_urls) < 4:
         missing = set(CATEGORY_KEYWORDS) - set(matched_urls)
-        msg = (
-            f"Année {new_year} partiellement disponible ({len(matched_urls)}/4 fichiers).\n"
-            f"Catégories manquantes : {missing}\n"
-            f"Fichiers trouvés : {matched_urls}\n"
-            f"→ Consulter data.gouv.fr manuellement."
+        log.warning(
+            "event=alert severity=warning topic=onisr_partial_match year=%d matched=%d missing=%s",
+            new_year, len(matched_urls), sorted(missing),
         )
-        log.warning("event=alert severity=warning topic=onisr_partial_match year=%d matched=%d", new_year, len(matched_urls))
-        send_alert(f"Données ONISR {new_year} — revue manuelle requise", msg)
         return
 
     # ── Toutes les données disponibles → chaîne complète ──────────────────────
@@ -150,13 +145,11 @@ def check_new_data_flow() -> None:
     result = train_flow(year=new_year, cumul=True, promote=False, require_improvement=False)
 
     if result["champion"] is None:
-        msg = (
-            f"Training année {new_year} terminé mais aucun algorithme ne passe la gate KPI "
-            f"absolue, ou tous régressent sur ≥2 métriques vs @Production.\n"
-            f"Métriques : {result['metrics']}"
+        log.warning(
+            "Training ONISR %d conclu sans champion (cf. event=alert topic=no_champion "
+            "émis par select-champion-task)",
+            new_year,
         )
-        log.warning("Training ONISR %d conclu sans champion (cf. event=alert topic=no_champion émis par select-champion-task)", new_year)
-        send_alert(f"Training ONISR {new_year} — aucun champion promu", msg)
         return
 
     # Deploy VPS avec gate manuelle + promote après validation + deploy Kapsule

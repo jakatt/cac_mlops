@@ -24,19 +24,25 @@ jobs:
   check-changes:
     runs-on: ubuntu-latest
     outputs:
-      needs_build: ${{ steps.check.outputs.needs_build }}
+      needs_build:  ${{ steps.check.outputs.needs_build }}
+      build_mlflow: ${{ steps.check.outputs.build_mlflow }}
+      build_api:    ${{ steps.check.outputs.build_api }}
+      build_gradio: ${{ steps.check.outputs.build_gradio }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0   # historique complet — nécessaire pour differ contre un tag ancien
 
-      - name: Vérifier si Dockerfiles / requirements ont changé
+      - name: Vérifier si Dockerfiles / requirements ont changé (par image)
         id: check
         run: |
-          # workflow_dispatch force toujours le build
+          # workflow_dispatch force toujours le build des 3 images
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "needs_build=true" >> $GITHUB_OUTPUT
-            echo "Build forcé (workflow_dispatch)"
+            echo "build_mlflow=true" >> $GITHUB_OUTPUT
+            echo "build_api=true"    >> $GITHUB_OUTPUT
+            echo "build_gradio=true" >> $GITHUB_OUTPUT
+            echo "needs_build=true"  >> $GITHUB_OUTPUT
+            echo "Build forcé — 3 images (workflow_dispatch)"
             exit 0
           fi
 
@@ -52,15 +58,33 @@ jobs:
             echo "Tag last-image-build introuvable — comparaison à HEAD~1 (premier run)"
           fi
 
-          CHANGED=$(git diff "$BASE_REF" --name-only 2>/dev/null \
-            | grep -cE '^(services/.+/Dockerfile|services/.+/requirements.*\.txt|services/api/app/.*\.py|services/gradio/app_public\.py|requirements.*\.txt|pyproject\.toml|setup\.cfg)' || true)
-          if [ "${CHANGED:-0}" -gt 0 ]; then
+          CHANGED_FILES=$(git diff "$BASE_REF" --name-only 2>/dev/null || true)
+
+          # Un flag par image plutôt qu'un seul booléen global — évite de
+          # rebuilder les 3 images (~4 min chacune) quand une seule a changé.
+          # Chaque regex reflète les COPY du Dockerfile correspondant (une image
+          # baked doit être fraîche pour Kapsule/K8s, qui n'a pas les bind-mounts
+          # VPS — cf. services/*/Dockerfile).
+          BUILD_MLFLOW=false
+          BUILD_API=false
+          BUILD_GRADIO=false
+
+          echo "$CHANGED_FILES" | grep -qE '^services/mlflow/Dockerfile$' && BUILD_MLFLOW=true
+
+          echo "$CHANGED_FILES" | grep -qE '^(services/api/Dockerfile|services/api/requirements.*\.txt|services/api/app/.*|services/monitoring/.*|services/__init__\.py|src/.*|scripts/.*|config/.*|prefect\.yaml|\.dvc/config|requirements.*\.txt|pyproject\.toml|setup\.cfg)$' && BUILD_API=true
+
+          echo "$CHANGED_FILES" | grep -qE '^(services/gradio/Dockerfile|services/gradio/requirements.*\.txt|services/gradio/.*\.py|src/.*)$' && BUILD_GRADIO=true
+
+          echo "build_mlflow=$BUILD_MLFLOW" >> $GITHUB_OUTPUT
+          echo "build_api=$BUILD_API"       >> $GITHUB_OUTPUT
+          echo "build_gradio=$BUILD_GRADIO" >> $GITHUB_OUTPUT
+
+          if [ "$BUILD_MLFLOW" = "true" ] || [ "$BUILD_API" = "true" ] || [ "$BUILD_GRADIO" = "true" ]; then
             echo "needs_build=true" >> $GITHUB_OUTPUT
-            echo "Code service ou Dockerfile modifié depuis $BASE_REF → build complet"
           else
             echo "needs_build=false" >> $GITHUB_OUTPUT
-            echo "Pas de changement image depuis $BASE_REF → skip build"
           fi
+          echo "Depuis $BASE_REF → mlflow=$BUILD_MLFLOW api=$BUILD_API gradio=$BUILD_GRADIO"
 
   # ── Job 1 : build et push des images (seulement si Dockerfile a changé) ───
   build:
@@ -77,6 +101,7 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Build + push MLflow image
+        if: needs.check-changes.outputs.build_mlflow == 'true'
         run: |
           docker build \
             -t ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:latest \
@@ -86,6 +111,7 @@ jobs:
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-mlflow:${{ env.SHA_TAG }}
 
       - name: Build + push API image
+        if: needs.check-changes.outputs.build_api == 'true'
         run: |
           docker build \
             -t ghcr.io/${{ github.repository_owner }}/cac-mlops-api:latest \
@@ -95,6 +121,7 @@ jobs:
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-api:${{ env.SHA_TAG }}
 
       - name: Build + push Gradio image
+        if: needs.check-changes.outputs.build_gradio == 'true'
         run: |
           docker build \
             -t ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest \
@@ -104,6 +131,10 @@ jobs:
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:${{ env.SHA_TAG }}
 
       - name: Scan vulnérabilités Trivy (CRITICAL — images API + Gradio)
+        # Scanne toujours les 3, même si une seule a été rebuildée ce run :
+        # trivy pull l'image depuis ghcr.io (le tag :latest existe toujours,
+        # rebuildé ou non) — coût faible, et ça détecte aussi une CVE tout
+        # juste publiée sur une image qu'on n'a pas retouchée aujourd'hui.
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
           TRIVY_FAILED=false
@@ -217,8 +248,16 @@ jobs:
               && echo "prefect deploy --all ✓" \
               || echo "::warning::prefect deploy --all échoué — schémas potentiellement périmés"
 
-            # Détecter si les fichiers blueprint/modèle ont changé (trigger 3)
-            BLUEPRINT_CHANGED=$(echo "$CHANGED_FILES" | grep -cE '^(src/models/|src/features/|config/model_params\.yml)' || true)
+            # Détecter si le blueprint DS a changé (trigger 3) — uniquement
+            # config/model_params.yml, le seul artefact qui représente une
+            # vraie décision DS (hyperparamètres rf/xgboost/lgbm). src/models/
+            # et src/features/ sont du CODE : un changement technique (fix,
+            # logging, refactor) n'est pas un nouveau blueprint à valider —
+            # confondre les deux déclenche un benchmark complet + comparaison
+            # stricte à @Production pour rien (vécu : fix de logging touchant
+            # src/models/train_model.py → update-model-flow déclenché à tort,
+            # échoué proprement mais sans raison de tourner).
+            BLUEPRINT_CHANGED=$(echo "$CHANGED_FILES" | grep -cE '^config/model_params\.yml$' || true)
 
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
               echo "==> Blueprint DS modifié — déclenchement update-model-flow"

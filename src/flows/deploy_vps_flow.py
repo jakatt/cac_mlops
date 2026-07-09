@@ -26,7 +26,6 @@ from prefect import flow, task, get_run_logger, pause_flow_run
 from src.flows.deploy_kapsule_flow import deploy_kapsule_flow
 from src.flows.test_api_flow import test_api_flow
 from src.flows.train_flow import promote_task
-from src.utils.email_utils import send_alert
 
 NGINX_URL = os.getenv("NGINX_URL", "http://nginx:80")
 
@@ -241,10 +240,9 @@ def deploy_vps_flow(
     # ── 1. Smoke test ─────────────────────────────────────────────────────────
     ok = smoke_test_task()
     if not ok:
-        send_alert(
-            "Deploy VPS — smoke test ÉCHOUÉ",
-            f"Stack non opérationnelle.\nSHA: {sha_tag or 'N/A'}\n"
-            "Vérifier les logs : docker compose logs api nginx",
+        log.error(
+            "event=alert severity=critical topic=deploy_failure reason=smoke_test_pre_gate sha=%s",
+            sha_tag or "N/A",
         )
         raise RuntimeError(
             f"Smoke test ÉCHOUÉ — {NGINX_URL}/health ne répond pas après 90s.\n"
@@ -314,10 +312,9 @@ def deploy_vps_flow(
         compose_up_task(needs_build, restart_services)
         ok = smoke_test_task()
         if not ok:
-            send_alert(
-                "Deploy VPS — smoke test ÉCHOUÉ après compose up",
-                f"Stack non opérationnelle après application du code.\nSHA: {sha_tag or 'N/A'}\n"
-                "Vérifier les logs : docker compose logs api nginx",
+            log.error(
+                "event=alert severity=critical topic=deploy_failure reason=smoke_test_post_compose sha=%s",
+                sha_tag or "N/A",
             )
             docker_rollback_task(sha_tag)
             raise RuntimeError(
@@ -343,11 +340,10 @@ def deploy_vps_flow(
             log.info("Rollback Docker images :rollback (code)...")
             docker_rollback_task(sha_tag)
             rolled_back_code = True
-        send_alert(
-            "Deploy VPS — test-api ÉCHOUÉ",
-            f"Tests fonctionnels KO après deploy.\nSHA: {sha_tag or 'N/A'}\nErreur: {exc}"
-            + ("\nPromote @Production annulé — rollback effectué." if rolled_back_model else "")
-            + ("\nRollback Docker :rollback effectué — conteneurs recréés." if rolled_back_code else ""),
+        log.error(
+            "event=alert severity=critical topic=deploy_failure reason=test_api sha=%s "
+            "rolled_back_model=%s rolled_back_code=%s",
+            sha_tag or "N/A", rolled_back_model, rolled_back_code,
         )
         raise RuntimeError(
             f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
@@ -365,10 +361,11 @@ def deploy_vps_flow(
     # ── 5. Deploy Kapsule (seulement si test-api OK) ──────────────────────────
     deploy_kapsule_flow()
 
-    send_alert(
-        "Deploy VPS + Kapsule OK ✓",
-        f"Deploy terminé avec succès.\nSHA: {sha_tag or 'N/A'}"
-        + (f"\nModèle promu : {champion} (F1={metrics.get(champion, {}).get('f1', 0):.4f})"
-           if champion else ""),
+    # Confirmation de succès : visible dans Loki/Grafana (Cockpit, dashboard
+    # Résilience), mais pas d'email — un succès n'est pas une alerte. Seuls les
+    # topics ci-dessus (severity=critical) déclenchent une notification.
+    log.info(
+        "event=alert severity=info topic=deploy_success sha=%s champion=%s",
+        sha_tag or "N/A", champion or "-",
     )
     return True

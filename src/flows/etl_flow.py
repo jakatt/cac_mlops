@@ -10,7 +10,6 @@ from pathlib import Path
 from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import download_year, training_years_up_to, get_training_years
-from src.utils.email_utils import send_alert
 
 
 @task(name="download-raw-data", retries=2, retry_delay_seconds=30)
@@ -31,10 +30,6 @@ def validate_task(year: int) -> None:
 
     if level == "CRITICAL":
         log.error("event=alert severity=critical topic=schema_validation year=%d", year)
-        send_alert(
-            f"Validation CRITICAL — année {year}",
-            f"Le pipeline ETL est stoppé.\n\n{report.summary()}",
-        )
         raise RuntimeError(
             f"Schema validation CRITICAL pour year={year} — pipeline stoppé.\n"
             f"{report.summary()}"
@@ -42,10 +37,6 @@ def validate_task(year: int) -> None:
 
     if level == "WARNING":
         log.warning("event=alert severity=warning topic=schema_validation year=%d", year)
-        send_alert(
-            f"Validation WARNING — année {year}",
-            f"Pipeline continue mais des anomalies ont été détectées.\n\n{report.summary()}",
-        )
 
     log.info("Validation level=%s year=%d", level, year)
 

@@ -14,8 +14,6 @@ from pathlib import Path
 
 from prefect import flow, task, get_run_logger
 
-from src.utils.email_utils import send_alert
-
 _DATA_MOUNT = "/data"
 _WARN_PCT   = 20   # warning si libre < 20%
 _CRIT_PCT   = 15   # critique si libre < 15%
@@ -122,14 +120,10 @@ def alert_if_critical(after: dict) -> None:
     logger = get_run_logger()
     pct = after.get("free_pct", 100)
     if pct < _CRIT_PCT:
-        msg = (
-            f"Nettoyage terminé mais disque toujours critique.\n"
-            f"Libre : {after.get('free_gb', '?')} GB ({pct}%) sur {after.get('path', '?')}\n"
-            f"Libéré lors du nettoyage : +{after.get('freed_gb', 0)} GB\n\n"
-            f"Action requise : vérifier les données DVC, artefacts MLflow ou logs Docker."
+        logger.error(
+            "event=alert severity=critical topic=disk_cleanup_critical free_pct=%s free_gb=%s freed_gb=%s",
+            pct, after.get("free_gb", "?"), after.get("freed_gb", 0),
         )
-        logger.error("CRITICAL — disque %s%% libre après nettoyage", pct)
-        send_alert("Disque VPS critique après nettoyage automatique", msg)
     elif pct < _WARN_PCT:
         logger.warning("WARNING — disque %s%% libre après nettoyage", pct)
     else:
