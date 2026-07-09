@@ -29,6 +29,16 @@ from src.flows.train_flow import promote_task
 
 NGINX_URL = os.getenv("NGINX_URL", "http://nginx:80")
 
+# Seuls services dont l'image est reconstruite par deploy.yml. `docker compose
+# up -d` doit TOUJOURS lister ces noms explicitement, jamais tourner sans
+# argument sur tout le fichier — sinon un simple changement de config dans
+# docker-compose.yml (env var, volume…) sur un AUTRE service (ex. prefect-worker)
+# le fait recréer aussi. Si ce service est celui qui exécute la commande, il se
+# tue en plein milieu : docker compose up -d s'interrompt, la stack entière
+# reste à moitié recréée (incident vécu — PR #116, retrait d'env vars mortes
+# de prefect-worker a suffi à déclencher ça).
+MANAGED_SERVICES = ["api", "gradio", "gradio-public", "mlflow"]
+
 
 def _trigger_label(champion: str | None, year: int | None, sha_tag: str) -> str:
     """T1 = nouvelles données (champion+year, pas de code) · T2 = code seul ·
@@ -123,10 +133,10 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
         try:
             subprocess.run(
                 ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
-                 "up", "-d", "--remove-orphans"],
+                 "up", "-d", "--remove-orphans", *MANAGED_SERVICES],
                 check=True, capture_output=True, text=True,
             )
-            log.info("docker compose up -d --remove-orphans OK")
+            log.info("docker compose up -d --remove-orphans OK (%s)", ", ".join(MANAGED_SERVICES))
         except subprocess.CalledProcessError as e:
             log.warning(
                 "event=interruption_end kind=compose_up status=fail duration_s=%.1f",
@@ -181,7 +191,8 @@ def docker_rollback_task(sha_tag: str = "") -> None:
             log.warning("Tag échoué pour %s — ignoré : %s", img, e.stderr.strip())
     try:
         subprocess.run(
-            ["docker", "compose", "-f", compose_file, "--project-directory", project_dir, "up", "-d"],
+            ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
+             "up", "-d", *MANAGED_SERVICES],
             check=True, capture_output=True, text=True,
         )
         log.info("Docker rollback OK — conteneurs recréés avec :rollback (SHA annulé : %s)", sha_tag or "N/A")
