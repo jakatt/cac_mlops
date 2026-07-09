@@ -807,11 +807,20 @@ def trigger_diag() -> str:
 def trigger_disk_cleanup() -> str:
     return _prefect_trigger("disk-cleanup")
 
-def trigger_reset(clear_predictions: bool, clear_drift: bool, clear_mlflow: bool) -> str:
+def trigger_reset(
+    clear_predictions: bool, clear_drift: bool, clear_mlflow: bool,
+    clear_postgres_full: bool, clear_minio: bool, clear_grafana: bool, clear_loki: bool,
+    full_reset: bool,
+) -> str:
     return _prefect_trigger("reset", {
         "clear_predictions": clear_predictions,
         "clear_drift": clear_drift,
         "clear_mlflow": clear_mlflow,
+        "clear_postgres_full": clear_postgres_full,
+        "clear_minio": clear_minio,
+        "clear_grafana": clear_grafana,
+        "clear_loki": clear_loki,
+        "full_reset": full_reset,
     })
 
 def trigger_full_retrain(max_sim_rows: int = 2000) -> str:
@@ -1764,7 +1773,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 },
                 "Réinitialiser la solution": {
                     "key": "reset",
-                    "desc": "Vide les prédictions simulées et/ou les rapports de drift et/ou les expériences MLflow selon les options sélectionnées ci-dessous.",
+                    "desc": "RAZ par composant, à la carte — coche uniquement ce que tu veux vider. \"RAZ totale\" force tout, pensée pour repartir sur un système propre juste avant un full-retrain.",
                     "opts": "reset",
                 },
                 "Démarrer le cluster K8s": {
@@ -1805,7 +1814,13 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     with gr.Group(visible=False) as reset_opts:
                         reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
                         reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
-                        reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow")
+                        reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow (runs + modèles, via l'API)")
+                        gr.Markdown("**Options plus radicales — décochées par défaut :**")
+                        reset_pg_full = gr.Checkbox(value=False, label="Vider TOUTE la base Postgres (predictions + tout MLflow)")
+                        reset_minio   = gr.Checkbox(value=False, label="Vider MinIO (artefacts binaires des modèles)")
+                        reset_grafana = gr.Checkbox(value=False, label="Réinitialiser Grafana (annotations, état alertes, favoris)")
+                        reset_loki    = gr.Checkbox(value=False, label="Réinitialiser Loki (efface tout l'historique de logs)")
+                        reset_full    = gr.Checkbox(value=False, label="⚠️ RAZ TOTALE — coche tout ci-dessus, système propre post-développement")
 
                     with gr.Group(visible=False) as retrain_opts:
                         retrain_sim_rows = gr.Number(
@@ -1857,14 +1872,18 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     gr.update(visible=(opts == "full-retrain")),
                 )
 
-            def _run_flow(flow_name, node_type, node_count, r_pred, r_drift, r_mlf, sim_rows):
+            def _run_flow(
+                flow_name, node_type, node_count,
+                r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full,
+                sim_rows,
+            ):
                 key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
                 if key == "kapsule-up":
                     return trigger_kapsule_up(node_type, int(node_count or 2))
                 if key == "kapsule-down":
                     return trigger_kapsule_down()
                 if key == "reset":
-                    return trigger_reset(r_pred, r_drift, r_mlf)
+                    return trigger_reset(r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full)
                 if key == "test-api":
                     return trigger_test_api()
                 if key == "diag":
@@ -1886,7 +1905,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             )
             run_btn.click(
                 fn=_run_flow,
-                inputs=[flow_dd, kap_node_type, kap_node_count, reset_pred, reset_drift, reset_mlf, retrain_sim_rows],
+                inputs=[
+                    flow_dd, kap_node_type, kap_node_count,
+                    reset_pred, reset_drift, reset_mlf,
+                    reset_pg_full, reset_minio, reset_grafana, reset_loki, reset_full,
+                    retrain_sim_rows,
+                ],
                 outputs=action_result,
             )
             pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
