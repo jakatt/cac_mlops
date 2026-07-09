@@ -23,7 +23,9 @@ from pathlib import Path
 
 import pandas as pd
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+from src.utils.logging_utils import init_logging
+
+init_logging()
 logger = logging.getLogger(__name__)
 
 REPORTS_DIR = Path("reports/drift")

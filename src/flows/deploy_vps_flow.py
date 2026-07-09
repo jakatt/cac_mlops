@@ -18,7 +18,6 @@ Modes d'appel :
   3. Depuis update-model-flow (nouveau blueprint) : champion + métriques + éventuellement
      sha_tag/needs_build/restart_services si le merge inclut aussi du code.
 """
-import logging
 import os
 import time
 
@@ -31,7 +30,15 @@ from src.utils.email_utils import send_alert
 
 NGINX_URL = os.getenv("NGINX_URL", "http://nginx:80")
 
-logger = logging.getLogger(__name__)
+
+def _trigger_label(champion: str | None, year: int | None, sha_tag: str) -> str:
+    """T1 = nouvelles données (champion+year, pas de code) · T2 = code seul ·
+    T3 = nouveau blueprint (champion+year+code) — même convention que le Cockpit."""
+    if champion and year and sha_tag:
+        return "T3"
+    if champion and year:
+        return "T1"
+    return "T2"
 
 
 @task(name="smoke-test-health")
@@ -107,6 +114,12 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
     compose_file = "/app/docker-compose.yml"
     project_dir = os.getenv("COMPOSE_PROJECT_DIR", "/home/deploy/cac_mlops")
 
+    t0 = time.monotonic()
+    log.info(
+        "event=interruption_start kind=compose_up needs_build=%s services=%s",
+        needs_build, restart_services or "-",
+    )
+
     if needs_build:
         try:
             subprocess.run(
@@ -116,6 +129,10 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
             )
             log.info("docker compose up -d --remove-orphans OK")
         except subprocess.CalledProcessError as e:
+            log.warning(
+                "event=interruption_end kind=compose_up status=fail duration_s=%.1f",
+                time.monotonic() - t0,
+            )
             raise RuntimeError(f"docker compose up -d échoué:\n{e.stderr}")
 
     for service in filter(None, restart_services.split(",")):
@@ -137,12 +154,18 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
         except subprocess.CalledProcessError as e:
             log.warning("Restart échoué pour %s — ignoré : %s", service, e.stderr.strip())
 
+    log.info(
+        "event=interruption_end kind=compose_up status=ok duration_s=%.1f",
+        time.monotonic() - t0,
+    )
+
 
 @task(name="docker-rollback")
 def docker_rollback_task(sha_tag: str = "") -> None:
     """Restaure les images :rollback + recrée les conteneurs (Trigger 2 — code seul)."""
     import subprocess
     log = get_run_logger()
+    log.warning("event=rollback kind=docker_image sha=%s", sha_tag or "N/A")
     ghcr_user = os.getenv("GHCR_USER", "jakatt")
     registry = f"ghcr.io/{ghcr_user}"
     images = ["cac-mlops-api", "cac-mlops-mlflow", "cac-mlops-gradio"]
@@ -173,6 +196,7 @@ def rollback_promote_task(previous: dict | None, champion: str) -> None:
     import mlflow
     from src.models.train_model import MODEL_NAMES
     log = get_run_logger()
+    log.warning("event=rollback kind=model_alias champion=%s", champion)
     client = mlflow.tracking.MlflowClient()
     new_model_name = MODEL_NAMES[champion]
     try:
@@ -233,6 +257,7 @@ def deploy_vps_flow(
         )
 
     # ── 2. Gate manuelle ──────────────────────────────────────────────────────
+    trigger = _trigger_label(champion, year, sha_tag)
     if champion and metrics and year:
         champion_metrics = metrics.get(champion, {})
         log.info(
@@ -251,14 +276,28 @@ def deploy_vps_flow(
             champion_metrics.get("recall", 0),
             champion_metrics.get("auc", 0),
         )
+        log.info(
+            "event=gate_open trigger=%s year=%s champion=%s f1=%.4f sha=%s needs_build=%s restart_services=%s",
+            trigger, year, champion, champion_metrics.get("f1", 0),
+            sha_tag or "-", needs_build, restart_services or "-",
+        )
     else:
         log.info(
             "Deploy code (SHA: %s) — needs_build=%s restart_services=%s\n"
             "→ Resume dans Prefect UI (ou onglet Cockpit) pour appliquer sur le VPS",
             sha_tag or "N/A", needs_build, restart_services or "aucun",
         )
+        log.info(
+            "event=gate_open trigger=%s sha=%s needs_build=%s restart_services=%s",
+            trigger, sha_tag or "-", needs_build, restart_services or "-",
+        )
 
     pause_flow_run(timeout=86400)
+
+    # Le process ne reprend ICI qu'après un resume (GO) explicite — un cancel
+    # (STOP, depuis le Cockpit) termine ce flow run avant d'atteindre cette ligne.
+    # Le STOP est donc loggé côté Cockpit (service=gradio), pas ici.
+    log.info("event=gate_resolved decision=GO trigger=%s sha=%s", trigger, sha_tag or "-")
 
     # ── 3. Promote MLflow (Triggers 1 & 3 — nouveau modèle) ────────────────────
     previous_production: dict | None = None

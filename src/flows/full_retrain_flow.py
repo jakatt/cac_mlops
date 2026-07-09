@@ -23,20 +23,17 @@ serait fixé par le cycle précédent de ce même run compressé, pas une vraie
 référence de production stable (bloquerait à tort les cycles suivants sur
 une régression mineure et non représentative).
 """
-import logging
 import os
 import time
 from datetime import datetime
 
 import requests as _req
-from prefect import flow, task
+from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import discover_available_years, training_years_up_to
 from src.flows.drift_monitoring_flow import drift_monitoring_flow
 from src.flows.etl_flow import etl_flow
 from src.flows.train_flow import train_flow
-
-logger = logging.getLogger(__name__)
 
 
 @task(name="detect-dvc-cycles")
@@ -47,42 +44,44 @@ def detect_cycles_task() -> list[tuple[int, bool]]:
     test set temporel dans process_years, cf. get_training_years()).
     Exemple : [2021, 2022, 2023, 2024] dispo → cycles sur les 4 années.
     """
+    log = get_run_logger()
     available = discover_available_years()
     if len(available) < 2:
         raise RuntimeError(
             f"full_retrain_flow requiert >= 2 années dans data/raw/. Disponibles : {available}"
         )
     cycles = [(y, i > 0) for i, y in enumerate(sorted(available))]
-    logger.info("Années disponibles : %s — cycles : %s", available, cycles)
+    log.info("Années disponibles : %s — cycles : %s", available, cycles)
     return cycles
 
 
 @task(name="restart-api")
 def restart_api_task() -> None:
     """Restart the API container via Docker SDK so it loads the new @Production model."""
+    log = get_run_logger()
     try:
         import docker
         client = docker.from_env()
         containers = client.containers.list(filters={"name": "cac_mlops-api-1"})
         if not containers:
-            logger.warning("API container not found — skipping restart")
+            log.warning("API container not found — skipping restart")
             return
         containers[0].restart(timeout=30)
-        logger.info("API container restarted — waiting for healthcheck...")
+        log.info("API container restarted — waiting for healthcheck...")
     except Exception as exc:
-        logger.warning("Docker restart failed (%s) — continuing anyway", exc)
+        log.warning("Docker restart failed (%s) — continuing anyway", exc)
         return
 
     api_url = os.getenv("API_URL", "http://api:8000")
     for _ in range(12):  # max 60s
         try:
             if _req.get(f"{api_url}/health", timeout=3).status_code == 200:
-                logger.info("API ready")
+                log.info("API ready")
                 return
         except Exception:
             pass
         time.sleep(5)
-    logger.warning("API healthcheck timeout — continuing anyway")
+    log.warning("API healthcheck timeout — continuing anyway")
 
 
 @task(name="simulate-predictions", task_run_name="simulate-{sim_year}", retries=1, retry_delay_seconds=60)
@@ -110,7 +109,7 @@ def simulate_task(sim_year: int, sim_month: str, max_rows: int = 100) -> dict:
         sim_month=sim_month,
         max_rows=max_rows,
     )
-    logger.info("Simulation done (year=%d sim_month=%s): %s", sim_year, sim_month, result)
+    get_run_logger().info("Simulation done (year=%d sim_month=%s): %s", sim_year, sim_month, result)
     return result
 
 
@@ -128,10 +127,11 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
     Cycle 1 (première année) saute simulate/drift : aucune référence antérieure.
     Run reset-flow first to clear predictions table and drift reports.
     """
+    log = get_run_logger()
     cycles = detect_cycles_task()
 
     for i, (year, cumul) in enumerate(cycles):
-        logger.info(
+        log.info(
             "=== Cycle %d/%d — year=%d cumul=%s ===",
             i + 1, len(cycles), year, cumul,
         )
@@ -153,4 +153,4 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
             # Drift de features : year vs années précédentes (même dossier cumulatif)
             drift_monitoring_flow(year=year)
 
-    logger.info("Full retrain complete — %d cycles", len(cycles))
+    log.info("Full retrain complete — %d cycles", len(cycles))

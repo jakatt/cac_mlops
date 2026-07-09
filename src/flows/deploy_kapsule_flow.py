@@ -5,7 +5,6 @@ Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
 Si actif : kubectl set image + rollout status. Rollback auto + email si échec.
 """
-import logging
 import os
 import subprocess
 import tempfile
@@ -24,8 +23,6 @@ DEPLOYMENTS = {
     "api":    f"ghcr.io/{GHCR_OWNER}/cac-mlops-api:latest",
     "gradio": f"ghcr.io/{GHCR_OWNER}/cac-mlops-gradio:latest",
 }
-
-logger = logging.getLogger(__name__)
 
 
 def _scw(args: list[str], timeout: int = 60) -> str:
@@ -113,6 +110,7 @@ def rolling_update_task(kubeconfig: str) -> bool:
 @task(name="kubectl-rollback")
 def rollback_kapsule_task(kubeconfig: str) -> None:
     log = get_run_logger()
+    log.warning("event=rollback kind=kapsule")
     for deploy_name in DEPLOYMENTS:
         log.info("Rollback %s", deploy_name)
         try:

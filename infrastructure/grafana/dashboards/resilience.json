@@ -1,0 +1,375 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=~\"prefect-worker|gradio\"} | logfmt | event=\"gate_open\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Gates ouvertes (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 4, "y": 0},
+      "id": 2,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=~\"prefect-worker|gradio\"} | logfmt | event=\"gate_resolved\", decision=\"GO\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Résolues GO (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 8, "y": 0},
+      "id": 3,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=~\"prefect-worker|gradio\"} | logfmt | event=\"gate_resolved\", decision=\"STOP\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Résolues STOP (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 12, "y": 0},
+      "id": 4,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=\"prefect-worker\"} | logfmt | event=\"rollback\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Rollbacks (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 16, "y": 0},
+      "id": 5,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=\"prefect-worker\"} |~ \"ERROR|CRITICAL\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Erreurs flow (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 20, "y": 0},
+      "id": 6,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=\"prefect-worker\"} | logfmt | event=\"alert\", topic=\"drift\", severity=\"critical\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Drift critique détecté (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 5},
+      "id": 7,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=\"prefect-worker\"} | logfmt | event=\"alert\", topic=\"no_champion\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Aucun champion sélectionné (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "N/A",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 99}, {"color": "green", "value": 99.9}]},
+          "unit": "percent", "min": 0, "max": 100
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 5},
+      "id": 8,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "avg_over_time(up{job=\"cac-mlops-api\"}[7d]) * 100",
+          "legendFormat": "disponibilité", "refId": "A"
+        }
+      ],
+      "title": "Disponibilité API (7j)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 60}]},
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 5},
+      "id": 9,
+      "options": {
+        "colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "(1 - avg_over_time(up{job=\"cac-mlops-api\"}[7d])) * 604800",
+          "legendFormat": "indispo cumulée", "refId": "A"
+        }
+      ],
+      "title": "Indisponibilité cumulée (7j)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"}, "mappings": [], "noValue": "0",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "blue", "value": null}]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 5},
+      "id": 10,
+      "options": {
+        "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto",
+        "reduceOptions": {"calcs": ["sum"], "fields": "", "values": false}, "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "count_over_time({service=\"prefect-worker\"} | logfmt | event=\"interruption_start\" [24h])",
+          "queryType": "instant", "instant": true, "refId": "A"
+        }
+      ],
+      "title": "Interruptions de service (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 10},
+      "id": 11,
+      "options": {
+        "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true,
+        "showCommonLabels": false, "showLabels": true, "showTime": true,
+        "sortOrder": "Descending", "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{service=~\"prefect-worker|gradio\"} | logfmt | event=\"gate_resolved\"",
+          "queryType": "range", "refId": "A"
+        }
+      ],
+      "title": "Historique des gates",
+      "type": "logs"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 10},
+      "id": 12,
+      "description": "up{job=\"cac-mlops-api\"} — vérité terrain Prometheus, capte toute coupure (deploy planifié ou non). Superposer les annotations Loki (event=interruption_start/end) pour le contexte.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}}},
+            {"type": "value", "options": {"1": {"text": "UP", "color": "green"}}}
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {"mergeValues": true, "showValue": "never", "alignValue": "center", "rowHeight": 0.9},
+      "targets": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "expr": "up{job=\"cac-mlops-api\"}",
+          "legendFormat": "api", "refId": "A"
+        }
+      ],
+      "title": "Disponibilité API — interruptions (7j)",
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 19},
+      "id": 13,
+      "options": {
+        "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true,
+        "showCommonLabels": false, "showLabels": true, "showTime": true,
+        "sortOrder": "Descending", "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{service=~\"prefect-worker|gradio\"} | logfmt | event=~\"gate_.*|interruption_.*|rollback\"",
+          "queryType": "range", "refId": "A"
+        }
+      ],
+      "title": "Flux logfmt — gates, interruptions, rollbacks",
+      "type": "logs"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 28},
+      "id": 14,
+      "options": {
+        "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false,
+        "showCommonLabels": false, "showLabels": true, "showTime": true,
+        "sortOrder": "Descending", "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{service=\"prefect-worker\"} |~ \"ERROR|CRITICAL|WARNING\"",
+          "queryType": "range", "refId": "A"
+        }
+      ],
+      "title": "Logs ERROR / CRITICAL / WARNING uniquement",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["cac-mlops", "loki", "prefect", "resilience"],
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "cac-mlops — Pipeline & Résilience",
+  "uid": "cac-mlops-resilience",
+  "version": 1
+}

@@ -413,7 +413,7 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["infrastructure", "prometheus", "security"],
+  "tags": ["cac-mlops", "infrastructure", "prometheus", "security"],
   "time": {"from": "now-6h", "to": "now"},
   "timepicker": {},
   "timezone": "browser",

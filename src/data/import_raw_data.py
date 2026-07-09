@@ -11,6 +11,10 @@ from urllib.parse import urlparse
 
 import requests
 
+from src.utils.logging_utils import init_logging
+
+init_logging()  # au niveau module : fixe le niveau INFO que ce fichier soit importé
+                # par un flow Prefect ou exécuté en CLI via main()
 logger = logging.getLogger(__name__)
 
 # ── data.gouv.fr dataset (ONISR — accidents corporels de la circulation) ──────
@@ -228,12 +232,6 @@ def download_year(
 
 def main() -> None:
     import argparse
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s  %(levelname)-8s  %(message)s",
-        datefmt="%H:%M:%S",
-    )
 
     parser = argparse.ArgumentParser(description="Download ONISR data from data.gouv.fr")
     parser.add_argument("--year", type=int, required=True, help="Year to download (e.g. 2024)")

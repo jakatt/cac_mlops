@@ -30,7 +30,10 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, recall_score
 
 from src.data.import_raw_data import PROJECT_ROOT, discover_available_years
+from src.utils.logging_utils import init_logging
 
+init_logging()  # au niveau module : fixe le niveau INFO que ce fichier soit importé
+                # par un flow Prefect ou exécuté en CLI via main()
 logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yml"
@@ -239,12 +242,6 @@ def train(
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s  %(levelname)-8s  %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
     parser = argparse.ArgumentParser(
         description="Entraîne un modèle de gravité accidents sur données ONISR"
     )

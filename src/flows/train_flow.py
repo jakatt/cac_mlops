@@ -10,17 +10,14 @@ Si aucun algo ne progresse suffisamment vs @Production → @Production inchangé
 Si aucun @Production n'existe encore → le meilleur qualifié est promu directement.
 """
 import gc
-import logging
 import os
 
 import mlflow
-from prefect import flow, task
+from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import training_years_up_to
 from src.models.train_model import MODEL_NAMES, train
 from src.models.validate_model import KPI_THRESHOLDS
-
-logger = logging.getLogger(__name__)
 
 mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 
@@ -31,13 +28,14 @@ MIN_IMPROVEMENT = 0.01  # +1 point absolu minimum sur f1 pour remplacer @Product
 
 def _get_production_metrics(client: mlflow.MlflowClient) -> dict[str, float] | None:
     """Return all KPI metrics of the current @Production model (any family), or None."""
+    log = get_run_logger()
     for model_name in MODEL_NAMES.values():
         try:
             mv = client.get_model_version_by_alias(model_name, "Production")
             run = client.get_run(mv.run_id)
             metrics = {k: float(v) for k, v in run.data.metrics.items() if k in KPI_THRESHOLDS}
             if metrics:
-                logger.info("@Production actuel : %s v%s  %s", model_name, mv.version, metrics)
+                log.info("@Production actuel : %s v%s  %s", model_name, mv.version, metrics)
                 return metrics
         except Exception:
             continue
@@ -52,9 +50,10 @@ def _get_production_score(client: mlflow.MlflowClient) -> float | None:
 
 @task(name="train-model", task_run_name="train-model-{algorithm}")
 def train_task(years: list[int], algorithm: str) -> str:
-    logger.info("Training %s on years=%s", algorithm, years)
+    log = get_run_logger()
+    log.info("Training %s on years=%s", algorithm, years)
     _metrics, run_id = train(years=years, algorithm=algorithm, register=True)
-    logger.info("%s done — run_id=%s", algorithm, run_id)
+    log.info("%s done — run_id=%s", algorithm, run_id)
     return run_id
 
 
@@ -88,39 +87,40 @@ def select_champion_task(
          @Production est une vraie référence de production (pas un artefact de replay).
     Retourne None si aucun algo ne passe les seuils KPI.
     """
+    log = get_run_logger()
     # ── Étape 1 : quality gate (seuils absolus, indépendants de @Production) ──
     passing: dict[str, float] = {}
     for algo, metrics in all_metrics.items():
         fails = [k for k, thr in KPI_THRESHOLDS.items() if metrics.get(k, 0.0) < thr]
         if fails:
-            logger.warning(
+            log.warning(
                 "FAIL  %-8s  f1=%.4f  auc=%.4f  acc=%.4f  recall=%.4f  (KPI KO: %s)",
                 algo, metrics.get("f1", 0), metrics.get("auc", 0),
                 metrics.get("accuracy", 0), metrics.get("recall", 0), fails,
             )
         else:
             passing[algo] = metrics.get(PRIMARY_METRIC, 0.0)
-            logger.info(
+            log.info(
                 "PASS  %-8s  f1=%.4f  auc=%.4f  acc=%.4f  recall=%.4f",
                 algo, metrics.get("f1", 0), metrics.get("auc", 0),
                 metrics.get("accuracy", 0), metrics.get("recall", 0),
             )
 
     if not passing:
-        logger.warning("Aucun algorithme n'a passé les seuils KPI — @Production inchangé")
+        log.warning("event=alert severity=warning topic=no_champion algos=%s", list(all_metrics))
         return None
 
     # ── Étape 2 : meilleur qualifié ───────────────────────────────────────────
     champion = max(passing, key=lambda a: passing[a])
     champion_score = passing[champion]
     others = {a: f"{v:.4f}" for a, v in passing.items() if a != champion}
-    logger.info(
+    log.info(
         "Meilleur qualifié : %s  %s=%.4f  (autres : %s)",
         champion, PRIMARY_METRIC, champion_score, others or "aucun",
     )
 
     if not compare_to_production:
-        logger.info(
+        log.info(
             "compare_to_production=False (replay historique) — %s promu directement, "
             "sans comparaison à @Production", champion,
         )
@@ -135,7 +135,7 @@ def select_champion_task(
         # plus 1 métrique vs @Production. Régression sur ≥2 métriques → pas de promotion.
         prod_metrics = _get_production_metrics(client)
         if prod_metrics is None:
-            logger.info("Pas de @Production existant — %s promu directement", champion)
+            log.info("Pas de @Production existant — %s promu directement", champion)
             return champion
 
         champion_metrics = all_metrics[champion]
@@ -144,14 +144,14 @@ def select_champion_task(
             if champion_metrics.get(k, 0.0) < prod_metrics.get(k, 0.0)
         ]
         if len(regressions) >= 2:
-            logger.info(
+            log.info(
                 "Champion %s régresse sur %d métriques vs @Production (%s) "
                 "— seuil de régression dépassé — @Production inchangé",
                 champion, len(regressions), regressions,
             )
             return None
 
-        logger.info(
+        log.info(
             "Trigger 1 — gate KPI passée, régression sur %d métrique(s) max (%s) "
             "— promotion validée. Champion : %s",
             len(regressions), regressions or "aucune", champion,
@@ -161,12 +161,12 @@ def select_champion_task(
     prod_score = _get_production_score(client)
 
     if prod_score is None:
-        logger.info("Pas de @Production existant — %s promu directement", champion)
+        log.info("Pas de @Production existant — %s promu directement", champion)
         return champion
 
     improvement = champion_score - prod_score
     if improvement < MIN_IMPROVEMENT:
-        logger.info(
+        log.info(
             "Champion %s (%s=%.4f) insuffisant vs @Production (%.4f) "
             "— delta=+%.4f < seuil=+%.2f — @Production inchangé",
             champion, PRIMARY_METRIC, champion_score, prod_score,
@@ -174,7 +174,7 @@ def select_champion_task(
         )
         return None
 
-    logger.info(
+    log.info(
         "Champion %s dépasse @Production de +%.4f (seuil +%.2f) — promotion validée",
         champion, improvement, MIN_IMPROVEMENT,
     )
@@ -187,6 +187,7 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     Set @Production on champion's model version.
     Clear @Production from all other model families so exactly one is active.
     """
+    log = get_run_logger()
     client = mlflow.tracking.MlflowClient()
     model_name = MODEL_NAMES[champion]
     run_id = run_ids[champion]
@@ -205,13 +206,13 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     version = mv_list[0].version
 
     client.set_registered_model_alias(model_name, "Production", version)
-    logger.info("@Production → %s v%s", model_name, version)
+    log.info("@Production → %s v%s", model_name, version)
 
     for algo, other_model in MODEL_NAMES.items():
         if algo != champion:
             try:
                 client.delete_registered_model_alias(other_model, "Production")
-                logger.info("Cleared @Production from %s", other_model)
+                log.info("Cleared @Production from %s", other_model)
             except Exception:
                 pass
 
@@ -244,8 +245,9 @@ def train_flow(
     When promote=False, champion is identified but @Production is not updated —
     le caller (deploy_vps_flow) gère la gate manuelle avant de promouvoir.
     """
+    log = get_run_logger()
     years = training_years_up_to(year) if cumul else [year]
-    logger.info(
+    log.info(
         "Benchmark : years=%s  algorithms=%s  require_improvement=%s  compare_to_production=%s",
         years, ALGORITHMS, require_improvement, compare_to_production,
     )

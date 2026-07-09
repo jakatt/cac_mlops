@@ -20,15 +20,11 @@ Full automation chain (nouvelle data → prod):
     → drift-monitoring-flow(year=N)      — drift de features N vs années précédentes
                                             (indépendant du modèle, alerte seulement)
 """
-import logging
-
 import requests
-from prefect import flow, task
+from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import CATEGORY_KEYWORDS, _DATASET_ID, training_years_up_to
 from src.utils.email_utils import send_alert
-
-logger = logging.getLogger(__name__)
 
 _DATA_GOUV_API = f"https://www.data.gouv.fr/api/1/datasets/{_DATASET_ID}/"
 
@@ -53,10 +49,11 @@ def _versioned_years() -> set[int]:
 @task(name="fetch-datagouv-resources")
 def fetch_resources_task() -> list[dict]:
     """Return all resources from the ONISR dataset on data.gouv.fr."""
+    log = get_run_logger()
     resp = requests.get(_DATA_GOUV_API, timeout=15)
     resp.raise_for_status()
     resources = resp.json().get("resources", [])
-    logger.info("data.gouv.fr — %d resources found in ONISR dataset", len(resources))
+    log.info("data.gouv.fr — %d resources found in ONISR dataset", len(resources))
     return resources
 
 
@@ -66,6 +63,7 @@ def detect_new_year_task(resources: list[dict]) -> tuple[int | None, dict[str, s
     Check if a year beyond current DVC tags is available on data.gouv.fr.
     Returns (new_year, {category: url}) or (None, {}).
     """
+    log = get_run_logger()
     known = _versioned_years()
     max_known = max(known) if known else 2023
 
@@ -85,11 +83,11 @@ def detect_new_year_task(resources: list[dict]) -> tuple[int | None, dict[str, s
                     break
 
         if len(matched) == 4:
-            logger.info("New year %d detected — all 4 files matched", year)
+            log.info("New year %d detected — all 4 files matched", year)
             return year, matched
 
         missing = set(CATEGORY_KEYWORDS) - set(matched)
-        logger.warning(
+        log.warning(
             "Year %d found on data.gouv.fr but only %d/4 files matched "
             "(missing: %s) — manual review needed.\nAll titles for %d: %s",
             year, len(matched), missing, year,
@@ -97,7 +95,7 @@ def detect_new_year_task(resources: list[dict]) -> tuple[int | None, dict[str, s
         )
         return year, matched  # partial match returned for alert
 
-    logger.info("No new year detected beyond %d — known: %s", max_known, sorted(known))
+    log.info("No new year detected beyond %d — known: %s", max_known, sorted(known))
     return None, {}
 
 
@@ -113,11 +111,12 @@ def check_new_data_flow() -> None:
     from src.flows.deploy_vps_flow import deploy_vps_flow
     from src.flows.drift_monitoring_flow import drift_monitoring_flow
 
+    log = get_run_logger()
     resources = fetch_resources_task()
     new_year, matched_urls = detect_new_year_task(resources)
 
     if new_year is None:
-        logger.info("Nothing to do — dataset is up to date.")
+        log.info("Nothing to do — dataset is up to date.")
         return
 
     if len(matched_urls) < 4:
@@ -128,12 +127,12 @@ def check_new_data_flow() -> None:
             f"Fichiers trouvés : {matched_urls}\n"
             f"→ Consulter data.gouv.fr manuellement."
         )
-        logger.warning(msg)
+        log.warning("event=alert severity=warning topic=onisr_partial_match year=%d matched=%d", new_year, len(matched_urls))
         send_alert(f"Données ONISR {new_year} — revue manuelle requise", msg)
         return
 
     # ── Toutes les données disponibles → chaîne complète ──────────────────────
-    logger.info(
+    log.info(
         "\n═══════════════════════════════════════════════════════════\n"
         "  NOUVELLE ANNEE ONISR : %d — 4/4 fichiers matchés\n"
         "  Lancement de la chaîne ETL → Train → Deploy\n"
@@ -156,7 +155,7 @@ def check_new_data_flow() -> None:
             f"absolue, ou tous régressent sur ≥2 métriques vs @Production.\n"
             f"Métriques : {result['metrics']}"
         )
-        logger.warning(msg)
+        log.warning("Training ONISR %d conclu sans champion (cf. event=alert topic=no_champion émis par select-champion-task)", new_year)
         send_alert(f"Training ONISR {new_year} — aucun champion promu", msg)
         return
 
