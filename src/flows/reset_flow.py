@@ -67,6 +67,10 @@ async def clear_predictions_task() -> int:
     import asyncpg
     conn = await asyncpg.connect(_build_dsn())
     try:
+        # Timeout défensif : si une autre connexion tient un verrou sur la
+        # table, TRUNCATE attend indéfiniment par défaut — mieux vaut échouer
+        # clairement au bout de 30s qu'un flow bloqué en RUNNING pour toujours.
+        await conn.execute("SET statement_timeout = '30s'")
         count = await conn.fetchval("SELECT COUNT(*) FROM predictions")
         await conn.execute("TRUNCATE TABLE predictions RESTART IDENTITY")
         logger.info("Predictions cleared — %d rows deleted", count)
@@ -77,23 +81,38 @@ async def clear_predictions_task() -> int:
 
 @task(name="clear-mlflow")
 def clear_mlflow_task() -> dict:
+    """Supprime chaque run/modèle un par un via l'API MLflow (appel HTTP par
+    run — lent si beaucoup de runs, et une seule erreur individuelle ne doit
+    pas faire échouer tout le reset). Voir clear_postgres_full_task pour une
+    alternative plus radicale et plus rapide (un seul TRUNCATE SQL) — le flow
+    saute cette tâche automatiquement si postgres_full est aussi demandé."""
     import mlflow
     from mlflow.tracking import MlflowClient
     from src.models.train_model import MODEL_NAMES
 
+    log = get_run_logger()
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
     mlflow.set_tracking_uri(tracking_uri)
     client = MlflowClient()
 
-    # Delete all runs in the experiment
+    # Delete all runs in the experiment — résilient : une suppression qui
+    # échoue est comptée et ignorée, ne bloque pas le reste du reset.
     runs_deleted = 0
+    runs_failed = 0
     experiment = client.get_experiment_by_name(MLFLOW_EXPERIMENT_TO_RESET)
     if experiment is not None:
         runs = client.search_runs(experiment_ids=[experiment.experiment_id], max_results=50000)
         for run in runs:
-            client.delete_run(run.info.run_id)
-        runs_deleted = len(runs)
-        logger.info("Deleted %d MLflow run(s) from '%s'", runs_deleted, MLFLOW_EXPERIMENT_TO_RESET)
+            try:
+                client.delete_run(run.info.run_id)
+                runs_deleted += 1
+            except Exception as exc:
+                runs_failed += 1
+                log.warning("Suppression run %s échouée (ignorée) : %s", run.info.run_id, exc)
+        logger.info(
+            "Deleted %d/%d MLflow run(s) from '%s' (%d échec(s))",
+            runs_deleted, len(runs), MLFLOW_EXPERIMENT_TO_RESET, runs_failed,
+        )
     else:
         logger.info("MLflow experiment '%s' not found", MLFLOW_EXPERIMENT_TO_RESET)
 
@@ -107,7 +126,7 @@ def clear_mlflow_task() -> dict:
         except Exception:
             logger.info("Registered model '%s' absent (déjà supprimé ou jamais créé)", model_name)
 
-    return {"runs_deleted": runs_deleted, "models_deleted": models_deleted}
+    return {"runs_deleted": runs_deleted, "runs_failed": runs_failed, "models_deleted": models_deleted}
 
 
 @task(name="clear-drift-reports")
@@ -140,6 +159,7 @@ async def clear_postgres_full_task() -> int:
     log = get_run_logger()
     conn = await asyncpg.connect(_build_dsn())
     try:
+        await conn.execute("SET statement_timeout = '30s'")
         rows = await conn.fetch(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != 'alembic_version'"
         )
@@ -244,7 +264,14 @@ async def reset_flow(
         result["predictions_deleted"] = await clear_predictions_task()
     if clear_drift:
         result["drift_deleted"] = clear_drift_reports_task()
-    if clear_mlflow:
+    if clear_mlflow and clear_postgres_full:
+        # postgres_full TRUNCATE couvre déjà tout ce que clear_mlflow ferait,
+        # en un seul appel SQL — sauter les N appels HTTP individuels (lent,
+        # et le point le plus fragile du flow : une seule requête en échec
+        # abortait tout le reset avant même d'atteindre postgres_full/minio).
+        log.info("event=reset severity=info component=mlflow_skip reason=redundant_with_postgres_full")
+        result["mlflow"] = "skipped (couvert par postgres_full)"
+    elif clear_mlflow:
         result["mlflow"] = clear_mlflow_task()
     if clear_postgres_full:
         result["postgres_tables_truncated"] = await clear_postgres_full_task()
