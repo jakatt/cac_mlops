@@ -259,11 +259,18 @@ jobs:
             # échoué proprement mais sans raison de tourner).
             BLUEPRINT_CHANGED=$(echo "$CHANGED_FILES" | grep -cE '^config/model_params\.yml$' || true)
 
+            # --param value est JSON-parsé par le CLI Prefect avant d'être validé
+            # contre le schéma du flow (sha_tag: str) : un SHA dont les 8 premiers
+            # caractères hex sont tous des chiffres (ex: 11644311) est un JSON
+            # valide → envoyé comme int, rejeté par le schéma "not of type 'string'".
+            # D'où les guillemets littéraux dans la valeur, qui forcent un JSON
+            # string (incident vécu : PR119, aucun flow run créé, gate jamais
+            # apparue dans le Cockpit).
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
               echo "==> Blueprint DS modifié — déclenchement update-model-flow"
               docker compose exec -T prefect-worker \
                 prefect deployment run 'update-model-flow/update-model' \
-                  --param "sha_tag=${SHA_SHORT}" \
+                  --param "sha_tag=\"${SHA_SHORT}\"" \
                   --param "needs_build=${NEEDS_BUILD}" \
                   --param "restart_services=${RESTART_SERVICES}" \
               && echo "update-model-flow déclenché ✓" \
@@ -273,7 +280,7 @@ jobs:
               docker compose exec -T prefect-worker \
                 prefect deployment run \
                   'deploy-vps-flow/deploy-vps' \
-                  --param "sha_tag=${SHA_SHORT}" \
+                  --param "sha_tag=\"${SHA_SHORT}\"" \
                   --param "needs_build=${NEEDS_BUILD}" \
                   --param "restart_services=${RESTART_SERVICES}" \
               && echo "deploy-vps-flow déclenché ✓" \
