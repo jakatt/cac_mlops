@@ -2035,19 +2035,24 @@ git pull && dvc pull          # sync code + données depuis S3
 Promtail scrape les logs de tous les conteneurs (dont les événements logfmt structurés
 `event=gate_open/gate_resolved/interruption_*/rollback/alert`) → Loki → Grafana
 
-**9 règles d'alerte Grafana (email SMTP)**
+**9 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte**
+(plus de `send_alert()` Python direct : chaque flow loggue `event=alert severity=...
+topic=...`, Grafana évalue et notifie — un seul chemin, pas de doublon)
 
-| Type | Alerte | Seuil |
+| Type | Alerte | Détection |
 |---|---|---|
 | Prometheus | Brute-force 401 | > 20 / 5 min |
 | Prometheus | DDoS 429 | > 50 / 5 min |
 | Prometheus | RAM critique | < 10% |
 | Prometheus | Disk /data | < 15% |
 | Loki | Erreur flow Prefect | `ERROR`\\|`CRITICAL` dans les logs |
-| Loki | Aucun champion sélectionné | `event=alert topic=no_champion` |
-| Loki | Drift critique | `event=alert topic=drift severity=critical` |
+| Loki | MLOps critique | `event=alert severity=critical` (schema validation, drift, échec deploy/Kapsule, disque post-nettoyage — détail dans le `topic=`) |
+| Loki | MLOps warning | `event=alert severity=warning` (aucun champion, drift modéré, ONISR partiel) |
 | Loki | Gate refusée (STOP) | `event=gate_resolved decision=STOP` |
 | Loki | Rollback déclenché | `event=rollback` |
+
+Les succès (`topic=deploy_success`/`kapsule_success`) sont loggués et visibles dans
+Loki/Grafana mais n'envoient pas d'email — un succès n'est pas une alerte.
 """)
 
                 # CI/CD

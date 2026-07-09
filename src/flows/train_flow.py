@@ -144,10 +144,9 @@ def select_champion_task(
             if champion_metrics.get(k, 0.0) < prod_metrics.get(k, 0.0)
         ]
         if len(regressions) >= 2:
-            log.info(
-                "Champion %s régresse sur %d métriques vs @Production (%s) "
-                "— seuil de régression dépassé — @Production inchangé",
-                champion, len(regressions), regressions,
+            log.warning(
+                "event=alert severity=warning topic=no_champion reason=regression champion=%s regressions=%s",
+                champion, regressions,
             )
             return None
 
@@ -166,11 +165,10 @@ def select_champion_task(
 
     improvement = champion_score - prod_score
     if improvement < MIN_IMPROVEMENT:
-        log.info(
-            "Champion %s (%s=%.4f) insuffisant vs @Production (%.4f) "
-            "— delta=+%.4f < seuil=+%.2f — @Production inchangé",
-            champion, PRIMARY_METRIC, champion_score, prod_score,
-            improvement, MIN_IMPROVEMENT,
+        log.warning(
+            "event=alert severity=warning topic=no_champion reason=insufficient_improvement "
+            "champion=%s improvement=%.4f threshold=%.2f",
+            champion, improvement, MIN_IMPROVEMENT,
         )
         return None
 

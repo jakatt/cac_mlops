@@ -227,50 +227,8 @@ groups:
         labels:
           severity: critical
 
-      - uid: no-champion-log
-        title: "Prefect — aucun algorithme champion (KPI non atteints)"
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: loki
-            model:
-              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="alert", topic="no_champion" [10m])'
-              instant: true
-              intervalMs: 1000
-              maxDataPoints: 43200
-              queryType: instant
-          - refId: C
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: "__expr__"
-            model:
-              type: threshold
-              expression: "A"
-              conditions:
-                - evaluator:
-                    params: [0]
-                    type: gt
-                  operator:
-                    type: and
-                  query:
-                    params: [A]
-                  reducer:
-                    params: []
-                    type: last
-        noDataState: OK
-        execErrState: Error
-        for: 0s
-        annotations:
-          summary: "train_flow terminé sans champion — aucun algorithme ne dépasse les seuils KPI, @Production inchangé"
-        labels:
-          severity: warning
-
-      - uid: drift-critical-log
-        title: "Prefect — drift critique détecté"
+      - uid: mlops-alert-critical
+        title: "MLOps — alerte critique (event=alert severity=critical)"
         condition: C
         data:
           - refId: A
@@ -279,7 +237,7 @@ groups:
               to: 0
             datasourceUid: loki
             model:
-              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="alert", topic="drift", severity="critical" [5m])'
+              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="alert", severity="critical" [5m])'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -307,9 +265,51 @@ groups:
         execErrState: Error
         for: 0s
         annotations:
-          summary: "Drift critique détecté par Evidently — action manuelle requise, rapport disponible dans Grafana"
+          summary: "Événement MLOps critique (validation ETL, drift, échec de déploiement/Kapsule, disque post-nettoyage…) — voir le champ topic= dans les logs Loki pour le détail"
         labels:
           severity: critical
+
+      - uid: mlops-alert-warning
+        title: "MLOps — alerte warning (event=alert severity=warning)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service="prefect-worker"} | logfmt | event="alert", severity="warning" [10m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Événement MLOps à surveiller (aucun champion, drift modéré, ONISR partiel…) — voir le champ topic= dans les logs Loki pour le détail"
+        labels:
+          severity: warning
 
       - uid: gate-stop
         title: "Prefect — gate refusée (STOP)"

@@ -8,7 +8,8 @@ de chaque cycle de full-retrain-flow (i>0), ou manuellement depuis l'onglet
 Orchestration. No cron dédié : le drift est vérifié une fois par cycle
 (annuel), pas en continu, puisqu'on n'a pas de trafic de production réel.
 
-On drift CRITICAL : alert email only. Retraining is NOT triggered
+On drift CRITICAL : alerte Grafana (event=alert severity=critical topic=drift) uniquement,
+pas de réentraînement automatique. Retraining is NOT triggered
 automatically — labels N+1 are unavailable (ONISR publishes with ~2yr
 delay), so retraining on the same data produces an identical model.
 Drift is an early warning for the next annual cycle.
@@ -18,7 +19,6 @@ import json
 from prefect import flow, task, get_run_logger
 
 from services.monitoring.drift_detection import run_drift_report, _default_year
-from src.utils.email_utils import send_alert
 
 
 @task(name="run-evidently-report")
@@ -61,7 +61,7 @@ def drift_monitoring_flow(year: int | str | None = None) -> dict:
        des années précédentes (X_train, même dossier cumulatif — cf.
        drift_detection.py::run_drift_report)
     2. Compare via Evidently (drift de features, indépendant du modèle)
-    3. Alert email sur WARNING / CRITICAL
+    3. Alerte Grafana (via Loki) sur WARNING / CRITICAL
 
     Aucun réentraînement automatique : les labels N+1 sont indisponibles
     (ONISR publie avec ~2 ans de délai). Le drift est un signal pour
@@ -79,35 +79,16 @@ def drift_monitoring_flow(year: int | str | None = None) -> dict:
     level   = check_threshold_task(summary)
     summary["level"] = level
 
-    drift_info = (
-        f"drift_share={summary.get('drift_share', 0):.1%} "
-        f"({summary.get('drifted_count', 0)}/{summary.get('total_features', 0)} features)\n"
-        f"Rapport disponible dans Gradio onglet Drift ou /reports/drift/"
-    )
-
     if level == "CRITICAL":
         log.warning(
-            "event=alert severity=critical topic=drift year=%s share=%.3f",
-            year, summary.get("drift_share", 0.0),
-        )
-        send_alert(
-            f"Drift CRITICAL {year} — action manuelle requise",
-            f"Dérive critique détectée sur les features de l'année {year} "
-            f"vs les années précédentes ({summary.get('reference_years', [])}).\n\n"
-            f"{drift_info}\n\n"
-            f"Action : vérifier si les seuils KPI restent pertinents, planifier\n"
-            f"le prochain cycle annuel si nécessaire.",
+            "event=alert severity=critical topic=drift year=%s share=%.3f reference_years=%s",
+            year, summary.get("drift_share", 0.0), summary.get("reference_years", []),
         )
 
     elif level == "WARNING":
         log.warning(
-            "event=alert severity=warning topic=drift year=%s share=%.3f",
-            year, summary.get("drift_share", 0.0),
-        )
-        send_alert(
-            f"Drift WARNING {year} — surveillance recommandée",
-            f"Dérive modérée détectée sur les features de l'année {year} "
-            f"vs les années précédentes ({summary.get('reference_years', [])}).\n\n{drift_info}",
+            "event=alert severity=warning topic=drift year=%s share=%.3f reference_years=%s",
+            year, summary.get("drift_share", 0.0), summary.get("reference_years", []),
         )
 
     return summary

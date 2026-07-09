@@ -3,7 +3,8 @@ Deploy Kapsule flow — rolling update de l'API et Gradio sur le cluster K8s.
 
 Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
-Si actif : kubectl set image + rollout status. Rollback auto + email si échec.
+Si actif : kubectl set image + rollout status. Rollback auto si échec
+(event=alert severity=critical topic=kapsule_failure — alerte Grafana).
 """
 import os
 import subprocess
@@ -11,8 +12,6 @@ import tempfile
 from pathlib import Path
 
 from prefect import flow, task, get_run_logger
-
-from src.utils.email_utils import send_alert
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
@@ -141,10 +140,7 @@ def deploy_kapsule_flow() -> bool:
 
     if not ok:
         rollback_kapsule_task(kubeconfig)
-        send_alert(
-            "Deploy Kapsule ÉCHOUÉ — rollback effectué",
-            "Le rolling update Kapsule a échoué. La version précédente a été restaurée.",
-        )
+        log.error("event=alert severity=critical topic=kapsule_failure")
         raise RuntimeError(
             "Deploy Kapsule ÉCHOUÉ — rolling update impossible sur le cluster K8s.\n"
             "Le rollback vers la version précédente a été effectué automatiquement.\n"
@@ -155,8 +151,6 @@ def deploy_kapsule_flow() -> bool:
             "  4. Si cluster instable : kapsule-down puis kapsule-up"
         )
 
-    send_alert(
-        "Deploy Kapsule OK",
-        "Rolling update Kapsule terminé avec succès.",
-    )
+    # Confirmation de succès : visible dans Loki/Grafana, pas d'email (cf. deploy_vps_flow.py).
+    log.info("event=alert severity=info topic=kapsule_success")
     return True

@@ -178,12 +178,9 @@ services:
       GHCR_USER:              ${GHCR_USER:-jakatt}
       # Rollback Docker T2 — chemin projet sur le host pour docker compose up -d
       COMPOSE_PROJECT_DIR:    ${COMPOSE_PROJECT_DIR:-/home/deploy/cac_mlops}
-      # Alertes email (même config que Grafana SMTP)
-      SMTP_HOST:              ${GF_SMTP_HOST:-smtp.gmail.com:587}
-      SMTP_USER:              ${GF_SMTP_USER:-}
-      SMTP_PASSWORD:          ${GF_SMTP_PASSWORD:-}
-      SMTP_FROM:              ${GF_SMTP_FROM_ADDRESS:-no-reply@cac-mlops.local}
-      ALERT_EMAIL:            ${GF_ALERT_EMAIL:-}
+      # Alertes : plus d'envoi SMTP direct depuis les flows (src/utils/email_utils.py
+      # supprimé) — tous les événements sont loggués (event=alert severity=... topic=...)
+      # et c'est Grafana Alerting (GF_SMTP_*/GF_ALERT_EMAIL ci-dessous) qui notifie.
     volumes:
       - ./src:/app/src:ro                                              # flows Prefect (override image baked-in)
       - ./services/monitoring:/app/services/monitoring:ro             # drift_detection.py (override image baked-in)
