@@ -15,6 +15,7 @@ import boto3
 import joblib
 import mlflow
 from botocore.config import Config
+from mlflow.tracking import MlflowClient
 from prefect import flow, task, get_run_logger
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
@@ -122,18 +123,32 @@ def upload_model_s3() -> str:
     """Export du modèle @Production dans un fichier temporaire — jamais sous
     src/ : ce dossier est monté :ro dans prefect-worker (override du code des
     flows), toute écriture y échoue avec "Read-only file system" (incident
-    vécu, 2026-07-10, premier run réel de kapsule-up-flow)."""
+    vécu, 2026-07-10, premier run réel de kapsule-up-flow).
+
+    mlflow.sklearn.load_model retourne l'estimateur brut (LGBMClassifier...),
+    pas un mlflow.pyfunc.PyFuncModel — les apps gradio n'ont donc aucun moyen
+    de connaître nom/version depuis le joblib seul (le MLflow K8s est un
+    sqlite isolé, jamais le vrai registre). model_info.txt (ex: "lgbm:v4")
+    exporté à côté résout ça (incident vécu : footer de prédiction affichait
+    toujours "@Production" générique sur Kapsule)."""
     logger = get_run_logger()
     logger.info("Export modele @Production depuis MLflow...")
     mlflow.set_tracking_uri(MLFLOW_URI)
+    client = MlflowClient()
     exported = False
     model_path = ""
+    model_info = ""
     for name in ALL_MODEL_NAMES:
         try:
             model = mlflow.sklearn.load_model(f"models:/{name}@Production")
             with tempfile.NamedTemporaryFile(suffix=".joblib", delete=False) as f:
                 model_path = f.name
             joblib.dump(model, model_path)
+            try:
+                version = client.get_model_version_by_alias(name, "Production").version
+                model_info = f"{name.split('_')[0]}:v{version}"
+            except Exception as e:
+                logger.warning("Version indisponible pour %s: %s", name, e)
             logger.info("✓ %s@Production exporté → %s", name, model_path)
             exported = True
             break
@@ -145,6 +160,14 @@ def upload_model_s3() -> str:
     s3 = _s3_client()
     s3.upload_file(model_path, SCW_BUCKET, "k8s-model/trained_model.joblib")
     logger.info("✓ Modele uploadé → s3://%s/k8s-model/trained_model.joblib", SCW_BUCKET)
+
+    if model_info:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write(model_info)
+            info_path = f.name
+        s3.upload_file(info_path, SCW_BUCKET, "k8s-model/model_info.txt")
+        logger.info("✓ model_info.txt uploadé (%s)", model_info)
+
     return model_path
 
 
@@ -271,7 +294,7 @@ def apply_manifests(kubeconfig: str) -> str:
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
-    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio", "tailscale"]:
+    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio", "gradio-public", "caddy", "tailscale"]:
         d = K8S_DIR / subdir
         if d.exists():
             _kubectl(kubeconfig, ["apply", "-f", f"{d}/"])
@@ -313,21 +336,53 @@ def wait_api_ready(kubeconfig: str) -> str:
     return "ready"
 
 
+KAPSULE_DOMAIN = "kapsule.jakat-inc.fr"
+DNS_ZONE       = "jakat-inc.fr"
+
+
 @task(name="write-kapsule-state")
 def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
-    """nginx reste seul exposé publiquement (LoadBalancer) — équivalent du
-    chemin public Caddy→nginx→gradio-public sur le VPS. grafana/prefect-
-    server/gradio sont en ClusterIP (parité VPS — Tailscale-only, aucune
+    """caddy est désormais seul exposé publiquement (LoadBalancer, TLS Let's
+    Encrypt automatique pour kapsule.jakat-inc.fr) — équivalent du chemin
+    public Caddy→nginx→gradio-public sur le VPS. grafana/prefect-server/
+    gradio sont en ClusterIP (parité VPS — Tailscale-only, aucune
     authentification propre à gradio/prefect) : reachable uniquement via le
-    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local."""
+    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local.
+
+    L'IP de caddy change à chaque cycle kapsule-up/down — le record A
+    kapsule.jakat-inc.fr est mis à jour automatiquement ici via `scw dns
+    record set` (testé en direct, fonctionne avec les credentials SCW déjà
+    utilisés partout ailleurs dans ce flow — TTL 300s, propagation rapide)."""
     logger = get_run_logger()
     ips: dict[str, str] = {}
 
     out = _kubectl(kubeconfig, [
-        "get", "svc", "nginx", "-n", K8S_NAMESPACE,
+        "get", "svc", "caddy", "-n", K8S_NAMESPACE,
         "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
     ], check=False)
-    ips["NGINX_LB"] = out.strip() or "pending"
+    caddy_ip = out.strip() or "pending"
+    ips["CADDY_LB"] = caddy_ip
+    ips["PUBLIC_URL"] = f"https://{KAPSULE_DOMAIN}"
+
+    if caddy_ip and caddy_ip != "pending":
+        try:
+            import socket
+            dns_ip = socket.gethostbyname(KAPSULE_DOMAIN)
+        except socket.gaierror:
+            dns_ip = None
+        if dns_ip != caddy_ip:
+            try:
+                _scw([
+                    "dns", "record", "set", DNS_ZONE,
+                    "name=kapsule", "type=A", f"values.0={caddy_ip}", "ttl=300",
+                ])
+                logger.info("✓ DNS %s → %s (était %s)", KAPSULE_DOMAIN, caddy_ip, dns_ip)
+            except RuntimeError as exc:
+                logger.warning(
+                    "event=alert severity=warning topic=kapsule_dns_update_failed "
+                    "dns_ip=%s caddy_ip=%s error=%s — mettre à jour manuellement "
+                    "dans la console Scaleway DNS", dns_ip, caddy_ip, exc,
+                )
 
     for svc_name, key in [
         ("grafana",        "GRAFANA_DNS"),
@@ -365,8 +420,8 @@ def kapsule_up_flow(
       8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale)
       9. Patch PREFECT_UI_API_URL (DNS interne cluster, ClusterIP)
       10. Attend que le deployment api soit available
-      11. Écrit les adresses dans state/kapsule_ips (IP publique pour nginx,
-          DNS interne pour grafana/prefect/gradio — reachable via Tailscale)
+      11. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
+          caddy, DNS interne pour grafana/prefect/gradio — reachable via Tailscale)
     """
     create_node_pool(node_type, node_count)
     wait_pool_ready()

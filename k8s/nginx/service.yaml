@@ -3,11 +3,10 @@ kind: Service
 metadata:
   name: nginx
   namespace: cac-mlops
-  annotations:
-    # Kapsule provisionne un Scaleway Load Balancer automatiquement
-    service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
 spec:
-  type: LoadBalancer
+  # ClusterIP — Caddy (k8s/caddy/) devient le seul point d'entrée public
+  # (TLS + HTTP->HTTPS), nginx passe interne (rate-limiting/routing inchangés).
+  type: ClusterIP
   selector:
     app: nginx
   ports:

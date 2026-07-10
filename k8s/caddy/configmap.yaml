@@ -1,0 +1,14 @@
+# Caddyfile minimal — Caddy obtient/renouvelle seul le certificat Let's
+# Encrypt (HTTP01, port 80 déjà ouvert pour la validation ACME) et redirige
+# HTTP→HTTPS automatiquement. Aucune config TLS manuelle nécessaire —
+# mêmes garanties que le Caddy déjà utilisé côté VPS (host-level, hors repo).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: caddy-config
+  namespace: cac-mlops
+data:
+  Caddyfile: |
+    kapsule.jakat-inc.fr {
+        reverse_proxy nginx:80
+    }

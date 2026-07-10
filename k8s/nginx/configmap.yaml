@@ -5,10 +5,20 @@ metadata:
   namespace: cac-mlops
 data:
   default.conf: |
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
     limit_req_zone $binary_remote_addr zone=predict_ratelimit:10m rate=20r/m;
+    limit_req_zone $binary_remote_addr zone=token_ratelimit:10m  rate=5r/m;
 
     upstream api_backend {
         server api:8000;
+    }
+
+    upstream gradio_public_backend {
+        server gradio-public:7862;
     }
 
     server {
@@ -20,6 +30,7 @@ data:
         proxy_set_header Host            $host;
         server_tokens off;
 
+        # ── API — /predict (rate-limited) ──────────────────────────────────
         location = /predict {
             limit_req zone=predict_ratelimit burst=5 nodelay;
             limit_req_status 429;
@@ -27,8 +38,38 @@ data:
             proxy_read_timeout 30s;
         }
 
-        location / {
+        # ── API — /token (rate-limité séparément — endpoint de login) ───────
+        location = /token {
+            limit_req zone=token_ratelimit burst=3 nodelay;
+            limit_req_status 429;
             proxy_pass http://api_backend;
-            proxy_read_timeout 60s;
+        }
+
+        # ── API — autres endpoints FastAPI ───────────────────────────────────
+        location = /health {
+            proxy_pass http://api_backend;
+        }
+        location = /metrics {
+            proxy_pass http://api_backend;
+        }
+        location = /openapi.json {
+            proxy_pass http://api_backend;
+        }
+        location /docs {
+            proxy_pass http://api_backend;
+        }
+        location /redoc {
+            proxy_pass http://api_backend;
+        }
+
+        # ── Cockpit public Gradio — tout le reste ────────────────────────────
+        location / {
+            proxy_pass         http://gradio_public_backend;
+            proxy_http_version 1.1;
+            proxy_set_header   Upgrade    $http_upgrade;
+            proxy_set_header   Connection $connection_upgrade;
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+            proxy_buffering    off;
         }
     }

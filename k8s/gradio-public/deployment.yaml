@@ -1,19 +1,27 @@
+# Cockpit public (3 onglets : Predict / What-If / Points Noirs) — équivalent
+# du gradio-public du VPS. Jamais de Service public direct : seul nginx
+# (via Caddy) y accède, comme sur le VPS ("pas de port hôte").
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gradio
+  name: gradio-public
   namespace: cac-mlops
   labels:
-    app: gradio
+    app: gradio-public
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
-      app: gradio
+      app: gradio-public
   template:
     metadata:
       labels:
-        app: gradio
+        app: gradio-public
     spec:
       initContainers:
       - name: fetch-model
@@ -74,11 +82,12 @@ spec:
           mountPath: /app/data
 
       containers:
-      - name: gradio
+      - name: gradio-public
         image: ghcr.io/jakatt/cac-mlops-gradio:latest
         imagePullPolicy: Always
+        command: ["python", "services/gradio/app_public.py"]
         ports:
-        - containerPort: 7860
+        - containerPort: 7862
         env:
         - name: MLFLOW_TRACKING_URI
           value: "http://mlflow:5000"
@@ -101,7 +110,9 @@ spec:
         - name: GRADIO_DATA_PATH
           value: "/app/data"
         - name: GRADIO_PORT
-          value: "7860"
+          value: "7862"
+        - name: GRADIO_PUBLIC_URL
+          value: "https://kapsule.jakat-inc.fr"
         - name: LOCAL_MODEL_PATH
           value: "/app/model/trained_model.joblib"
         volumeMounts:
@@ -119,14 +130,14 @@ spec:
         readinessProbe:
           httpGet:
             path: /
-            port: 7860
+            port: 7862
           initialDelaySeconds: 30
           periodSeconds: 15
           failureThreshold: 6
         livenessProbe:
           httpGet:
             path: /
-            port: 7860
+            port: 7862
           initialDelaySeconds: 60
           periodSeconds: 30
 

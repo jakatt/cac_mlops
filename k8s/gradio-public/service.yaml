@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gradio-public
+  namespace: cac-mlops
+  labels:
+    app: gradio-public
+spec:
+  # ClusterIP — jamais de port public direct, exactement comme sur le VPS.
+  # Seul nginx (lui-même seulement reachable via Caddy) y accède.
+  type: ClusterIP
+  selector:
+    app: gradio-public
+  ports:
+  - port: 7862
+    targetPort: 7862
+    protocol: TCP
