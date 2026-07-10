@@ -186,6 +186,8 @@ services:
       - ./services/monitoring:/app/services/monitoring:ro             # drift_detection.py (override image baked-in)
       - ./config:/app/config                                           # blueprint hyperparamètres (rw — extract_blueprint.py écrit ici)
       - ./prefect.yaml:/app/prefect.yaml:ro                           # deployments (override image baked-in)
+      - ./k8s:/app/k8s:ro                                              # manifests kapsule-up-flow (jamais copiés dans l'image api — absent avant ce fix)
+      - ./infrastructure:/app/infrastructure:ro                        # provisioning grafana pour kapsule-up-flow (idem)
       - ./data:/app/data
       - ./reports:/app/reports
       - ./state:/app/state
