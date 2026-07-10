@@ -12,7 +12,12 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     && chmod +x kubectl && mv kubectl /usr/local/bin/
 
 # scw CLI (flows kapsule)
-RUN curl -sL "https://github.com/scaleway/scaleway-cli/releases/latest/download/scaleway-cli_linux_x86_64" \
+# Nom d'asset versionné (scaleway-cli_{version}_linux_amd64) : l'alias
+# "latest/download/scaleway-cli_linux_x86_64" utilisé avant ne correspond à
+# aucun asset réel (convention de nommage différente) → 404 systématique,
+# silencieusement enregistré comme binaire par `curl -sL` (pas de -f) — le
+# flow kapsule-up échouait au premier appel scw (incident vécu, 2026-07-10).
+RUN curl -fsSL "https://github.com/scaleway/scaleway-cli/releases/download/v2.58.3/scaleway-cli_2.58.3_linux_amd64" \
     -o /usr/local/bin/scw && chmod +x /usr/local/bin/scw
 
 # docker CLI (flow diag — accès via /var/run/docker.sock)
