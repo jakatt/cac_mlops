@@ -5,10 +5,13 @@ metadata:
   namespace: cac-mlops
   labels:
     app: gradio
-  annotations:
-    service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
 spec:
-  type: LoadBalancer
+  # ClusterIP — plus de LoadBalancer public. Le Cockpit (Orchestration,
+  # RAZ, kapsule-down...) n'a aucune authentification applicative (comme
+  # sur le VPS) : seul reachable via le subnet-router Tailscale
+  # (k8s/tailscale/), jamais exposé publiquement (incident vécu, 2026-07-10 —
+  # Cockpit K8s wide open sans login le temps d'un premier test).
+  type: ClusterIP
   selector:
     app: gradio
   ports:

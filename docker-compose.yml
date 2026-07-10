@@ -171,6 +171,7 @@ services:
       SCW_SECRET_ACCESS_KEY:  ${SCW_SECRET_ACCESS_KEY}
       KAPSULE_CLUSTER_ID:     ${KAPSULE_CLUSTER_ID:-}
       SCW_DEFAULT_ORGANIZATION_ID: ${SCW_DEFAULT_ORGANIZATION_ID:-}
+      TAILSCALE_AUTHKEY:      ${TAILSCALE_AUTHKEY:-}
       KAPSULE_STATE:          /app/state/kapsule_ips
       NGINX_URL:              http://nginx:80
       # Deploy VPS flow — authentification ghcr.io pour docker compose pull

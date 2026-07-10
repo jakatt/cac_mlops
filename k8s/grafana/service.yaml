@@ -3,10 +3,11 @@ kind: Service
 metadata:
   name: grafana
   namespace: cac-mlops
-  annotations:
-    service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
 spec:
-  type: LoadBalancer
+  # ClusterIP — sur le VPS, grafana est lié à ${VPS_TAILSCALE_IP} (jamais
+  # public), même en ayant sa propre authentification. Parité : seul
+  # reachable via le subnet-router Tailscale (k8s/tailscale/).
+  type: ClusterIP
   selector:
     app: grafana
   ports:

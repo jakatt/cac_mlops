@@ -3,10 +3,12 @@ kind: Service
 metadata:
   name: prefect-server
   namespace: cac-mlops
-  annotations:
-    service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
 spec:
-  type: LoadBalancer
+  # ClusterIP — Prefect OSS n'a aucune authentification native. Seul
+  # reachable via le subnet-router Tailscale (k8s/tailscale/), jamais
+  # exposé publiquement (incident vécu, 2026-07-10 — UI/API Prefect wide
+  # open sans login le temps d'un premier test).
+  type: ClusterIP
   selector:
     app: prefect-server
   ports:
