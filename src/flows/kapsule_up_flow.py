@@ -15,6 +15,7 @@ import boto3
 import joblib
 import mlflow
 from botocore.config import Config
+from mlflow.tracking import MlflowClient
 from prefect import flow, task, get_run_logger
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
@@ -122,18 +123,32 @@ def upload_model_s3() -> str:
     """Export du modèle @Production dans un fichier temporaire — jamais sous
     src/ : ce dossier est monté :ro dans prefect-worker (override du code des
     flows), toute écriture y échoue avec "Read-only file system" (incident
-    vécu, 2026-07-10, premier run réel de kapsule-up-flow)."""
+    vécu, 2026-07-10, premier run réel de kapsule-up-flow).
+
+    mlflow.sklearn.load_model retourne l'estimateur brut (LGBMClassifier...),
+    pas un mlflow.pyfunc.PyFuncModel — les apps gradio n'ont donc aucun moyen
+    de connaître nom/version depuis le joblib seul (le MLflow K8s est un
+    sqlite isolé, jamais le vrai registre). model_info.txt (ex: "lgbm:v4")
+    exporté à côté résout ça (incident vécu : footer de prédiction affichait
+    toujours "@Production" générique sur Kapsule)."""
     logger = get_run_logger()
     logger.info("Export modele @Production depuis MLflow...")
     mlflow.set_tracking_uri(MLFLOW_URI)
+    client = MlflowClient()
     exported = False
     model_path = ""
+    model_info = ""
     for name in ALL_MODEL_NAMES:
         try:
             model = mlflow.sklearn.load_model(f"models:/{name}@Production")
             with tempfile.NamedTemporaryFile(suffix=".joblib", delete=False) as f:
                 model_path = f.name
             joblib.dump(model, model_path)
+            try:
+                version = client.get_model_version_by_alias(name, "Production").version
+                model_info = f"{name.split('_')[0]}:v{version}"
+            except Exception as e:
+                logger.warning("Version indisponible pour %s: %s", name, e)
             logger.info("✓ %s@Production exporté → %s", name, model_path)
             exported = True
             break
@@ -145,6 +160,14 @@ def upload_model_s3() -> str:
     s3 = _s3_client()
     s3.upload_file(model_path, SCW_BUCKET, "k8s-model/trained_model.joblib")
     logger.info("✓ Modele uploadé → s3://%s/k8s-model/trained_model.joblib", SCW_BUCKET)
+
+    if model_info:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write(model_info)
+            info_path = f.name
+        s3.upload_file(info_path, SCW_BUCKET, "k8s-model/model_info.txt")
+        logger.info("✓ model_info.txt uploadé (%s)", model_info)
+
     return model_path
 
 
@@ -313,6 +336,10 @@ def wait_api_ready(kubeconfig: str) -> str:
     return "ready"
 
 
+KAPSULE_DOMAIN = "kapsule.jakat-inc.fr"
+DNS_ZONE       = "jakat-inc.fr"
+
+
 @task(name="write-kapsule-state")
 def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     """caddy est désormais seul exposé publiquement (LoadBalancer, TLS Let's
@@ -322,10 +349,10 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     authentification propre à gradio/prefect) : reachable uniquement via le
     subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local.
 
-    L'IP de caddy change à chaque cycle kapsule-up/down — si elle diffère
-    de l'enregistrement DNS actuel (kapsule.jakat-inc.fr), le log l'indique
-    explicitement pour rappel de mise à jour manuelle côté console
-    Scaleway DNS (TTL 300s, propagation rapide)."""
+    L'IP de caddy change à chaque cycle kapsule-up/down — le record A
+    kapsule.jakat-inc.fr est mis à jour automatiquement ici via `scw dns
+    record set` (testé en direct, fonctionne avec les credentials SCW déjà
+    utilisés partout ailleurs dans ce flow — TTL 300s, propagation rapide)."""
     logger = get_run_logger()
     ips: dict[str, str] = {}
 
@@ -335,21 +362,27 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     ], check=False)
     caddy_ip = out.strip() or "pending"
     ips["CADDY_LB"] = caddy_ip
-    ips["PUBLIC_URL"] = "https://kapsule.jakat-inc.fr"
+    ips["PUBLIC_URL"] = f"https://{KAPSULE_DOMAIN}"
 
     if caddy_ip and caddy_ip != "pending":
         try:
             import socket
-            dns_ip = socket.gethostbyname("kapsule.jakat-inc.fr")
-            if dns_ip != caddy_ip:
-                logger.warning(
-                    "event=alert severity=warning topic=kapsule_dns_stale "
-                    "dns_ip=%s caddy_ip=%s — mettre à jour le record A "
-                    "kapsule.jakat-inc.fr dans la console Scaleway DNS",
-                    dns_ip, caddy_ip,
-                )
+            dns_ip = socket.gethostbyname(KAPSULE_DOMAIN)
         except socket.gaierror:
-            logger.warning("Résolution DNS kapsule.jakat-inc.fr impossible depuis prefect-worker")
+            dns_ip = None
+        if dns_ip != caddy_ip:
+            try:
+                _scw([
+                    "dns", "record", "set", DNS_ZONE,
+                    "name=kapsule", "type=A", f"values.0={caddy_ip}", "ttl=300",
+                ])
+                logger.info("✓ DNS %s → %s (était %s)", KAPSULE_DOMAIN, caddy_ip, dns_ip)
+            except RuntimeError as exc:
+                logger.warning(
+                    "event=alert severity=warning topic=kapsule_dns_update_failed "
+                    "dns_ip=%s caddy_ip=%s error=%s — mettre à jour manuellement "
+                    "dans la console Scaleway DNS", dns_ip, caddy_ip, exc,
+                )
 
     for svc_name, key in [
         ("grafana",        "GRAFANA_DNS"),

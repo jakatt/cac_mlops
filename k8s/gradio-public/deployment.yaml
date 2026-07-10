@@ -33,6 +33,10 @@ spec:
           aws s3 cp s3://cac-mlops-data/k8s-model/trained_model.joblib \
             /app/model/trained_model.joblib \
             --endpoint-url https://s3.fr-par.scw.cloud
+          aws s3 cp s3://cac-mlops-data/k8s-model/model_info.txt \
+            /app/model/model_info.txt \
+            --endpoint-url https://s3.fr-par.scw.cloud \
+            || echo "model_info.txt absent (export précédent au fix) — footer générique"
         env:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:

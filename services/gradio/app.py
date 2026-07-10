@@ -83,9 +83,10 @@ FEATURE_COLS = [
 ]
 
 # ── Model + data lazy-loading ─────────────────────────────────────────────────
-_model   = None
-_df      = None
-_df_full = None
+_model      = None
+_model_info = None  # ex: "lgbm:v4" — affiché dans le footer de prédiction
+_df         = None
+_df_full    = None
 
 
 def _get_production_footer() -> str:
@@ -117,18 +118,36 @@ def _find_production_model() -> str | None:
 
 
 def _get_model():
-    global _model
+    """Charge le modèle @Production — deux chemins possibles :
+    - LOCAL_MODEL_PATH (Kapsule K8s) : joblib d'un estimateur brut
+      (LGBMClassifier...), exporté par kapsule_up_flow.py depuis le vrai
+      registre MLflow du VPS (le MLflow K8s lui-même est un sqlite isolé,
+      jamais le vrai registre) — model_info.txt (nom+version) exporté à
+      côté sert à afficher le bon libellé dans le footer de prédiction.
+    - mlflow.pyfunc (VPS) : registre MLflow réel, version dispo directement
+      via le client MLflow."""
+    global _model, _model_info
     if _model is None:
         local = Path(LOCAL_MODEL_PATH) if LOCAL_MODEL_PATH else None
         if local and local.exists():
             logger.info("Loading model from local path %s", local)
             _model = joblib.load(local)
+            info_path = local.parent / "model_info.txt"
+            if info_path.exists():
+                _model_info = info_path.read_text().strip()
         else:
             uri = _find_production_model()
             if uri is None:
                 raise RuntimeError("Aucun modele @Production trouve dans le registry MLflow")
             logger.info("Loading model %s", uri)
             _model = mlflow.pyfunc.load_model(uri)
+            try:
+                model_name = uri.split("/")[1].split("@")[0]
+                client = mlflow.tracking.MlflowClient()
+                version = client.get_model_version_by_alias(model_name, MODEL_ALIAS).version
+                _model_info = f"{model_name.split('_')[0]}:v{version}"
+            except Exception:
+                pass
     return _model
 
 
@@ -250,6 +269,13 @@ _PREDICT_EXAMPLES = [
 
 
 def _predict_with_proba(df: pd.DataFrame) -> tuple[int, float | None]:
+    """Modèle brut (LOCAL_MODEL_PATH, ex: LGBMClassifier) expose predict_proba
+    directement — tenté en premier. Modèle mlflow.pyfunc (VPS) n'a pas cette
+    méthode : fallback sur son API params= / ._model_impl. Avant ce fix, le
+    cas "modèle brut" tombait dans les deux fallbacks pyfunc (qui échouent
+    silencieusement dessus) sans jamais essayer l'appel direct qui marche —
+    la probabilité n'était donc jamais affichée sur Kapsule (incident vécu,
+    2026-07-10)."""
     model = _get_model()
     df_pred = df.rename(columns={"intersection_type": "int"}).copy()
     for c in _FLOAT_COLS:
@@ -257,18 +283,24 @@ def _predict_with_proba(df: pd.DataFrame) -> tuple[int, float | None]:
             df_pred[c] = df_pred[c].astype(float)
     pred = int(model.predict(df_pred)[0])
     proba = None
-    try:
-        res = model.predict(df_pred, params={"predict_method": "predict_proba"})
-        arr = res.values if hasattr(res, "values") else np.array(res)
-        proba = float(arr[0][pred])
-    except Exception:
+    if hasattr(model, "predict_proba"):
         try:
-            inner = model._model_impl
-            if hasattr(inner, "predict_proba"):
-                arr = inner.predict_proba(df_pred)
-                proba = float(arr[0][pred])
+            proba = float(model.predict_proba(df_pred)[0][pred])
         except Exception:
             pass
+    if proba is None:
+        try:
+            res = model.predict(df_pred, params={"predict_method": "predict_proba"})
+            arr = res.values if hasattr(res, "values") else np.array(res)
+            proba = float(arr[0][pred])
+        except Exception:
+            try:
+                inner = model._model_impl
+                if hasattr(inner, "predict_proba"):
+                    arr = inner.predict_proba(df_pred)
+                    proba = float(arr[0][pred])
+            except Exception:
+                pass
     return pred, proba
 
 
@@ -286,10 +318,11 @@ def run_predict(place, catu, sexe, secu1, victim_age, catv,
         ]))
         df = pd.DataFrame([row])
         pred, proba = _predict_with_proba(df)
-        label     = "**PRIORITAIRE** — blessure grave ou décès probable" if pred == 1 else "**Non prioritaire** — blessure légère ou indemne probable"
-        emoji     = "🔴" if pred == 1 else "🟢"
-        proba_str = f"  \nProbabilité : **{proba:.1%}**" if proba is not None else ""
-        return f"## {emoji} {label}{proba_str}\n\n*Prédiction modèle @Production — à titre indicatif uniquement.*"
+        label       = "**PRIORITAIRE** — blessure grave ou décès probable" if pred == 1 else "**Non prioritaire** — blessure légère ou indemne probable"
+        emoji       = "🔴" if pred == 1 else "🟢"
+        proba_str   = f"  \nProbabilité : **{proba:.1%}**" if proba is not None else ""
+        model_label = _model_info or "@Production"
+        return f"## {emoji} {label}{proba_str}\n\n*Prédiction modèle {model_label} — à titre indicatif uniquement.*"
     except Exception as exc:
         return f"Erreur de prédiction : {exc}"
 
