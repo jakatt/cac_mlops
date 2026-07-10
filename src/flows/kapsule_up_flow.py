@@ -67,6 +67,10 @@ def create_node_pool(node_type: str, node_count: int) -> str:
     logger = get_run_logger()
     if not CLUSTER_ID:
         raise ValueError("KAPSULE_CLUSTER_ID non configuré")
+    existing = json.loads(_scw(["k8s", "pool", "list", f"cluster-id={CLUSTER_ID}", "-o", "json"]))
+    if any(p["name"] == "main" for p in existing):
+        logger.info("Pool 'main' déjà existant sur %s — création ignorée (retry après échec en aval)", CLUSTER_ID)
+        return "already-exists"
     logger.info("Création pool %s×%d sur cluster %s", node_type, node_count, CLUSTER_ID)
     _scw([
         "k8s", "pool", "create",
@@ -115,30 +119,33 @@ def get_kubeconfig() -> str:
 
 @task(name="upload-model-s3")
 def upload_model_s3() -> str:
+    """Export du modèle @Production dans un fichier temporaire — jamais sous
+    src/ : ce dossier est monté :ro dans prefect-worker (override du code des
+    flows), toute écriture y échoue avec "Read-only file system" (incident
+    vécu, 2026-07-10, premier run réel de kapsule-up-flow)."""
     logger = get_run_logger()
-    model_path = APP_DIR / "src" / "models" / "trained_model.joblib"
-
-    if not model_path.exists():
-        logger.info("Export modele @Production depuis MLflow...")
-        mlflow.set_tracking_uri(MLFLOW_URI)
-        exported = False
-        for name in ALL_MODEL_NAMES:
-            try:
-                model = mlflow.sklearn.load_model(f"models:/{name}@Production")
-                model_path.parent.mkdir(parents=True, exist_ok=True)
-                joblib.dump(model, model_path)
-                logger.info("✓ %s@Production exporté → %s", name, model_path)
-                exported = True
-                break
-            except Exception as e:
-                logger.warning("skip %s: %s", name, e)
-        if not exported:
-            raise RuntimeError("Aucun modele @Production trouvé dans le registry MLflow")
+    logger.info("Export modele @Production depuis MLflow...")
+    mlflow.set_tracking_uri(MLFLOW_URI)
+    exported = False
+    model_path = ""
+    for name in ALL_MODEL_NAMES:
+        try:
+            model = mlflow.sklearn.load_model(f"models:/{name}@Production")
+            with tempfile.NamedTemporaryFile(suffix=".joblib", delete=False) as f:
+                model_path = f.name
+            joblib.dump(model, model_path)
+            logger.info("✓ %s@Production exporté → %s", name, model_path)
+            exported = True
+            break
+        except Exception as e:
+            logger.warning("skip %s: %s", name, e)
+    if not exported:
+        raise RuntimeError("Aucun modele @Production trouvé dans le registry MLflow")
 
     s3 = _s3_client()
-    s3.upload_file(str(model_path), SCW_BUCKET, "k8s-model/trained_model.joblib")
+    s3.upload_file(model_path, SCW_BUCKET, "k8s-model/trained_model.joblib")
     logger.info("✓ Modele uploadé → s3://%s/k8s-model/trained_model.joblib", SCW_BUCKET)
-    return str(model_path)
+    return model_path
 
 
 @task(name="upload-data-s3")
