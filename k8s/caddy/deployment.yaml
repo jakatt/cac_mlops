@@ -1,0 +1,61 @@
+# Point d'entrée public unique de Kapsule — TLS (Let's Encrypt automatique)
+# devant nginx (rate-limiting/routing inchangés). /data en emptyDir : le
+# certificat n'est pas conservé entre deux cycles kapsule-up/down (recréé à
+# chaque fois), acceptable vu la fréquence d'usage (loin des rate limits
+# Let's Encrypt) — à revoir seulement si Kapsule devient permanent.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caddy
+  namespace: cac-mlops
+  labels:
+    app: caddy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caddy
+  template:
+    metadata:
+      labels:
+        app: caddy
+    spec:
+      containers:
+      - name: caddy
+        image: caddy:2-alpine
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        volumeMounts:
+        - name: caddy-config
+          mountPath: /etc/caddy/Caddyfile
+          subPath: Caddyfile
+        - name: caddy-data
+          mountPath: /data
+        - name: caddy-config-dir
+          mountPath: /config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      volumes:
+      - name: caddy-config
+        configMap:
+          name: caddy-config
+      - name: caddy-data
+        emptyDir: {}
+      - name: caddy-config-dir
+        emptyDir: {}

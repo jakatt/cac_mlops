@@ -271,7 +271,7 @@ def apply_manifests(kubeconfig: str) -> str:
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
-    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio", "tailscale"]:
+    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio", "gradio-public", "caddy", "tailscale"]:
         d = K8S_DIR / subdir
         if d.exists():
             _kubectl(kubeconfig, ["apply", "-f", f"{d}/"])
@@ -315,19 +315,41 @@ def wait_api_ready(kubeconfig: str) -> str:
 
 @task(name="write-kapsule-state")
 def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
-    """nginx reste seul exposé publiquement (LoadBalancer) — équivalent du
-    chemin public Caddy→nginx→gradio-public sur le VPS. grafana/prefect-
-    server/gradio sont en ClusterIP (parité VPS — Tailscale-only, aucune
+    """caddy est désormais seul exposé publiquement (LoadBalancer, TLS Let's
+    Encrypt automatique pour kapsule.jakat-inc.fr) — équivalent du chemin
+    public Caddy→nginx→gradio-public sur le VPS. grafana/prefect-server/
+    gradio sont en ClusterIP (parité VPS — Tailscale-only, aucune
     authentification propre à gradio/prefect) : reachable uniquement via le
-    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local."""
+    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local.
+
+    L'IP de caddy change à chaque cycle kapsule-up/down — si elle diffère
+    de l'enregistrement DNS actuel (kapsule.jakat-inc.fr), le log l'indique
+    explicitement pour rappel de mise à jour manuelle côté console
+    Scaleway DNS (TTL 300s, propagation rapide)."""
     logger = get_run_logger()
     ips: dict[str, str] = {}
 
     out = _kubectl(kubeconfig, [
-        "get", "svc", "nginx", "-n", K8S_NAMESPACE,
+        "get", "svc", "caddy", "-n", K8S_NAMESPACE,
         "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
     ], check=False)
-    ips["NGINX_LB"] = out.strip() or "pending"
+    caddy_ip = out.strip() or "pending"
+    ips["CADDY_LB"] = caddy_ip
+    ips["PUBLIC_URL"] = "https://kapsule.jakat-inc.fr"
+
+    if caddy_ip and caddy_ip != "pending":
+        try:
+            import socket
+            dns_ip = socket.gethostbyname("kapsule.jakat-inc.fr")
+            if dns_ip != caddy_ip:
+                logger.warning(
+                    "event=alert severity=warning topic=kapsule_dns_stale "
+                    "dns_ip=%s caddy_ip=%s — mettre à jour le record A "
+                    "kapsule.jakat-inc.fr dans la console Scaleway DNS",
+                    dns_ip, caddy_ip,
+                )
+        except socket.gaierror:
+            logger.warning("Résolution DNS kapsule.jakat-inc.fr impossible depuis prefect-worker")
 
     for svc_name, key in [
         ("grafana",        "GRAFANA_DNS"),
@@ -365,8 +387,8 @@ def kapsule_up_flow(
       8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale)
       9. Patch PREFECT_UI_API_URL (DNS interne cluster, ClusterIP)
       10. Attend que le deployment api soit available
-      11. Écrit les adresses dans state/kapsule_ips (IP publique pour nginx,
-          DNS interne pour grafana/prefect/gradio — reachable via Tailscale)
+      11. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
+          caddy, DNS interne pour grafana/prefect/gradio — reachable via Tailscale)
     """
     create_node_pool(node_type, node_count)
     wait_pool_ready()

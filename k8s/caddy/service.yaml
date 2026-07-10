@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: caddy
+  namespace: cac-mlops
+  labels:
+    app: caddy
+  annotations:
+    # Kapsule provisionne un Scaleway Load Balancer automatiquement
+    service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
+spec:
+  type: LoadBalancer
+  selector:
+    app: caddy
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  - name: https
+    port: 443
+    targetPort: 443
