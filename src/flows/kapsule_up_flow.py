@@ -213,6 +213,38 @@ def setup_namespace_secrets(kubeconfig: str) -> str:
     return "OK"
 
 
+@task(name="setup-tailscale-secret")
+def setup_tailscale_secret(kubeconfig: str) -> str:
+    """Secret pour le subnet-router (k8s/tailscale/) qui remplace les
+    LoadBalancer publics de gradio/prefect-server/grafana par un accès
+    Tailscale — parité avec le VPS (${VPS_TAILSCALE_IP}, aucune de ces
+    interfaces n'a d'authentification applicative propre à gradio/prefect).
+    Clé reusable + ephemeral, taguée tag:k8s-cac-mlops — cf. .env.example
+    pour la configuration Tailscale ACL (tagOwners/autoApprovers) requise
+    une seule fois côté console, sans quoi la route doit être ré-approuvée
+    manuellement à chaque cycle kapsule-up/down."""
+    logger = get_run_logger()
+    authkey = os.getenv("TAILSCALE_AUTHKEY", "")
+    if not authkey:
+        logger.warning(
+            "TAILSCALE_AUTHKEY absent — subnet-router non fonctionnel : "
+            "gradio/prefect-server/grafana (ClusterIP) resteront inaccessibles "
+            "tant que la clé n'est pas configurée (voir .env.example)"
+        )
+        return "skipped"
+    args = [
+        "create", "secret", "generic", "tailscale-auth",
+        "-n", K8S_NAMESPACE, "--dry-run=client", "-o", "yaml",
+        "--from-literal", f"TS_AUTHKEY={authkey}",
+    ]
+    yaml_out = _kubectl(kubeconfig, args)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_out)
+    _kubectl(kubeconfig, ["apply", "-f", f.name])
+    logger.info("✓ Secret tailscale-auth")
+    return "OK"
+
+
 @task(name="setup-grafana-configmaps")
 def setup_grafana_configmaps(kubeconfig: str) -> str:
     logger = get_run_logger()
@@ -239,7 +271,7 @@ def apply_manifests(kubeconfig: str) -> str:
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
-    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio"]:
+    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio", "tailscale"]:
         d = K8S_DIR / subdir
         if d.exists():
             _kubectl(kubeconfig, ["apply", "-f", f"{d}/"])
@@ -251,26 +283,21 @@ def apply_manifests(kubeconfig: str) -> str:
 
 @task(name="patch-prefect-url")
 def patch_prefect_url(kubeconfig: str) -> str:
+    """prefect-server est en ClusterIP (pas de LoadBalancer — voir sécurité,
+    Prefect OSS n'a aucune authentification native). L'URL DNS interne au
+    cluster est stable dès la création du Service (contrairement à une IP
+    de LoadBalancer, qui change à chaque recréation kapsule-up/down) —
+    reachable depuis l'extérieur uniquement via le subnet-router Tailscale
+    + le nameserver split-DNS cluster.local configuré côté admin Tailscale."""
     logger = get_run_logger()
-    logger.info("Attente IP LoadBalancer prefect-server (max 3 min)...")
-    for i in range(1, 19):
-        out = _kubectl(kubeconfig, [
-            "get", "svc", "prefect-server", "-n", K8S_NAMESPACE,
-            "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
-        ], check=False)
-        ip = out.strip()
-        if ip and ip != "<none>":
-            logger.info("✓ Prefect LB IP: %s", ip)
-            _kubectl(kubeconfig, [
-                "set", "env", "deployment/prefect-server",
-                "-n", K8S_NAMESPACE,
-                f"PREFECT_UI_API_URL=http://{ip}:4200/api",
-            ])
-            return ip
-        logger.info("[%ds] en attente...", i * 10)
-        time.sleep(10)
-    logger.warning("Prefect LB IP non obtenue dans le délai — PREFECT_UI_API_URL non patché")
-    return "pending"
+    url = f"http://prefect-server.{K8S_NAMESPACE}.svc.cluster.local:4200/api"
+    _kubectl(kubeconfig, [
+        "set", "env", "deployment/prefect-server",
+        "-n", K8S_NAMESPACE,
+        f"PREFECT_UI_API_URL={url}",
+    ])
+    logger.info("✓ PREFECT_UI_API_URL=%s", url)
+    return url
 
 
 @task(name="wait-api-ready-k8s")
@@ -288,19 +315,26 @@ def wait_api_ready(kubeconfig: str) -> str:
 
 @task(name="write-kapsule-state")
 def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
+    """nginx reste seul exposé publiquement (LoadBalancer) — équivalent du
+    chemin public Caddy→nginx→gradio-public sur le VPS. grafana/prefect-
+    server/gradio sont en ClusterIP (parité VPS — Tailscale-only, aucune
+    authentification propre à gradio/prefect) : reachable uniquement via le
+    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local."""
     logger = get_run_logger()
     ips: dict[str, str] = {}
+
+    out = _kubectl(kubeconfig, [
+        "get", "svc", "nginx", "-n", K8S_NAMESPACE,
+        "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
+    ], check=False)
+    ips["NGINX_LB"] = out.strip() or "pending"
+
     for svc_name, key in [
-        ("nginx",          "NGINX_LB"),
-        ("grafana",        "GRAFANA_LB"),
-        ("prefect-server", "PREFECT_LB"),
-        ("gradio",         "GRADIO_LB"),
+        ("grafana",        "GRAFANA_DNS"),
+        ("prefect-server", "PREFECT_DNS"),
+        ("gradio",         "GRADIO_DNS"),
     ]:
-        out = _kubectl(kubeconfig, [
-            "get", "svc", svc_name, "-n", K8S_NAMESPACE,
-            "-o", "jsonpath={.status.loadBalancer.ingress[0].ip}",
-        ], check=False)
-        ips[key] = out.strip() or "pending"
+        ips[key] = f"{svc_name}.{K8S_NAMESPACE}.svc.cluster.local"
 
     KAPSULE_STATE.parent.mkdir(parents=True, exist_ok=True)
     content = "\n".join(f"{k}={v}" for k, v in ips.items())
@@ -326,12 +360,13 @@ def kapsule_up_flow(
       3. Récupère le kubeconfig
       4. Upload modele @Production → S3 (s3://cac-mlops-data/k8s-model/)
       5. Upload X_test/y_test → S3 (s3://cac-mlops-data/k8s-gradio-data/)
-      6. Namespace + Secrets K8s
+      6. Namespace + Secrets K8s (app + tailscale-auth)
       7. ConfigMaps Grafana
-      8. kubectl apply de tous les manifests k8s/
-      9. Patch PREFECT_UI_API_URL avec l'IP du LoadBalancer
+      8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale)
+      9. Patch PREFECT_UI_API_URL (DNS interne cluster, ClusterIP)
       10. Attend que le deployment api soit available
-      11. Écrit les IPs dans state/kapsule_ips
+      11. Écrit les adresses dans state/kapsule_ips (IP publique pour nginx,
+          DNS interne pour grafana/prefect/gradio — reachable via Tailscale)
     """
     create_node_pool(node_type, node_count)
     wait_pool_ready()
@@ -339,6 +374,7 @@ def kapsule_up_flow(
     upload_model_s3()
     upload_data_s3()
     setup_namespace_secrets(kubeconfig)
+    setup_tailscale_secret(kubeconfig)
     setup_grafana_configmaps(kubeconfig)
     apply_manifests(kubeconfig)
     patch_prefect_url(kubeconfig)

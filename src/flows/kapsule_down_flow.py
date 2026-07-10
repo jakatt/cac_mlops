@@ -67,7 +67,12 @@ def delete_node_pools() -> list[str]:
     for pool in pools:
         pool_id = pool["id"]
         logger.info("Suppression pool %s (%s)...", pool_id, pool.get("name", "?"))
-        _scw(["k8s", "pool", "delete", f"cluster-id={CLUSTER_ID}", pool_id])
+        # `scw k8s pool delete` prend pool-id en positionnel — pas de champ
+        # cluster-id (contrairement à `pool list`/`pool create`). Erreur
+        # "Unknown argument 'cluster-id'" vécue au premier run réel de ce
+        # flow (2026-07-10), pool resté up (facturation + exposition
+        # publique non fermée) le temps du fix manuel.
+        _scw(["k8s", "pool", "delete", pool_id, "region=fr-par"])
         deleted.append(pool_id)
         logger.info("Pool %s supprimé", pool_id)
     return deleted

@@ -1,0 +1,79 @@
+# Subnet-router Tailscale — remplace l'exposition publique (LoadBalancer) de
+# gradio/prefect-server par un accès privé via le même tailnet que le VPS.
+# Advertise à la fois PodCIDR (100.64.0.0/15) et ServiceCIDR (10.32.0.0/20,
+# cf. `scw k8s cluster get` — ces valeurs sont spécifiques au cluster
+# efc7564c-530a-476a-a50e-091c18bb6177, à revérifier si le cluster est
+# recréé from scratch un jour).
+#
+# Clé d'auth "ephemeral" + tag dédié (tag:k8s-cac-mlops) : indispensable
+# pour rester compatible avec le cycle kapsule-up/kapsule-down — sans ça,
+# chaque recréation du pod exigerait une ré-approbation manuelle de la route
+# dans la console Tailscale. Voir les 3 actions one-time requises dans la
+# console (tagOwners + autoApprovers + nameserver split-DNS) documentées
+# dans docs/ (à créer) / le message de PR associé.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tailscale-subnet-router
+  namespace: cac-mlops
+  labels:
+    app: tailscale-subnet-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tailscale-subnet-router
+  template:
+    metadata:
+      labels:
+        app: tailscale-subnet-router
+    spec:
+      containers:
+      - name: tailscale
+        image: tailscale/tailscale:stable
+        env:
+        - name: TS_AUTHKEY
+          valueFrom:
+            secretKeyRef:
+              name: tailscale-auth
+              key: TS_AUTHKEY
+        - name: TS_EXTRA_ARGS
+          value: "--advertise-routes=100.64.0.0/15,10.32.0.0/20 --advertise-tags=tag:k8s-cac-mlops"
+        - name: TS_USERSPACE
+          value: "false"
+        - name: TS_HOSTNAME
+          value: "kapsule-cac-mlops"
+        # Sans TS_KUBE_SECRET="", l'image détecte automatiquement qu'elle
+        # tourne dans Kubernetes (KUBERNETES_SERVICE_HOST toujours présent
+        # dans un pod) et tente de stocker son état dans un Secret K8s —
+        # nécessite des permissions RBAC jamais accordées ici (incident
+        # vécu, 2026-07-10 : "missing get/update permission on secret
+        # tailscale", pod en CrashLoop). Inutile de toute façon : la clé
+        # ephemeral signifie qu'aucun état ne doit persister entre
+        # redémarrages — état simple sur le filesystem du conteneur.
+        - name: TS_KUBE_SECRET
+          value: ""
+        - name: TS_STATE_DIR
+          value: "/var/lib/tailscale"
+        securityContext:
+          capabilities:
+            add:
+              - NET_ADMIN
+        volumeMounts:
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+        - name: tailscale-state
+          mountPath: /var/lib/tailscale
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+      volumes:
+      - name: dev-net-tun
+        hostPath:
+          path: /dev/net/tun
+      - name: tailscale-state
+        emptyDir: {}
