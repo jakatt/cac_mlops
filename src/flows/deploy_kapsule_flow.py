@@ -3,7 +3,7 @@ Deploy Kapsule flow — rolling update de l'API et Gradio sur le cluster K8s.
 
 Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
-Si actif : kubectl set image + rollout status. Rollback auto si échec
+Si actif : kubectl rollout restart + rollout status. Rollback auto si échec
 (event=alert severity=critical topic=kapsule_failure — alerte Grafana).
 """
 import os
@@ -16,12 +16,8 @@ from prefect import flow, task, get_run_logger
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
 K8S_NAMESPACE = "cac-mlops"
-GHCR_OWNER    = "jakatt"
 
-DEPLOYMENTS = {
-    "api":    f"ghcr.io/{GHCR_OWNER}/cac-mlops-api:latest",
-    "gradio": f"ghcr.io/{GHCR_OWNER}/cac-mlops-gradio:latest",
-}
+DEPLOYMENTS = ["api", "gradio"]
 
 
 def _scw(args: list[str], timeout: int = 60) -> str:
@@ -75,17 +71,27 @@ def get_kubeconfig_task() -> str:
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
 def rolling_update_task(kubeconfig: str) -> bool:
     """
-    kubectl set image for api + gradio deployments, then wait for rollout.
+    kubectl rollout restart for api + gradio deployments, then wait for rollout.
     Returns True on success, False on failure (caller handles rollback).
+
+    `kubectl set image` avec la même chaîne (toujours ":latest", jamais de
+    tag par SHA) ne produit AUCUN diff de spec pour Kubernetes — donc
+    AUCUN rollout, même si le contenu réel de l'image a changé sur le
+    registre (bug vécu, jamais détecté avant : confirmé par
+    `rollout history` inchangé après un `set image` réel, 2026-07-10).
+    `rollout restart` force toujours une nouvelle ReplicaSet (patch d'une
+    annotation de redémarrage), donc un vrai repull de l'image ET un
+    re-run de l'initContainer fetch-model — nécessaire aussi bien pour
+    Trigger 1 (nouveau modèle promu, jamais rechargé par un pod déjà
+    tournant) que Trigger 2 (nouveau code).
     """
     log = get_run_logger()
     try:
-        for deploy_name, image in DEPLOYMENTS.items():
-            log.info("Rolling update %s → %s", deploy_name, image)
+        for deploy_name in DEPLOYMENTS:
+            log.info("Rolling restart %s", deploy_name)
             _kubectl(kubeconfig, [
-                "set", "image",
+                "rollout", "restart",
                 f"deployment/{deploy_name}",
-                f"{deploy_name}={image}",
                 "-n", K8S_NAMESPACE,
             ])
 
