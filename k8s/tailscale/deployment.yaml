@@ -43,6 +43,18 @@ spec:
           value: "false"
         - name: TS_HOSTNAME
           value: "kapsule-cac-mlops"
+        # Sans TS_KUBE_SECRET="", l'image détecte automatiquement qu'elle
+        # tourne dans Kubernetes (KUBERNETES_SERVICE_HOST toujours présent
+        # dans un pod) et tente de stocker son état dans un Secret K8s —
+        # nécessite des permissions RBAC jamais accordées ici (incident
+        # vécu, 2026-07-10 : "missing get/update permission on secret
+        # tailscale", pod en CrashLoop). Inutile de toute façon : la clé
+        # ephemeral signifie qu'aucun état ne doit persister entre
+        # redémarrages — état simple sur le filesystem du conteneur.
+        - name: TS_KUBE_SECRET
+          value: ""
+        - name: TS_STATE_DIR
+          value: "/var/lib/tailscale"
         securityContext:
           capabilities:
             add:
@@ -50,6 +62,8 @@ spec:
         volumeMounts:
         - name: dev-net-tun
           mountPath: /dev/net/tun
+        - name: tailscale-state
+          mountPath: /var/lib/tailscale
         resources:
           requests:
             cpu: 50m
@@ -61,3 +75,5 @@ spec:
       - name: dev-net-tun
         hostPath:
           path: /dev/net/tun
+      - name: tailscale-state
+        emptyDir: {}
