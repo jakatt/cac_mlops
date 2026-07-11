@@ -3,8 +3,10 @@ Deploy Kapsule flow — rolling update de l'API et Gradio sur le cluster K8s.
 
 Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
-Si actif : kubectl apply -f k8s/ (resynchro manifests, cf. apply_manifests)
-puis rollout restart + rollout status. Rollback auto si échec
+Si actif : kubectl apply -f k8s/ (resynchro manifests) → ménage léger
+(pods Completed/Failed + log des conditions de pression nœuds) → rollout
+restart SÉQUENTIEL (un deployment à la fois, pas les 3 en parallèle — cf.
+rolling_update_task) + rollout status. Rollback auto si échec
 (event=alert severity=critical topic=kapsule_failure — alerte Grafana).
 """
 import os
@@ -71,10 +73,69 @@ def get_kubeconfig_task() -> str:
     return f.name
 
 
+@task(name="pre-deploy-cleanup")
+def cleanup_before_deploy_task(kubeconfig: str) -> None:
+    """Ménage léger avant le rollout — purement défensif, n'échoue jamais
+    (check=False partout) pour ne jamais bloquer le déploiement sur un
+    problème de nettoyage :
+
+    1. Supprime les pods Completed/Failed qui traînent dans le namespace
+       (observé en direct : un vieux pod grafana resté en 0/1 Completed
+       après un rollout précédent — ne consomme pas de CPU/RAM mais
+       encombre `kubectl get pods` et peut laisser des logs/fs de conteneur
+       sur le disque du nœud tant que le GC kubelet ne passe pas).
+    2. Log les conditions DiskPressure/MemoryPressure/PIDPressure de chaque
+       nœud — informatif seulement (pas de blocage), pour avoir un signal
+       clair dans Grafana/Loki AVANT un éventuel échec de rollout plutôt
+       que de le découvrir seulement après un timeout de 300s (incident
+       vécu : DiskPressure sur les 2 nœuds, 2026-07-10).
+    """
+    import json
+    log = get_run_logger()
+
+    for phase in ("Succeeded", "Failed"):
+        out = _kubectl(kubeconfig, [
+            "delete", "pods", "-n", K8S_NAMESPACE,
+            f"--field-selector=status.phase={phase}",
+            "--ignore-not-found",
+        ], check=False)
+        if out.strip() and "No resources found" not in out:
+            log.info("Nettoyage pods %s : %s", phase, out.strip())
+
+    raw = _kubectl(kubeconfig, ["get", "nodes", "-o", "json"], check=False)
+    try:
+        nodes = json.loads(raw).get("items", [])
+    except Exception:
+        nodes = []
+    for node in nodes:
+        name = node.get("metadata", {}).get("name", "?")
+        conds = {c["type"]: c["status"] for c in node.get("status", {}).get("conditions", [])}
+        pressure = {
+            k: v for k, v in conds.items()
+            if k in ("DiskPressure", "MemoryPressure", "PIDPressure") and v == "True"
+        }
+        if pressure:
+            log.warning(
+                "event=alert severity=warning topic=kapsule_node_pressure node=%s pressure=%s",
+                name, pressure,
+            )
+        else:
+            log.info("Noeud %s OK (pas de pression ressources)", name)
+
+
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
 def rolling_update_task(kubeconfig: str) -> bool:
     """
-    kubectl rollout restart for api + gradio deployments, then wait for rollout.
+    Rollout restart SÉQUENTIEL (un deployment à la fois : restart puis
+    attente avant de passer au suivant) — pas les 3 en parallèle. Un rollout
+    parallèle fait temporairement coexister l'ancien ET le nouveau pod pour
+    api + gradio + gradio-public en même temps, ce qui double quasiment la
+    charge instantanée sur des nœuds déjà petits (BASIC3-X2C-8G ×2) et a
+    fait timeout le rollout `api` à 300s alors qu'un retry séquentiel juste
+    après a réussi en 3m26s sans aucun changement de code (incident vécu,
+    2026-07-11). Le séquentiel réduit le pic de charge et échoue/alerte plus
+    vite (sur le premier deployment bloqué, pas après avoir attendu les 3).
+
     Returns True on success, False on failure (caller handles rollback).
 
     `kubectl set image` avec la même chaîne (toujours ":latest", jamais de
@@ -97,8 +158,6 @@ def rolling_update_task(kubeconfig: str) -> bool:
                 f"deployment/{deploy_name}",
                 "-n", K8S_NAMESPACE,
             ])
-
-        for deploy_name in DEPLOYMENTS:
             log.info("Attente rollout %s…", deploy_name)
             _kubectl(kubeconfig, [
                 "rollout", "status",
@@ -163,6 +222,7 @@ def deploy_kapsule_flow() -> bool:
     # k8s/gradio/deployment.yaml après le dernier kapsule-up, jamais propagé sur
     # plusieurs déploiements malgré des rollout restart réussis, 2026-07-11).
     apply_manifests(kubeconfig)
+    cleanup_before_deploy_task(kubeconfig)
 
     ok = rolling_update_task(kubeconfig)
 
