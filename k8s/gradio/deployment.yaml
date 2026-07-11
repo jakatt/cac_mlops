@@ -104,6 +104,8 @@ spec:
           value: "7860"
         - name: LOCAL_MODEL_PATH
           value: "/app/model/trained_model.joblib"
+        - name: COCKPIT_ENV
+          value: "kapsule"
         volumeMounts:
         - name: model-volume
           mountPath: /app/model

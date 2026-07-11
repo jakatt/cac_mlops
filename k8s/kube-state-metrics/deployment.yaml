@@ -1,0 +1,39 @@
+# Preuve la plus directe du "zero downtime" : kube_deployment_status_
+# replicas_available{deployment="api"} au fil du temps pendant un rollout —
+# c'est Kubernetes lui-même qui rapporte la garantie, pas une inférence
+# depuis le trafic. --namespaces/--resources scopent la collecte au strict
+# nécessaire (cac-mlops, deployments/pods/replicasets uniquement).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-state-metrics
+  namespace: cac-mlops
+  labels:
+    app: kube-state-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-state-metrics
+  template:
+    metadata:
+      labels:
+        app: kube-state-metrics
+    spec:
+      serviceAccountName: kube-state-metrics
+      containers:
+      - name: kube-state-metrics
+        image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0
+        args:
+        - --namespaces=cac-mlops
+        - --resources=deployments,pods,replicasets
+        ports:
+        - containerPort: 8080
+          name: http-metrics
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi

@@ -1,0 +1,32 @@
+# RBAC minimal — uniquement ce que le job "node-exporter" (kubernetes_sd_configs:
+# role: node, voir prometheus/configmap.yaml) a besoin : lister/regarder les
+# nœuds pour découvrir leur IP (change à chaque recréation kapsule-up/down,
+# d'où le besoin de service discovery plutôt que des IPs statiques). Cluster-
+# scope obligatoire ici : les nœuds ne sont pas des objets namespacés.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: cac-mlops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-node-discovery
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "nodes/metrics"]
+  verbs: ["list", "watch", "get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-node-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-node-discovery
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: cac-mlops

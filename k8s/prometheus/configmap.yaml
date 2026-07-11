@@ -14,3 +14,41 @@ data:
         static_configs:
           - targets: ['api:8000']
         metrics_path: /metrics
+
+      # Réplicas disponibles par Deployment (api/gradio/gradio-public) au fil
+      # du temps — preuve K8s-native du "jamais 0 réplica disponible" pendant
+      # un rolling update, indépendante du trafic réel.
+      - job_name: kube-state-metrics
+        static_configs:
+          - targets: ['kube-state-metrics:8080']
+
+      # Sonde synthétique continue sur l'URL publique (via caddy→nginx) —
+      # contrairement au taux d'erreur 5xx (dépend du trafic réel présent
+      # pile au moment du rollout), reproductible à la demande pour la
+      # soutenance.
+      - job_name: blackbox-http-public
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        static_configs:
+          - targets: ['https://kapsule.jakat-inc.fr/health']
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter:9115
+
+      # DaemonSet (1 pod/nœud, hostNetwork:9100) — IP des nœuds change à
+      # chaque cycle kapsule-up/down, d'où la découverte dynamique (role:
+      # node) plutôt que des cibles statiques. Nécessite le ServiceAccount
+      # "prometheus" (voir prometheus/rbac.yaml).
+      - job_name: node-exporter
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            regex: '(.*):10250'
+            replacement: '${1}:9100'
+            target_label: __address__

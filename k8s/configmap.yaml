@@ -11,9 +11,9 @@ data:
   MLFLOW_MODEL_STAGE:     "Production"
   # Modèle chargé depuis le fichier joblib (déposé par initContainer depuis S3)
   LOCAL_MODEL_PATH:       "/app/model/trained_model.joblib"
-  # Prefect
-  PREFECT_API_URL:        "http://prefect-server:4200/api"
-  # PostgreSQL (pour le worker Prefect — drift detection)
+  # PostgreSQL du VPS — l'API K8s y journalise ses prédictions (pas de
+  # Postgres propre à K8s ; prefect-server/worker K8s retirés 2026-07-11,
+  # jamais fonctionnels — aucune deployment n'y était jamais enregistrée)
   POSTGRES_HOST:          "51.159.187.132"
   POSTGRES_USER:          "mlops"
   POSTGRES_DB:            "mlops"
