@@ -6,7 +6,16 @@ metadata:
   labels:
     app: api
 spec:
-  replicas: 1
+  # Pas de `replicas:` ici volontairement — api-hpa.yaml (minReplicas: 2,
+  # maxReplicas: 8) gère ce champ dynamiquement. Le fixer ici ferait
+  # régresser le nombre de réplicas à chaque `kubectl apply` (dont
+  # deploy_kapsule_flow.py::apply_manifests, exécuté avant CHAQUE rollout
+  # depuis PR127) — le Deployment controller redescend à la valeur écrite
+  # ici, le HPA la remonte aussitôt, provoquant un aller-retour
+  # création/suppression de pods pile pendant la fenêtre du rollout (bug
+  # vécu : rollout `api` timeout à 300s, 2026-07-11, malgré un rollout déjà
+  # séquentiel et un cluster sans pression ressources — traces d'events
+  # ScalingReplicaSet 2→3 puis HPA rescale→2 exactement pendant l'échec).
   strategy:
     type: RollingUpdate
     rollingUpdate:
