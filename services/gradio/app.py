@@ -1226,8 +1226,8 @@ def _links_table(rows: str) -> str:
 def _kapsule_links_html() -> str:
     """Lit state/kapsule_ips à chaque appel — toujours à jour, y compris
     après un changement d'IP caddy entre deux cycles kapsule-up/down
-    (write_kapsule_state met déjà à jour le DNS automatiquement, mais l'IP
-    brute CADDY_LB et les DNS internes changent quand même de valeur)."""
+    (write_kapsule_state met déjà à jour le DNS automatiquement, mais les
+    DNS internes Tailscale changent quand même de valeur à chaque cycle)."""
     if not KAPSULE_STATE.exists():
         return f"<p style='color:{MUTED};margin:0;font-family:Inter,Segoe UI,sans-serif;'>Kapsule inactif — aucune IP disponible</p>"
 
@@ -1241,8 +1241,8 @@ def _kapsule_links_html() -> str:
     if not public_url or public_url == "pending":
         return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
-    rows  = _link_row("Cockpit public K8s", public_url, "Public — HTTPS")
-    rows += _link_row("API publique K8s",   f"{public_url}/predict", "Public — HTTPS")
+    rows  = _link_row("Cockpit public K8s", public_url, "Public")
+    rows += _link_row("API publique K8s",   f"{public_url}/predict", "Public")
 
     for key, label, port in [
         ("GRADIO_DNS",   "Cockpit admin K8s", ":7860"),
@@ -1250,11 +1250,7 @@ def _kapsule_links_html() -> str:
     ]:
         dns = ips.get(key, "")
         if dns and dns != "pending":
-            rows += _link_row(label, f"http://{dns}{port}", "Tailscale uniquement")
-
-    caddy_ip = ips.get("CADDY_LB", "")
-    if caddy_ip and caddy_ip != "pending":
-        rows += _link_row("IP publique brute (caddy)", f"http://{caddy_ip}", "Debug — préférer l'URL HTTPS ci-dessus")
+            rows += _link_row(label, f"http://{dns}{port}", "Tailscale")
 
     return _links_table(rows)
 
