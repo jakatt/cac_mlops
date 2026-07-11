@@ -526,33 +526,33 @@ Personne ne le sait
 ║                      ║  /  = 20 GB NVMe  ·  /data = 80 GB block storage    ║                            ║
 ╠══════════════════════╬═════════════════════════════════════════════════════╬════════════════════════════╣
 ║                      ║                                                     ║                            ║
-║  Écriture du code    ║  CONTAINERS (16 : 15 permanents + minio-init EXIT)  ║  Deployments               ║
+║  Écriture du code    ║  CONTAINERS (16 : 15 permanents + minio-init EXIT)  ║  Deployments (12 pods)     ║
 ║  + tests unitaires   ║  ┌──────────────────┬────────────┬────────────────┐ ║  (namespace: cac-mlops)    ║
-║  Pas de stack Docker ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ────────────────────────  ║
+║  Pas de stack Docker ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ─────────────────────     ║
 ║  locale — le VPS     ║  ├──────────────────┼────────────┼────────────────┤ ║  api (HPA min 1→max 8)     ║
-║  est l'unique env.   ║  │ postgresql       │ 5432       │ interne        │ ║  mlflow  (SQLite + S3)     ║
-║  d'intégration réel  ║  │ minio            │ 9000/9001  │ Tailscale      │ ║  prefect-server / worker   ║
-║                      ║  │ minio-init       │ —          │ EXIT (init)    │ ║  prometheus · grafana      ║
-║  Outils CLI          ║  │ mlflow           │ 5001       │ Tailscale      │ ║                            ║
-║  ──────────────────  ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  LoadBalancers LB-S        ║
-║  git · dvc · pytest  ║  │ nginx            │ 8090       │ localhost      │ ║  ─────────────────────     ║
-║  flake8 · kubectl    ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  nginx   :80  → API pub.   ║
-║                      ║  │ prefect-worker   │ —          │ process pool   │ ║  prefect :4200             ║
-║  Cycle dev           ║  │ gradio           │ 7860       │ Tailscale      │ ║  grafana :3000             ║
-║  ──────────────────  ║  │ gradio-public    │ 7862(int.) │ via Caddy/nginx│ ║                            ║
-║  code → PR → CI      ║  │ node-exporter    │ 9100       │ interne        │ ║  HPA api                   ║
-║  → merge → deploy    ║  │ nginx-exporter   │ 9113       │ interne        │ ║  CPU 70% / RAM 80%         ║
-║  → validation VPS    ║  │ prometheus       │ 9090       │ Tailscale      │ ║  min 1 → max 8 pods        ║
+║  est l'unique env.   ║  │ postgresql       │ 5432       │ interne        │ ║  mlflow (SQLite isolé)     ║
+║  d'intégration réel  ║  │ minio            │ 9000/9001  │ Tailscale      │ ║  gradio — ClusterIP        ║
+║                      ║  │ minio-init       │ —          │ EXIT (init)    │ ║  gradio-public — ClusterIP ║
+║  Outils CLI          ║  │ mlflow           │ 5001       │ Tailscale      │ ║  nginx — ClusterIP         ║
+║  ──────────────────  ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  caddy — SEUL LB public    ║
+║  git · dvc · pytest  ║  │ nginx            │ 8090       │ localhost      │ ║  TLS Let's Encrypt auto    ║
+║  flake8 · kubectl    ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  kapsule.jakat-inc.fr      ║
+║                      ║  │ prefect-worker   │ —          │ process pool   │ ║  grafana — ClusterIP       ║
+║  Cycle dev           ║  │ gradio           │ 7860       │ Tailscale      │ ║  prometheus                ║
+║  ──────────────────  ║  │ gradio-public    │ 7862(int.) │ via Caddy/nginx│ ║  tailscale-subnet-router   ║
+║  code → PR → CI      ║  │ node-exporter    │ 9100       │ interne        │ ║  kube-state-metrics        ║
+║  → merge → deploy    ║  │ nginx-exporter   │ 9113       │ interne        │ ║  blackbox-exporter         ║
+║  → validation VPS    ║  │ prometheus       │ 9090       │ Tailscale      │ ║  node-exporter (DaemonSet) ║
 ║                      ║  │ grafana          │ 3000       │ Tailscale      │ ║                            ║
-║                      ║  │ loki             │ 3100       │ interne        │ ║                            ║
-║                      ║  │ promtail         │ —          │ interne        │ ║                            ║
+║                      ║  │ loki             │ 3100       │ interne        │ ║  Sécurité                  ║
+║                      ║  │ promtail         │ —          │ interne        │ ║  Tailscale-only (admin)    ║
 ║                      ║  └──────────────────┴────────────┴────────────────┘ ║                            ║
 ║                      ║                                                     ║  Secrets K8s               ║
-║                      ║  ORCHESTRATION — PREFECT (14 deployments)           ║  s3-creds · app-creds      ║
-║                      ║  ┌─────────────────────────────────────────────┐   ║                            ║
-║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster               ║
+║                      ║  ORCHESTRATION — PREFECT (14 deployments)           ║  s3-creds · app-creds ·    ║
+║                      ║  ┌─────────────────────────────────────────────┐   ║  tailscale-auth            ║
+║                      ║  │ prefect-server :4200  (Tailscale)           │   ║  État cluster              ║
 ║                      ║  │ prefect-worker  image api + kubectl+scw+docker│  ║  state/kapsule_ips (VPS)   ║
-║                      ║  │                                             │   ║  lu par Gradio onglet Liens ║
+║                      ║  │                                             │   ║  lu par Gradio onglet Liens║
 ║                      ║  │ ML / ETL  : etl · train · full-retrain     │   ║                            ║
 ║                      ║  │             drift-check · check-new-data    │   ╠════════════════════════════╣
 ║                      ║  │             full-retrain · reset            │   ║  PARTAGÉ                   ║
@@ -808,6 +808,10 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 
 ## 9. Infrastructure Kubernetes — Kapsule
 
+**Objectif** : contrairement au VPS (gate manuelle avant toute interruption),
+Kapsule prouve que Trigger 1/2/3 se déploient sans jamais descendre sous
+1 réplica disponible (`maxUnavailable: 0`) — zero-downtime réel, pas supposé.
+
 ```text
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                                                                            │
@@ -815,33 +819,84 @@ COMPORTEMENT AU REDÉMARRAGE VPS
 │   Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB)   │
 │   Activé à la demande via Prefect flows kapsule-up / kapsule-down         │
 │                                                                            │
-│   Deployments (namespace: cac-mlops)                                       │
+│   Deployments (namespace: cac-mlops, 12 pods)                              │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  api             initContainer fetch S3 → /app/model/            │   │
-│   │                  HPA: CPU 70% / RAM 80% / min 1 → max 8 pods    │   │
-│   │  mlflow          SQLite emptyDir + artefacts s3://cac-mlops-data │   │
-│   │  prefect-server  PREFECT_UI_API_URL patchée post-deploy          │   │
-│   │  prefect-worker                                                  │   │
-│   │  prometheus      scrape api:8000/metrics                         │   │
-│   │  grafana         dashboards provisionnés via ConfigMaps           │   │
+│   │  api                initContainer fetch S3 → /app/model/          │   │
+│   │                     HPA: CPU 70% / RAM 80% / min 1 → max 8 pods  │   │
+│   │                     maxUnavailable: 0 / maxSurge: 1               │   │
+│   │  gradio             Cockpit admin — ClusterIP (Tailscale only)    │   │
+│   │                     COCKPIT_ENV=kapsule masque 4 onglets VPS-only │   │
+│   │  gradio-public      Cockpit public 3 onglets — ClusterIP          │   │
+│   │                     (atteint uniquement via nginx→caddy)          │   │
+│   │  mlflow             SQLite emptyDir isolé — PAS le vrai registre  │   │
+│   │  nginx              ClusterIP — rate-limiting + routing           │   │
+│   │  caddy              SEUL point d'entrée public — LoadBalancer     │   │
+│   │                     TLS Let's Encrypt auto (kapsule.jakat-inc.fr) │   │
+│   │  grafana            ClusterIP (Tailscale) — mêmes dashboards VPS  │   │
+│   │  prometheus         scrape api + kube-state-metrics +             │   │
+│   │                     blackbox-exporter + node-exporter×2           │   │
+│   │  tailscale-subnet-router  pont vers le tailnet du VPS             │   │
+│   │  kube-state-metrics RBAC scopé namespace — réplicas disponibles   │   │
+│   │  blackbox-exporter  sonde HTTP continue sur l'URL publique        │   │
+│   │  node-exporter      DaemonSet 1/nœud — CPU/RAM/disque des nœuds   │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
-│   Services LoadBalancer LB-S (≈ €0.01/h chacun, facturés à l'usage)      │
+│   Sécurité — parité avec le modèle VPS (Tailscale-only pour l'admin)     │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
-│   │  nginx    :80   → API publique (rate-limit identique VPS)        │   │
-│   │  prefect  :4200 → UI Prefect                                     │   │
-│   │  grafana  :3000 → Dashboards                                     │   │
-│   │  mlflow   : port-forward uniquement (kubectl, pas de LB)         │   │
+│   │  caddy  → Public (LoadBalancer, seul exposé), TLS + /token 5r/min │   │
+│   │  gradio, grafana, nginx, mlflow, prometheus,                      │   │
+│   │  kube-state-metrics, blackbox-exporter → ClusterIP,                │   │
+│   │  reachable uniquement via subnet-router Tailscale + split-DNS     │   │
+│   │  cluster.local (même tailnet que le VPS)                          │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Secrets K8s (injectés par le flow Prefect kapsule-up)                    │
-│   s3-creds : AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY                    │
-│   app-creds: JWT_SECRET_KEY · API_USERNAME · API_PASSWORD                 │
-│              POSTGRES_PASSWORD                                             │
+│   s3-creds     : AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY                │
+│   app-creds    : JWT_SECRET_KEY · API_USERNAME · API_PASSWORD ·           │
+│                  POSTGRES_PASSWORD                                        │
+│   tailscale-auth : TS_AUTHKEY (reusable + ephemeral, tag:k8s-cac-mlops)   │
 │                                                                            │
-│   IPs dynamiques → state/kapsule_ips sur VPS (lu par Gradio onglet Liens) │
+│   Domaine kapsule.jakat-inc.fr (TTL 300s) — IP caddy change à chaque      │
+│   cycle up/down (attachée au Service, pas aux pods) : write_kapsule_state │
+│   met à jour le DNS automatiquement (scw dns record set)                 │
 │                                                                            │
 └────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Monitoring K8s — limité par rapport au VPS
+
+```text
+Mêmes fichiers dashboards Grafana que le VPS, mais un seul pleinement
+fonctionnel sur K8s :
+
+  api-performance   ✅ fonctionnel  (métriques api_* — seul scrape riche)
+  system-health     ⚠️ partiel      (CPU/RAM/disk nœuds désormais couverts
+                                     par node-exporter — reste du panel OK)
+  home              ❌ vide         (Loki absent + métriques drift VPS-only)
+  resilience        ❌ vide         (Loki absent — gates/rollbacks déjà
+                                     visibles dans le Loki du VPS, car
+                                     deploy-kapsule-flow tourne comme
+                                     sous-flow du Prefect du VPS)
+  model-drift       ❌ vide         (cac_mlops_drift_*, jamais poussées
+                                     sur K8s)
+
+Pas de Loki sur K8s (décision assumée, 2026-07-11) — coût disque (nœuds
+déjà sous pression, incident DiskPressure 2026-07-10) pour une donnée déjà
+disponible ailleurs (VPS) pour la partie qui compte (gates/alertes).
+```
+
+### Prefect retiré de K8s (2026-07-11)
+
+```text
+prefect-server / prefect-worker existaient sur K8s mais n'ont jamais eu
+la moindre utilité : `prefect deploy --all` ne tourne que sur le
+prefect-worker du VPS (déclenché par deploy.yml) — aucune deployment
+n'a jamais été enregistrée sur le Prefect K8s. Le worker restait donc
+vide en permanence, écoutant un pool de travail qui ne recevrait jamais
+rien, pur gaspillage de ressources sur des nœuds déjà sous pression
+disque. Retiré entièrement — toute l'orchestration Kapsule (rolling
+updates, kapsule-up/down) est pilotée depuis le Prefect du VPS via
+kubectl/scw, jamais depuis l'intérieur du cluster.
 ```
 
 ---
@@ -1056,12 +1111,18 @@ PROMETHEUS — MÉTRIQUES COLLECTÉES
     production_rows                                  gauge
     drift_level{level}                               gauge (OK/WARNING/CRITICAL)
 
-DASHBOARDS GRAFANA
+DASHBOARDS GRAFANA (5, VPS — sur Kapsule seul api-performance est
+pleinement fonctionnel, voir §9 "Monitoring K8s")
 ───────────────────
+  home.json              → vue d'ensemble (modèle en prod, RAM/disque,
+                           disponibilité API, liens vers les 4 autres)
   api-performance.json  → latence p50/p95/p99, volume req/h, taux 5xx,
                           distribution prédictions (ratio 0/1)
+  resilience.json        → gates (GO/STOP), interruptions, rollbacks,
+                           erreurs flow, disponibilité API (Loki)
   model-drift.json      → drift_share évolution, features driftées,
                           dernière date de détection
+  system-health.json     → CPU / RAM / disk en temps réel (node-exporter)
 
 EVIDENTLY — DÉTECTION DE DÉRIVE (drift de features, indépendant du modèle)
 ────────────────────────────────────────────────────────────────────────
@@ -1123,6 +1184,12 @@ EVIDENTLY — DÉTECTION DE DÉRIVE (drift de features, indépendant du modèle)
   10. Liens      : URLs Tailscale admin + API publique + IPs Kapsule
   11. Architecture: ce document (architecture.md) rendu en HTML dans le cockpit
   12. Docs       : guides DS / MLOps dev / MLOps prod rendus en HTML
+
+  Sur Kapsule (COCKPIT_ENV=kapsule) : 8 onglets seulement — Cockpit (5),
+  Drift (6), Modèles (7) et Orchestration (8) masqués, car ils dépendent
+  du Prefect/MLflow *réels* du VPS, jamais des instances isolées de K8s
+  (Prefect K8s retiré le 2026-07-11, jamais fonctionnel). Healthcheck
+  adapté : vérifie les services K8s locaux au lieu des URLs VPS.
 
   COCKPIT PUBLIC (gradio-public — accès internet)
   ────────────────────────────────────────────────
@@ -1366,10 +1433,10 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║  ─────────────────────────────────────────────────────────────────────              ║
 ║    1. Lecture state/kapsule_ips → si vide : skip (Kapsule non actif)               ║
 ║    2. scw k8s kubeconfig get CLUSTER_ID → kubeconfig tempfile                      ║
-║    3. kubectl set image deployment/api → :sha-xxxxxxxx                             ║
+║    3. kubectl rollout restart deployment/api,gradio,gradio-public                  ║
 ║    4. kubectl rollout status (timeout 5 min)                                       ║
-║       → KO : kubectl rollout undo + email + stop                                   ║
-║    5. Email : rolling update Kapsule réussi                                        ║
+║       → KO : kubectl rollout undo + event=alert severity=critical + stop           ║
+║    5. event=alert severity=info topic=kapsule_success (Loki/Grafana, pas d'email)  ║
 ║                                                                                    ║
 ╠════════════════════════════════════════════════════════════════════════════════════╣
 ║  INTERRUPTION DE SERVICE                                                           ║
@@ -1377,7 +1444,7 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║                 APRÈS la gate manuelle, sur les 3 triggers (aucune interruption    ║
 ║                 avant validation humaine, y compris pour un simple changement de   ║
 ║                 code seul)                                                        ║
-║  Kapsule K8s  : ZÉRO — RollingUpdate + readiness probes (HPA min 1 pod actif)    ║
+║  Kapsule K8s  : ZÉRO — maxUnavailable:0, jamais <1 réplica (kube-state-metrics)  ║
 ╚══════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
@@ -1591,11 +1658,22 @@ cac_mlops/
 │   ├── simulate_production.py            # rejoue données année N via POST /predict
 │   └── setup_branch_protection.sh        # active branch protection GitHub sur main (one-shot)
 │
-├── k8s/                                   # Manifests Kubernetes (Kapsule)
+├── k8s/                                   # Manifests Kubernetes (Kapsule) — 1 dossier/composant
 │   ├── namespace.yaml
-│   ├── deployments/
-│   ├── services/
-│   └── hpa.yaml                           # HPA api: CPU 70% / RAM 80% → min 1 max 8
+│   ├── configmap.yaml                     # config partagée (MLFLOW_TRACKING_URI, POSTGRES_HOST du VPS...)
+│   ├── api/            deployment.yaml (HPA CPU 70%/RAM 80%, initContainer fetch-model) · hpa.yaml · service.yaml
+│   ├── gradio/          Cockpit admin — ClusterIP, COCKPIT_ENV=kapsule
+│   ├── gradio-public/   Cockpit public — ClusterIP (via nginx→caddy)
+│   ├── mlflow/          SQLite emptyDir isolé
+│   ├── nginx/           deployment + configmap (rate-limiting/routing) + service — ClusterIP
+│   ├── caddy/           SEUL LoadBalancer public — TLS Let's Encrypt auto
+│   ├── grafana/         ClusterIP (Tailscale)
+│   ├── prometheus/      deployment + configmap (4 scrape jobs) + rbac.yaml (SD role:node) + service
+│   ├── tailscale/       subnet-router — pont vers le tailnet du VPS
+│   ├── kube-state-metrics/  deployment + rbac.yaml (Role namespacé) + service
+│   ├── blackbox-exporter/   deployment + configmap (module http_2xx) + service
+│   ├── node-exporter/   daemonset.yaml (1 pod/nœud, hostNetwork)
+│   └── local/           kind-cluster.yaml (dev local, hors Kapsule)
 │
 ├── infrastructure/
 │   ├── tailscale/
@@ -1604,9 +1682,12 @@ cac_mlops/
 │   │   └── prometheus.yml                 # scrape api:8000/metrics
 │   ├── grafana/
 │   │   ├── provisioning/                  # datasources + dashboards auto-provisionnés
-│   │   └── dashboards/
+│   │   └── dashboards/                    # 5 dashboards (voir §10) — 1 seul fonctionnel sur K8s
+│   │       ├── home.json
 │   │       ├── api-performance.json
-│   │       └── model-drift.json
+│   │       ├── resilience.json
+│   │       ├── model-drift.json
+│   │       └── system-health.json
 │   └── docker/
 │       └── daemon.json                    # data-root=/data/docker, rotation logs
 │
@@ -1617,7 +1698,7 @@ cac_mlops/
 │   └── drift/                             # rapports HTML/JSON Evidently (gitignored)
 │
 ├── state/
-│   └── kapsule_ips                        # IPs LoadBalancer Kapsule (écrit par kapsule-up.yml)
+│   └── kapsule_ips                        # URL publique + DNS internes K8s (écrit par kapsule_up_flow.py)
 │
 ├── tests/
 │   ├── unit/

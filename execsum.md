@@ -110,7 +110,7 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   │  ÉTAPE 6 — DÉPLOIEMENT                                             │
   │                                                                     │
   │  API FastAPI recharge le modèle depuis MLflow Registry             │
-  │  Sans interruption de service (rolling update K8s)                 │
+  │  Redémarrage API VPS (gate) · 0 interruption si Kapsule actif      │
   └──────────────────────────────────┬──────────────────────────────────┘
                                      │
                                      ▼
@@ -200,14 +200,14 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   └─────────────────────────────────────────────────────────────────────────┘
 
   ┌──────────────────────────────────┬──────────────────────────────────────┐
-  │  LOCAL (développement)           │  SCALEWAY (production)               │
+  │  LOCAL (développement)           │  VPS SCALEWAY (production)           │
   │  ──────────────────────          │  ────────────────────────            │
-  │  Docker Compose                  │  Kapsule (Kubernetes)                │
-  │  · tous services sur localhost   │  · N replicas API                    │
-  │  · MinIO → simule S3             │  · Scaleway Object Storage (S3)      │
-  │  · PostgreSQL local              │  · Managed Database (PostgreSQL)     │
-  │  · Prefect UI :4200              │  · Container Registry                │
-  │  · MLflow UI :5001               │                                      │
+  │  Docker Compose                  │  Docker Compose · 16 conteneurs      │
+  │  · tous services sur localhost   │  · API + Nginx + MLflow + Postgres   │
+  │  · MinIO → simule S3             │  · MinIO (S3) + Prefect server+worker│
+  │  · PostgreSQL local              │  · Grafana + Prometheus + Loki       │
+  │  · Prefect UI :4200              │  · GHCR (Container Registry)         │
+  │  · MLflow UI :5001               │  Kapsule K8s (on-demand, HA) : cf. §9│
   │                                  │  CI/CD : GitHub Actions              │
   │  Tests : pytest · flake8         │  lint → test → build → push → deploy │
   └──────────────────────────────────┴──────────────────────────────────────┘
@@ -220,11 +220,11 @@ KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule
   Versionner les données        DVC             Scaleway Object Storage
   Versionner le code            Git             GitHub
   Tracker les expériences       MLflow          Scaleway S3 + PostgreSQL
-  Orchestrer les pipelines      Prefect         Kapsule (prod)
-  Servir le modèle              FastAPI         Kapsule (prod)
-  Sécuriser l'API               NGINX           Kapsule (ingress)
-  Monitorer les perfs           Prometheus      Kapsule (prod)
-  Visualiser les métriques      Grafana         Kapsule (prod)
-  Détecter le drift             Evidently       Kapsule (prod)
+  Orchestrer les pipelines      Prefect         VPS (prod)
+  Servir le modèle              FastAPI         VPS (prod) + Kapsule (on-demand)
+  Sécuriser l'API               NGINX / Caddy   VPS (prod) + Kapsule (ingress)
+  Monitorer les perfs           Prometheus      VPS (prod) + Kapsule (limité)
+  Visualiser les métriques      Grafana         VPS (prod) + Kapsule (limité)
+  Détecter le drift             Evidently       VPS (prod) uniquement
   Intégrer en continu           GitHub Actions  GitHub
 ```

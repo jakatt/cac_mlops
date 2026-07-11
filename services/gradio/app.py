@@ -2228,29 +2228,72 @@ Même interface S3 que Scaleway → `MLFLOW_S3_ENDPOINT_URL = http://minio:9000`
             # ── SECTION 3 : KUBERNETES ───────────────────────────────────────
             with gr.Accordion("☸️  Kapsule K8s — Scaleway  (on-demand, fr-par)", open=False):
 
-                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops)", open=True):
+                gr.Markdown("""
+**Objectif** : prouver le zero-downtime — Trigger 1/2/3 se déploient sans
+jamais descendre sous 1 réplica disponible (`maxUnavailable: 0`), contrairement
+au VPS qui a une gate manuelle avant toute interruption. Cockpit admin K8s
+réduit en conséquence : pas de Cockpit/Orchestration/Drift/Modeles (dépendaient
+du Prefect/MLflow *réels* du VPS, jamais des instances isolées de K8s).
+""")
+
+                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops, 12 pods)", open=True):
                     gr.Markdown("""
 | Deployment | Particularité |
 |---|---|
-| **api** | HPA CPU 70% / RAM 80% → min 1 pod, max 8 pods |
-| | initContainer : `fetch-model` récupère `trained_model.joblib` depuis S3 au démarrage |
-| mlflow | SQLite emptyDir + artefacts S3 `mlflow-k8s/` |
-| prefect-server | UI Prefect K8s |
-| prefect-worker | pool process K8s |
-| prometheus | scrape `api:8000/metrics` |
-| grafana | ConfigMaps provisionnés (mêmes dashboards que VPS) |
+| **api** | HPA CPU 70% / RAM 80% → min 1 pod, max 8 pods · `maxUnavailable: 0` |
+| | initContainer `fetch-model` : récupère `trained_model.joblib` depuis S3 au démarrage |
+| **gradio** | Cockpit admin — ClusterIP (Tailscale uniquement) · `COCKPIT_ENV=kapsule` masque 4 onglets VPS-only |
+| **gradio-public** | Cockpit public 3 onglets — ClusterIP, atteint uniquement via nginx→caddy |
+| mlflow | SQLite emptyDir isolé — **pas le vrai registre** (tracking K8s local seulement) |
+| nginx | ClusterIP — rate-limiting + routing (`/token` 5r/min, `/predict` 20r/min) |
+| **caddy** | **Seul point d'entrée public** — LoadBalancer, TLS Let's Encrypt auto (`kapsule.jakat-inc.fr`) |
+| grafana | ClusterIP (Tailscale) — provisionné, mêmes fichiers dashboards que le VPS |
+| prometheus | scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 |
+| tailscale-subnet-router | pont vers le tailnet du VPS — advertise PodCIDR + ServiceCIDR |
+| kube-state-metrics | RBAC scopé au namespace — réplicas disponibles par Deployment |
+| blackbox-exporter | sonde HTTP continue sur l'URL publique (`/health`) |
+| node-exporter | DaemonSet, 1 pod/nœud, hostNetwork — CPU/RAM/disque des nœuds K8s |
+
+**Prefect retiré de K8s** (2026-07-11) — `prefect deploy --all` ne tourne
+jamais que sur le prefect-worker du VPS, le worker K8s restait vide en
+permanence, pur gaspillage de ressources sur des nœuds déjà sous pression
+disque (incident DiskPressure, 2026-07-10).
 """)
 
-                with gr.Accordion("🌐  LoadBalancers", open=False):
+                with gr.Accordion("🔒  Sécurité — parité avec le modèle VPS", open=False):
                     gr.Markdown("""
-| Service | Port | Accès |
-|---|---|---|
-| nginx | 80 | API publique (rate-limit 20r/min) |
-| prefect-server | 4200 | UI Prefect K8s |
-| grafana | 3000 | dashboards K8s |
-| mlflow | port-forward uniquement | — |
+Même principe que le VPS (Tailscale-only pour l'admin) plutôt que des mots
+de passe ad hoc — ni Prefect OSS ni `demo.launch()` n'ont d'authentification
+native, donc l'isolation réseau est la seule protection réelle.
 
-IPs LoadBalancer écrites dans `state/kapsule_ips` par `kapsule-up-flow` → lues par l'onglet Infra.
+| Composant | Exposition | Protection |
+|---|---|---|
+| caddy | **Public** (LoadBalancer) | TLS Let's Encrypt, `/token` rate-limité 5r/min |
+| gradio, grafana, nginx, mlflow, prometheus, kube-state-metrics, blackbox-exporter | ClusterIP | Tailscale uniquement (subnet-router + split-DNS `cluster.local`) |
+
+Domaine `kapsule.jakat-inc.fr` (TTL 300s) — l'IP de caddy change à chaque
+cycle `kapsule-up`/`kapsule-down` (attachée au Service, pas aux pods) :
+`write_kapsule_state` met à jour le DNS automatiquement (`scw dns record set`).
+""")
+
+                with gr.Accordion("📊  Monitoring K8s — limité par rapport au VPS", open=False):
+                    gr.Markdown("""
+Mêmes fichiers dashboards Grafana que le VPS, mais **un seul est pleinement
+fonctionnel sur K8s** : `api-performance` (métriques `api_*`, seul scrape
+réellement riche). Les 4 autres dépendent de composants absents sur K8s :
+
+| Dashboard | Statut K8s | Dépendance manquante |
+|---|---|---|
+| api-performance | ✅ fonctionnel | — |
+| system-health | ⚠️ partiel | panels CPU/RAM/disk nœuds *(désormais couverts par node-exporter)* |
+| home | ❌ vide | Loki (logs) + `cac_mlops_drift_*`/`mlops_model_info` (flows VPS-only) |
+| resilience | ❌ vide | Loki (gates/rollbacks — déjà visibles dans le Loki du VPS, `deploy-kapsule-flow` y tourne) |
+| model-drift | ❌ vide | `cac_mlops_drift_*`, jamais poussées sur K8s |
+
+**Pas de Loki sur K8s** (décision assumée) — les événements de gate/rollback
+des déploiements Kapsule sont déjà visibles dans le Loki du VPS, puisque
+`deploy-kapsule-flow` s'exécute comme sous-flow du Prefect du VPS, jamais
+sur une instance K8s isolée.
 """)
 
                 with gr.Accordion("🔑  Secrets K8s", open=False):
@@ -2259,12 +2302,15 @@ IPs LoadBalancer écrites dans `state/kapsule_ips` par `kapsule-up-flow` → lue
 |---|---|
 | `s3-creds` | `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` |
 | `app-creds` | `JWT_SECRET_KEY` · `API_USERNAME` · `API_PASSWORD` |
+| `tailscale-auth` | `TS_AUTHKEY` (clé reusable + ephemeral, taguée `tag:k8s-cac-mlops`) |
 """)
 
                 gr.Markdown("""
 **Cycle provision / déprovision**
-Cockpit → Pipeline → *Démarrer le cluster K8s* → `kapsule-up-flow` → provision + upload modèle S3
-→ `deploy-kapsule-flow` rolling update pods → `kapsule-down-flow` déprovision (économie coût).
+Cockpit → Orchestration → *Démarrer le cluster K8s* → `kapsule-up-flow` (provision
++ upload modèle S3 + DNS auto) → `deploy-kapsule-flow` rolling update pods (sans
+gate, `rollout restart` — pas `set image`, qui ne déclenchait jamais rien avec un
+tag toujours `:latest`) → `kapsule-down-flow` déprovision (économie coût).
 """)
 
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
