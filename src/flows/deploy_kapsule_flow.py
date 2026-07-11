@@ -3,7 +3,8 @@ Deploy Kapsule flow — rolling update de l'API et Gradio sur le cluster K8s.
 
 Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
-Si actif : kubectl rollout restart + rollout status. Rollback auto si échec
+Si actif : kubectl apply -f k8s/ (resynchro manifests, cf. apply_manifests)
+puis rollout restart + rollout status. Rollback auto si échec
 (event=alert severity=critical topic=kapsule_failure — alerte Grafana).
 """
 import os
@@ -12,6 +13,8 @@ import tempfile
 from pathlib import Path
 
 from prefect import flow, task, get_run_logger
+
+from src.flows.kapsule_up_flow import apply_manifests
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
@@ -151,6 +154,16 @@ def deploy_kapsule_flow() -> bool:
         return True
 
     kubeconfig = get_kubeconfig_task()
+
+    # Resynchronise les manifests k8s/ avant le rollout : `rollout restart` seul
+    # ne fait que redémarrer les pods avec le spec DÉJÀ enregistré sur le cluster —
+    # tout changement de manifest (env var, ressources...) fait depuis le dernier
+    # kapsule-up restait invisible tant qu'on ne relançait pas kapsule-down/up ou
+    # qu'on n'appliquait pas manuellement (bug vécu : COCKPIT_ENV ajouté à
+    # k8s/gradio/deployment.yaml après le dernier kapsule-up, jamais propagé sur
+    # plusieurs déploiements malgré des rollout restart réussis, 2026-07-11).
+    apply_manifests(kubeconfig)
+
     ok = rolling_update_task(kubeconfig)
 
     if not ok:

@@ -1223,11 +1223,19 @@ def _links_table(rows: str) -> str:
     )
 
 
+# DNS internes K8s — constantes (jamais dynamiques : write_kapsule_state
+# écrit toujours ces mêmes valeurs, cf. kapsule_up_flow.py). PUBLIC_URL est
+# également stable : le domaine kapsule.jakat-inc.fr pointe automatiquement
+# vers l'IP caddy courante (DNS mis à jour par write_kapsule_state).
+KAPSULE_PUBLIC_URL  = "https://kapsule.jakat-inc.fr"
+KAPSULE_GRADIO_DNS  = "gradio.cac-mlops.svc.cluster.local"
+KAPSULE_GRAFANA_DNS = "grafana.cac-mlops.svc.cluster.local"
+
+
 def _kapsule_links_html() -> str:
-    """Lit state/kapsule_ips à chaque appel — toujours à jour, y compris
-    après un changement d'IP caddy entre deux cycles kapsule-up/down
-    (write_kapsule_state met déjà à jour le DNS automatiquement, mais les
-    DNS internes Tailscale changent quand même de valeur à chaque cycle)."""
+    """Vue VPS uniquement : Kapsule est on-demand de ce point de vue, donc on
+    vérifie state/kapsule_ips avant d'afficher les liens (ce fichier n'existe
+    que sur le VPS — écrit par le prefect-worker du VPS)."""
     if not KAPSULE_STATE.exists():
         return f"<p style='color:{MUTED};margin:0;font-family:Inter,Segoe UI,sans-serif;'>Kapsule inactif — aucune IP disponible</p>"
 
@@ -1241,8 +1249,7 @@ def _kapsule_links_html() -> str:
     if not public_url or public_url == "pending":
         return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
-    rows  = _link_row("Cockpit public K8s", public_url, "Public")
-    rows += _link_row("API publique K8s",   f"{public_url}/predict", "Public")
+    rows = _link_row("Cockpit public K8s", public_url, "Public")
 
     for key, label, port in [
         ("GRADIO_DNS",   "Cockpit admin K8s", ":7860"),
@@ -1255,13 +1262,33 @@ def _kapsule_links_html() -> str:
     return _links_table(rows)
 
 
+def _kapsule_self_links_html() -> str:
+    """Vue K8s (IS_KAPSULE) : ce pod tourne forcément sur un cluster actif —
+    pas de vérification d'état nécessaire (state/kapsule_ips n'existe pas ici,
+    c'est un fichier VPS). URL et DNS sont des constantes (cf. module)."""
+    rows  = _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
+    rows += _link_row("Cockpit admin K8s",  f"http://{KAPSULE_GRADIO_DNS}:7860",  "Tailscale")
+    rows += _link_row("Grafana K8s",        f"http://{KAPSULE_GRAFANA_DNS}:3000", "Tailscale")
+    return _links_table(rows)
+
+
 def build_links_html() -> str:
+    if IS_KAPSULE:
+        return f"""
+<div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
+
+  <p style="margin:0 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s</p>
+  {_kapsule_self_links_html()}
+  {_LINKS_NOTE}
+
+</div>
+"""
+
     kapsule_html = _kapsule_links_html()
     onisr_url = "https://www.data.gouv.fr/fr/datasets/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/"
     vps_rows = (
         _link_row("Données ONISR (data.gouv.fr)", onisr_url, "Public")
         + _link_row("Cockpit public",             PUBLIC_URL, "Public")
-        + _link_row("API publique (HTTPS)",       f"{PUBLIC_URL}/predict", "Public")
         + _link_row("Cockpit admin",               f"http://{VPS_TAILSCALE_IP}:7860", "Tailscale")
         + _link_row("MLflow",                      f"http://{VPS_TAILSCALE_IP}:5001", "Tailscale")
         + _link_row("Grafana",                     f"http://{VPS_TAILSCALE_IP}:3000", "Tailscale")
