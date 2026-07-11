@@ -1,5 +1,6 @@
 # Subnet-router Tailscale — remplace l'exposition publique (LoadBalancer) de
-# gradio/prefect-server par un accès privé via le même tailnet que le VPS.
+# gradio/grafana par un accès privé via le même tailnet que le VPS
+# (prefect-server K8s retiré le 2026-07-11, jamais fonctionnel).
 # Advertise à la fois PodCIDR (100.64.0.0/15) et ServiceCIDR (10.32.0.0/20,
 # cf. `scw k8s cluster get` — ces valeurs sont spécifiques au cluster
 # efc7564c-530a-476a-a50e-091c18bb6177, à revérifier si le cluster est

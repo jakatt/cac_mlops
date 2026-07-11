@@ -1,0 +1,20 @@
+# Module http_2xx minimal — sonde synthétique continue de l'URL publique
+# (voir prometheus/configmap.yaml, job "blackbox-http-public") : preuve
+# reproductible de disponibilité indépendante du trafic réel, contrairement
+# au taux d'erreur 5xx qui ne montre rien si personne ne clique Predict
+# pile au moment d'un rollout.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-exporter-config
+  namespace: cac-mlops
+data:
+  config.yml: |
+    modules:
+      http_2xx:
+        prober: http
+        timeout: 5s
+        http:
+          method: GET
+          valid_status_codes: [200]
+          preferred_ip_protocol: "ip4"

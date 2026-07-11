@@ -291,10 +291,19 @@ def setup_grafana_configmaps(kubeconfig: str) -> str:
 
 @task(name="apply-k8s-manifests")
 def apply_manifests(kubeconfig: str) -> str:
+    """Pas de "prefect" ici volontairement : prefect-server/prefect-worker
+    K8s ont été retirés (2026-07-11) — aucune deployment n'est jamais
+    enregistrée dessus (`prefect deploy --all` ne tourne que sur le
+    prefect-worker du VPS), donc ce worker restait vide/inutile en
+    permanence, pur gaspillage de ressources sur des nœuds déjà sous
+    pression disque (incident DiskPressure, 2026-07-10)."""
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
-    for subdir in ["api", "mlflow", "nginx", "prefect", "prometheus", "grafana", "gradio", "gradio-public", "caddy", "tailscale"]:
+    for subdir in [
+        "api", "mlflow", "nginx", "prometheus", "grafana", "gradio", "gradio-public",
+        "caddy", "tailscale", "kube-state-metrics", "blackbox-exporter", "node-exporter",
+    ]:
         d = K8S_DIR / subdir
         if d.exists():
             _kubectl(kubeconfig, ["apply", "-f", f"{d}/"])
@@ -302,25 +311,6 @@ def apply_manifests(kubeconfig: str) -> str:
         else:
             logger.warning("Répertoire k8s/%s/ absent — ignoré", subdir)
     return "OK"
-
-
-@task(name="patch-prefect-url")
-def patch_prefect_url(kubeconfig: str) -> str:
-    """prefect-server est en ClusterIP (pas de LoadBalancer — voir sécurité,
-    Prefect OSS n'a aucune authentification native). L'URL DNS interne au
-    cluster est stable dès la création du Service (contrairement à une IP
-    de LoadBalancer, qui change à chaque recréation kapsule-up/down) —
-    reachable depuis l'extérieur uniquement via le subnet-router Tailscale
-    + le nameserver split-DNS cluster.local configuré côté admin Tailscale."""
-    logger = get_run_logger()
-    url = f"http://prefect-server.{K8S_NAMESPACE}.svc.cluster.local:4200/api"
-    _kubectl(kubeconfig, [
-        "set", "env", "deployment/prefect-server",
-        "-n", K8S_NAMESPACE,
-        f"PREFECT_UI_API_URL={url}",
-    ])
-    logger.info("✓ PREFECT_UI_API_URL=%s", url)
-    return url
 
 
 @task(name="wait-api-ready-k8s")
@@ -385,9 +375,8 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
                 )
 
     for svc_name, key in [
-        ("grafana",        "GRAFANA_DNS"),
-        ("prefect-server", "PREFECT_DNS"),
-        ("gradio",         "GRADIO_DNS"),
+        ("grafana", "GRAFANA_DNS"),
+        ("gradio",  "GRADIO_DNS"),
     ]:
         ips[key] = f"{svc_name}.{K8S_NAMESPACE}.svc.cluster.local"
 
@@ -417,11 +406,13 @@ def kapsule_up_flow(
       5. Upload X_test/y_test → S3 (s3://cac-mlops-data/k8s-gradio-data/)
       6. Namespace + Secrets K8s (app + tailscale-auth)
       7. ConfigMaps Grafana
-      8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale)
-      9. Patch PREFECT_UI_API_URL (DNS interne cluster, ClusterIP)
-      10. Attend que le deployment api soit available
-      11. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
-          caddy, DNS interne pour grafana/prefect/gradio — reachable via Tailscale)
+      8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale,
+         kube-state-metrics, blackbox-exporter, node-exporter — pas de prefect,
+         retiré le 2026-07-11, jamais fonctionnel : aucune deployment n'y était
+         jamais enregistrée)
+      9. Attend que le deployment api soit available
+      10. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
+          caddy, DNS interne pour grafana/gradio — reachable via Tailscale)
     """
     create_node_pool(node_type, node_count)
     wait_pool_ready()
@@ -432,7 +423,6 @@ def kapsule_up_flow(
     setup_tailscale_secret(kubeconfig)
     setup_grafana_configmaps(kubeconfig)
     apply_manifests(kubeconfig)
-    patch_prefect_url(kubeconfig)
     wait_api_ready(kubeconfig)
     ips = write_kapsule_state(kubeconfig)
     return ips

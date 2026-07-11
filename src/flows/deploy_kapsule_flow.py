@@ -107,7 +107,16 @@ def rolling_update_task(kubeconfig: str) -> bool:
         log.info("Rolling update Kapsule OK")
         return True
 
-    except RuntimeError as exc:
+    except Exception as exc:
+        # Exception large et pas seulement RuntimeError : _kubectl utilise
+        # subprocess.run(timeout=300), qui lève subprocess.TimeoutExpired
+        # (pas une RuntimeError) si le rollout ne converge pas dans les
+        # temps. Avant ce fix, ce cas précis échappait entièrement au except
+        # ci-dessus, crashait le flow sans jamais appeler rollback_kapsule_task
+        # — donc AUCUN rollback n'était tenté malgré ce que dit le message
+        # d'erreur de deploy_kapsule_flow (incident vécu, 2026-07-10 :
+        # DiskPressure sur les 2 nœuds a fait dépasser les 300s deux fois de
+        # suite, le rollback annoncé n'a jamais eu lieu).
         log.error("Rolling update échoué : %s", exc)
         return False
 

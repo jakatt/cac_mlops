@@ -46,6 +46,15 @@ MLFLOW_URI       = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
 PREFECT_API      = os.getenv("PREFECT_API_URL",      "http://prefect-server:4200/api")
 MODEL_ALIAS      = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
 
+# "vps" (défaut) ou "kapsule" — même app.py partagé entre les deux images,
+# COCKPIT_ENV=kapsule (k8s/gradio/deployment.yaml) masque les onglets
+# purement VPS (Cockpit gates, Orchestration, Drift, Modeles) qui n'ont
+# jamais rien à afficher sur K8s : ils dépendent du Prefect/MLflow réels du
+# VPS, pas des instances isolées de K8s (prefect-server K8s retiré le
+# 2026-07-11 — n'avait jamais aucune deployment enregistrée dessus).
+COCKPIT_ENV      = os.getenv("COCKPIT_ENV",          "vps")
+IS_KAPSULE       = COCKPIT_ENV == "kapsule"
+
 ALL_MODEL_NAMES  = ["lgbm_accidents", "rf_accidents", "xgb_accidents"]
 LOCAL_MODEL_PATH = os.getenv("LOCAL_MODEL_PATH",     "")
 DATA_ROOT        = Path(os.getenv("GRADIO_DATA_PATH", "data/preprocessed"))
@@ -1118,6 +1127,18 @@ _VPS_SERVICES = {
     "Nginx":      "http://nginx:80/health",
 }
 
+# Services K8s réels (Kubernetes Service names, résolus via le DNS interne
+# du cluster) — pas de Prefect (retiré, jamais fonctionnel) ni de MinIO
+# (K8s utilise directement le vrai S3 Scaleway, pas d'instance MinIO locale).
+_KAPSULE_SERVICES = {
+    "API":           "http://api:8000/health",
+    "MLflow K8s":    "http://mlflow:5000/health",
+    "Nginx":         "http://nginx:80/health",
+    "Gradio public": "http://gradio-public:7862/",
+    "Grafana K8s":   "http://grafana:3000/api/health",
+    "Prometheus K8s": "http://prometheus:9090/-/healthy",
+}
+
 
 def _check_url(url: str, timeout: int = 3) -> str:
     try:
@@ -1137,18 +1158,28 @@ def _kapsule_status() -> dict:
             k, v = line.split("=", 1)
             ips[k.strip()] = v.strip()
 
-    nginx_ip = ips.get("NGINX_LB", "")
-    if not nginx_ip or nginx_ip == "pending":
+    # PUBLIC_URL (via caddy) — remplace NGINX_LB depuis que nginx est passé
+    # en ClusterIP (2026-07-10, sécurité + HTTPS). Ancien nom de clé encore
+    # utilisé ici jusqu'à la veille : "Kapsule inactif" affiché en
+    # permanence même cluster actif, car NGINX_LB n'existe plus dans le
+    # fichier écrit par write_kapsule_state.
+    public_url = ips.get("PUBLIC_URL", "")
+    if not public_url or public_url == "pending":
         return {"Service": "Kapsule K8s", "Status": "En attente"}
 
-    status = _check_url(f"http://{nginx_ip}/health", timeout=5)
-    label = f"OK — nginx: {nginx_ip}" if status == "OK" else status
+    status = _check_url(f"{public_url}/health", timeout=5)
+    label = f"OK — {public_url}" if status == "OK" else status
     return {"Service": "Kapsule K8s", "Status": label}
 
 
 def check_health() -> pd.DataFrame:
-    rows = [{"Service": name, "Status": _check_url(url)} for name, url in _VPS_SERVICES.items()]
-    rows.append(_kapsule_status())
+    """Sur K8s (IS_KAPSULE) : uniquement les services K8s locaux, pas de
+    ligne "Kapsule K8s" (redondant — on tourne déjà dedans). Sur le VPS :
+    services VPS + une ligne résumant l'état de Kapsule vu de l'extérieur."""
+    services = _KAPSULE_SERVICES if IS_KAPSULE else _VPS_SERVICES
+    rows = [{"Service": name, "Status": _check_url(url)} for name, url in services.items()]
+    if not IS_KAPSULE:
+        rows.append(_kapsule_status())
     return pd.DataFrame(rows)
 
 
@@ -1156,7 +1187,47 @@ def check_health() -> pd.DataFrame:
 # TAB 7 — Infra (liens + IPs Kapsule)
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Styles partagés — garantit un rendu strictement identique entre les
+# tables VPS et Kapsule K8s (même largeur de colonnes via colgroup, même
+# police/padding/hauteur de ligne).
+_LINKS_TH  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;"
+_LINKS_TD1 = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
+_LINKS_TD2 = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
+_LINKS_TD3 = f"padding:6px 16px;font-size:0.78rem;color:{MUTED};font-family:Inter,Segoe UI,sans-serif;"
+_LINKS_COLGROUP = '<colgroup><col style="width:28%;"><col style="width:50%;"><col style="width:22%;"></colgroup>'
+_LINKS_NOTE = (
+    f"<p style='margin:6px 0 0;font-size:0.78em;color:{MUTED};'>"
+    "Ports admin accessibles via Tailscale VPN uniquement &mdash; API et cockpit public sur HTTPS.</p>"
+)
+
+
+def _link_row(label: str, url: str, access: str) -> str:
+    return (
+        f'<tr>'
+        f'<td style="{_LINKS_TD1}">{label}</td>'
+        f'<td style="{_LINKS_TD2}"><a href="{url}" target="_blank" '
+        f'style="color:{NAVY};text-decoration:none;">{url}</a></td>'
+        f'<td style="{_LINKS_TD3}">{access}</td>'
+        f'</tr>'
+    )
+
+
+def _links_table(rows: str) -> str:
+    return (
+        f'<table style="border-collapse:collapse;width:100%;table-layout:fixed;'
+        f'border:1px solid #E5E7EB;border-radius:4px;font-family:Inter,Segoe UI,sans-serif;">'
+        f'{_LINKS_COLGROUP}'
+        f'<tr><th style="{_LINKS_TH}">Service</th><th style="{_LINKS_TH}">URL</th><th style="{_LINKS_TH}">Accès</th></tr>'
+        f'{rows}'
+        f'</table>'
+    )
+
+
 def _kapsule_links_html() -> str:
+    """Lit state/kapsule_ips à chaque appel — toujours à jour, y compris
+    après un changement d'IP caddy entre deux cycles kapsule-up/down
+    (write_kapsule_state met déjà à jour le DNS automatiquement, mais l'IP
+    brute CADDY_LB et les DNS internes changent quand même de valeur)."""
     if not KAPSULE_STATE.exists():
         return f"<p style='color:{MUTED};margin:0;font-family:Inter,Segoe UI,sans-serif;'>Kapsule inactif — aucune IP disponible</p>"
 
@@ -1166,56 +1237,55 @@ def _kapsule_links_html() -> str:
             k, v = line.split("=", 1)
             ips[k.strip()] = v.strip()
 
-    defs = [
-        ("NGINX_LB",    "API (nginx)",   ""),
-        ("GRAFANA_LB",  "Grafana",       ":3000"),
-        ("PREFECT_LB",  "Prefect",       ":4200"),
-        ("GRADIO_LB",   "Gradio K8s",    ":7860"),
-    ]
-    rows = ""
-    for key, label, port in defs:
-        ip = ips.get(key, "")
-        if ip and ip != "pending":
-            rows += (
-                f'<tr>'
-                f'<td style="padding:5px 16px;color:{SLATE};">{label}</td>'
-                f'<td style="padding:5px 16px;"><a href="http://{ip}{port}" target="_blank" '
-                f'style="color:{NAVY};text-decoration:none;">http://{ip}{port}</a></td>'
-                f'</tr>'
-            )
+    public_url = ips.get("PUBLIC_URL", "")
+    if not public_url or public_url == "pending":
+        return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
-    return f'<table style="border-collapse:collapse;font-family:Inter,Segoe UI,sans-serif;">{rows}</table>' if rows else f"<p style='color:{MUTED};'>IPs non disponibles</p>"
+    rows  = _link_row("Cockpit public K8s", public_url, "Public — HTTPS")
+    rows += _link_row("API publique K8s",   f"{public_url}/predict", "Public — HTTPS")
+
+    for key, label, port in [
+        ("GRADIO_DNS",   "Cockpit admin K8s", ":7860"),
+        ("GRAFANA_DNS",  "Grafana K8s",       ":3000"),
+    ]:
+        dns = ips.get(key, "")
+        if dns and dns != "pending":
+            rows += _link_row(label, f"http://{dns}{port}", "Tailscale uniquement")
+
+    caddy_ip = ips.get("CADDY_LB", "")
+    if caddy_ip and caddy_ip != "pending":
+        rows += _link_row("IP publique brute (caddy)", f"http://{caddy_ip}", "Debug — préférer l'URL HTTPS ci-dessus")
+
+    return _links_table(rows)
 
 
 def build_links_html() -> str:
     kapsule_html = _kapsule_links_html()
-    th  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;"
-    td  = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
-    tda = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
-    tdb = f"padding:6px 16px;font-size:0.78rem;color:{MUTED};font-family:Inter,Segoe UI,sans-serif;"
     onisr_url = "https://www.data.gouv.fr/fr/datasets/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/"
+    vps_rows = (
+        _link_row("Données ONISR (data.gouv.fr)", onisr_url, "Public")
+        + _link_row("Cockpit public",             PUBLIC_URL, "Public")
+        + _link_row("API publique (HTTPS)",       f"{PUBLIC_URL}/predict", "Public")
+        + _link_row("Cockpit admin",               f"http://{VPS_TAILSCALE_IP}:7860", "Tailscale")
+        + _link_row("MLflow",                      f"http://{VPS_TAILSCALE_IP}:5001", "Tailscale")
+        + _link_row("Grafana",                     f"http://{VPS_TAILSCALE_IP}:3000", "Tailscale")
+        + _link_row("Prefect",                     f"http://{VPS_TAILSCALE_IP}:4200", "Tailscale")
+        + _link_row("API Swagger",                 f"http://{VPS_TAILSCALE_IP}:8080/docs", "Tailscale")
+        + _link_row("MinIO Console",                f"http://{VPS_TAILSCALE_IP}:9001", "Tailscale")
+        + _link_row("Prometheus",                   f"http://{VPS_TAILSCALE_IP}:9090", "Tailscale")
+        + _link_row("GitHub Actions (CI/CD)",       f"https://github.com/{GITHUB_REPO}/actions", "Public")
+        + _link_row("DVC Data Tags",                f"https://github.com/{GITHUB_REPO}/tags", "Public")
+    )
     return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
 
-  <p style="margin:0 0 10px;font-size:0.78em;color:{MUTED};">Ports admin accessibles via Tailscale VPN uniquement &mdash; API et cockpit public sur HTTPS.</p>
-  <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;border-radius:4px;">
-    <tr><th style="{th}">Service</th><th style="{th}">URL</th><th style="{th}">Accès</th></tr>
-    <tr><td style="{td}">Données ONISR (data.gouv.fr)</td><td style="{tda}"><a href="{onisr_url}" target="_blank" style="color:{NAVY};text-decoration:none;">data.gouv.fr — BAAC annuels</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">Cockpit public</td>           <td style="{tda}"><a href="{PUBLIC_URL}" target="_blank" style="color:{NAVY};text-decoration:none;">{PUBLIC_URL}</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">API publique (HTTPS)</td>     <td style="{tda}"><a href="{PUBLIC_URL}/predict" target="_blank" style="color:{NAVY};text-decoration:none;">{PUBLIC_URL}/predict</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">Cockpit admin</td>            <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:7860" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:7860</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">MLflow</td>                   <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:5001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:5001</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">Grafana</td>                  <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:3000" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:3000</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">Prefect</td>                  <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:4200" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:4200</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">API Swagger</td>              <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:8080/docs" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:8080/docs</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">MinIO Console</td>            <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9001</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">Prometheus</td>               <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9090" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9090</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">GitHub Actions (CI/CD)</td>   <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/actions</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">DVC Data Tags</td>            <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/tags" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/tags</a></td><td style="{tdb}">Public</td></tr>
-  </table>
+  <p style="margin:0 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Virtual Private Server</p>
+  {_links_table(vps_rows)}
+  {_LINKS_NOTE}
 
-  <p style="margin:20px 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s (on-demand)</p>
+  <p style="margin:24px 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s</p>
   {kapsule_html}
+  {_LINKS_NOTE}
 
 </div>
 """
@@ -1687,273 +1757,277 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             map_btn.click(fn=run_heatmap, inputs=[grav_sl, acc_sl, catr_cb, samp_sl2], outputs=[map_out, top_table, stats_map])
 
         # ── Onglet Cockpit : gate manuelle décisionnelle ─────────────────────
-        with gr.Tab("Cockpit"):
-            gr.Markdown(
-                "### Cockpit — validation des déploiements en attente\n"
-                "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
-                "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
-                "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
-            )
-            _gate_choices = _paused_runs_choices()
-            _gate_default = _gate_choices[0][1] if _gate_choices else None
-
-            gate_queue = gr.Dataframe(
-                value=_paused_runs_table(), label="File d'attente", interactive=False,
-            )
-            with gr.Row():
-                gate_dd = gr.Dropdown(
-                    choices=_gate_choices, value=_gate_default,
-                    label="Déploiement à traiter", scale=3,
+        if not IS_KAPSULE:
+            with gr.Tab("Cockpit"):
+                gr.Markdown(
+                    "### Cockpit — validation des déploiements en attente\n"
+                    "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
+                    "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
+                    "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
                 )
-                gate_refresh = gr.Button("Rafraîchir", scale=1)
-            gate_card = gr.HTML(value=_render_gate_card(_gate_default))
-            with gr.Row():
-                go_btn   = gr.Button("GO — Déployer", variant="primary")
-                stop_btn = gr.Button("STOP — Annuler", variant="stop")
-            gate_status = gr.Markdown()
+                _gate_choices = _paused_runs_choices()
+                _gate_default = _gate_choices[0][1] if _gate_choices else None
 
-            gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
-            gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
-
-            def _gate_go(run_id):
-                msg = resume_run(run_id)
-                table, dd, card = refresh_gate_queue()
-                return msg, table, dd, card
-
-            def _gate_stop(run_id):
-                msg = cancel_run(run_id)
-                table, dd, card = refresh_gate_queue()
-                return msg, table, dd, card
-
-            go_btn.click(fn=_gate_go, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
-            stop_btn.click(fn=_gate_stop, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
-
-        # ── Onglet 3 : Drift ─────────────────────────────────────────────────
-        with gr.Tab("Drift"):
-            gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
-            with gr.Row():
-                drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
-                                            value=(_list_drift_reports() or [None])[0])
-                drift_refresh = gr.Button("Rafraichir", scale=1)
-            drift_iframe = gr.HTML(value=load_drift_report((_list_drift_reports() or [None])[0]))
-            drift_dd.change(fn=load_drift_report, inputs=drift_dd, outputs=drift_iframe)
-            drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
-
-        # ── Onglet 4 : Modèles ───────────────────────────────────────────────
-        with gr.Tab("Modeles"):
-            gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
-            with gr.Row():
-                models_refresh = gr.Button("Rafraichir", scale=1)
-
-            _init_df, _init_choices = _load_models_data()
-            models_table = gr.Dataframe(
-                value=_init_df,
-                label="Versions MLflow",
-                interactive=False,
-            )
-
-            gr.Markdown("#### Promouvoir une version en Production")
-            gr.Markdown(
-                "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
-                "Aucun smoke test ni gate automatique. "
-                "Réservé aux rollbacks d'urgence. "
-                "Pour une promotion normale, utiliser le flow **update-model** (onglet Orchestration)."
-            )
-            with gr.Row():
-                promote_dd  = gr.Dropdown(choices=_init_choices,
-                                          value=_init_choices[-1] if _init_choices else None,
-                                          label="Version", scale=2)
-                promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
-            promote_result = gr.Markdown()
-
-            models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
-            promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
-
-        # ── Onglet 5 : Orchestration ─────────────────────────────────────────
-        with gr.Tab("Orchestration"):
-            gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
-
-            _FLOW_CONFIGS = {
-                "Tester l'API (6 vérifications)": {
-                    "key": "test-api",
-                    "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=90 vs 50 — route dept nuit), rate-limit 429.",
-                    "opts": None,
-                },
-                "Diagnostiquer le VPS": {
-                    "key": "diag",
-                    "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
-                    "opts": None,
-                },
-                "Nettoyer l'espace disque": {
-                    "key": "disk-cleanup",
-                    "desc": "Purge les images Docker dangling et les conteneurs arrêtés. Alerte email si disque /data reste < 15% après nettoyage.",
-                    "opts": None,
-                },
-                "Réentraîner les modèles": {
-                    "key": "full-retrain",
-                    "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
-                    "opts": "full-retrain",
-                },
-                "Vérifier nouvelles données": {
-                    "key": "check-new-data",
-                    "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
-                    "opts": None,
-                },
-                "Analyser le drift": {
-                    "key": "drift-check",
-                    "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
-                    "opts": None,
-                },
-                "Réinitialiser la solution": {
-                    "key": "reset",
-                    "desc": "RAZ par composant, à la carte — coche uniquement ce que tu veux vider. \"RAZ totale\" force tout, pensée pour repartir sur un système propre juste avant un full-retrain.",
-                    "opts": "reset",
-                },
-                "Démarrer le cluster K8s": {
-                    "key": "kapsule-up",
-                    "desc": "Provisionne un cluster Kubernetes Kapsule sur Scaleway, upload le modèle @Production sur S3, puis déclenche le rolling update des pods API.",
-                    "opts": "kapsule",
-                },
-                "Arrêter le cluster K8s": {
-                    "key": "kapsule-down",
-                    "desc": "Déprovisionne le cluster Kubernetes Kapsule pour arrêter la facturation. Les données et artefacts restent dans S3.",
-                    "opts": None,
-                },
-            }
-
-            _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
-            _FIRST_FLOW  = _FLOW_NAMES[0]
-            _FIRST_DESC  = _FLOW_CONFIGS[_FIRST_FLOW]["desc"]
-
-            with gr.Row():
-                # ── Colonne gauche : sélection + description + options ─────
-                with gr.Column(scale=1):
-                    flow_dd = gr.Dropdown(
-                        choices=_FLOW_NAMES, value=_FIRST_FLOW,
-                        show_label=False,
+                gate_queue = gr.Dataframe(
+                    value=_paused_runs_table(), label="File d'attente", interactive=False,
+                )
+                with gr.Row():
+                    gate_dd = gr.Dropdown(
+                        choices=_gate_choices, value=_gate_default,
+                        label="Déploiement à traiter", scale=3,
                     )
-                    run_btn = gr.Button("▶", variant="primary", elem_id="pipe-run-btn")
+                    gate_refresh = gr.Button("Rafraîchir", scale=1)
+                gate_card = gr.HTML(value=_render_gate_card(_gate_default))
+                with gr.Row():
+                    go_btn   = gr.Button("GO — Déployer", variant="primary")
+                    stop_btn = gr.Button("STOP — Annuler", variant="stop")
+                gate_status = gr.Markdown()
 
-                    flow_desc = gr.Textbox(
-                        value=_FIRST_DESC,
-                        show_label=False, interactive=False, lines=3, max_lines=5,
-                        elem_id="pipe-desc",
-                    )
+                gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
+                gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
 
-                    with gr.Group(visible=False) as kapsule_opts:
-                        kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
-                        kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+                def _gate_go(run_id):
+                    msg = resume_run(run_id)
+                    table, dd, card = refresh_gate_queue()
+                    return msg, table, dd, card
 
-                    with gr.Group(visible=False) as reset_opts:
-                        reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
-                        reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
-                        reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow (runs + modèles, via l'API)")
-                        gr.Markdown("**Options plus radicales — décochées par défaut :**")
-                        reset_pg_full = gr.Checkbox(value=False, label="Vider TOUTE la base Postgres (predictions + tout MLflow)")
-                        reset_minio   = gr.Checkbox(value=False, label="Vider MinIO (artefacts binaires des modèles)")
-                        reset_grafana = gr.Checkbox(value=False, label="Réinitialiser Grafana (annotations, état alertes, favoris)")
-                        reset_loki    = gr.Checkbox(value=False, label="Réinitialiser Loki (efface tout l'historique de logs)")
-                        reset_full    = gr.Checkbox(value=False, label="⚠️ RAZ TOTALE — coche tout ci-dessus, système propre post-développement")
+                def _gate_stop(run_id):
+                    msg = cancel_run(run_id)
+                    table, dd, card = refresh_gate_queue()
+                    return msg, table, dd, card
 
-                    with gr.Group(visible=False) as retrain_opts:
-                        retrain_sim_rows = gr.Number(
-                            value=2000, precision=0,
-                            label="Lignes simulées par cycle (défaut deployment : 2000)",
-                        )
+                go_btn.click(fn=_gate_go, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
+                stop_btn.click(fn=_gate_stop, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
 
-                # ── Colonne droite : résultat ─────────────────────────────
-                with gr.Column(scale=1):
-                    action_result = gr.Textbox(
-                        label="Résultat", lines=22, interactive=False,
-                    )
-                    with gr.Row():
-                        clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
-                        retrain_logs_btn = gr.Button(
-                            "Voir logs full-retrain", variant="secondary",
-                        )
+        if not IS_KAPSULE:
+            # ── Onglet 3 : Drift ─────────────────────────────────────────────────
+            with gr.Tab("Drift"):
+                gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
+                with gr.Row():
+                    drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
+                                                value=(_list_drift_reports() or [None])[0])
+                    drift_refresh = gr.Button("Rafraichir", scale=1)
+                drift_iframe = gr.HTML(value=load_drift_report((_list_drift_reports() or [None])[0]))
+                drift_dd.change(fn=load_drift_report, inputs=drift_dd, outputs=drift_iframe)
+                drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
 
-            # Table pleine largeur
-            runs_table = gr.Dataframe(
-                value=_prefect_recent_runs(),
-                label="Derniers flows exécutés",
-                interactive=False,
-            )
+        if not IS_KAPSULE:
+            # ── Onglet 4 : Modèles ───────────────────────────────────────────────
+            with gr.Tab("Modeles"):
+                gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
+                with gr.Row():
+                    models_refresh = gr.Button("Rafraichir", scale=1)
 
-            table_filter = gr.Textbox(
-                placeholder="Filtrer par flow, état…", show_label=False,
-            )
-            pipeline_refresh = gr.Button("↻", variant="primary", elem_id="pipe-refresh-btn")
-
-            # ── Callbacks ────────────────────────────────────────────────
-
-            def _filtered_runs(query: str) -> pd.DataFrame:
-                df = _prefect_recent_runs()
-                if not query.strip():
-                    return df
-                q = query.lower()
-                mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
-                return df[mask]
-
-            def _on_flow_select(flow_name):
-                cfg  = _FLOW_CONFIGS.get(flow_name, {})
-                desc = cfg.get("desc", "")
-                opts = cfg.get("opts")
-                return (
-                    desc,
-                    gr.update(visible=(opts == "kapsule")),
-                    gr.update(visible=(opts == "reset")),
-                    gr.update(visible=(opts == "full-retrain")),
+                _init_df, _init_choices = _load_models_data()
+                models_table = gr.Dataframe(
+                    value=_init_df,
+                    label="Versions MLflow",
+                    interactive=False,
                 )
 
-            def _run_flow(
-                flow_name, node_type, node_count,
-                r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full,
-                sim_rows,
-            ):
-                key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
-                if key == "kapsule-up":
-                    return trigger_kapsule_up(node_type, int(node_count or 2))
-                if key == "kapsule-down":
-                    return trigger_kapsule_down()
-                if key == "reset":
-                    return trigger_reset(r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full)
-                if key == "test-api":
-                    return trigger_test_api()
-                if key == "diag":
-                    return trigger_diag()
-                if key == "disk-cleanup":
-                    return trigger_disk_cleanup()
-                if key == "full-retrain":
-                    return trigger_full_retrain(sim_rows)
-                if key == "check-new-data":
-                    return trigger_check_new_data()
-                if key == "drift-check":
-                    return trigger_drift_check()
-                return f"Flow inconnu : {flow_name}"
+                gr.Markdown("#### Promouvoir une version en Production")
+                gr.Markdown(
+                    "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
+                    "Aucun smoke test ni gate automatique. "
+                    "Réservé aux rollbacks d'urgence. "
+                    "Pour une promotion normale, utiliser le flow **update-model** (onglet Orchestration)."
+                )
+                with gr.Row():
+                    promote_dd  = gr.Dropdown(choices=_init_choices,
+                                              value=_init_choices[-1] if _init_choices else None,
+                                              label="Version", scale=2)
+                    promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
+                promote_result = gr.Markdown()
 
-            flow_dd.change(
-                fn=_on_flow_select,
-                inputs=flow_dd,
-                outputs=[flow_desc, kapsule_opts, reset_opts, retrain_opts],
-            )
-            run_btn.click(
-                fn=_run_flow,
-                inputs=[
-                    flow_dd, kap_node_type, kap_node_count,
-                    reset_pred, reset_drift, reset_mlf,
-                    reset_pg_full, reset_minio, reset_grafana, reset_loki, reset_full,
-                    retrain_sim_rows,
-                ],
-                outputs=action_result,
-            )
-            pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
-            table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
-            clear_btn.click(fn=lambda: "", outputs=action_result)
-            retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
+                models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
+                promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
+
+        if not IS_KAPSULE:
+            # ── Onglet 5 : Orchestration ─────────────────────────────────────────
+            with gr.Tab("Orchestration"):
+                gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
+
+                _FLOW_CONFIGS = {
+                    "Tester l'API (6 vérifications)": {
+                        "key": "test-api",
+                        "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=90 vs 50 — route dept nuit), rate-limit 429.",
+                        "opts": None,
+                    },
+                    "Diagnostiquer le VPS": {
+                        "key": "diag",
+                        "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
+                        "opts": None,
+                    },
+                    "Nettoyer l'espace disque": {
+                        "key": "disk-cleanup",
+                        "desc": "Purge les images Docker dangling et les conteneurs arrêtés. Alerte email si disque /data reste < 15% après nettoyage.",
+                        "opts": None,
+                    },
+                    "Réentraîner les modèles": {
+                        "key": "full-retrain",
+                        "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
+                        "opts": "full-retrain",
+                    },
+                    "Vérifier nouvelles données": {
+                        "key": "check-new-data",
+                        "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
+                        "opts": None,
+                    },
+                    "Analyser le drift": {
+                        "key": "drift-check",
+                        "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
+                        "opts": None,
+                    },
+                    "Réinitialiser la solution": {
+                        "key": "reset",
+                        "desc": "RAZ par composant, à la carte — coche uniquement ce que tu veux vider. \"RAZ totale\" force tout, pensée pour repartir sur un système propre juste avant un full-retrain.",
+                        "opts": "reset",
+                    },
+                    "Démarrer le cluster K8s": {
+                        "key": "kapsule-up",
+                        "desc": "Provisionne un cluster Kubernetes Kapsule sur Scaleway, upload le modèle @Production sur S3, puis déclenche le rolling update des pods API.",
+                        "opts": "kapsule",
+                    },
+                    "Arrêter le cluster K8s": {
+                        "key": "kapsule-down",
+                        "desc": "Déprovisionne le cluster Kubernetes Kapsule pour arrêter la facturation. Les données et artefacts restent dans S3.",
+                        "opts": None,
+                    },
+                }
+
+                _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
+                _FIRST_FLOW  = _FLOW_NAMES[0]
+                _FIRST_DESC  = _FLOW_CONFIGS[_FIRST_FLOW]["desc"]
+
+                with gr.Row():
+                    # ── Colonne gauche : sélection + description + options ─────
+                    with gr.Column(scale=1):
+                        flow_dd = gr.Dropdown(
+                            choices=_FLOW_NAMES, value=_FIRST_FLOW,
+                            show_label=False,
+                        )
+                        run_btn = gr.Button("▶", variant="primary", elem_id="pipe-run-btn")
+
+                        flow_desc = gr.Textbox(
+                            value=_FIRST_DESC,
+                            show_label=False, interactive=False, lines=3, max_lines=5,
+                            elem_id="pipe-desc",
+                        )
+
+                        with gr.Group(visible=False) as kapsule_opts:
+                            kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
+                            kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+
+                        with gr.Group(visible=False) as reset_opts:
+                            reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
+                            reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
+                            reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow (runs + modèles, via l'API)")
+                            gr.Markdown("**Options plus radicales — décochées par défaut :**")
+                            reset_pg_full = gr.Checkbox(value=False, label="Vider TOUTE la base Postgres (predictions + tout MLflow)")
+                            reset_minio   = gr.Checkbox(value=False, label="Vider MinIO (artefacts binaires des modèles)")
+                            reset_grafana = gr.Checkbox(value=False, label="Réinitialiser Grafana (annotations, état alertes, favoris)")
+                            reset_loki    = gr.Checkbox(value=False, label="Réinitialiser Loki (efface tout l'historique de logs)")
+                            reset_full    = gr.Checkbox(value=False, label="⚠️ RAZ TOTALE — coche tout ci-dessus, système propre post-développement")
+
+                        with gr.Group(visible=False) as retrain_opts:
+                            retrain_sim_rows = gr.Number(
+                                value=2000, precision=0,
+                                label="Lignes simulées par cycle (défaut deployment : 2000)",
+                            )
+
+                    # ── Colonne droite : résultat ─────────────────────────────
+                    with gr.Column(scale=1):
+                        action_result = gr.Textbox(
+                            label="Résultat", lines=22, interactive=False,
+                        )
+                        with gr.Row():
+                            clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
+                            retrain_logs_btn = gr.Button(
+                                "Voir logs full-retrain", variant="secondary",
+                            )
+
+                # Table pleine largeur
+                runs_table = gr.Dataframe(
+                    value=_prefect_recent_runs(),
+                    label="Derniers flows exécutés",
+                    interactive=False,
+                )
+
+                table_filter = gr.Textbox(
+                    placeholder="Filtrer par flow, état…", show_label=False,
+                )
+                pipeline_refresh = gr.Button("↻", variant="primary", elem_id="pipe-refresh-btn")
+
+                # ── Callbacks ────────────────────────────────────────────────
+
+                def _filtered_runs(query: str) -> pd.DataFrame:
+                    df = _prefect_recent_runs()
+                    if not query.strip():
+                        return df
+                    q = query.lower()
+                    mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
+                    return df[mask]
+
+                def _on_flow_select(flow_name):
+                    cfg  = _FLOW_CONFIGS.get(flow_name, {})
+                    desc = cfg.get("desc", "")
+                    opts = cfg.get("opts")
+                    return (
+                        desc,
+                        gr.update(visible=(opts == "kapsule")),
+                        gr.update(visible=(opts == "reset")),
+                        gr.update(visible=(opts == "full-retrain")),
+                    )
+
+                def _run_flow(
+                    flow_name, node_type, node_count,
+                    r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full,
+                    sim_rows,
+                ):
+                    key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
+                    if key == "kapsule-up":
+                        return trigger_kapsule_up(node_type, int(node_count or 2))
+                    if key == "kapsule-down":
+                        return trigger_kapsule_down()
+                    if key == "reset":
+                        return trigger_reset(r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full)
+                    if key == "test-api":
+                        return trigger_test_api()
+                    if key == "diag":
+                        return trigger_diag()
+                    if key == "disk-cleanup":
+                        return trigger_disk_cleanup()
+                    if key == "full-retrain":
+                        return trigger_full_retrain(sim_rows)
+                    if key == "check-new-data":
+                        return trigger_check_new_data()
+                    if key == "drift-check":
+                        return trigger_drift_check()
+                    return f"Flow inconnu : {flow_name}"
+
+                flow_dd.change(
+                    fn=_on_flow_select,
+                    inputs=flow_dd,
+                    outputs=[flow_desc, kapsule_opts, reset_opts, retrain_opts],
+                )
+                run_btn.click(
+                    fn=_run_flow,
+                    inputs=[
+                        flow_dd, kap_node_type, kap_node_count,
+                        reset_pred, reset_drift, reset_mlf,
+                        reset_pg_full, reset_minio, reset_grafana, reset_loki, reset_full,
+                        retrain_sim_rows,
+                    ],
+                    outputs=action_result,
+                )
+                pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
+                table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
+                clear_btn.click(fn=lambda: "", outputs=action_result)
+                retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
 
         # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):
-            gr.Markdown("### Etat des services VPS et Kapsule K8s")
+            gr.Markdown("### Etat des services K8s" if IS_KAPSULE else "### Etat des services VPS et Kapsule K8s")
             health_refresh = gr.Button("Verifier maintenant", variant="primary")
             health_table   = gr.Dataframe(
                 value=check_health(),
