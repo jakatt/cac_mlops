@@ -1161,6 +1161,42 @@ def check_health() -> pd.DataFrame:
 # TAB 7 — Infra (liens + IPs Kapsule)
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Styles partagés — garantit un rendu strictement identique entre les
+# tables VPS et Kapsule K8s (même largeur de colonnes via colgroup, même
+# police/padding/hauteur de ligne).
+_LINKS_TH  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;"
+_LINKS_TD1 = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
+_LINKS_TD2 = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
+_LINKS_TD3 = f"padding:6px 16px;font-size:0.78rem;color:{MUTED};font-family:Inter,Segoe UI,sans-serif;"
+_LINKS_COLGROUP = '<colgroup><col style="width:28%;"><col style="width:50%;"><col style="width:22%;"></colgroup>'
+_LINKS_NOTE = (
+    f"<p style='margin:6px 0 0;font-size:0.78em;color:{MUTED};'>"
+    "Ports admin accessibles via Tailscale VPN uniquement &mdash; API et cockpit public sur HTTPS.</p>"
+)
+
+
+def _link_row(label: str, url: str, access: str) -> str:
+    return (
+        f'<tr>'
+        f'<td style="{_LINKS_TD1}">{label}</td>'
+        f'<td style="{_LINKS_TD2}"><a href="{url}" target="_blank" '
+        f'style="color:{NAVY};text-decoration:none;">{url}</a></td>'
+        f'<td style="{_LINKS_TD3}">{access}</td>'
+        f'</tr>'
+    )
+
+
+def _links_table(rows: str) -> str:
+    return (
+        f'<table style="border-collapse:collapse;width:100%;table-layout:fixed;'
+        f'border:1px solid #E5E7EB;border-radius:4px;font-family:Inter,Segoe UI,sans-serif;">'
+        f'{_LINKS_COLGROUP}'
+        f'<tr><th style="{_LINKS_TH}">Service</th><th style="{_LINKS_TH}">URL</th><th style="{_LINKS_TH}">Accès</th></tr>'
+        f'{rows}'
+        f'</table>'
+    )
+
+
 def _kapsule_links_html() -> str:
     """Lit state/kapsule_ips à chaque appel — toujours à jour, y compris
     après un changement d'IP caddy entre deux cycles kapsule-up/down
@@ -1179,18 +1215,8 @@ def _kapsule_links_html() -> str:
     if not public_url or public_url == "pending":
         return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
-    def _row(label: str, url: str, access: str) -> str:
-        return (
-            f'<tr>'
-            f'<td style="padding:5px 16px;color:{SLATE};">{label}</td>'
-            f'<td style="padding:5px 16px;"><a href="{url}" target="_blank" '
-            f'style="color:{NAVY};text-decoration:none;">{url}</a></td>'
-            f'<td style="padding:5px 16px;font-size:0.78rem;color:{MUTED};">{access}</td>'
-            f'</tr>'
-        )
-
-    rows  = _row("Cockpit public K8s", public_url, "Public — HTTPS")
-    rows += _row("API publique K8s",   f"{public_url}/predict", "Public — HTTPS")
+    rows  = _link_row("Cockpit public K8s", public_url, "Public — HTTPS")
+    rows += _link_row("API publique K8s",   f"{public_url}/predict", "Public — HTTPS")
 
     for key, label, port in [
         ("GRADIO_DNS",   "Cockpit admin K8s", ":7860"),
@@ -1199,44 +1225,42 @@ def _kapsule_links_html() -> str:
     ]:
         dns = ips.get(key, "")
         if dns and dns != "pending":
-            rows += _row(label, f"http://{dns}{port}", "Tailscale uniquement")
+            rows += _link_row(label, f"http://{dns}{port}", "Tailscale uniquement")
 
     caddy_ip = ips.get("CADDY_LB", "")
     if caddy_ip and caddy_ip != "pending":
-        rows += _row("IP publique brute (caddy)", f"http://{caddy_ip}", "Debug — préférer l'URL HTTPS ci-dessus")
+        rows += _link_row("IP publique brute (caddy)", f"http://{caddy_ip}", "Debug — préférer l'URL HTTPS ci-dessus")
 
-    return f'<table style="border-collapse:collapse;font-family:Inter,Segoe UI,sans-serif;">{rows}</table>'
+    return _links_table(rows)
 
 
 def build_links_html() -> str:
     kapsule_html = _kapsule_links_html()
-    th  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;"
-    td  = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
-    tda = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
-    tdb = f"padding:6px 16px;font-size:0.78rem;color:{MUTED};font-family:Inter,Segoe UI,sans-serif;"
     onisr_url = "https://www.data.gouv.fr/fr/datasets/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/"
+    vps_rows = (
+        _link_row("Données ONISR (data.gouv.fr)", onisr_url, "Public")
+        + _link_row("Cockpit public",             PUBLIC_URL, "Public")
+        + _link_row("API publique (HTTPS)",       f"{PUBLIC_URL}/predict", "Public")
+        + _link_row("Cockpit admin",               f"http://{VPS_TAILSCALE_IP}:7860", "Tailscale")
+        + _link_row("MLflow",                      f"http://{VPS_TAILSCALE_IP}:5001", "Tailscale")
+        + _link_row("Grafana",                     f"http://{VPS_TAILSCALE_IP}:3000", "Tailscale")
+        + _link_row("Prefect",                     f"http://{VPS_TAILSCALE_IP}:4200", "Tailscale")
+        + _link_row("API Swagger",                 f"http://{VPS_TAILSCALE_IP}:8080/docs", "Tailscale")
+        + _link_row("MinIO Console",                f"http://{VPS_TAILSCALE_IP}:9001", "Tailscale")
+        + _link_row("Prometheus",                   f"http://{VPS_TAILSCALE_IP}:9090", "Tailscale")
+        + _link_row("GitHub Actions (CI/CD)",       f"https://github.com/{GITHUB_REPO}/actions", "Public")
+        + _link_row("DVC Data Tags",                f"https://github.com/{GITHUB_REPO}/tags", "Public")
+    )
     return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
 
-  <p style="margin:0 0 10px;font-size:0.78em;color:{MUTED};">Ports admin accessibles via Tailscale VPN uniquement &mdash; API et cockpit public sur HTTPS.</p>
-  <table style="border-collapse:collapse;width:100%;border:1px solid #E5E7EB;border-radius:4px;">
-    <tr><th style="{th}">Service</th><th style="{th}">URL</th><th style="{th}">Accès</th></tr>
-    <tr><td style="{td}">Données ONISR (data.gouv.fr)</td><td style="{tda}"><a href="{onisr_url}" target="_blank" style="color:{NAVY};text-decoration:none;">data.gouv.fr — BAAC annuels</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">Cockpit public</td>           <td style="{tda}"><a href="{PUBLIC_URL}" target="_blank" style="color:{NAVY};text-decoration:none;">{PUBLIC_URL}</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">API publique (HTTPS)</td>     <td style="{tda}"><a href="{PUBLIC_URL}/predict" target="_blank" style="color:{NAVY};text-decoration:none;">{PUBLIC_URL}/predict</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">Cockpit admin</td>            <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:7860" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:7860</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">MLflow</td>                   <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:5001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:5001</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">Grafana</td>                  <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:3000" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:3000</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">Prefect</td>                  <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:4200" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:4200</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">API Swagger</td>              <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:8080/docs" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:8080/docs</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">MinIO Console</td>            <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9001" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9001</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">Prometheus</td>               <td style="{tda}"><a href="http://{VPS_TAILSCALE_IP}:9090" target="_blank" style="color:{NAVY};text-decoration:none;">http://{VPS_TAILSCALE_IP}:9090</a></td><td style="{tdb}">Tailscale</td></tr>
-    <tr><td style="{td}">GitHub Actions (CI/CD)</td>   <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/actions" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/actions</a></td><td style="{tdb}">Public</td></tr>
-    <tr><td style="{td}">DVC Data Tags</td>            <td style="{tda}"><a href="https://github.com/{GITHUB_REPO}/tags" target="_blank" style="color:{NAVY};text-decoration:none;">github.com/{GITHUB_REPO}/tags</a></td><td style="{tdb}">Public</td></tr>
-  </table>
+  <p style="margin:0 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Virtual Private Server</p>
+  {_links_table(vps_rows)}
+  {_LINKS_NOTE}
 
-  <p style="margin:20px 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s (on-demand)</p>
+  <p style="margin:24px 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s</p>
   {kapsule_html}
+  {_LINKS_NOTE}
 
 </div>
 """
