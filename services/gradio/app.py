@@ -1137,12 +1137,17 @@ def _kapsule_status() -> dict:
             k, v = line.split("=", 1)
             ips[k.strip()] = v.strip()
 
-    nginx_ip = ips.get("NGINX_LB", "")
-    if not nginx_ip or nginx_ip == "pending":
+    # PUBLIC_URL (via caddy) — remplace NGINX_LB depuis que nginx est passé
+    # en ClusterIP (2026-07-10, sécurité + HTTPS). Ancien nom de clé encore
+    # utilisé ici jusqu'à la veille : "Kapsule inactif" affiché en
+    # permanence même cluster actif, car NGINX_LB n'existe plus dans le
+    # fichier écrit par write_kapsule_state.
+    public_url = ips.get("PUBLIC_URL", "")
+    if not public_url or public_url == "pending":
         return {"Service": "Kapsule K8s", "Status": "En attente"}
 
-    status = _check_url(f"http://{nginx_ip}/health", timeout=5)
-    label = f"OK — nginx: {nginx_ip}" if status == "OK" else status
+    status = _check_url(f"{public_url}/health", timeout=5)
+    label = f"OK — {public_url}" if status == "OK" else status
     return {"Service": "Kapsule K8s", "Status": label}
 
 
@@ -1157,6 +1162,10 @@ def check_health() -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _kapsule_links_html() -> str:
+    """Lit state/kapsule_ips à chaque appel — toujours à jour, y compris
+    après un changement d'IP caddy entre deux cycles kapsule-up/down
+    (write_kapsule_state met déjà à jour le DNS automatiquement, mais l'IP
+    brute CADDY_LB et les DNS internes changent quand même de valeur)."""
     if not KAPSULE_STATE.exists():
         return f"<p style='color:{MUTED};margin:0;font-family:Inter,Segoe UI,sans-serif;'>Kapsule inactif — aucune IP disponible</p>"
 
@@ -1166,25 +1175,37 @@ def _kapsule_links_html() -> str:
             k, v = line.split("=", 1)
             ips[k.strip()] = v.strip()
 
-    defs = [
-        ("NGINX_LB",    "API (nginx)",   ""),
-        ("GRAFANA_LB",  "Grafana",       ":3000"),
-        ("PREFECT_LB",  "Prefect",       ":4200"),
-        ("GRADIO_LB",   "Gradio K8s",    ":7860"),
-    ]
-    rows = ""
-    for key, label, port in defs:
-        ip = ips.get(key, "")
-        if ip and ip != "pending":
-            rows += (
-                f'<tr>'
-                f'<td style="padding:5px 16px;color:{SLATE};">{label}</td>'
-                f'<td style="padding:5px 16px;"><a href="http://{ip}{port}" target="_blank" '
-                f'style="color:{NAVY};text-decoration:none;">http://{ip}{port}</a></td>'
-                f'</tr>'
-            )
+    public_url = ips.get("PUBLIC_URL", "")
+    if not public_url or public_url == "pending":
+        return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
-    return f'<table style="border-collapse:collapse;font-family:Inter,Segoe UI,sans-serif;">{rows}</table>' if rows else f"<p style='color:{MUTED};'>IPs non disponibles</p>"
+    def _row(label: str, url: str, access: str) -> str:
+        return (
+            f'<tr>'
+            f'<td style="padding:5px 16px;color:{SLATE};">{label}</td>'
+            f'<td style="padding:5px 16px;"><a href="{url}" target="_blank" '
+            f'style="color:{NAVY};text-decoration:none;">{url}</a></td>'
+            f'<td style="padding:5px 16px;font-size:0.78rem;color:{MUTED};">{access}</td>'
+            f'</tr>'
+        )
+
+    rows  = _row("Cockpit public K8s", public_url, "Public — HTTPS")
+    rows += _row("API publique K8s",   f"{public_url}/predict", "Public — HTTPS")
+
+    for key, label, port in [
+        ("GRADIO_DNS",   "Cockpit admin K8s", ":7860"),
+        ("GRAFANA_DNS",  "Grafana K8s",       ":3000"),
+        ("PREFECT_DNS",  "Prefect K8s",       ":4200"),
+    ]:
+        dns = ips.get(key, "")
+        if dns and dns != "pending":
+            rows += _row(label, f"http://{dns}{port}", "Tailscale uniquement")
+
+    caddy_ip = ips.get("CADDY_LB", "")
+    if caddy_ip and caddy_ip != "pending":
+        rows += _row("IP publique brute (caddy)", f"http://{caddy_ip}", "Debug — préférer l'URL HTTPS ci-dessus")
+
+    return f'<table style="border-collapse:collapse;font-family:Inter,Segoe UI,sans-serif;">{rows}</table>'
 
 
 def build_links_html() -> str:
