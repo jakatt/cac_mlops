@@ -9,7 +9,11 @@ metadata:
   labels:
     app: gradio-public
 spec:
-  replicas: 1
+  # 2 répliques : gradio-public est sur le chemin public (seul point d'accès
+  # utilisateur pour Predict/What-If/Points Noirs), donc SPOF critique à 1
+  # seule réplique malgré la stratégie de rollout déjà correcte ci-dessous
+  # (2026-07-12 — cf. discussion résilience chemin public complet).
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
