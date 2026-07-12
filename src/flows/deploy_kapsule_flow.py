@@ -124,7 +124,7 @@ def cleanup_before_deploy_task(kubeconfig: str) -> None:
 
 
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
-def rolling_update_task(kubeconfig: str) -> bool:
+def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
     """
     Rollout restart SÉQUENTIEL (un deployment à la fois : restart puis
     attente avant de passer au suivant) — pas les 3 en parallèle. Un rollout
@@ -136,7 +136,14 @@ def rolling_update_task(kubeconfig: str) -> bool:
     2026-07-11). Le séquentiel réduit le pic de charge et échoue/alerte plus
     vite (sur le premier deployment bloqué, pas après avoir attendu les 3).
 
-    Returns True on success, False on failure (caller handles rollback).
+    Returns (ok, touched) — touched liste les deployments dont le `rollout
+    restart` a réellement démarré (donc les seuls à rollback en cas
+    d'échec). Avec le séquentiel, un échec sur `api` (1er de la liste)
+    signifie que gradio/gradio-public n'ont jamais été touchés — les
+    inclure quand même dans le rollback fait échouer `kubectl rollout undo`
+    avec "no rollout history found" (aucune révision précédente puisque
+    jamais redémarrés), une erreur trompeuse mais sans conséquence
+    (bug vécu, 2026-07-12).
 
     `kubectl set image` avec la même chaîne (toujours ":latest", jamais de
     tag par SHA) ne produit AUCUN diff de spec pour Kubernetes — donc
@@ -150,6 +157,7 @@ def rolling_update_task(kubeconfig: str) -> bool:
     tournant) que Trigger 2 (nouveau code).
     """
     log = get_run_logger()
+    touched: list[str] = []
     try:
         for deploy_name in DEPLOYMENTS:
             log.info("Rolling restart %s", deploy_name)
@@ -158,6 +166,7 @@ def rolling_update_task(kubeconfig: str) -> bool:
                 f"deployment/{deploy_name}",
                 "-n", K8S_NAMESPACE,
             ])
+            touched.append(deploy_name)
             log.info("Attente rollout %s…", deploy_name)
             _kubectl(kubeconfig, [
                 "rollout", "status",
@@ -167,7 +176,7 @@ def rolling_update_task(kubeconfig: str) -> bool:
             ])
 
         log.info("Rolling update Kapsule OK")
-        return True
+        return True, touched
 
     except Exception as exc:
         # Exception large et pas seulement RuntimeError : _kubectl utilise
@@ -180,14 +189,14 @@ def rolling_update_task(kubeconfig: str) -> bool:
         # DiskPressure sur les 2 nœuds a fait dépasser les 300s deux fois de
         # suite, le rollback annoncé n'a jamais eu lieu).
         log.error("Rolling update échoué : %s", exc)
-        return False
+        return False, touched
 
 
 @task(name="kubectl-rollback")
-def rollback_kapsule_task(kubeconfig: str) -> None:
+def rollback_kapsule_task(kubeconfig: str, deployments: list[str]) -> None:
     log = get_run_logger()
-    log.warning("event=rollback kind=kapsule")
-    for deploy_name in DEPLOYMENTS:
+    log.warning("event=rollback kind=kapsule targets=%s", ",".join(deployments) or "aucun")
+    for deploy_name in deployments:
         log.info("Rollback %s", deploy_name)
         try:
             _kubectl(kubeconfig, [
@@ -224,10 +233,10 @@ def deploy_kapsule_flow() -> bool:
     apply_manifests(kubeconfig)
     cleanup_before_deploy_task(kubeconfig)
 
-    ok = rolling_update_task(kubeconfig)
+    ok, touched = rolling_update_task(kubeconfig)
 
     if not ok:
-        rollback_kapsule_task(kubeconfig)
+        rollback_kapsule_task(kubeconfig, touched)
         log.error("event=alert severity=critical topic=kapsule_failure")
         raise RuntimeError(
             "Deploy Kapsule ÉCHOUÉ — rolling update impossible sur le cluster K8s.\n"
