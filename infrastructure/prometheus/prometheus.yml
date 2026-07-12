@@ -3,6 +3,14 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
+  # Auto-scrape : santé de Prometheus lui-même (mémoire, taille TSDB,
+  # durée/échecs de scrape) — absent jusqu'ici, aucune visibilité si
+  # Prometheus lui-même se met à souffrir (pertinent vu les incidents de
+  # pression ressources déjà rencontrés côté K8s).
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
   - job_name: cac-mlops-api
     static_configs:
       - targets: ['api:8000']

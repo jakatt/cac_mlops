@@ -10,6 +10,13 @@ data:
       evaluation_interval: 15s
 
     scrape_configs:
+      # Auto-scrape : santé de Prometheus lui-même — pas de raison d'en
+      # priver le Prometheus K8s, mêmes bénéfices que côté VPS (mémoire,
+      # TSDB, scrapes en échec), utile sur des nœuds déjà petits.
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+
       - job_name: cac-mlops-api
         static_configs:
           - targets: ['api:8000']
