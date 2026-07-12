@@ -10,6 +10,15 @@
 # de heurter les limites de taux Let's Encrypt. Bénéfice secondaire : le
 # certificat survit aussi aux cycles kapsule-down/up (avant : recréé à
 # chaque fois, même à 1 seule réplique).
+#
+# Pas de access_key/secret_key ici : le placeholder {env.X} de Caddy n'est
+# PAS résolu dans ce contexte (directives du module tiers `storage s3`) —
+# envoyé littéralement à Scaleway, 403 Forbidden (incident vécu, 2026-07-12).
+# Le SDK AWS sous-jacent détecte seul AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
+# depuis l'environnement du conteneur (cf. k8s/caddy/deployment.yaml) — pas
+# besoin de les répéter ici. `email` obligatoire : sans lui, certmagic utilise
+# par erreur le nom du lock-file S3 comme email de compte ACME → Let's Encrypt
+# rejette avec `invalidContact` (même incident).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -18,12 +27,11 @@ metadata:
 data:
   Caddyfile: |
     {
+        email jacques.cattelin@gmail.com
         storage s3 {
             endpoint "https://s3.fr-par.scw.cloud"
             bucket "cac-mlops-data"
             region "fr-par"
-            access_key "{env.AWS_ACCESS_KEY_ID}"
-            secret_key "{env.AWS_SECRET_ACCESS_KEY}"
             prefix "caddy-certs"
         }
     }
