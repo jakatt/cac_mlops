@@ -1,8 +1,10 @@
 # Point d'entrée public unique de Kapsule — TLS (Let's Encrypt automatique)
-# devant nginx (rate-limiting/routing inchangés). /data en emptyDir : le
-# certificat n'est pas conservé entre deux cycles kapsule-up/down (recréé à
-# chaque fois), acceptable vu la fréquence d'usage (loin des rate limits
-# Let's Encrypt) — à revoir seulement si Kapsule devient permanent.
+# devant nginx (rate-limiting/routing inchangés). 2 répliques (2026-07-12,
+# SPOF critique sinon : peu importe la HA d'api si le seul caddy tombe,
+# plus personne n'atteint quoi que ce soit) — le certificat est donc
+# partagé via stockage S3 (image custom ghcr.io/jakatt/cac-mlops-caddy,
+# cf. services/caddy/Dockerfile + k8s/caddy/configmap.yaml), plus en
+# emptyDir local qui empêcherait 2 pods de partager le même certificat.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -11,7 +13,12 @@ metadata:
   labels:
     app: caddy
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: caddy
@@ -22,10 +29,22 @@ spec:
     spec:
       containers:
       - name: caddy
-        image: caddy:2-alpine
+        image: ghcr.io/jakatt/cac-mlops-caddy:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
         - containerPort: 443
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: s3-creds
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: s3-creds
+              key: AWS_SECRET_ACCESS_KEY
         volumeMounts:
         - name: caddy-config
           mountPath: /etc/caddy/Caddyfile

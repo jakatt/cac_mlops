@@ -22,7 +22,7 @@ CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
 K8S_NAMESPACE = "cac-mlops"
 
-DEPLOYMENTS = ["api", "gradio", "gradio-public", "nginx"]
+DEPLOYMENTS = ["api", "gradio", "gradio-public", "nginx", "caddy"]
 
 
 def _scw(args: list[str], timeout: int = 60) -> str:

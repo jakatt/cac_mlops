@@ -28,6 +28,7 @@ jobs:
       build_mlflow: ${{ steps.check.outputs.build_mlflow }}
       build_api:    ${{ steps.check.outputs.build_api }}
       build_gradio: ${{ steps.check.outputs.build_gradio }}
+      build_caddy:  ${{ steps.check.outputs.build_caddy }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,8 +42,9 @@ jobs:
             echo "build_mlflow=true" >> $GITHUB_OUTPUT
             echo "build_api=true"    >> $GITHUB_OUTPUT
             echo "build_gradio=true" >> $GITHUB_OUTPUT
+            echo "build_caddy=true"  >> $GITHUB_OUTPUT
             echo "needs_build=true"  >> $GITHUB_OUTPUT
-            echo "Build forcé — 3 images (workflow_dispatch)"
+            echo "Build forcé — 4 images (workflow_dispatch)"
             exit 0
           fi
 
@@ -68,6 +70,7 @@ jobs:
           BUILD_MLFLOW=false
           BUILD_API=false
           BUILD_GRADIO=false
+          BUILD_CADDY=false
 
           echo "$CHANGED_FILES" | grep -qE '^services/mlflow/Dockerfile$' && BUILD_MLFLOW=true
 
@@ -75,16 +78,21 @@ jobs:
 
           echo "$CHANGED_FILES" | grep -qE '^(services/gradio/Dockerfile|services/gradio/requirements.*\.txt|services/gradio/.*\.py|src/.*)$' && BUILD_GRADIO=true
 
+          # Caddy custom (plugin de stockage S3) : K8s uniquement, jamais utilisé
+          # par le VPS (Caddy y est un service systemd host-level, hors Docker).
+          echo "$CHANGED_FILES" | grep -qE '^services/caddy/Dockerfile$' && BUILD_CADDY=true
+
           echo "build_mlflow=$BUILD_MLFLOW" >> $GITHUB_OUTPUT
           echo "build_api=$BUILD_API"       >> $GITHUB_OUTPUT
           echo "build_gradio=$BUILD_GRADIO" >> $GITHUB_OUTPUT
+          echo "build_caddy=$BUILD_CADDY"   >> $GITHUB_OUTPUT
 
-          if [ "$BUILD_MLFLOW" = "true" ] || [ "$BUILD_API" = "true" ] || [ "$BUILD_GRADIO" = "true" ]; then
+          if [ "$BUILD_MLFLOW" = "true" ] || [ "$BUILD_API" = "true" ] || [ "$BUILD_GRADIO" = "true" ] || [ "$BUILD_CADDY" = "true" ]; then
             echo "needs_build=true" >> $GITHUB_OUTPUT
           else
             echo "needs_build=false" >> $GITHUB_OUTPUT
           fi
-          echo "Depuis $BASE_REF → mlflow=$BUILD_MLFLOW api=$BUILD_API gradio=$BUILD_GRADIO"
+          echo "Depuis $BASE_REF → mlflow=$BUILD_MLFLOW api=$BUILD_API gradio=$BUILD_GRADIO caddy=$BUILD_CADDY"
 
   # ── Job 1 : build et push des images (seulement si Dockerfile a changé) ───
   build:
@@ -130,15 +138,25 @@ jobs:
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:latest
           docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-gradio:${{ env.SHA_TAG }}
 
-      - name: Scan vulnérabilités Trivy (CRITICAL — images API + Gradio)
-        # Scanne toujours les 3, même si une seule a été rebuildée ce run :
+      - name: Build + push Caddy image (K8s uniquement — plugin stockage S3)
+        if: needs.check-changes.outputs.build_caddy == 'true'
+        run: |
+          docker build \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-caddy:latest \
+            -t ghcr.io/${{ github.repository_owner }}/cac-mlops-caddy:${{ env.SHA_TAG }} \
+            -f services/caddy/Dockerfile .
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-caddy:latest
+          docker push ghcr.io/${{ github.repository_owner }}/cac-mlops-caddy:${{ env.SHA_TAG }}
+
+      - name: Scan vulnérabilités Trivy (CRITICAL — images API + Gradio + MLflow + Caddy)
+        # Scanne toujours les 4, même si une seule a été rebuildée ce run :
         # trivy pull l'image depuis ghcr.io (le tag :latest existe toujours,
         # rebuildé ou non) — coût faible, et ça détecte aussi une CVE tout
         # juste publiée sur une image qu'on n'a pas retouchée aujourd'hui.
         run: |
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
           TRIVY_FAILED=false
-          for image in cac-mlops-api cac-mlops-gradio cac-mlops-mlflow; do
+          for image in cac-mlops-api cac-mlops-gradio cac-mlops-mlflow cac-mlops-caddy; do
             echo "==> Trivy scan : ghcr.io/${{ github.repository_owner }}/$image:latest"
             trivy image \
               --exit-code 1 \
