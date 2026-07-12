@@ -93,7 +93,15 @@ async def init_db() -> None:
     global _pool
     try:
         import asyncpg
-        _pool = await asyncpg.create_pool(_build_dsn(), min_size=1, max_size=3)
+        # timeout court et explicite : le pool par défaut d'asyncpg attend 60s
+        # avant d'abandonner, ce qui grille presque toute la fenêtre de
+        # readiness K8s (30s + 6×10s = 90s, cf. k8s/api/deployment.yaml) et a
+        # fait échouer 2 rollouts d'affilée le 2026-07-12 — la connexion
+        # traverse le Tailscale jusqu'au Postgres du VPS depuis K8s (locale
+        # et quasi instantanée sur le VPS lui-même, d'où l'incident invisible
+        # jusqu'ici). Ce chemin est déjà "best effort" (dégradation propre
+        # ci-dessous) : pas de raison d'attendre une minute pleine.
+        _pool = await asyncpg.create_pool(_build_dsn(), min_size=1, max_size=3, timeout=5)
         async with _pool.acquire() as conn:
             await conn.execute(_CREATE_TABLE)
         logger.info("DB pool ready — predictions table ensured")
