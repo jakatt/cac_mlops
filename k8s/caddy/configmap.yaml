@@ -1,7 +1,15 @@
-# Caddyfile minimal — Caddy obtient/renouvelle seul le certificat Let's
-# Encrypt (HTTP01, port 80 déjà ouvert pour la validation ACME) et redirige
+# Caddyfile — Caddy obtient/renouvelle seul le certificat Let's Encrypt
+# (HTTP01, port 80 déjà ouvert pour la validation ACME) et redirige
 # HTTP→HTTPS automatiquement. Aucune config TLS manuelle nécessaire —
 # mêmes garanties que le Caddy déjà utilisé côté VPS (host-level, hors repo).
+#
+# Stockage S3 (module github.com/techknowlogick/certmagic-s3, compilé dans
+# l'image ghcr.io/jakatt/cac-mlops-caddy, cf. services/caddy/Dockerfile) :
+# nécessaire dès 2 répliques caddy — chacune stockerait sinon son propre
+# certificat en local (emptyDir), au lieu de partager le même, avec risque
+# de heurter les limites de taux Let's Encrypt. Bénéfice secondaire : le
+# certificat survit aussi aux cycles kapsule-down/up (avant : recréé à
+# chaque fois, même à 1 seule réplique).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,6 +17,17 @@ metadata:
   namespace: cac-mlops
 data:
   Caddyfile: |
+    {
+        storage s3 {
+            endpoint "https://s3.fr-par.scw.cloud"
+            bucket "cac-mlops-data"
+            region "fr-par"
+            access_key "{env.AWS_ACCESS_KEY_ID}"
+            secret_key "{env.AWS_SECRET_ACCESS_KEY}"
+            prefix "caddy-certs"
+        }
+    }
+
     kapsule.jakat-inc.fr {
         reverse_proxy nginx:80
     }
