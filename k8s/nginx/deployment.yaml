@@ -6,7 +6,15 @@ metadata:
   labels:
     app: nginx
 spec:
-  replicas: 1
+  # 2 répliques : nginx est sur le chemin de TOUTE requête publique (caddy →
+  # nginx → api/gradio-public) — SPOF à 1 seule réplique rendrait la haute
+  # dispo d'api sans effet, personne ne pouvant plus l'atteindre (2026-07-12).
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: nginx
