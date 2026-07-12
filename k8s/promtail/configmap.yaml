@@ -1,0 +1,50 @@
+# Push vers le Loki VPS (exposé sur son interface Tailscale depuis PR131) via
+# le proxy SOCKS5 de k8s/loki-forwarder/ — un pod K8s normal n'a lui-même
+# aucune route vers le tailnet (cf. commentaire k8s/tailscale/deployment.yaml).
+# IP en dur : celle du VPS sur le tailnet, stable (contrairement aux
+# ressources K8s, recréées à chaque cycle kapsule-up/down).
+# Label externe cluster=kapsule pour distinguer ces logs de ceux du VPS dans
+# les requêtes Loki (ex: {cluster="kapsule", namespace="cac-mlops"}).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: cac-mlops
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+      log_level: warn
+
+    positions:
+      filename: /run/promtail/positions.yaml
+
+    clients:
+      - url: http://100.117.99.62:3100/loki/api/v1/push
+        proxy_url: socks5://loki-forwarder.cac-mlops.svc.cluster.local:1055
+        external_labels:
+          cluster: kapsule
+
+    scrape_configs:
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        pipeline_stages:
+          - cri: {}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - action: replace
+            source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            separator: /
+            target_label: __path__
+            replacement: /var/log/pods/*$1/*.log

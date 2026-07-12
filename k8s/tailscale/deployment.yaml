@@ -78,3 +78,12 @@ spec:
           path: /dev/net/tun
       - name: tailscale-state
         emptyDir: {}
+      # PAS de sidecar de relai Loki ici (essayé puis retiré, 2026-07-12) :
+      # ce pod advertise le PodCIDR (100.64.0.0/15) comme route tailnet, or
+      # sa PROPRE IP appartient à ce même CIDR — routage auto-référentiel,
+      # confirmé en direct : plus aucun pod K8s ne pouvait le joindre (même
+      # en IP directe, pas juste via Service), alors que sa connectivité
+      # sortante vers le tailnet fonctionnait très bien. Le relai Loki vit
+      # maintenant dans un pod dédié séparé : k8s/loki-forwarder/ (client
+      # Tailscale en mode userspace, sans advertise-routes — donc aucune
+      # manipulation de table de routage, aucun conflit possible).

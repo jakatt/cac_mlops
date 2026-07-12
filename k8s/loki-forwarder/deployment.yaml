@@ -1,0 +1,71 @@
+# Client Tailscale dédié, en mode USERSPACE (contrairement à
+# tailscale-subnet-router/ qui utilise un vrai TUN + NET_ADMIN pour advertise
+# des routes). Ce pod n'advertise RIEN — il ne fait que sortir vers le
+# tailnet pour relayer les logs de Promtail (k8s/promtail/) vers le Loki du
+# VPS (100.117.99.62:3100, exposé sur son interface Tailscale depuis PR131).
+#
+# Pourquoi un pod séparé plutôt qu'un sidecar dans tailscale-subnet-router :
+# ce dernier advertise le PodCIDR (100.64.0.0/15) comme route tailnet — or
+# sa propre IP de pod appartient à ce même CIDR, ce qui crée un routage
+# auto-référentiel qui casse toute connectivité entrante depuis les autres
+# pods K8s (confirmé en direct, 2026-07-12). Le mode userspace ne touche
+# JAMAIS la table de routage du pod (pas de TUN, tout passe par un proxy
+# SOCKS5 local) — aucun risque de ce genre de conflit, donc réseau K8s
+# normal pour ce pod (joignable via Service comme n'importe quel autre).
+#
+# Coût sécurité : une identité Tailscale de plus (réutilise le même secret
+# tailscale-auth — clé reusable+ephemeral, un hostname différent suffit à
+# distinguer les 2 devices dans la console Tailscale). Un seul pod (pas un
+# par nœud comme le serait un DaemonSet) — décision prise après comparaison
+# explicite avec l'utilisateur (sécurité vs résilience, 2026-07-12).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki-forwarder
+  namespace: cac-mlops
+  labels:
+    app: loki-forwarder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki-forwarder
+  template:
+    metadata:
+      labels:
+        app: loki-forwarder
+    spec:
+      containers:
+      - name: tailscale
+        image: tailscale/tailscale:stable
+        env:
+        - name: TS_AUTHKEY
+          valueFrom:
+            secretKeyRef:
+              name: tailscale-auth
+              key: TS_AUTHKEY
+        - name: TS_HOSTNAME
+          value: "kapsule-loki-forwarder"
+        - name: TS_USERSPACE
+          value: "true"
+        - name: TS_SOCKS5_SERVER
+          value: "0.0.0.0:1055"
+        - name: TS_KUBE_SECRET
+          value: ""
+        - name: TS_STATE_DIR
+          value: "/var/lib/tailscale"
+        ports:
+        - containerPort: 1055
+        volumeMounts:
+        - name: tailscale-state
+          mountPath: /var/lib/tailscale
+        resources:
+          requests:
+            cpu: 20m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+      volumes:
+      - name: tailscale-state
+        emptyDir: {}

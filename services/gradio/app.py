@@ -1135,7 +1135,6 @@ _KAPSULE_SERVICES = {
     "MLflow K8s":    "http://mlflow:5000/health",
     "Nginx":         "http://nginx:80/health",
     "Gradio public": "http://gradio-public:7862/",
-    "Grafana K8s":   "http://grafana:3000/api/health",
     "Prometheus K8s": "http://prometheus:9090/-/healthy",
 }
 
@@ -1229,7 +1228,6 @@ def _links_table(rows: str) -> str:
 # vers l'IP caddy courante (DNS mis à jour par write_kapsule_state).
 KAPSULE_PUBLIC_URL  = "https://kapsule.jakat-inc.fr"
 KAPSULE_GRADIO_DNS  = "gradio.cac-mlops.svc.cluster.local"
-KAPSULE_GRAFANA_DNS = "grafana.cac-mlops.svc.cluster.local"
 
 
 def _kapsule_links_html() -> str:
@@ -1251,13 +1249,9 @@ def _kapsule_links_html() -> str:
 
     rows = _link_row("Cockpit public K8s", public_url, "Public")
 
-    for key, label, port in [
-        ("GRADIO_DNS",   "Cockpit admin K8s", ":7860"),
-        ("GRAFANA_DNS",  "Grafana K8s",       ":3000"),
-    ]:
-        dns = ips.get(key, "")
-        if dns and dns != "pending":
-            rows += _link_row(label, f"http://{dns}{port}", "Tailscale")
+    dns = ips.get("GRADIO_DNS", "")
+    if dns and dns != "pending":
+        rows += _link_row("Cockpit admin K8s", f"http://{dns}:7860", "Tailscale")
 
     return _links_table(rows)
 
@@ -1268,7 +1262,6 @@ def _kapsule_self_links_html() -> str:
     c'est un fichier VPS). URL et DNS sont des constantes (cf. module)."""
     rows  = _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
     rows += _link_row("Cockpit admin K8s",  f"http://{KAPSULE_GRADIO_DNS}:7860",  "Tailscale")
-    rows += _link_row("Grafana K8s",        f"http://{KAPSULE_GRAFANA_DNS}:3000", "Tailscale")
     return _links_table(rows)
 
 
@@ -2170,7 +2163,8 @@ git pull && dvc pull          # sync code + données depuis S3
                 # Monitoring
                 with gr.Accordion("📊  Monitoring — Prometheus + Grafana + Loki + Evidently", open=False):
                     gr.Markdown("""
-**Prometheus** `:9090` (Tailscale)
+**Prometheus** `:9090` (Tailscale) — + **Prometheus K8s** interrogé à distance
+depuis Grafana (datasource `prometheus-k8s`, cf. section Kubernetes)
 
 | Source | Métriques |
 |---|---|
@@ -2178,18 +2172,23 @@ git pull && dvc pull          # sync code + données depuis S3
 | node-exporter:9100 | CPU / RAM / disk VPS |
 | nginx-exporter:9113 | connexions nginx, taux 4xx/5xx |
 
-**Grafana** `:3000` (Tailscale) — 5 dashboards provisionnés (dossier `cac-mlops`)
-- `home` — vue d'ensemble (modèle en prod, RAM/disque, disponibilité API, liens vers les 4 autres)
+**Grafana** `:3000` (Tailscale) — 6 dashboards provisionnés (dossier `cac-mlops`),
+**seule instance Grafana du projet** (celle de K8s a été retirée le 2026-07-12,
+remplacée par une datasource distante)
+- `home` — vue d'ensemble (modèle en prod, RAM/disque, disponibilité API, liens vers les autres)
 - `resilience` — gates (GO/STOP), interruptions, rollbacks, erreurs flow, disponibilité API
 - `api-performance` — latence, taux erreur, throughput
 - `model-drift` — drift_share, features driftées (Evidently → Prometheus)
 - `system-health` — CPU / RAM / disk VPS en temps réel
+- `kapsule-k8s` — replicas disponibles, sonde publique, scrape api (Prometheus K8s)
 
-**Loki + Promtail** (interne Docker)
-Promtail scrape les logs de tous les conteneurs (dont les événements logfmt structurés
-`event=gate_open/gate_resolved/interruption_*/rollback/alert`) → Loki → Grafana
+**Loki + Promtail** (interne Docker + Promtail K8s en DaemonSet)
+Promtail (VPS) scrape les logs de tous les conteneurs (dont les événements logfmt
+structurés `event=gate_open/gate_resolved/interruption_*/rollback/alert`) → Loki.
+Promtail (K8s, DaemonSet) fait de même pour tous les pods Kapsule, relayé via
+`loki-forwarder` (label `cluster="kapsule"` pour les distinguer en requête).
 
-**9 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte**
+**11 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte**
 (plus de `send_alert()` Python direct : chaque flow loggue `event=alert severity=...
 topic=...`, Grafana évalue et notifie — un seul chemin, pas de doublon)
 
@@ -2204,6 +2203,8 @@ topic=...`, Grafana évalue et notifie — un seul chemin, pas de doublon)
 | Loki | MLOps warning | `event=alert severity=warning` (aucun champion, drift modéré, ONISR partiel) |
 | Loki | Gate refusée (STOP) | `event=gate_resolved decision=STOP` |
 | Loki | Rollback déclenché | `event=rollback` |
+| Prometheus K8s | Replicas api < min HPA | `kube_deployment_status_replicas_available < 2` — 2 min, `execErrState: OK` (Kapsule down = normal) |
+| Prometheus K8s | Endpoint public K8s down | `probe_success == 0` sur `kapsule.jakat-inc.fr/health` — 2 min |
 
 Les succès (`topic=deploy_success`/`kapsule_success`) sont loggués et visibles dans
 Loki/Grafana mais n'envoient pas d'email — un succès n'est pas une alerte.
@@ -2259,23 +2260,24 @@ réduit en conséquence : pas de Cockpit/Orchestration/Drift/Modeles (dépendaie
 du Prefect/MLflow *réels* du VPS, jamais des instances isolées de K8s).
 """)
 
-                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops, 12 pods)", open=True):
+                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops, 11 Deployments + 2 DaemonSets)", open=True):
                     gr.Markdown("""
 | Deployment | Particularité |
 |---|---|
-| **api** | HPA CPU 70% / RAM 80% → min 1 pod, max 8 pods · `maxUnavailable: 0` |
+| **api** | HPA CPU 70% / RAM 80% → min 2 pods, max 8 pods · `maxUnavailable: 0` — pas de `replicas:` en dur dans le manifest (conflit avec le HPA sinon, cf. incident 2026-07-11) |
 | | initContainer `fetch-model` : récupère `trained_model.joblib` depuis S3 au démarrage |
 | **gradio** | Cockpit admin — ClusterIP (Tailscale uniquement) · `COCKPIT_ENV=kapsule` masque 4 onglets VPS-only |
 | **gradio-public** | Cockpit public 3 onglets — ClusterIP, atteint uniquement via nginx→caddy |
 | mlflow | SQLite emptyDir isolé — **pas le vrai registre** (tracking K8s local seulement) |
 | nginx | ClusterIP — rate-limiting + routing (`/token` 5r/min, `/predict` 20r/min) |
 | **caddy** | **Seul point d'entrée public** — LoadBalancer, TLS Let's Encrypt auto (`kapsule.jakat-inc.fr`) |
-| grafana | ClusterIP (Tailscale) — provisionné, mêmes fichiers dashboards que le VPS |
-| prometheus | scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 |
+| prometheus | scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 — interrogé à distance par le Grafana du VPS (plus de Grafana K8s, retiré le 2026-07-12) |
 | tailscale-subnet-router | pont vers le tailnet du VPS — advertise PodCIDR + ServiceCIDR |
+| **loki-forwarder** | client Tailscale userspace dédié (SOCKS5, pas de route advertisée) — relaie les push Promtail vers le Loki du VPS |
 | kube-state-metrics | RBAC scopé au namespace — réplicas disponibles par Deployment |
 | blackbox-exporter | sonde HTTP continue sur l'URL publique (`/health`) |
-| node-exporter | DaemonSet, 1 pod/nœud, hostNetwork — CPU/RAM/disque des nœuds K8s |
+| node-exporter *(DaemonSet)* | 1 pod/nœud, hostNetwork — CPU/RAM/disque des nœuds K8s |
+| promtail *(DaemonSet)* | 1 pod/nœud — logs des pods K8s → Loki VPS via `loki-forwarder` |
 
 **Prefect retiré de K8s** (2026-07-11) — `prefect deploy --all` ne tourne
 jamais que sur le prefect-worker du VPS, le worker K8s restait vide en
@@ -2292,31 +2294,30 @@ native, donc l'isolation réseau est la seule protection réelle.
 | Composant | Exposition | Protection |
 |---|---|---|
 | caddy | **Public** (LoadBalancer) | TLS Let's Encrypt, `/token` rate-limité 5r/min |
-| gradio, grafana, nginx, mlflow, prometheus, kube-state-metrics, blackbox-exporter | ClusterIP | Tailscale uniquement (subnet-router + split-DNS `cluster.local`) |
+| gradio, nginx, mlflow, prometheus, kube-state-metrics, blackbox-exporter | ClusterIP | Tailscale uniquement (subnet-router + split-DNS `cluster.local`) |
+| loki-forwarder | ClusterIP interne (SOCKS5 `:1055`) | Pas de route tailnet advertisée — sortant uniquement, aucun pod ne peut l'utiliser comme passerelle vers autre chose que le SOCKS5 local |
 
 Domaine `kapsule.jakat-inc.fr` (TTL 300s) — l'IP de caddy change à chaque
 cycle `kapsule-up`/`kapsule-down` (attachée au Service, pas aux pods) :
 `write_kapsule_state` met à jour le DNS automatiquement (`scw dns record set`).
 """)
 
-                with gr.Accordion("📊  Monitoring K8s — limité par rapport au VPS", open=False):
+                with gr.Accordion("📊  Monitoring & logs K8s — consolidés dans le Grafana/Loki du VPS", open=False):
                     gr.Markdown("""
-Mêmes fichiers dashboards Grafana que le VPS, mais **un seul est pleinement
-fonctionnel sur K8s** : `api-performance` (métriques `api_*`, seul scrape
-réellement riche). Les 4 autres dépendent de composants absents sur K8s :
+Depuis le 2026-07-12, **plus de Grafana ni de Loki propres à K8s** — tout
+remonte dans les instances VPS, seul point de visualisation/alerte du projet :
 
-| Dashboard | Statut K8s | Dépendance manquante |
-|---|---|---|
-| api-performance | ✅ fonctionnel | — |
-| system-health | ⚠️ partiel | panels CPU/RAM/disk nœuds *(désormais couverts par node-exporter)* |
-| home | ❌ vide | Loki (logs) + `cac_mlops_drift_*`/`mlops_model_info` (flows VPS-only) |
-| resilience | ❌ vide | Loki (gates/rollbacks — déjà visibles dans le Loki du VPS, `deploy-kapsule-flow` y tourne) |
-| model-drift | ❌ vide | `cac_mlops_drift_*`, jamais poussées sur K8s |
-
-**Pas de Loki sur K8s** (décision assumée) — les événements de gate/rollback
-des déploiements Kapsule sont déjà visibles dans le Loki du VPS, puisque
-`deploy-kapsule-flow` s'exécute comme sous-flow du Prefect du VPS, jamais
-sur une instance K8s isolée.
+- **Métriques** : le Grafana VPS interroge le Prometheus K8s directement
+  (datasource `prometheus-k8s`, via Tailscale — `prometheus.cac-mlops.svc.cluster.local:9090`).
+  Nouveau dashboard **Kapsule K8s** : replicas disponibles par Deployment,
+  sonde publique blackbox, scrape `up{job="cac-mlops-api"}`.
+- **Logs** : Promtail (DaemonSet K8s) pousse les logs de tous les pods vers
+  le Loki du VPS via `loki-forwarder` (label `cluster="kapsule"` pour les
+  distinguer des logs VPS dans les requêtes, ex: `{cluster="kapsule", app="api"}`).
+- **Alertes** : 2 nouvelles règles Grafana (groupe `kapsule-monitoring`) —
+  replicas `api` sous le minimum HPA, endpoint public down. `execErrState: OK`
+  (pas `Error`) : Kapsule étant on-demand, le Prometheus K8s devient injoignable
+  à chaque `kapsule-down` — état normal, pas une panne à notifier.
 """)
 
                 with gr.Accordion("🔑  Secrets K8s", open=False):

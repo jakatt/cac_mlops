@@ -394,3 +394,92 @@ groups:
           summary: "Rollback automatique déclenché (alias MLflow, image Docker ou Kapsule) — un smoke test/test-api a échoué après application"
         labels:
           severity: warning
+
+  # Kapsule est on-demand — la datasource prometheus-k8s devient injoignable
+  # dès qu'on fait kapsule-down (état normal, pas une panne). execErrState: OK
+  # (au lieu de Error, contrairement à tous les autres groupes ci-dessus) pour
+  # ne pas alerter à chaque extinction volontaire du cluster.
+  - orgId: 1
+    name: kapsule-monitoring
+    folder: Alerts
+    interval: 1m
+    rules:
+      - uid: kapsule-api-replicas-low
+        title: "Kapsule — replicas api sous le minimum HPA"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus-k8s
+            model:
+              expr: 'kube_deployment_status_replicas_available{namespace="cac-mlops", deployment="api"}'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: "A"
+              reducer: last
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "B"
+              conditions:
+                - evaluator:
+                    params: [2]
+                    type: lt
+                  operator:
+                    type: and
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: "Moins de 2 replicas api disponibles sur Kapsule — en dehors d'un déploiement, c'est anormal (crash, éviction, pression ressources)"
+        labels:
+          severity: warning
+
+      - uid: kapsule-public-endpoint-down
+        title: "Kapsule — endpoint public down"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus-k8s
+            model:
+              expr: 'probe_success{instance="https://kapsule.jakat-inc.fr/health"}'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: "__expr__"
+            model:
+              type: reduce
+              expression: "A"
+              reducer: last
+              settings:
+                mode: dropNN
+          - refId: C
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "B"
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: lt
+                  operator:
+                    type: and
+        noDataState: OK
+        execErrState: OK
+        for: 2m
+        annotations:
+          summary: "https://kapsule.jakat-inc.fr/health ne répond plus (sonde blackbox) — caddy, nginx ou api down côté K8s"
+        labels:
+          severity: critical
