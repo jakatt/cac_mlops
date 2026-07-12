@@ -1,0 +1,32 @@
+# RBAC minimal — Promtail découvre les pods du cluster (kubernetes_sd_configs:
+# role: pod) pour construire les labels (namespace/pod/container/app) de
+# chaque flux de log. Cluster-scope nécessaire : les pods sont déployés sur
+# plusieurs nœuds, la découverte doit couvrir tout le cluster (pas seulement
+# cac-mlops, au cas où — mais list/watch/get uniquement, aucune écriture).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: promtail
+  namespace: cac-mlops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: promtail
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: promtail
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promtail
+subjects:
+- kind: ServiceAccount
+  name: promtail
+  namespace: cac-mlops

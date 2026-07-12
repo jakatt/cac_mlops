@@ -32,7 +32,7 @@ CI/CD GitHub Actions    3 workflows : ci · deploy · cleanup
   Workflow Git          mlops / DS → PR → main → deploy automatique
 
 ORCHESTRATION           14 flows Prefect · crons + déclenchements manuels + cockpit
-MONITORING              Prometheus + Loki/Promtail + Grafana · 7 alertes · SMTP ✓
+MONITORING              Prometheus + Loki/Promtail + Grafana (VPS+K8s consolidés) · 11 alertes · SMTP ✓
 COCKPIT                 Gradio 11 onglets (Tailscale) + Gradio-public 3 onglets (internet)
 KUBERNETES              Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)
 ```

@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus K8s
+    type: prometheus
+    uid: prometheus-k8s
+    access: proxy
+    url: http://prometheus.cac-mlops.svc.cluster.local:9090
+    isDefault: false
+    editable: false

@@ -238,10 +238,12 @@ def setup_namespace_secrets(kubeconfig: str) -> str:
 
 @task(name="setup-tailscale-secret")
 def setup_tailscale_secret(kubeconfig: str) -> str:
-    """Secret pour le subnet-router (k8s/tailscale/) qui remplace les
-    LoadBalancer publics de gradio/prefect-server/grafana par un accès
-    Tailscale — parité avec le VPS (${VPS_TAILSCALE_IP}, aucune de ces
-    interfaces n'a d'authentification applicative propre à gradio/prefect).
+    """Secret pour le subnet-router (k8s/tailscale/) qui remplace le
+    LoadBalancer public de gradio par un accès Tailscale — parité avec le
+    VPS (${VPS_TAILSCALE_IP}, gradio n'a aucune authentification applicative
+    propre). prefect-server et grafana ont depuis été retirés de K8s
+    (2026-07-11 et 2026-07-12) — gradio est désormais le seul service
+    ClusterIP-only exposé via ce subnet-router.
     Clé reusable + ephemeral, taguée tag:k8s-cac-mlops — cf. .env.example
     pour la configuration Tailscale ACL (tagOwners/autoApprovers) requise
     une seule fois côté console, sans quoi la route doit être ré-approuvée
@@ -251,7 +253,7 @@ def setup_tailscale_secret(kubeconfig: str) -> str:
     if not authkey:
         logger.warning(
             "TAILSCALE_AUTHKEY absent — subnet-router non fonctionnel : "
-            "gradio/prefect-server/grafana (ClusterIP) resteront inaccessibles "
+            "gradio (ClusterIP) restera inaccessible "
             "tant que la clé n'est pas configurée (voir .env.example)"
         )
         return "skipped"
@@ -268,27 +270,6 @@ def setup_tailscale_secret(kubeconfig: str) -> str:
     return "OK"
 
 
-@task(name="setup-grafana-configmaps")
-def setup_grafana_configmaps(kubeconfig: str) -> str:
-    logger = get_run_logger()
-    for cm_name, cm_path in [
-        ("grafana-provisioning-datasources", INFRA_DIR / "grafana" / "provisioning" / "datasources"),
-        ("grafana-provisioning-dashboards",  INFRA_DIR / "grafana" / "provisioning" / "dashboards"),
-        ("grafana-dashboards",               INFRA_DIR / "grafana" / "dashboards"),
-    ]:
-        args = [
-            "create", "configmap", cm_name,
-            f"--from-file={cm_path}",
-            "-n", K8S_NAMESPACE, "--dry-run=client", "-o", "yaml",
-        ]
-        yaml_out = _kubectl(kubeconfig, args)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_out)
-        _kubectl(kubeconfig, ["apply", "-f", f.name])
-        logger.info("✓ ConfigMap %s", cm_name)
-    return "OK"
-
-
 @task(name="apply-k8s-manifests")
 def apply_manifests(kubeconfig: str) -> str:
     """Pas de "prefect" ici volontairement : prefect-server/prefect-worker
@@ -296,13 +277,20 @@ def apply_manifests(kubeconfig: str) -> str:
     enregistrée dessus (`prefect deploy --all` ne tourne que sur le
     prefect-worker du VPS), donc ce worker restait vide/inutile en
     permanence, pur gaspillage de ressources sur des nœuds déjà sous
-    pression disque (incident DiskPressure, 2026-07-10)."""
+    pression disque (incident DiskPressure, 2026-07-10).
+
+    Pas de "grafana" non plus (retiré le 2026-07-12) : Prometheus K8s est
+    désormais interrogé à distance par le Grafana du VPS (datasource
+    prometheus-k8s), qui devient le seul Grafana — plus besoin d'une
+    instance + de ConfigMaps dédiées sur K8s (setup_grafana_configmaps
+    supprimé avec elle)."""
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
     for subdir in [
-        "api", "mlflow", "nginx", "prometheus", "grafana", "gradio", "gradio-public",
+        "api", "mlflow", "nginx", "prometheus", "gradio", "gradio-public",
         "caddy", "tailscale", "kube-state-metrics", "blackbox-exporter", "node-exporter",
+        "loki-forwarder", "promtail",
     ]:
         d = K8S_DIR / subdir
         if d.exists():
@@ -334,10 +322,11 @@ DNS_ZONE       = "jakat-inc.fr"
 def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     """caddy est désormais seul exposé publiquement (LoadBalancer, TLS Let's
     Encrypt automatique pour kapsule.jakat-inc.fr) — équivalent du chemin
-    public Caddy→nginx→gradio-public sur le VPS. grafana/prefect-server/
-    gradio sont en ClusterIP (parité VPS — Tailscale-only, aucune
-    authentification propre à gradio/prefect) : reachable uniquement via le
-    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local.
+    public Caddy→nginx→gradio-public sur le VPS. gradio (admin) est en
+    ClusterIP (parité VPS — Tailscale-only, aucune authentification propre) :
+    reachable uniquement via le subnet-router Tailscale (k8s/tailscale/) +
+    split-DNS cluster.local. prefect-server et grafana n'existent plus sur K8s
+    (retirés le 2026-07-11 et 2026-07-12).
 
     L'IP de caddy change à chaque cycle kapsule-up/down — le record A
     kapsule.jakat-inc.fr est mis à jour automatiquement ici via `scw dns
@@ -374,11 +363,7 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
                     "dans la console Scaleway DNS", dns_ip, caddy_ip, exc,
                 )
 
-    for svc_name, key in [
-        ("grafana", "GRAFANA_DNS"),
-        ("gradio",  "GRADIO_DNS"),
-    ]:
-        ips[key] = f"{svc_name}.{K8S_NAMESPACE}.svc.cluster.local"
+    ips["GRADIO_DNS"] = f"gradio.{K8S_NAMESPACE}.svc.cluster.local"
 
     KAPSULE_STATE.parent.mkdir(parents=True, exist_ok=True)
     content = "\n".join(f"{k}={v}" for k, v in ips.items())
@@ -405,14 +390,14 @@ def kapsule_up_flow(
       4. Upload modele @Production → S3 (s3://cac-mlops-data/k8s-model/)
       5. Upload X_test/y_test → S3 (s3://cac-mlops-data/k8s-gradio-data/)
       6. Namespace + Secrets K8s (app + tailscale-auth)
-      7. ConfigMaps Grafana
-      8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale,
-         kube-state-metrics, blackbox-exporter, node-exporter — pas de prefect,
-         retiré le 2026-07-11, jamais fonctionnel : aucune deployment n'y était
-         jamais enregistrée)
-      9. Attend que le deployment api soit available
-      10. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
-          caddy, DNS interne pour grafana/gradio — reachable via Tailscale)
+      7. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale,
+         kube-state-metrics, blackbox-exporter, node-exporter, loki-forwarder,
+         promtail — pas de prefect, retiré le 2026-07-11, jamais fonctionnel ;
+         pas de grafana, retiré le 2026-07-12, remplacé par une datasource
+         distante depuis le Grafana du VPS)
+      8. Attend que le deployment api soit available
+      9. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
+         caddy, DNS interne pour gradio — reachable via Tailscale)
     """
     create_node_pool(node_type, node_count)
     wait_pool_ready()
@@ -421,7 +406,6 @@ def kapsule_up_flow(
     upload_data_s3()
     setup_namespace_secrets(kubeconfig)
     setup_tailscale_secret(kubeconfig)
-    setup_grafana_configmaps(kubeconfig)
     apply_manifests(kubeconfig)
     wait_api_ready(kubeconfig)
     ips = write_kapsule_state(kubeconfig)

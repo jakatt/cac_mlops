@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-forwarder
+  namespace: cac-mlops
+  labels:
+    app: loki-forwarder
+spec:
+  selector:
+    app: loki-forwarder
+  ports:
+  - name: socks5
+    port: 1055
+    targetPort: 1055

@@ -526,7 +526,7 @@ Personne ne le sait
 ║                      ║  /  = 20 GB NVMe  ·  /data = 80 GB block storage    ║                            ║
 ╠══════════════════════╬═════════════════════════════════════════════════════╬════════════════════════════╣
 ║                      ║                                                     ║                            ║
-║  Écriture du code    ║  CONTAINERS (16 : 15 permanents + minio-init EXIT)  ║  Deployments (12 pods)     ║
+║  Écriture du code    ║  CONTAINERS (16 : 15 permanents + minio-init EXIT)  ║  Deployments (11 + 2 DS)   ║
 ║  + tests unitaires   ║  ┌──────────────────┬────────────┬────────────────┐ ║  (namespace: cac-mlops)    ║
 ║  Pas de stack Docker ║  │  Conteneur       │ Port hôte  │ Accès          │ ║  ─────────────────────     ║
 ║  locale — le VPS     ║  ├──────────────────┼────────────┼────────────────┤ ║  api (HPA min 1→max 8)     ║
@@ -537,7 +537,7 @@ Personne ne le sait
 ║  ──────────────────  ║  │ api              │ 8080/8000  │ Tailscale/prom │ ║  caddy — SEUL LB public    ║
 ║  git · dvc · pytest  ║  │ nginx            │ 8090       │ localhost      │ ║  TLS Let's Encrypt auto    ║
 ║  flake8 · kubectl    ║  │ prefect-server   │ 4200       │ Tailscale      │ ║  kapsule.jakat-inc.fr      ║
-║                      ║  │ prefect-worker   │ —          │ process pool   │ ║  grafana — ClusterIP       ║
+║                      ║  │ prefect-worker   │ —          │ process pool   │ ║  loki-forwarder (SOCKS5)   ║
 ║  Cycle dev           ║  │ gradio           │ 7860       │ Tailscale      │ ║  prometheus                ║
 ║  ──────────────────  ║  │ gradio-public    │ 7862(int.) │ via Caddy/nginx│ ║  tailscale-subnet-router   ║
 ║  code → PR → CI      ║  │ node-exporter    │ 9100       │ interne        │ ║  kube-state-metrics        ║
@@ -819,11 +819,13 @@ Kapsule prouve que Trigger 1/2/3 se déploient sans jamais descendre sous
 │   Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB)   │
 │   Activé à la demande via Prefect flows kapsule-up / kapsule-down         │
 │                                                                            │
-│   Deployments (namespace: cac-mlops, 12 pods)                              │
+│   Deployments (namespace: cac-mlops, 11 Deployments + 2 DaemonSets)        │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  api                initContainer fetch S3 → /app/model/          │   │
-│   │                     HPA: CPU 70% / RAM 80% / min 1 → max 8 pods  │   │
+│   │                     HPA: CPU 70% / RAM 80% / min 2 → max 8 pods  │   │
 │   │                     maxUnavailable: 0 / maxSurge: 1               │   │
+│   │                     PAS de replicas: en dur (conflit HPA sinon,   │   │
+│   │                     incident 2026-07-11 — cf. section fixes)      │   │
 │   │  gradio             Cockpit admin — ClusterIP (Tailscale only)    │   │
 │   │                     COCKPIT_ENV=kapsule masque 4 onglets VPS-only │   │
 │   │  gradio-public      Cockpit public 3 onglets — ClusterIP          │   │
@@ -832,22 +834,27 @@ Kapsule prouve que Trigger 1/2/3 se déploient sans jamais descendre sous
 │   │  nginx              ClusterIP — rate-limiting + routing           │   │
 │   │  caddy              SEUL point d'entrée public — LoadBalancer     │   │
 │   │                     TLS Let's Encrypt auto (kapsule.jakat-inc.fr) │   │
-│   │  grafana            ClusterIP (Tailscale) — mêmes dashboards VPS  │   │
 │   │  prometheus         scrape api + kube-state-metrics +             │   │
-│   │                     blackbox-exporter + node-exporter×2           │   │
+│   │                     blackbox-exporter + node-exporter×2 —         │   │
+│   │                     interrogé à distance par Grafana VPS          │   │
 │   │  tailscale-subnet-router  pont vers le tailnet du VPS             │   │
+│   │  loki-forwarder     client Tailscale userspace dédié (SOCKS5) —   │   │
+│   │                     relaie les push Promtail vers le Loki VPS     │   │
 │   │  kube-state-metrics RBAC scopé namespace — réplicas disponibles   │   │
 │   │  blackbox-exporter  sonde HTTP continue sur l'URL publique        │   │
-│   │  node-exporter      DaemonSet 1/nœud — CPU/RAM/disque des nœuds   │   │
+│   │  node-exporter (DaemonSet)  1/nœud — CPU/RAM/disque des nœuds     │   │
+│   │  promtail (DaemonSet)       1/nœud — logs pods → Loki VPS         │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Sécurité — parité avec le modèle VPS (Tailscale-only pour l'admin)     │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │  caddy  → Public (LoadBalancer, seul exposé), TLS + /token 5r/min │   │
-│   │  gradio, grafana, nginx, mlflow, prometheus,                      │   │
+│   │  gradio, nginx, mlflow, prometheus,                                │   │
 │   │  kube-state-metrics, blackbox-exporter → ClusterIP,                │   │
 │   │  reachable uniquement via subnet-router Tailscale + split-DNS     │   │
 │   │  cluster.local (même tailnet que le VPS)                          │   │
+│   │  loki-forwarder → ClusterIP interne (SOCKS5 :1055), pas de route  │   │
+│   │  tailnet advertisée — sortant uniquement, pas une passerelle      │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 │                                                                            │
 │   Secrets K8s (injectés par le flow Prefect kapsule-up)                    │
@@ -863,26 +870,34 @@ Kapsule prouve que Trigger 1/2/3 se déploient sans jamais descendre sous
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Monitoring K8s — limité par rapport au VPS
+### Monitoring & logs K8s — consolidés dans le Grafana/Loki du VPS (2026-07-12)
 
 ```text
-Mêmes fichiers dashboards Grafana que le VPS, mais un seul pleinement
-fonctionnel sur K8s :
+Plus de Grafana ni de Loki propres à K8s — retirés au profit d'une
+consolidation complète dans les instances VPS, seul point de
+visualisation/alerte du projet (raison : simplicité opérationnelle +
+libère un pod de plus sur des nœuds déjà sous pression, incident
+DiskPressure 2026-07-10).
 
-  api-performance   ✅ fonctionnel  (métriques api_* — seul scrape riche)
-  system-health     ⚠️ partiel      (CPU/RAM/disk nœuds désormais couverts
-                                     par node-exporter — reste du panel OK)
-  home              ❌ vide         (Loki absent + métriques drift VPS-only)
-  resilience        ❌ vide         (Loki absent — gates/rollbacks déjà
-                                     visibles dans le Loki du VPS, car
-                                     deploy-kapsule-flow tourne comme
-                                     sous-flow du Prefect du VPS)
-  model-drift       ❌ vide         (cac_mlops_drift_*, jamais poussées
-                                     sur K8s)
+MÉTRIQUES — datasource distante
+  Grafana VPS interroge Prometheus K8s directement via Tailscale
+  (prometheus.cac-mlops.svc.cluster.local:9090, uid: prometheus-k8s).
+  Nouveau dashboard "Kapsule K8s" : replicas disponibles par Deployment,
+  sonde publique blackbox, scrape up{job="cac-mlops-api"}.
 
-Pas de Loki sur K8s (décision assumée, 2026-07-11) — coût disque (nœuds
-déjà sous pression, incident DiskPressure 2026-07-10) pour une donnée déjà
-disponible ailleurs (VPS) pour la partie qui compte (gates/alertes).
+LOGS — Promtail (DaemonSet) → loki-forwarder → Loki VPS
+  Promtail tourne sur K8s (1 pod/nœud) et pousse les logs de tous les pods
+  vers le Loki du VPS, label externe cluster="kapsule" pour les distinguer
+  en requête (ex: {cluster="kapsule", app="api"}). Le push traverse
+  loki-forwarder (proxy SOCKS5 dédié, cf. section Kubernetes ci-dessus) —
+  un pod K8s normal n'a lui-même aucune route vers le tailnet.
+
+ALERTES — 2 nouvelles règles Grafana (groupe kapsule-monitoring)
+  - Replicas api < minimum HPA (kube_deployment_status_replicas_available)
+  - Endpoint public down (probe_success sur kapsule.jakat-inc.fr/health)
+  execErrState: OK (pas Error, contrairement aux autres groupes) — Kapsule
+  étant on-demand, Prometheus K8s devient injoignable à chaque kapsule-down,
+  état normal et non une panne à notifier.
 ```
 
 ### Prefect retiré de K8s (2026-07-11)
@@ -1667,9 +1682,10 @@ cac_mlops/
 │   ├── mlflow/          SQLite emptyDir isolé
 │   ├── nginx/           deployment + configmap (rate-limiting/routing) + service — ClusterIP
 │   ├── caddy/           SEUL LoadBalancer public — TLS Let's Encrypt auto
-│   ├── grafana/         ClusterIP (Tailscale)
 │   ├── prometheus/      deployment + configmap (4 scrape jobs) + rbac.yaml (SD role:node) + service
 │   ├── tailscale/       subnet-router — pont vers le tailnet du VPS
+│   ├── loki-forwarder/  client Tailscale userspace dédié (SOCKS5 :1055) + service
+│   ├── promtail/        daemonset.yaml (1 pod/nœud) + configmap + rbac.yaml (pods/nodes)
 │   ├── kube-state-metrics/  deployment + rbac.yaml (Role namespacé) + service
 │   ├── blackbox-exporter/   deployment + configmap (module http_2xx) + service
 │   ├── node-exporter/   daemonset.yaml (1 pod/nœud, hostNetwork)
@@ -1681,13 +1697,14 @@ cac_mlops/
 │   ├── prometheus/
 │   │   └── prometheus.yml                 # scrape api:8000/metrics
 │   ├── grafana/
-│   │   ├── provisioning/                  # datasources + dashboards auto-provisionnés
-│   │   └── dashboards/                    # 5 dashboards (voir §10) — 1 seul fonctionnel sur K8s
+│   │   ├── provisioning/                  # datasources (dont prometheus-k8s, distante) + dashboards
+│   │   └── dashboards/                    # 6 dashboards (voir §10) — seul Grafana du projet (K8s retiré)
 │   │       ├── home.json
 │   │       ├── api-performance.json
 │   │       ├── resilience.json
 │   │       ├── model-drift.json
-│   │       └── system-health.json
+│   │       ├── system-health.json
+│   │       └── kapsule-k8s.json           # replicas, sonde publique, scrape api (Prometheus K8s distant)
 │   └── docker/
 │       └── daemon.json                    # data-root=/data/docker, rotation logs
 │
