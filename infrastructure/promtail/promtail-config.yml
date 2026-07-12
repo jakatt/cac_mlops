@@ -11,6 +11,18 @@ clients:
 
 scrape_configs:
 
+  # ── Logs Caddy (service systemd niveau host, hors Docker donc invisible à
+  # docker_sd_configs ci-dessous — cf. incident 2026-07-12). Caddy est
+  # mutualisé avec d'autres projets sur ce VPS (jakat-inc.fr, pralognan...) :
+  # on ne scrape QUE le fichier spécifique à mlops.jakat-inc.fr, pas les
+  # autres domaines, pour rester dans le périmètre du projet.
+  - job_name: caddy-mlops
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          service: caddy
+          __path__: /var/log/caddy/mlops-access.log
+
   # ── Logs Docker de tous les conteneurs du projet ──────────────────────────
   - job_name: docker
     docker_sd_configs:

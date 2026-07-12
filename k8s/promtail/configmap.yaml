@@ -30,6 +30,8 @@ data:
       - job_name: kubernetes-pods
         kubernetes_sd_configs:
           - role: pod
+            namespaces:
+              names: ["cac-mlops"]
         pipeline_stages:
           - cri: {}
         relabel_configs:
