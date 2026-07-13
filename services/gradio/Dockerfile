@@ -18,6 +18,6 @@ ENV GRADIO_PORT=7860
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD curl -sf http://localhost:7860/ || exit 1
+  CMD curl -sf http://localhost:${GRADIO_PORT}/ || exit 1
 
 CMD ["python", "services/gradio/app.py"]
