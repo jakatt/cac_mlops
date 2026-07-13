@@ -1149,9 +1149,15 @@ _SERVICES: list[dict[str, str]] = [
 ]
 
 
-def _check_url(url: str, timeout: int = 3) -> bool:
+def _check_url(url: str, timeout: int = 5) -> bool:
+    """stream=True : ne lit que le statut/les en-têtes, pas le corps de la
+    réponse. Nécessaire pour gradio-public (page HTML ~100Ko) — sans ça, le
+    chemin VPS→Tailscale→K8s (plus lent que le réseau interne K8s) fait
+    timeout sur le téléchargement complet alors que le service répond bien
+    (bug trouvé en testant : `curl` recevait le 200 en <1s mais le corps
+    n'arrivait jamais avant la limite)."""
     try:
-        r = requests.get(url, timeout=timeout)
+        r = requests.get(url, timeout=timeout, stream=True)
         return r.status_code < 400
     except Exception:
         return False
