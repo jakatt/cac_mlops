@@ -238,12 +238,15 @@ def setup_namespace_secrets(kubeconfig: str) -> str:
 
 @task(name="setup-tailscale-secret")
 def setup_tailscale_secret(kubeconfig: str) -> str:
-    """Secret pour le subnet-router (k8s/tailscale/) qui remplace le
-    LoadBalancer public de gradio par un accès Tailscale — parité avec le
-    VPS (${VPS_TAILSCALE_IP}, gradio n'a aucune authentification applicative
-    propre). prefect-server et grafana ont depuis été retirés de K8s
-    (2026-07-11 et 2026-07-12) — gradio est désormais le seul service
-    ClusterIP-only exposé via ce subnet-router.
+    """Secret pour le subnet-router (k8s/tailscale/) qui donne un accès
+    Tailscale (pas d'IP publique) aux services K8s ClusterIP-only sans
+    authentification applicative propre (ex: mlflow, prometheus) — parité
+    avec le modèle VPS (${VPS_TAILSCALE_IP}). Réutilisé aussi par le Grafana
+    du VPS (datasource prometheus-k8s) et par le Cockpit admin du VPS pour
+    son onglet Healthcheck (probes directes des services K8s via
+    *.cac-mlops.svc.cluster.local). Plus de Cockpit Gradio propre sur K8s
+    depuis le 2026-07-13 (redondant avec celui du VPS) — prefect-server et
+    grafana avaient déjà été retirés de K8s (2026-07-11 et 2026-07-12).
     Clé reusable + ephemeral, taguée tag:k8s-cac-mlops — cf. .env.example
     pour la configuration Tailscale ACL (tagOwners/autoApprovers) requise
     une seule fois côté console, sans quoi la route doit être ré-approuvée
@@ -253,8 +256,8 @@ def setup_tailscale_secret(kubeconfig: str) -> str:
     if not authkey:
         logger.warning(
             "TAILSCALE_AUTHKEY absent — subnet-router non fonctionnel : "
-            "gradio (ClusterIP) restera inaccessible "
-            "tant que la clé n'est pas configurée (voir .env.example)"
+            "les services K8s ClusterIP-only (mlflow, prometheus...) resteront "
+            "inaccessibles tant que la clé n'est pas configurée (voir .env.example)"
         )
         return "skipped"
     args = [
@@ -288,7 +291,7 @@ def apply_manifests(kubeconfig: str) -> str:
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
     for subdir in [
-        "api", "mlflow", "nginx", "prometheus", "gradio", "gradio-public",
+        "api", "mlflow", "nginx", "prometheus", "gradio-public",
         "caddy", "tailscale", "kube-state-metrics", "blackbox-exporter", "node-exporter",
         "loki-forwarder", "promtail",
     ]:
@@ -322,10 +325,13 @@ DNS_ZONE       = "jakat-inc.fr"
 def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     """caddy est désormais seul exposé publiquement (LoadBalancer, TLS Let's
     Encrypt automatique pour kapsule.jakat-inc.fr) — équivalent du chemin
-    public Caddy→nginx→gradio-public sur le VPS. gradio (admin) est en
-    ClusterIP (parité VPS — Tailscale-only, aucune authentification propre) :
-    reachable uniquement via le subnet-router Tailscale (k8s/tailscale/) +
-    split-DNS cluster.local. prefect-server et grafana n'existent plus sur K8s
+    public Caddy→nginx→gradio-public sur le VPS. Les autres services (api,
+    mlflow, prometheus...) restent en ClusterIP, reachable uniquement via le
+    subnet-router Tailscale (k8s/tailscale/) + split-DNS cluster.local — par
+    ex. depuis le Cockpit admin du VPS (onglet Healthcheck) ou le Grafana du
+    VPS (datasource prometheus-k8s). Plus de Cockpit Gradio propre sur K8s
+    depuis le 2026-07-13 (redondant avec celui du VPS, K8s dédié au chemin
+    public HA) — prefect-server et grafana n'existent plus sur K8s non plus
     (retirés le 2026-07-11 et 2026-07-12).
 
     L'IP de caddy change à chaque cycle kapsule-up/down — le record A
@@ -362,8 +368,6 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
                     "dns_ip=%s caddy_ip=%s error=%s — mettre à jour manuellement "
                     "dans la console Scaleway DNS", dns_ip, caddy_ip, exc,
                 )
-
-    ips["GRADIO_DNS"] = f"gradio.{K8S_NAMESPACE}.svc.cluster.local"
 
     KAPSULE_STATE.parent.mkdir(parents=True, exist_ok=True)
     content = "\n".join(f"{k}={v}" for k, v in ips.items())

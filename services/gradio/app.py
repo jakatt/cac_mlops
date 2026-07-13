@@ -46,12 +46,11 @@ MLFLOW_URI       = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
 PREFECT_API      = os.getenv("PREFECT_API_URL",      "http://prefect-server:4200/api")
 MODEL_ALIAS      = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
 
-# "vps" (défaut) ou "kapsule" — même app.py partagé entre les deux images,
-# COCKPIT_ENV=kapsule (k8s/gradio/deployment.yaml) masque les onglets
-# purement VPS (Cockpit gates, Orchestration, Drift, Modeles) qui n'ont
-# jamais rien à afficher sur K8s : ils dépendent du Prefect/MLflow réels du
-# VPS, pas des instances isolées de K8s (prefect-server K8s retiré le
-# 2026-07-11 — n'avait jamais aucune deployment enregistrée dessus).
+# "vps" (défaut) ou "kapsule" — toujours "vps" en pratique depuis le
+# 2026-07-13 : le Cockpit Gradio (admin) a été retiré de K8s (k8s/gradio/
+# supprimé, redondant avec celui du VPS — K8s dédié au chemin public HA).
+# IS_KAPSULE reste défini (code mort mais inoffensif) au cas où un besoin
+# futur justifierait de le redéployer sur K8s.
 COCKPIT_ENV      = os.getenv("COCKPIT_ENV",          "vps")
 IS_KAPSULE       = COCKPIT_ENV == "kapsule"
 
@@ -1118,67 +1117,69 @@ def refresh_gate_queue():
 # TAB 6 — Healthcheck
 # ══════════════════════════════════════════════════════════════════════════════
 
-_VPS_SERVICES = {
-    "API":        "http://api:8000/health",
-    "MLflow":     "http://mlflow:5000/health",
-    "Prefect":    "http://prefect-server:4200/api/health",
-    "MinIO":      "http://minio:9000/minio/health/live",
-    "Prometheus": "http://prometheus:9090/-/healthy",
-    "Nginx":      "http://nginx:80/health",
-}
+# Chaque entrée : (service, environnement, url, observation fixe optionnelle).
+# Les services K8s sont sondés depuis le VPS via le DNS *.cac-mlops.svc.cluster.local,
+# reachable en Tailscale grâce au subnet-router (k8s/tailscale/) — testé en
+# direct (curl depuis le conteneur gradio VPS), fonctionne comme pour la
+# datasource Grafana prometheus-k8s. Plus de Cockpit Gradio propre sur K8s
+# depuis le 2026-07-13 (dédié au chemin public HA) : ce tableau, exécuté
+# uniquement depuis le Cockpit du VPS, est donc la seule vue santé K8s.
+_SERVICES: list[dict[str, str]] = [
+    # ── VPS ──────────────────────────────────────────────────────────────
+    {"service": "API",           "env": "VPS", "url": "http://api:8000/health"},
+    {"service": "MLflow",        "env": "VPS", "url": "http://mlflow:5000/health"},
+    {"service": "Prefect",       "env": "VPS", "url": "http://prefect-server:4200/api/health"},
+    {"service": "MinIO",         "env": "VPS", "url": "http://minio:9000/minio/health/live"},
+    {"service": "Prometheus",    "env": "VPS", "url": "http://prometheus:9090/-/healthy"},
+    {"service": "Nginx",         "env": "VPS", "url": "http://nginx:80/health"},
+    {"service": "Grafana",       "env": "VPS", "url": "http://grafana:3000/api/health"},
+    {"service": "Loki",          "env": "VPS", "url": "http://loki:3100/ready"},
+    {"service": "Gradio public", "env": "VPS", "url": "http://gradio-public:7862/"},
+    {"service": "Caddy",         "env": "VPS", "url": "https://mlops.jakat-inc.fr/health",
+     "obs": "https://mlops.jakat-inc.fr"},
+    # ── K8s (Kapsule, on-demand) ─────────────────────────────────────────
+    {"service": "API",           "env": "K8s", "url": "http://api.cac-mlops.svc.cluster.local:8000/health"},
+    {"service": "MLflow",        "env": "K8s", "url": "http://mlflow.cac-mlops.svc.cluster.local:5000/health",
+     "obs": "instance isolée — pas le registre source (VPS)"},
+    {"service": "Nginx",         "env": "K8s", "url": "http://nginx.cac-mlops.svc.cluster.local:80/health"},
+    {"service": "Gradio public", "env": "K8s", "url": "http://gradio-public.cac-mlops.svc.cluster.local:7862/"},
+    {"service": "Prometheus",    "env": "K8s", "url": "http://prometheus.cac-mlops.svc.cluster.local:9090/-/healthy"},
+    {"service": "Caddy",         "env": "K8s", "url": "https://kapsule.jakat-inc.fr/health",
+     "obs": "https://kapsule.jakat-inc.fr"},
+]
 
-# Services K8s réels (Kubernetes Service names, résolus via le DNS interne
-# du cluster) — pas de Prefect (retiré, jamais fonctionnel) ni de MinIO
-# (K8s utilise directement le vrai S3 Scaleway, pas d'instance MinIO locale).
-_KAPSULE_SERVICES = {
-    "API":           "http://api:8000/health",
-    "MLflow K8s":    "http://mlflow:5000/health",
-    "Nginx":         "http://nginx:80/health",
-    "Gradio public": "http://gradio-public:7862/",
-    "Prometheus K8s": "http://prometheus:9090/-/healthy",
-}
 
-
-def _check_url(url: str, timeout: int = 3) -> str:
+def _check_url(url: str, timeout: int = 3) -> bool:
     try:
         r = requests.get(url, timeout=timeout)
-        return "OK" if r.status_code < 400 else f"HTTP {r.status_code}"
+        return r.status_code < 400
     except Exception:
-        return "Inactif"
-
-
-def _kapsule_status() -> dict:
-    if not KAPSULE_STATE.exists():
-        return {"Service": "Kapsule K8s", "Status": "Inactif"}
-
-    ips = {}
-    for line in KAPSULE_STATE.read_text().splitlines():
-        if "=" in line:
-            k, v = line.split("=", 1)
-            ips[k.strip()] = v.strip()
-
-    # PUBLIC_URL (via caddy) — remplace NGINX_LB depuis que nginx est passé
-    # en ClusterIP (2026-07-10, sécurité + HTTPS). Ancien nom de clé encore
-    # utilisé ici jusqu'à la veille : "Kapsule inactif" affiché en
-    # permanence même cluster actif, car NGINX_LB n'existe plus dans le
-    # fichier écrit par write_kapsule_state.
-    public_url = ips.get("PUBLIC_URL", "")
-    if not public_url or public_url == "pending":
-        return {"Service": "Kapsule K8s", "Status": "En attente"}
-
-    status = _check_url(f"{public_url}/health", timeout=5)
-    label = f"OK — {public_url}" if status == "OK" else status
-    return {"Service": "Kapsule K8s", "Status": label}
+        return False
 
 
 def check_health() -> pd.DataFrame:
-    """Sur K8s (IS_KAPSULE) : uniquement les services K8s locaux, pas de
-    ligne "Kapsule K8s" (redondant — on tourne déjà dedans). Sur le VPS :
-    services VPS + une ligne résumant l'état de Kapsule vu de l'extérieur."""
-    services = _KAPSULE_SERVICES if IS_KAPSULE else _VPS_SERVICES
-    rows = [{"Service": name, "Status": _check_url(url)} for name, url in services.items()]
-    if not IS_KAPSULE:
-        rows.append(_kapsule_status())
+    """Une seule vue, toujours VPS + K8s — ce Cockpit ne tourne plus jamais
+    sur K8s (voir _SERVICES). Si Kapsule est inactif (state/kapsule_ips vide
+    ou absent — cf. deploy_kapsule_flow.py::check_kapsule_task), les lignes
+    K8s sont marquées NOK sans lancer les requêtes (évite 6 timeouts réseau
+    inutiles) ; l'observation précise "Kapsule inactif" pour ne pas laisser
+    croire à un incident (c'est un arrêt volontaire, économie de coûts)."""
+    kapsule_active = KAPSULE_STATE.exists() and bool(KAPSULE_STATE.read_text().strip())
+
+    rows = []
+    for entry in _SERVICES:
+        obs = entry.get("obs", "")
+        if entry["env"] == "K8s" and not kapsule_active:
+            status = "NOK"
+            obs = "Kapsule inactif (kapsule-down)" if not obs else f"{obs} — Kapsule inactif"
+        else:
+            status = "OK" if _check_url(entry["url"]) else "NOK"
+        rows.append({
+            "Service": entry["service"],
+            "Environnement": entry["env"],
+            "Status": status,
+            "Observations": obs,
+        })
     return pd.DataFrame(rows)
 
 
@@ -1227,7 +1228,6 @@ def _links_table(rows: str) -> str:
 # également stable : le domaine kapsule.jakat-inc.fr pointe automatiquement
 # vers l'IP caddy courante (DNS mis à jour par write_kapsule_state).
 KAPSULE_PUBLIC_URL  = "https://kapsule.jakat-inc.fr"
-KAPSULE_GRADIO_DNS  = "gradio.cac-mlops.svc.cluster.local"
 
 
 def _kapsule_links_html() -> str:
@@ -1248,20 +1248,18 @@ def _kapsule_links_html() -> str:
         return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
     rows = _link_row("Cockpit public K8s", public_url, "Public")
-
-    dns = ips.get("GRADIO_DNS", "")
-    if dns and dns != "pending":
-        rows += _link_row("Cockpit admin K8s", f"http://{dns}:7860", "Tailscale")
-
     return _links_table(rows)
 
 
 def _kapsule_self_links_html() -> str:
     """Vue K8s (IS_KAPSULE) : ce pod tourne forcément sur un cluster actif —
     pas de vérification d'état nécessaire (state/kapsule_ips n'existe pas ici,
-    c'est un fichier VPS). URL et DNS sont des constantes (cf. module)."""
-    rows  = _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
-    rows += _link_row("Cockpit admin K8s",  f"http://{KAPSULE_GRADIO_DNS}:7860",  "Tailscale")
+    c'est un fichier VPS). URL est une constante (cf. module). Plus de
+    Cockpit admin sur K8s depuis le 2026-07-13 (redondant avec celui du VPS,
+    K8s dédié au chemin public HA) — cette vue reste toutefois inatteignable
+    en pratique, IS_KAPSULE n'étant plus jamais vrai (COCKPIT_ENV=kapsule
+    n'est plus défini nulle part, k8s/gradio/ supprimé)."""
+    rows = _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
     return _links_table(rows)
 
 
@@ -2043,7 +2041,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
         # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
         with gr.Tab("Healthcheck"):
-            gr.Markdown("### Etat des services K8s" if IS_KAPSULE else "### Etat des services VPS et Kapsule K8s")
+            gr.Markdown("### Etat des services VPS et Kapsule K8s")
             health_refresh = gr.Button("Verifier maintenant", variant="primary")
             health_table   = gr.Dataframe(
                 value=check_health(),
@@ -2255,18 +2253,19 @@ Même interface S3 que Scaleway → `MLFLOW_S3_ENDPOINT_URL = http://minio:9000`
                 gr.Markdown("""
 **Objectif** : prouver le zero-downtime — Trigger 1/2/3 se déploient sans
 jamais descendre sous 1 réplica disponible (`maxUnavailable: 0`), contrairement
-au VPS qui a une gate manuelle avant toute interruption. Cockpit admin K8s
-réduit en conséquence : pas de Cockpit/Orchestration/Drift/Modeles (dépendaient
-du Prefect/MLflow *réels* du VPS, jamais des instances isolées de K8s).
+au VPS qui a une gate manuelle avant toute interruption. Pas de Cockpit admin
+sur K8s (retiré le 2026-07-13, redondant avec celui du VPS) — K8s est dédié
+au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un
+seul Cockpit (VPS), dont l'onglet Healthcheck sonde aussi les services K8s
+via Tailscale.
 """)
 
-                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops, 11 Deployments + 2 DaemonSets)", open=True):
+                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops, 10 Deployments + 2 DaemonSets)", open=True):
                     gr.Markdown("""
 | Deployment | Particularité |
 |---|---|
 | **api** | HPA CPU 70% / RAM 80% → min 2 pods, max 8 pods · `maxUnavailable: 0` — pas de `replicas:` en dur dans le manifest (conflit avec le HPA sinon, cf. incident 2026-07-11) |
 | | initContainer `fetch-model` : récupère `trained_model.joblib` depuis S3 au démarrage |
-| **gradio** | Cockpit admin — ClusterIP (Tailscale uniquement) · `COCKPIT_ENV=kapsule` masque 4 onglets VPS-only |
 | **gradio-public** | Cockpit public 3 onglets — ClusterIP, atteint uniquement via nginx→caddy |
 | mlflow | SQLite emptyDir isolé — **pas le vrai registre** (tracking K8s local seulement) |
 | nginx | ClusterIP — rate-limiting + routing (`/token` 5r/min, `/predict` 20r/min) |
@@ -2294,7 +2293,8 @@ native, donc l'isolation réseau est la seule protection réelle.
 | Composant | Exposition | Protection |
 |---|---|---|
 | caddy | **Public** (LoadBalancer) | TLS Let's Encrypt, `/token` rate-limité 5r/min |
-| gradio, nginx, mlflow, prometheus, kube-state-metrics, blackbox-exporter | ClusterIP | Tailscale uniquement (subnet-router + split-DNS `cluster.local`) |
+| nginx, gradio-public | ClusterIP | Aucune IP publique propre — atteints par le public uniquement via caddy (reverse proxy), admin via Tailscale sinon |
+| mlflow, prometheus, kube-state-metrics, blackbox-exporter | ClusterIP | Tailscale uniquement (subnet-router + split-DNS `cluster.local`) — jamais exposés au public, même indirectement |
 | loki-forwarder | ClusterIP interne (SOCKS5 `:1055`) | Pas de route tailnet advertisée — sortant uniquement, aucun pod ne peut l'utiliser comme passerelle vers autre chose que le SOCKS5 local |
 
 Domaine `kapsule.jakat-inc.fr` (TTL 300s) — l'IP de caddy change à chaque
