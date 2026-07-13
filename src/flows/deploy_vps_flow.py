@@ -17,9 +17,17 @@ Modes d'appel :
   2. Depuis check-new-data-flow (nouvelle data) : champion + métriques affichés à la gate.
   3. Depuis update-model-flow (nouveau blueprint) : champion + métriques + éventuellement
      sha_tag/needs_build/restart_services si le merge inclut aussi du code.
+
+Concurrence : rien n'empêche 2 déclencheurs indépendants (ex: cron T1 lundi 8h
++ push code T2) d'avoir chacun leur run en pause à la gate en même temps. Un
+verrou fichier (flock, DEPLOY_LOCK_PATH) sérialise la section post-gate qui
+interrompt réellement le VPS, pour éviter 2 `docker compose up`/`restart`
+concurrents sur les mêmes conteneurs — voir acquire_deploy_lock_task.
 """
+import fcntl
 import os
 import time
+from pathlib import Path
 
 from prefect import flow, task, get_run_logger, pause_flow_run
 
@@ -28,6 +36,46 @@ from src.flows.test_api_flow import test_api_flow
 from src.flows.train_flow import promote_task
 
 NGINX_URL = os.getenv("NGINX_URL", "http://nginx:80")
+
+# Verrou local (flock, pas de dépendance externe) sur la section qui interrompt
+# le VPS (promote+restart / compose up). Rien n'empêchait jusqu'ici 2 runs de
+# ce flow (ex: check-new-data-flow un lundi 8h + un push code) d'avoir chacun
+# leur propre gate en pause simultanément puis d'être validés l'un après
+# l'autre à quelques secondes d'intervalle — sans ce verrou, leurs `docker
+# compose up -d` / `docker restart` respectifs s'exécuteraient en parallèle
+# sur les mêmes conteneurs, sans aucune garantie d'atomicité côté Docker.
+DEPLOY_LOCK_PATH = Path(os.getenv("DEPLOY_LOCK_PATH", "/app/state/deploy.lock"))
+
+
+@task(name="acquire-deploy-lock")
+def acquire_deploy_lock_task() -> int:
+    """Verrou exclusif non bloquant — échoue vite et clairement plutôt que de
+    laisser un 2e run attendre indéfiniment (jusqu'à 300s de timeout kubectl
+    plus loin dans la chaîne rendrait l'attente confuse à diagnostiquer)."""
+    log = get_run_logger()
+    DEPLOY_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(DEPLOY_LOCK_PATH, os.O_CREAT | os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise RuntimeError(
+            "Un autre déploiement VPS est déjà en cours (verrou deploy.lock actif).\n"
+            "Cause probable : deux triggers (T1/T2/T3) ont franchi leur gate "
+            "quasi simultanément.\n"
+            "Actions requises :\n"
+            "  1. Attendre la fin du run en cours (Prefect UI → Flow Runs)\n"
+            "  2. Relancer ce run ensuite (Retry) — rien n'a encore été appliqué"
+        )
+    log.info("Verrou deploy.lock acquis")
+    return fd
+
+
+@task(name="release-deploy-lock")
+def release_deploy_lock_task(fd: int) -> None:
+    fcntl.flock(fd, fcntl.LOCK_UN)
+    os.close(fd)
+    get_run_logger().info("Verrou deploy.lock relâché")
 
 # Seuls services dont l'image est reconstruite par deploy.yml. `docker compose
 # up -d` doit TOUJOURS lister ces noms explicitement, jamais tourner sans
@@ -308,69 +356,76 @@ def deploy_vps_flow(
     # Le STOP est donc loggé côté Cockpit (service=gradio), pas ici.
     log.info("event=gate_resolved decision=GO trigger=%s sha=%s", trigger, sha_tag or "-")
 
-    # ── 3. Promote MLflow (Triggers 1 & 3 — nouveau modèle) ────────────────────
-    previous_production: dict | None = None
-    if champion and run_ids:
-        previous_production = get_current_production_task(champion)
-        log.info("Promotion @Production → %s", champion)
-        promote_task(champion, run_ids)
-        restart_api_task()
-        log.info("API redémarrée avec le nouveau modèle @Production")
-
-    # ── 3bis. Compose up (Triggers 2 & 3 — changement de code) ─────────────────
-    # Seule étape qui interrompt le VPS pour le code — désormais après la gate.
-    if needs_build or restart_services:
-        compose_up_task(needs_build, restart_services)
-        ok = smoke_test_task()
-        if not ok:
-            log.error(
-                "event=alert severity=critical topic=deploy_failure reason=smoke_test_post_compose sha=%s",
-                sha_tag or "N/A",
-            )
-            docker_rollback_task(sha_tag)
-            raise RuntimeError(
-                f"Smoke test ÉCHOUÉ après compose up — {NGINX_URL}/health ne répond pas après 90s.\n"
-                f"SHA déployé : {sha_tag or 'N/A'}\n"
-                "Rollback Docker :rollback effectué — conteneurs recréés."
-            )
-
-    # ── 4. Test-api — validation finale en production ─────────────────────────
+    # Verrou acquis seulement APRÈS la gate : deux runs peuvent rester en pause
+    # simultanément sans problème (aucune ressource touchée), seule la section
+    # qui interrompt réellement le VPS doit être sérialisée.
+    lock_fd = acquire_deploy_lock_task()
     try:
-        test_api_flow(skip_rate_limit=True)
-        log.info("test-api OK ✓")
-    except Exception as exc:
-        log.error("test-api ÉCHOUÉ : %s", exc)
-        rolled_back_model = False
-        rolled_back_code = False
+        # ── 3. Promote MLflow (Triggers 1 & 3 — nouveau modèle) ─────────────────
+        previous_production: dict | None = None
         if champion and run_ids:
-            log.info("Rollback promote @Production...")
-            rollback_promote_task(previous_production, champion)
+            previous_production = get_current_production_task(champion)
+            log.info("Promotion @Production → %s", champion)
+            promote_task(champion, run_ids)
             restart_api_task()
-            rolled_back_model = True
-        if needs_build or restart_services:
-            log.info("Rollback Docker images :rollback (code)...")
-            docker_rollback_task(sha_tag)
-            rolled_back_code = True
-        log.error(
-            "event=alert severity=critical topic=deploy_failure reason=test_api sha=%s "
-            "rolled_back_model=%s rolled_back_code=%s",
-            sha_tag or "N/A", rolled_back_model, rolled_back_code,
-        )
-        raise RuntimeError(
-            f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
-            f"SHA déployé : {sha_tag or 'N/A'}\n"
-            f"Erreur : {exc}\n"
-            + ("@Production rollback effectué — l'ancienne version est restaurée.\n" if rolled_back_model else "")
-            + ("Rollback Docker effectué — images :rollback recréées.\n" if rolled_back_code else "")
-            + "Actions requises :\n"
-            "  1. docker compose logs api --tail=100\n"
-            "  2. Vérifier que le modèle @Production est accessible dans MLflow\n"
-            "  3. Tester manuellement : curl -X POST http://VPS:8080/predict\n"
-            "  4. Si rollback insuffisant : reset-flow puis full-retrain"
-        )
+            log.info("API redémarrée avec le nouveau modèle @Production")
 
-    # ── 5. Deploy Kapsule (seulement si test-api OK) ──────────────────────────
-    deploy_kapsule_flow()
+        # ── 3bis. Compose up (Triggers 2 & 3 — changement de code) ─────────────
+        # Seule étape qui interrompt le VPS pour le code — désormais après la gate.
+        if needs_build or restart_services:
+            compose_up_task(needs_build, restart_services)
+            ok = smoke_test_task()
+            if not ok:
+                log.error(
+                    "event=alert severity=critical topic=deploy_failure reason=smoke_test_post_compose sha=%s",
+                    sha_tag or "N/A",
+                )
+                docker_rollback_task(sha_tag)
+                raise RuntimeError(
+                    f"Smoke test ÉCHOUÉ après compose up — {NGINX_URL}/health ne répond pas après 90s.\n"
+                    f"SHA déployé : {sha_tag or 'N/A'}\n"
+                    "Rollback Docker :rollback effectué — conteneurs recréés."
+                )
+
+        # ── 4. Test-api — validation finale en production ───────────────────────
+        try:
+            test_api_flow(skip_rate_limit=True)
+            log.info("test-api OK ✓")
+        except Exception as exc:
+            log.error("test-api ÉCHOUÉ : %s", exc)
+            rolled_back_model = False
+            rolled_back_code = False
+            if champion and run_ids:
+                log.info("Rollback promote @Production...")
+                rollback_promote_task(previous_production, champion)
+                restart_api_task()
+                rolled_back_model = True
+            if needs_build or restart_services:
+                log.info("Rollback Docker images :rollback (code)...")
+                docker_rollback_task(sha_tag)
+                rolled_back_code = True
+            log.error(
+                "event=alert severity=critical topic=deploy_failure reason=test_api sha=%s "
+                "rolled_back_model=%s rolled_back_code=%s",
+                sha_tag or "N/A", rolled_back_model, rolled_back_code,
+            )
+            raise RuntimeError(
+                f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
+                f"SHA déployé : {sha_tag or 'N/A'}\n"
+                f"Erreur : {exc}\n"
+                + ("@Production rollback effectué — l'ancienne version est restaurée.\n" if rolled_back_model else "")
+                + ("Rollback Docker effectué — images :rollback recréées.\n" if rolled_back_code else "")
+                + "Actions requises :\n"
+                "  1. docker compose logs api --tail=100\n"
+                "  2. Vérifier que le modèle @Production est accessible dans MLflow\n"
+                "  3. Tester manuellement : curl -X POST http://VPS:8080/predict\n"
+                "  4. Si rollback insuffisant : reset-flow puis full-retrain"
+            )
+
+        # ── 5. Deploy Kapsule (seulement si test-api OK) ─────────────────────────
+        deploy_kapsule_flow()
+    finally:
+        release_deploy_lock_task(lock_fd)
 
     # Confirmation de succès : visible dans Loki/Grafana (Cockpit, dashboard
     # Résilience), mais pas d'email — un succès n'est pas une alerte. Seuls les

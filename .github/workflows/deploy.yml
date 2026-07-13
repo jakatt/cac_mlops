@@ -74,7 +74,14 @@ jobs:
 
           echo "$CHANGED_FILES" | grep -qE '^services/mlflow/Dockerfile$' && BUILD_MLFLOW=true
 
-          echo "$CHANGED_FILES" | grep -qE '^(services/api/Dockerfile|services/api/requirements.*\.txt|services/api/app/.*|services/monitoring/.*|services/__init__\.py|src/.*|scripts/.*|config/.*|prefect\.yaml|\.dvc/config|requirements.*\.txt|pyproject\.toml|setup\.cfg)$' && BUILD_API=true
+          # Pas de config/.* ici : config/model_params.yml (seul fichier du
+          # dossier) est bind-monté rw dans prefect-worker (docker-compose.yml
+          # "blueprint hyperparamètres") — le training le voit toujours à jour
+          # sans rebuild. Aucun code de services/api/ ne le lit (vérifié :
+          # grep -rl model_params services/api/ ne retourne rien). Rebuild
+          # inutile sinon à chaque blueprint (Trigger 3) — Trigger 2/3+code
+          # restent couverts par src/.* indépendamment de ce retrait.
+          echo "$CHANGED_FILES" | grep -qE '^(services/api/Dockerfile|services/api/requirements.*\.txt|services/api/app/.*|services/monitoring/.*|services/__init__\.py|src/.*|scripts/.*|prefect\.yaml|\.dvc/config|requirements.*\.txt|pyproject\.toml|setup\.cfg)$' && BUILD_API=true
 
           echo "$CHANGED_FILES" | grep -qE '^(services/gradio/Dockerfile|services/gradio/requirements.*\.txt|services/gradio/.*\.py|src/.*)$' && BUILD_GRADIO=true
 
