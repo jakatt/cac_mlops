@@ -1136,7 +1136,7 @@ _VPS_SERVICES: list[dict[str, str]] = [
     {"service": "MinIO",         "url": "http://minio:9000/minio/health/live",
      "obs": "Stockage S3 local (dev)"},
     {"service": "Prometheus",    "url": "http://prometheus:9090/-/healthy",
-     "obs": "Scrape VPS + K8s à distance"},
+     "obs": "Scrape les métriques VPS (api, exporters)"},
     {"service": "Nginx",         "url": "http://nginx:80/health",
      "obs": "Rate-limit + routing (localhost)"},
     {"service": "Grafana",       "url": "http://grafana:3000/api/health",
@@ -1181,9 +1181,13 @@ def _check_url(url: str, timeout: int = 5) -> bool:
         return False
 
 
+_STATUS_OK  = "🟢 OK"
+_STATUS_NOK = "🔴 NOK"
+
+
 def check_health_vps() -> pd.DataFrame:
     rows = [
-        {"Service": e["service"], "Status": "OK" if _check_url(e["url"]) else "NOK", "Observations": e["obs"]}
+        {"Service": e["service"], "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
         for e in _VPS_SERVICES
     ]
     return pd.DataFrame(rows)
@@ -1199,9 +1203,9 @@ def check_health_k8s() -> pd.DataFrame:
     rows = []
     for e in _K8S_SERVICES:
         if not kapsule_active:
-            status, obs = "NOK", f"{e['obs']} — Kapsule inactif"
+            status, obs = _STATUS_NOK, f"{e['obs']} — Kapsule inactif"
         else:
-            status, obs = ("OK" if _check_url(e["url"]) else "NOK"), e["obs"]
+            status, obs = (_STATUS_OK if _check_url(e["url"]) else _STATUS_NOK), e["obs"]
         rows.append({"Service": e["service"], "Status": status, "Observations": obs})
     return pd.DataFrame(rows)
 
@@ -2066,15 +2070,17 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         with gr.Tab("Healthcheck"):
             gr.Markdown("### Etat des services VPS et Kapsule K8s")
             health_refresh = gr.Button("Verifier maintenant", variant="primary")
+            gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services VPS</p>")
             health_table_vps = gr.Dataframe(
                 value=check_health_vps(),
-                label="Services VPS",
+                show_label=False,
                 column_widths=_HEALTH_COLUMN_WIDTHS,
                 interactive=False,
             )
+            gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services K8S</p>")
             health_table_k8s = gr.Dataframe(
                 value=check_health_k8s(),
-                label="Services K8S",
+                show_label=False,
                 column_widths=_HEALTH_COLUMN_WIDTHS,
                 interactive=False,
             )

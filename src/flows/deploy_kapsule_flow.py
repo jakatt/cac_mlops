@@ -14,6 +14,7 @@ maxSkew des topologySpreadConstraints). Rollback auto si échec
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from prefect import flow, task, get_run_logger
@@ -140,7 +141,7 @@ def _pod_node_map(kubeconfig: str, deploy_name: str) -> dict[str, str]:
 
 
 @task(name="rebalance-topology")
-def rebalance_topology_task(kubeconfig: str, deploy_name: str) -> None:
+def rebalance_topology_task(kubeconfig: str, deploy_name: str, max_attempts: int = 3) -> None:
     """topologySpreadConstraints (ScheduleAnyway, maxSkew=1 — cf. k8s/*/deployment.yaml)
     n'est qu'une préférence de scoring, pas une garantie : un `rollout restart`
     séquentiel (remplace un pod à la fois) peut quand même aboutir aux 2
@@ -150,7 +151,16 @@ def rebalance_topology_task(kubeconfig: str, deploy_name: str) -> None:
     défensif (check=False partout, n'échoue jamais) : supprime UNE réplique
     co-localisée pour forcer un reschedule qui, lui, respecte correctement la
     contrainte (validé en direct : un scale 0→N la respecte systématiquement,
-    contrairement au rollout restart)."""
+    contrairement au rollout restart).
+
+    Boucle de retry (max_attempts) : sur `api` (seul des 4 avec un HPA actif),
+    un rééquilibrage réussi ici a été défait 2 fois de suite un peu plus tard
+    dans le même cycle de déploiement (constaté en direct, 2026-07-14) — le
+    controller de scale-down HPA choisit quel pod supprimer selon son propre
+    algorithme (âge, etc.), pas topology-spread-aware, et peut donc redéfaire
+    un équilibre déjà obtenu. Cette boucle seule ne suffit pas contre un
+    scale-down qui arrive après le dernier appel — voir le passage de
+    vérification final ajouté dans rolling_update_task."""
     log = get_run_logger()
 
     nodes_out = _kubectl(kubeconfig, ["get", "nodes", "-o", "name"], check=False)
@@ -158,22 +168,31 @@ def rebalance_topology_task(kubeconfig: str, deploy_name: str) -> None:
     if node_count < 2:
         return  # rien à répartir
 
-    pod_nodes = _pod_node_map(kubeconfig, deploy_name)
-    distinct_nodes = set(pod_nodes.values())
-    if len(pod_nodes) < 2 or len(distinct_nodes) >= len(pod_nodes):
-        return  # déjà réparti (ou pas assez de répliques pour que ça compte)
+    for attempt in range(1, max_attempts + 1):
+        pod_nodes = _pod_node_map(kubeconfig, deploy_name)
+        distinct_nodes = set(pod_nodes.values())
+        if len(pod_nodes) < 2 or len(distinct_nodes) >= len(pod_nodes):
+            return  # déjà réparti (ou pas assez de répliques pour que ça compte)
 
-    pod_to_delete = next(iter(pod_nodes))
+        pod_to_delete = next(iter(pod_nodes))
+        log.warning(
+            "event=alert severity=warning topic=kapsule_topology_skew deploy=%s pod=%s "
+            "attempt=%s/%s — répliques co-localisées sur le même nœud, suppression "
+            "pour forcer un reschedule réparti",
+            deploy_name, pod_to_delete, attempt, max_attempts,
+        )
+        _kubectl(kubeconfig, ["delete", "pod", pod_to_delete, "-n", K8S_NAMESPACE, "--wait=false"], check=False)
+        _kubectl(kubeconfig, [
+            "wait", f"deployment/{deploy_name}", "-n", K8S_NAMESPACE,
+            "--for=condition=available", "--timeout=120s",
+        ], check=False)
+        time.sleep(10)  # laisse le scheduler/HPA se stabiliser avant de revérifier
+
     log.warning(
-        "event=alert severity=warning topic=kapsule_topology_skew deploy=%s pod=%s "
-        "— répliques co-localisées sur le même nœud, suppression pour forcer un reschedule réparti",
-        deploy_name, pod_to_delete,
+        "event=alert severity=warning topic=kapsule_topology_skew_persistent deploy=%s "
+        "— toujours co-localisé après %s tentatives, abandon (non bloquant)",
+        deploy_name, max_attempts,
     )
-    _kubectl(kubeconfig, ["delete", "pod", pod_to_delete, "-n", K8S_NAMESPACE, "--wait=false"], check=False)
-    _kubectl(kubeconfig, [
-        "wait", f"deployment/{deploy_name}", "-n", K8S_NAMESPACE,
-        "--for=condition=available", "--timeout=120s",
-    ], check=False)
 
 
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
@@ -227,6 +246,17 @@ def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
                 "-n", K8S_NAMESPACE,
                 "--timeout=300s",
             ])
+            rebalance_topology_task(kubeconfig, deploy_name)
+
+        # Passe finale après la boucle complète : le rééquilibrage individuel
+        # de chaque deployment (ci-dessus) peut être défait plus tard dans le
+        # même cycle par un scale-down HPA sur `api` (déclenché par le pic de
+        # charge du déploiement complet, pas celui d'un seul deployment) — le
+        # temps déjà écoulé en traitant les autres deployments laisse au HPA
+        # l'occasion de se stabiliser avant cette dernière vérification
+        # (bug vécu 2 fois de suite, 2026-07-14, uniquement sur api — seul
+        # des 4 deployments avec un HPA actif).
+        for deploy_name in DEPLOYMENTS:
             rebalance_topology_task(kubeconfig, deploy_name)
 
         log.info("Rolling update Kapsule OK")
