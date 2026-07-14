@@ -6,7 +6,9 @@ Si inactif : skip silencieux.
 Si actif : kubectl apply -f k8s/ (resynchro manifests) → ménage léger
 (pods Completed/Failed + log des conditions de pression nœuds) → rollout
 restart SÉQUENTIEL (un deployment à la fois, pas les 3 en parallèle — cf.
-rolling_update_task) + rollout status. Rollback auto si échec
+rolling_update_task) + rollout status + rééquilibrage topologie (cf.
+rebalance_topology_task — un rollout restart seul ne garantit pas le
+maxSkew des topologySpreadConstraints). Rollback auto si échec
 (event=alert severity=critical topic=kapsule_failure — alerte Grafana).
 """
 import os
@@ -123,6 +125,57 @@ def cleanup_before_deploy_task(kubeconfig: str) -> None:
             log.info("Noeud %s OK (pas de pression ressources)", name)
 
 
+def _pod_node_map(kubeconfig: str, deploy_name: str) -> dict[str, str]:
+    out = _kubectl(kubeconfig, [
+        "get", "pods", "-n", K8S_NAMESPACE,
+        "-l", f"app={deploy_name}",
+        "-o", "jsonpath={range .items[*]}{.metadata.name} {.spec.nodeName}\n{end}",
+    ], check=False)
+    mapping: dict[str, str] = {}
+    for line in out.strip().splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            mapping[parts[0]] = parts[1]
+    return mapping
+
+
+@task(name="rebalance-topology")
+def rebalance_topology_task(kubeconfig: str, deploy_name: str) -> None:
+    """topologySpreadConstraints (ScheduleAnyway, maxSkew=1 — cf. k8s/*/deployment.yaml)
+    n'est qu'une préférence de scoring, pas une garantie : un `rollout restart`
+    séquentiel (remplace un pod à la fois) peut quand même aboutir aux 2
+    répliques sur le même nœud, le scheduler évaluant un état transitoire
+    (constaté en direct, 2026-07-14 — reproduit dès le tout premier vrai
+    déploiement après l'ajout de la contrainte, sur api/caddy/nginx). Purement
+    défensif (check=False partout, n'échoue jamais) : supprime UNE réplique
+    co-localisée pour forcer un reschedule qui, lui, respecte correctement la
+    contrainte (validé en direct : un scale 0→N la respecte systématiquement,
+    contrairement au rollout restart)."""
+    log = get_run_logger()
+
+    nodes_out = _kubectl(kubeconfig, ["get", "nodes", "-o", "name"], check=False)
+    node_count = len([l for l in nodes_out.strip().splitlines() if l.strip()])
+    if node_count < 2:
+        return  # rien à répartir
+
+    pod_nodes = _pod_node_map(kubeconfig, deploy_name)
+    distinct_nodes = set(pod_nodes.values())
+    if len(pod_nodes) < 2 or len(distinct_nodes) >= len(pod_nodes):
+        return  # déjà réparti (ou pas assez de répliques pour que ça compte)
+
+    pod_to_delete = next(iter(pod_nodes))
+    log.warning(
+        "event=alert severity=warning topic=kapsule_topology_skew deploy=%s pod=%s "
+        "— répliques co-localisées sur le même nœud, suppression pour forcer un reschedule réparti",
+        deploy_name, pod_to_delete,
+    )
+    _kubectl(kubeconfig, ["delete", "pod", pod_to_delete, "-n", K8S_NAMESPACE, "--wait=false"], check=False)
+    _kubectl(kubeconfig, [
+        "wait", f"deployment/{deploy_name}", "-n", K8S_NAMESPACE,
+        "--for=condition=available", "--timeout=120s",
+    ], check=False)
+
+
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
 def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
     """
@@ -174,6 +227,7 @@ def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
                 "-n", K8S_NAMESPACE,
                 "--timeout=300s",
             ])
+            rebalance_topology_task(kubeconfig, deploy_name)
 
         log.info("Rolling update Kapsule OK")
         return True, touched
