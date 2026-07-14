@@ -202,8 +202,10 @@ def setup_namespace_secrets(kubeconfig: str) -> str:
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     logger.info("✓ Namespace %s", K8S_NAMESPACE)
 
-    scw_key    = os.getenv("SCW_ACCESS_KEY_ID", "")
-    scw_secret = os.getenv("SCW_SECRET_ACCESS_KEY", "")
+    scw_key       = os.getenv("SCW_ACCESS_KEY_ID", "")
+    scw_secret    = os.getenv("SCW_SECRET_ACCESS_KEY", "")
+    caddy_s3_key  = os.getenv("CADDY_S3_ACCESS_KEY_ID", "")
+    caddy_s3_pass = os.getenv("CADDY_S3_SECRET_ACCESS_KEY", "")
     jwt_secret = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
     api_user   = os.getenv("API_USERNAME", "admin")
     api_pass   = os.getenv("API_PASSWORD", "changeme")
@@ -213,6 +215,17 @@ def setup_namespace_secrets(kubeconfig: str) -> str:
         ("s3-creds", [
             f"AWS_ACCESS_KEY_ID={scw_key}",
             f"AWS_SECRET_ACCESS_KEY={scw_secret}",
+        ]),
+        # Clé IAM Scaleway dédiée, restreinte au préfixe caddy-certs/ du bucket
+        # cac-mlops-data via bucket policy (pas d'accès au reste du bucket —
+        # DVC, artefacts MLflow, modèle k8s-model/... — contrairement à
+        # s3-creds, réutilisée partout ailleurs). Limite le blast radius si
+        # jamais exploité le finding sécurité connu : Caddy logue parfois sa
+        # config de stockage (secret_key inclus) dans son logger `tls`
+        # interne, cf. PR133/HA Caddy.
+        ("caddy-s3-creds", [
+            f"AWS_ACCESS_KEY_ID={caddy_s3_key}",
+            f"AWS_SECRET_ACCESS_KEY={caddy_s3_pass}",
         ]),
         ("app-creds", [
             f"JWT_SECRET_KEY={jwt_secret}",
@@ -381,6 +394,52 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     return ips
 
 
+@task(name="silence-bootstrap-alerts")
+def silence_bootstrap_alerts_task(duration_minutes: int = 15) -> None:
+    """Kapsule vient de démarrer : Caddy doit obtenir son IP LoadBalancer, la
+    propagation DNS (TTL 300s) et le premier certificat Let's Encrypt prennent
+    quelques minutes après même la fin de ce flow — pendant cette fenêtre, la
+    sonde blackbox publique et le nombre de replicas api échouent
+    légitimement (incident vécu : alerte "critical" envoyée par email pour un
+    bootstrap parfaitement normal, 2026-07-14 — fire à 03:57, resolved
+    ~04:00, alors que le flow lui-même avait fini à 03:56).
+
+    Silence Grafana (API Alertmanager), créé côté VPS, best-effort : ne
+    bloque jamais kapsule-up si Grafana est injoignable."""
+    import requests as _req
+    from datetime import datetime, timedelta, timezone
+
+    log = get_run_logger()
+    grafana_url = os.getenv("GRAFANA_URL", "http://grafana:3000")
+    grafana_password = os.getenv("GRAFANA_PASSWORD", "admin")
+    now = datetime.now(timezone.utc)
+    ends = now + timedelta(minutes=duration_minutes)
+
+    for alertname in ("Kapsule — endpoint public down", "Kapsule — replicas api sous le minimum HPA"):
+        try:
+            r = _req.post(
+                f"{grafana_url}/api/alertmanager/grafana/api/v2/silences",
+                auth=("admin", grafana_password),
+                json={
+                    "matchers": [{"name": "alertname", "value": alertname, "isRegex": False}],
+                    "startsAt": now.isoformat(),
+                    "endsAt": ends.isoformat(),
+                    "createdBy": "kapsule-up-flow",
+                    "comment": "Bootstrap Kapsule — LB/DNS/certificat en cours, alerte attendue et non-actionnable",
+                },
+                timeout=10,
+            )
+            if r.status_code < 300:
+                log.info("Silence Grafana créé pour '%s' (%dmin)", alertname, duration_minutes)
+            else:
+                log.warning(
+                    "Silence Grafana échoué pour '%s' : HTTP %s %s",
+                    alertname, r.status_code, r.text[:200],
+                )
+        except Exception as exc:
+            log.warning("Silence Grafana injoignable pour '%s' : %s", alertname, exc)
+
+
 @flow(name="kapsule-up", log_prints=True)
 def kapsule_up_flow(
     node_type:  str = "BASIC3-X2C-8G",
@@ -388,21 +447,24 @@ def kapsule_up_flow(
 ) -> dict[str, str]:
     """
     Provisionne Kapsule K8s :
-      1. Crée le node pool (node_type × node_count)
-      2. Attend que les nœuds soient ready
-      3. Récupère le kubeconfig
-      4. Upload modele @Production → S3 (s3://cac-mlops-data/k8s-model/)
-      5. Upload X_test/y_test → S3 (s3://cac-mlops-data/k8s-gradio-data/)
-      6. Namespace + Secrets K8s (app + tailscale-auth)
-      7. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale,
+      1. Silence Grafana temporaire (bootstrap LB/DNS/certificat — évite une
+         fausse alerte critique pendant la fenêtre de démarrage normale)
+      2. Crée le node pool (node_type × node_count)
+      3. Attend que les nœuds soient ready
+      4. Récupère le kubeconfig
+      5. Upload modele @Production → S3 (s3://cac-mlops-data/k8s-model/)
+      6. Upload X_test/y_test → S3 (s3://cac-mlops-data/k8s-gradio-data/)
+      7. Namespace + Secrets K8s (app + tailscale-auth)
+      8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale,
          kube-state-metrics, blackbox-exporter, node-exporter, loki-forwarder,
          promtail — pas de prefect, retiré le 2026-07-11, jamais fonctionnel ;
          pas de grafana, retiré le 2026-07-12, remplacé par une datasource
          distante depuis le Grafana du VPS)
-      8. Attend que le deployment api soit available
-      9. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
-         caddy, DNS interne pour gradio — reachable via Tailscale)
+      9. Attend que le deployment api soit available
+      10. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
+          caddy, DNS interne pour gradio — reachable via Tailscale)
     """
+    silence_bootstrap_alerts_task()
     create_node_pool(node_type, node_count)
     wait_pool_ready()
     kubeconfig = get_kubeconfig()
