@@ -27,6 +27,18 @@ spec:
       labels:
         app: caddy
     spec:
+      # Répartit les répliques sur des nœuds différents quand possible — sans
+      # ça le scheduler peut placer les 2 sur le même nœud, rendant illusoire
+      # la protection contre une panne de nœud (constaté en direct, 2026-07-14).
+      # ScheduleAnyway (souple) : cluster à 2 nœuds seulement, déjà sujet à de
+      # la pression ressources — éviter des pods bloqués en Pending.
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: caddy
       containers:
       - name: caddy
         image: ghcr.io/jakatt/cac-mlops-caddy:latest

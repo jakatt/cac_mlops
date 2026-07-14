@@ -29,6 +29,20 @@ spec:
       labels:
         app: api
     spec:
+      # Répartit les répliques sur des nœuds différents quand possible — sans
+      # ça (constaté en direct, 2026-07-14) le scheduler K8s peut placer les 2
+      # répliques sur le MÊME nœud, rendant la HA illusoire face à une panne
+      # de nœud (tout tombe en même temps malgré les 2 réplicas). ScheduleAnyway
+      # (pas DoNotSchedule) : cluster à 2 nœuds seulement, déjà sujet à de la
+      # pression ressources (incident DiskPressure 2026-07-10) — préférer une
+      # contrainte souple à des pods bloqués en Pending si un nœud est chargé.
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: api
       initContainers:
       - name: fetch-model
         image: amazon/aws-cli:latest
