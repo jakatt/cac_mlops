@@ -1,0 +1,28 @@
+{
+  "Version": "2023-04-17",
+  "Id": "caddy-cert-storage-policy",
+  "Statement": [
+    {
+      "Sid": "AllowOwnerFullAccess",
+      "Effect": "Allow",
+      "Principal": { "SCW": "user_id:bb41195f-8a64-47cc-af2e-78fda4722162" },
+      "Action": ["s3:*"],
+      "Resource": ["cac-mlops-data", "cac-mlops-data/*"]
+    },
+    {
+      "Sid": "AllowCaddyCertStoragePrefixOnly",
+      "Effect": "Allow",
+      "Principal": { "SCW": "application_id:500f9c66-15df-4099-bef9-7c1f47ec287e" },
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": ["cac-mlops-data/caddy-certs/*"]
+    },
+    {
+      "Sid": "AllowCaddyCertStorageListPrefixOnly",
+      "Effect": "Allow",
+      "Principal": { "SCW": "application_id:500f9c66-15df-4099-bef9-7c1f47ec287e" },
+      "Action": ["s3:ListBucket"],
+      "Resource": ["cac-mlops-data"],
+      "Condition": { "StringLike": { "s3:prefix": ["caddy-certs/*"] } }
+    }
+  ]
+}
