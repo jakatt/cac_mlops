@@ -169,6 +169,11 @@ services:
       MLFLOW_RUN_MODE:        official
       SCW_ACCESS_KEY_ID:      ${SCW_ACCESS_KEY_ID}
       SCW_SECRET_ACCESS_KEY:  ${SCW_SECRET_ACCESS_KEY}
+      # Clé IAM dédiée Caddy K8s — restreinte au préfixe caddy-certs/ du bucket
+      # via bucket policy (application IAM "caddy-cert-storage"), pas d'accès
+      # au reste du bucket contrairement à SCW_ACCESS_KEY_ID ci-dessus.
+      CADDY_S3_ACCESS_KEY_ID:     ${CADDY_S3_ACCESS_KEY_ID:-}
+      CADDY_S3_SECRET_ACCESS_KEY: ${CADDY_S3_SECRET_ACCESS_KEY:-}
       KAPSULE_CLUSTER_ID:     ${KAPSULE_CLUSTER_ID:-}
       SCW_DEFAULT_ORGANIZATION_ID: ${SCW_DEFAULT_ORGANIZATION_ID:-}
       TAILSCALE_AUTHKEY:      ${TAILSCALE_AUTHKEY:-}
@@ -179,6 +184,9 @@ services:
       GHCR_USER:              ${GHCR_USER:-jakatt}
       # Rollback Docker T2 — chemin projet sur le host pour docker compose up -d
       COMPOSE_PROJECT_DIR:    ${COMPOSE_PROJECT_DIR:-/home/deploy/cac_mlops}
+      # Kapsule-up — silence Grafana temporaire pendant le bootstrap (API Alertmanager)
+      GRAFANA_URL:            http://grafana:3000
+      GRAFANA_PASSWORD:       ${GRAFANA_PASSWORD:-admin}
       # Alertes : plus d'envoi SMTP direct depuis les flows (src/utils/email_utils.py
       # supprimé) — tous les événements sont loggués (event=alert severity=... topic=...)
       # et c'est Grafana Alerting (GF_SMTP_*/GF_ALERT_EMAIL ci-dessous) qui notifie.

@@ -47,15 +47,19 @@ spec:
         - containerPort: 80
         - containerPort: 443
         env:
+        # Clé IAM dédiée, restreinte au préfixe caddy-certs/ via bucket
+        # policy (pas s3-creds — évite d'exposer les credentials globaux du
+        # bucket dans les logs `tls` internes de Caddy, cf. finding sécurité
+        # noté lors de la PR HA Caddy).
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: s3-creds
+              name: caddy-s3-creds
               key: AWS_ACCESS_KEY_ID
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: s3-creds
+              name: caddy-s3-creds
               key: AWS_SECRET_ACCESS_KEY
         volumeMounts:
         - name: caddy-config
