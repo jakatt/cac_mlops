@@ -1117,36 +1117,54 @@ def refresh_gate_queue():
 # TAB 6 — Healthcheck
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Chaque entrée : (service, environnement, url, observation fixe optionnelle).
-# Les services K8s sont sondés depuis le VPS via le DNS *.cac-mlops.svc.cluster.local,
-# reachable en Tailscale grâce au subnet-router (k8s/tailscale/) — testé en
-# direct (curl depuis le conteneur gradio VPS), fonctionne comme pour la
-# datasource Grafana prometheus-k8s. Plus de Cockpit Gradio propre sur K8s
-# depuis le 2026-07-13 (dédié au chemin public HA) : ce tableau, exécuté
-# uniquement depuis le Cockpit du VPS, est donc la seule vue santé K8s.
-_SERVICES: list[dict[str, str]] = [
-    # ── VPS ──────────────────────────────────────────────────────────────
-    {"service": "API",           "env": "VPS", "url": "http://api:8000/health"},
-    {"service": "MLflow",        "env": "VPS", "url": "http://mlflow:5000/health"},
-    {"service": "Prefect",       "env": "VPS", "url": "http://prefect-server:4200/api/health"},
-    {"service": "MinIO",         "env": "VPS", "url": "http://minio:9000/minio/health/live"},
-    {"service": "Prometheus",    "env": "VPS", "url": "http://prometheus:9090/-/healthy"},
-    {"service": "Nginx",         "env": "VPS", "url": "http://nginx:80/health"},
-    {"service": "Grafana",       "env": "VPS", "url": "http://grafana:3000/api/health"},
-    {"service": "Loki",          "env": "VPS", "url": "http://loki:3100/ready"},
-    {"service": "Gradio public", "env": "VPS", "url": "http://gradio-public:7862/"},
-    {"service": "Caddy",         "env": "VPS", "url": "https://mlops.jakat-inc.fr/health",
-     "obs": "https://mlops.jakat-inc.fr"},
-    # ── K8s (Kapsule, on-demand) ─────────────────────────────────────────
-    {"service": "API",           "env": "K8s", "url": "http://api.cac-mlops.svc.cluster.local:8000/health"},
-    {"service": "MLflow",        "env": "K8s", "url": "http://mlflow.cac-mlops.svc.cluster.local:5000/health",
-     "obs": "instance isolée — pas le registre source (VPS)"},
-    {"service": "Nginx",         "env": "K8s", "url": "http://nginx.cac-mlops.svc.cluster.local:80/health"},
-    {"service": "Gradio public", "env": "K8s", "url": "http://gradio-public.cac-mlops.svc.cluster.local:7862/"},
-    {"service": "Prometheus",    "env": "K8s", "url": "http://prometheus.cac-mlops.svc.cluster.local:9090/-/healthy"},
-    {"service": "Caddy",         "env": "K8s", "url": "https://kapsule.jakat-inc.fr/health",
-     "obs": "https://kapsule.jakat-inc.fr"},
+# Deux tableaux séparés (VPS / K8s) plutôt qu'une colonne Environnement —
+# plus lisible, et l'environnement est déjà porté par le titre de chaque
+# tableau. Les services K8s sont sondés depuis le VPS via le DNS
+# *.cac-mlops.svc.cluster.local, reachable en Tailscale grâce au
+# subnet-router (k8s/tailscale/) — testé en direct (curl depuis le
+# conteneur gradio VPS), fonctionne comme pour la datasource Grafana
+# prometheus-k8s. Plus de Cockpit Gradio propre sur K8s depuis le
+# 2026-07-13 (dédié au chemin public HA) : ce tableau, exécuté uniquement
+# depuis le Cockpit du VPS, est donc la seule vue santé K8s.
+_VPS_SERVICES: list[dict[str, str]] = [
+    {"service": "API",           "url": "http://api:8000/health",
+     "obs": "FastAPI + JWT (/predict, /token)"},
+    {"service": "MLflow",        "url": "http://mlflow:5000/health",
+     "obs": "Registre source de vérité"},
+    {"service": "Prefect",       "url": "http://prefect-server:4200/api/health",
+     "obs": "Orchestration des flows"},
+    {"service": "MinIO",         "url": "http://minio:9000/minio/health/live",
+     "obs": "Stockage S3 local (dev)"},
+    {"service": "Prometheus",    "url": "http://prometheus:9090/-/healthy",
+     "obs": "Scrape VPS + K8s à distance"},
+    {"service": "Nginx",         "url": "http://nginx:80/health",
+     "obs": "Rate-limit + routing (localhost)"},
+    {"service": "Grafana",       "url": "http://grafana:3000/api/health",
+     "obs": "Dashboards + alertes"},
+    {"service": "Loki",          "url": "http://loki:3100/ready",
+     "obs": "Logs centralisés VPS + K8s"},
+    {"service": "Gradio public", "url": "http://gradio-public:7862/",
+     "obs": "Cockpit utilisateur"},
+    {"service": "Caddy",         "url": "https://mlops.jakat-inc.fr/health",
+     "obs": "Entrée publique — mlops.jakat-inc.fr"},
 ]
+
+_K8S_SERVICES: list[dict[str, str]] = [
+    {"service": "API",           "url": "http://api.cac-mlops.svc.cluster.local:8000/health",
+     "obs": "Chemin public + healthcheck Tailscale"},
+    {"service": "MLflow",        "url": "http://mlflow.cac-mlops.svc.cluster.local:5000/health",
+     "obs": "Instance isolée, pas le registre source"},
+    {"service": "Nginx",         "url": "http://nginx.cac-mlops.svc.cluster.local:80/health",
+     "obs": "Rate-limit + routing (ClusterIP)"},
+    {"service": "Gradio public", "url": "http://gradio-public.cac-mlops.svc.cluster.local:7862/",
+     "obs": "Cockpit utilisateur K8s"},
+    {"service": "Prometheus",    "url": "http://prometheus.cac-mlops.svc.cluster.local:9090/-/healthy",
+     "obs": "Scrapé à distance par Grafana VPS"},
+    {"service": "Caddy",         "url": "https://kapsule.jakat-inc.fr/health",
+     "obs": "Entrée publique — kapsule.jakat-inc.fr"},
+]
+
+_HEALTH_COLUMN_WIDTHS = ["20%", "12%", "68%"]
 
 
 def _check_url(url: str, timeout: int = 5) -> bool:
@@ -1163,29 +1181,28 @@ def _check_url(url: str, timeout: int = 5) -> bool:
         return False
 
 
-def check_health() -> pd.DataFrame:
-    """Une seule vue, toujours VPS + K8s — ce Cockpit ne tourne plus jamais
-    sur K8s (voir _SERVICES). Si Kapsule est inactif (state/kapsule_ips vide
-    ou absent — cf. deploy_kapsule_flow.py::check_kapsule_task), les lignes
-    K8s sont marquées NOK sans lancer les requêtes (évite 6 timeouts réseau
+def check_health_vps() -> pd.DataFrame:
+    rows = [
+        {"Service": e["service"], "Status": "OK" if _check_url(e["url"]) else "NOK", "Observations": e["obs"]}
+        for e in _VPS_SERVICES
+    ]
+    return pd.DataFrame(rows)
+
+
+def check_health_k8s() -> pd.DataFrame:
+    """Si Kapsule est inactif (state/kapsule_ips vide ou absent — cf.
+    deploy_kapsule_flow.py::check_kapsule_task), toutes les lignes sont
+    marquées NOK sans lancer les requêtes (évite 6 timeouts réseau
     inutiles) ; l'observation précise "Kapsule inactif" pour ne pas laisser
     croire à un incident (c'est un arrêt volontaire, économie de coûts)."""
     kapsule_active = KAPSULE_STATE.exists() and bool(KAPSULE_STATE.read_text().strip())
-
     rows = []
-    for entry in _SERVICES:
-        obs = entry.get("obs", "")
-        if entry["env"] == "K8s" and not kapsule_active:
-            status = "NOK"
-            obs = "Kapsule inactif (kapsule-down)" if not obs else f"{obs} — Kapsule inactif"
+    for e in _K8S_SERVICES:
+        if not kapsule_active:
+            status, obs = "NOK", f"{e['obs']} — Kapsule inactif"
         else:
-            status = "OK" if _check_url(entry["url"]) else "NOK"
-        rows.append({
-            "Service": entry["service"],
-            "Environnement": entry["env"],
-            "Status": status,
-            "Observations": obs,
-        })
+            status, obs = ("OK" if _check_url(e["url"]) else "NOK"), e["obs"]
+        rows.append({"Service": e["service"], "Status": status, "Observations": obs})
     return pd.DataFrame(rows)
 
 
@@ -2049,12 +2066,20 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         with gr.Tab("Healthcheck"):
             gr.Markdown("### Etat des services VPS et Kapsule K8s")
             health_refresh = gr.Button("Verifier maintenant", variant="primary")
-            health_table   = gr.Dataframe(
-                value=check_health(),
-                label="Services",
+            health_table_vps = gr.Dataframe(
+                value=check_health_vps(),
+                label="Services VPS",
+                column_widths=_HEALTH_COLUMN_WIDTHS,
                 interactive=False,
             )
-            health_refresh.click(fn=check_health, outputs=health_table)
+            health_table_k8s = gr.Dataframe(
+                value=check_health_k8s(),
+                label="Services K8S",
+                column_widths=_HEALTH_COLUMN_WIDTHS,
+                interactive=False,
+            )
+            health_refresh.click(fn=check_health_vps, outputs=health_table_vps)
+            health_refresh.click(fn=check_health_k8s, outputs=health_table_k8s)
 
         # ── Onglet 7 : Infra ─────────────────────────────────────────────────
         with gr.Tab("Liens"):
