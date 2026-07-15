@@ -3,7 +3,10 @@ Deploy Kapsule flow — rolling update de api/gradio-public/nginx/caddy sur le c
 
 Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
-Si actif : kubectl apply -f k8s/ (resynchro manifests) → ménage léger
+Si actif : réexporte modèle @Production + dataset courant vers S3 (cf.
+upload_model_s3/upload_data_s3 — sinon jamais rappelées après le kapsule-up
+initial, K8s continuait de servir un modèle/dataset figé après Trigger 1/3)
+→ kubectl apply -f k8s/ (resynchro manifests) → ménage léger
 (pods Completed/Failed + log des conditions de pression nœuds) → rollout
 restart SÉQUENTIEL (un deployment à la fois, pas les 3 en parallèle — cf.
 rolling_update_task) + rollout status + rééquilibrage topologie (cf.
@@ -19,7 +22,7 @@ from pathlib import Path
 
 from prefect import flow, task, get_run_logger
 
-from src.flows.kapsule_up_flow import apply_manifests
+from src.flows.kapsule_up_flow import apply_manifests, upload_data_s3, upload_model_s3
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
@@ -306,6 +309,18 @@ def deploy_kapsule_flow() -> bool:
         return True
 
     kubeconfig = get_kubeconfig_task()
+
+    # Réexporte systématiquement le modèle @Production courant + le dataset
+    # courant vers S3 — sans ça, ces deux tasks n'étaient appelées qu'au
+    # kapsule-up, JAMAIS ici. Conséquence (bug silencieux, jamais détecté
+    # avant, jamais testé en conditions réelles) : après une promotion de
+    # modèle (Trigger 1/3) ou une MAJ de dataset (Trigger 1), le rollout
+    # "réussissait" (health OK) mais K8s continuait de servir l'ANCIEN
+    # modèle/dataset jusqu'au prochain kapsule-down/up complet. Réexporter à
+    # l'identique si rien n'a changé est inoffensif (juste un upload S3 de
+    # plus, quelques secondes).
+    upload_model_s3()
+    upload_data_s3()
 
     # Resynchronise les manifests k8s/ avant le rollout : `rollout restart` seul
     # ne fait que redémarrer les pods avec le spec DÉJÀ enregistré sur le cluster —

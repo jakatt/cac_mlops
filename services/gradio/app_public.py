@@ -82,9 +82,10 @@ def _get_model():
     """Charge le modèle @Production — deux chemins possibles :
     - LOCAL_MODEL_PATH (Kapsule K8s) : joblib d'un estimateur brut
       (LGBMClassifier...), exporté par kapsule_up_flow.py depuis le vrai
-      registre MLflow du VPS (le MLflow K8s lui-même est un sqlite isolé,
-      jamais le vrai registre) — model_info.txt (nom+version) exporté à
-      côté sert à afficher le bon libellé dans le footer de prédiction.
+      registre MLflow du VPS (pas de MLflow K8s du tout depuis le
+      2026-07-15, retiré — instance isolée jamais peuplée) —
+      model_info.txt (nom+version) exporté à côté sert à afficher le bon
+      libellé dans le footer de prédiction.
     - mlflow.pyfunc (VPS) : registre MLflow réel, version dispo directement
       via le client MLflow."""
     global _model, _model_info

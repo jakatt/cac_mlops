@@ -127,10 +127,11 @@ def upload_model_s3() -> str:
 
     mlflow.sklearn.load_model retourne l'estimateur brut (LGBMClassifier...),
     pas un mlflow.pyfunc.PyFuncModel — les apps gradio n'ont donc aucun moyen
-    de connaître nom/version depuis le joblib seul (le MLflow K8s est un
-    sqlite isolé, jamais le vrai registre). model_info.txt (ex: "lgbm:v4")
-    exporté à côté résout ça (incident vécu : footer de prédiction affichait
-    toujours "@Production" générique sur Kapsule)."""
+    de connaître nom/version depuis le joblib seul (pas de MLflow K8s du
+    tout depuis le 2026-07-15, retiré — instance isolée jamais peuplée,
+    aucune perte). model_info.txt (ex: "lgbm:v4") exporté à côté résout ça
+    (incident vécu : footer de prédiction affichait toujours "@Production"
+    générique sur Kapsule)."""
     logger = get_run_logger()
     logger.info("Export modele @Production depuis MLflow...")
     mlflow.set_tracking_uri(MLFLOW_URI)
@@ -299,12 +300,19 @@ def apply_manifests(kubeconfig: str) -> str:
     désormais interrogé à distance par le Grafana du VPS (datasource
     prometheus-k8s), qui devient le seul Grafana — plus besoin d'une
     instance + de ConfigMaps dédiées sur K8s (setup_grafana_configmaps
-    supprimé avec elle)."""
+    supprimé avec elle).
+
+    Pas de "mlflow" non plus (retiré le 2026-07-15) : instance isolée
+    (SQLite emptyDir), jamais peuplée (aucun training/promotion ne s'y
+    produit), interrogée par api/gradio-public qui retombent déjà
+    systématiquement sur le fallback S3+joblib — zéro perte fonctionnelle,
+    juste 1Gi de RAM libérés (déjà responsable d'un OOM par le passé,
+    2026-07-10)."""
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
     for subdir in [
-        "api", "mlflow", "nginx", "prometheus", "gradio-public",
+        "api", "nginx", "prometheus", "gradio-public",
         "caddy", "tailscale", "kube-state-metrics", "blackbox-exporter", "node-exporter",
         "loki-forwarder", "promtail",
     ]:

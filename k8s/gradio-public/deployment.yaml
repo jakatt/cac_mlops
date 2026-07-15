@@ -105,10 +105,21 @@ spec:
         ports:
         - containerPort: 7862
         env:
+        # LOCAL_MODEL_PATH ci-dessous est toujours défini, donc _get_model()
+        # (app_public.py) ne passe normalement jamais par la branche MLflow
+        # — mais si jamais le fichier local est absent (initContainer
+        # fetch-model en échec), le client HTTP MLflow retente PAR DÉFAUT
+        # 7 fois avec backoff exponentiel (jusqu'à 120s de timeout) avant
+        # d'abandonner une connexion qui échoue, quel que soit le mode
+        # d'échec (DNS ou TCP refusé) — MAX_RETRIES=0 + TIMEOUT court forcent
+        # un échec sur la toute première tentative (bug vécu en direct sur
+        # le pod api, même mécanisme, 2026-07-15).
+        - name: MLFLOW_HTTP_REQUEST_MAX_RETRIES
+          value: "0"
+        - name: MLFLOW_HTTP_REQUEST_TIMEOUT
+          value: "3"
         - name: MLFLOW_TRACKING_URI
-          value: "http://mlflow:5000"
-        - name: MLFLOW_S3_ENDPOINT_URL
-          value: "https://s3.fr-par.scw.cloud"
+          value: "http://127.0.0.1:1"
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:

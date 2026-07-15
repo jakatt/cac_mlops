@@ -4,11 +4,20 @@ metadata:
   name: cac-mlops-config
   namespace: cac-mlops
 data:
-  # MLflow — K8s mlflow pod pour tracking des runs K8s
-  MLFLOW_TRACKING_URI:    "http://mlflow:5000"
-  MLFLOW_S3_ENDPOINT_URL: "https://s3.fr-par.scw.cloud"
-  MLFLOW_MODEL_NAME:      "lgbm_accidents"
-  MLFLOW_MODEL_STAGE:     "Production"
+  # mlflow K8s retiré le 2026-07-15 (instance isolée, jamais peuplée) —
+  # mais le client HTTP interne de MLflow retente PAR DÉFAUT 7 fois avec
+  # backoff exponentiel avant d'abandonner une connexion qui échoue
+  # (MLFLOW_HTTP_REQUEST_MAX_RETRIES=7, TIMEOUT=120s par défaut) — que
+  # l'échec soit une résolution DNS ratée (hostname "mlflow" qui n'existe
+  # plus) ou un simple refus de connexion TCP, peu importe : c'est CE
+  # comportement de retry qui grille le timeout de 300s de wait_api_ready,
+  # pas le mode d'échec en lui-même (bug vécu en direct, 2026-07-15 —
+  # rollout `api` jamais devenu Ready, testé avec les deux modes d'échec).
+  # Fix réel : MAX_RETRIES=0 + TIMEOUT court, pour que l'appel MLflow
+  # échoue sur la toute première tentative, quel que soit MLFLOW_TRACKING_URI.
+  MLFLOW_HTTP_REQUEST_MAX_RETRIES: "0"
+  MLFLOW_HTTP_REQUEST_TIMEOUT:     "3"
+  MLFLOW_TRACKING_URI:    "http://127.0.0.1:1"
   # Modèle chargé depuis le fichier joblib (déposé par initContainer depuis S3)
   LOCAL_MODEL_PATH:       "/app/model/trained_model.joblib"
   # PostgreSQL du VPS — l'API K8s y journalise ses prédictions (pas de
