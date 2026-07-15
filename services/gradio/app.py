@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 # ── Configuration ─────────────────────────────────────────────────────────────
 MLFLOW_URI       = os.getenv("MLFLOW_TRACKING_URI",  "http://mlflow:5000")
 PREFECT_API      = os.getenv("PREFECT_API_URL",      "http://prefect-server:4200/api")
+LOKI_API         = os.getenv("LOKI_API_URL",         "http://loki:3100")
 MODEL_ALIAS      = os.getenv("GRADIO_MODEL_ALIAS",   "Production")
 
 # "vps" (défaut) ou "kapsule" — toujours "vps" en pratique depuis le
@@ -1114,6 +1115,140 @@ def refresh_gate_queue():
     return _paused_runs_table(), gr.Dropdown(choices=choices, value=default), _render_gate_card(default)
 
 
+# ── Bandeau statut pipeline post-merge (GitHub CD / déclenchement Prefect / exécution) ──
+# Couvre le trou identifié le 2026-07-15 : deploy.yml peut terminer "vert" côté
+# GitHub alors qu'aucun flow run n'a jamais été créé (échec de la commande
+# `prefect deployment run`, avalée en ::warning:: avant durcissement). Les 2
+# premières lignes viennent des logs poussés par le script SSH (event=deploy_pipeline,
+# cf. .github/workflows/deploy.yml) vers Loki ; la 3e vient directement de l'état
+# Prefect du dernier run (COMPLETED/FAILED/CANCELLED), déjà fiable et existant.
+
+def _parse_logfmt(line: str) -> dict:
+    return {m.group(1): m.group(2) for m in re.finditer(r'(\w+)=(\S+)', line)}
+
+
+def _loki_last_line(stage: str) -> str | None:
+    """Dernière ligne Loki pour un stage donné (github_cd ou prefect_trigger)."""
+    try:
+        end   = int(time.time() * 1e9)
+        start = end - 30 * 24 * 3600 * 10**9  # fenêtre large (30j) — déploiements peu fréquents
+        r = requests.get(
+            f"{LOKI_API}/loki/api/v1/query_range",
+            params={
+                "query": f'{{service="github-actions"}} | logfmt | stage="{stage}"',
+                "start": start, "end": end,
+                "limit": 1, "direction": "backward",
+            },
+            timeout=5,
+        )
+        result = r.json().get("data", {}).get("result", [])
+        if not result or not result[0].get("values"):
+            return None
+        return result[0]["values"][0][1]
+    except Exception:
+        return None
+
+
+def _last_deploy_flow_run() -> dict | None:
+    """Dernier flow run deploy-vps-flow / update-model-flow, tous triggers confondus."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/filter",
+            json={
+                "flows": {"name": {"any_": ["deploy-vps-flow", "update-model-flow"]}},
+                "sort": "START_TIME_DESC",
+                "limit": 1,
+            },
+            timeout=5,
+        )
+        runs = r.json()
+        return runs[0] if runs else None
+    except Exception:
+        return None
+
+
+def _render_pipeline_status_banner() -> str:
+    cd_line = _loki_last_line("github_cd")
+    tr_line = _loki_last_line("prefect_trigger")
+    cd_fields = _parse_logfmt(cd_line) if cd_line else {}
+    tr_fields = _parse_logfmt(tr_line) if tr_line else {}
+
+    cd_icon = _STATUS_OK if cd_fields.get("status") == "ok" else (_STATUS_NOK if cd_fields else "—")
+    tr_icon = _STATUS_OK if tr_fields.get("status") == "ok" else (_STATUS_NOK if tr_fields else "—")
+
+    flow_run = _last_deploy_flow_run()
+    if flow_run:
+        state_type = (flow_run.get("state") or {}).get("type", "")
+        flow_icon = {
+            "COMPLETED": _STATUS_OK,
+            "CANCELLED": "⏹ Annulé (STOP)",
+            "FAILED": _STATUS_NOK,
+            "CRASHED": _STATUS_NOK,
+        }.get(state_type, "⏳ En cours")
+    else:
+        flow_icon = "—"
+
+    sha = cd_fields.get("sha") or tr_fields.get("sha") or "?"
+
+    return (
+        '<div style="font-family:\'Inter\',system-ui,sans-serif;font-size:.85rem;'
+        'border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:12px;">'
+        f'<p style="font-weight:700;color:{NAVY};margin-bottom:6px;">Dernier pipeline post-merge — commit {sha}</p>'
+        f'<p style="margin:2px 0;">GitHub CD (Trivy, schémas Prefect) : {cd_icon}</p>'
+        f'<p style="margin:2px 0;">Déclenchement Prefect (création du flow run) : {tr_icon}</p>'
+        f'<p style="margin:2px 0;">Exécution du flow (gate, promote, Kapsule) : {flow_icon}</p>'
+        '</div>'
+    )
+
+
+def retry_prefect_trigger() -> str:
+    """Rejoue `prefect deployment run` avec les mêmes paramètres que la dernière
+    tentative en échec — remédiation directe pour le cas où deploy.yml n'a jamais
+    réussi à créer le flow run (cf. bandeau statut pipeline ci-dessus)."""
+    line = _loki_last_line("prefect_trigger")
+    if not line:
+        return "Aucune tentative de déclenchement trouvée dans Loki."
+    fields = _parse_logfmt(line)
+    if fields.get("status") != "failed":
+        return "Le dernier déclenchement connu est déjà OK — rien à réessayer."
+
+    deployment = fields.get("deployment", "")
+    sha        = fields.get("sha", "")
+    needs_build = fields.get("needs_build", "false") == "true"
+    restart_services = fields.get("restart_services", "")
+    if restart_services == "none":
+        restart_services = ""
+
+    if "/" not in deployment or not sha:
+        return "Informations insuffisantes dans Loki pour réessayer automatiquement — relancer depuis Prefect UI."
+
+    try:
+        r = requests.get(f"{PREFECT_API}/deployments/name/{deployment}", timeout=5)
+        if r.status_code >= 400:
+            return f"Déploiement Prefect introuvable ({r.status_code}) : {deployment}"
+        deployment_id = r.json()["id"]
+
+        r2 = requests.post(
+            f"{PREFECT_API}/deployments/{deployment_id}/create_flow_run",
+            json={"parameters": {
+                "sha_tag": sha,
+                "needs_build": needs_build,
+                "restart_services": restart_services,
+            }},
+            timeout=5,
+        )
+        if r2.status_code >= 400:
+            return f"Erreur au réessai ({r2.status_code}) : {r2.text[:300]}"
+        run_id = r2.json().get("id", "")
+        logger.warning(
+            "event=deploy_pipeline stage=prefect_trigger status=retry_ok sha=%s deployment=%s run_id=%s",
+            sha, deployment, run_id[:8] if run_id else "-",
+        )
+        return f"Déclenchement rejoué avec succès — nouveau run {run_id[:8] if run_id else '?'}, visible dans la file d'attente ci-dessus après rafraîchissement."
+    except Exception as e:
+        return f"Erreur lors du réessai : {e}"
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 6 — Healthcheck
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1363,6 +1498,9 @@ def build_docs_html() -> str:
         (f"{PUBLIC_BASE}/ci-docs/resilience_mechanisms_kapsule.html", "Mécanismes de résilience — Kapsule",
          "Garde-fous · rollbacks · 0 interruption par trigger (Kubernetes rolling update)",
          "resilience_mechanisms_kapsule.html"),
+        (f"{PUBLIC_BASE}/ci-docs/ci_cd_pipeline_runbook.html", "Runbook — échec pipeline CI/CD",
+         "Que faire quand le déploiement post-merge échoue avant même de créer le flow run",
+         "ci_cd_pipeline_runbook.html"),
         (f"{GITHUB_BASE}/README.md",          "README",
          "Vue d'ensemble et démarrage rapide du repository",                   "README.md"),
     ]
@@ -1805,6 +1943,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
                     "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
                 )
+                pipeline_banner = gr.HTML(value=_render_pipeline_status_banner())
+                with gr.Row():
+                    retry_btn    = gr.Button("Réessayer le déclenchement", variant="secondary", scale=3)
+                    banner_refresh = gr.Button("↻", scale=1)
+                retry_status = gr.Markdown()
+
                 _gate_choices = _paused_runs_choices()
                 _gate_default = _gate_choices[0][1] if _gate_choices else None
 
@@ -1825,6 +1969,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
                 gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
                 gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
+                banner_refresh.click(fn=_render_pipeline_status_banner, outputs=pipeline_banner)
 
                 def _gate_go(run_id):
                     msg = resume_run(run_id)
@@ -1836,8 +1981,17 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     table, dd, card = refresh_gate_queue()
                     return msg, table, dd, card
 
+                def _retry_trigger():
+                    msg = retry_prefect_trigger()
+                    table, dd, card = refresh_gate_queue()
+                    return msg, _render_pipeline_status_banner(), table, dd, card
+
                 go_btn.click(fn=_gate_go, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
                 stop_btn.click(fn=_gate_stop, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
+                retry_btn.click(
+                    fn=_retry_trigger,
+                    outputs=[retry_status, pipeline_banner, gate_queue, gate_dd, gate_card],
+                )
 
         if not IS_KAPSULE:
             # ── Onglet 3 : Drift ─────────────────────────────────────────────────

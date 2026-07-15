@@ -236,6 +236,7 @@ services:
       GRADIO_PORT:            "7860"
       # Cockpit onglets
       PREFECT_API_URL:        http://prefect-server:4200/api
+      LOKI_API_URL:           http://loki:3100
       VPS_IP:                 ${VPS_IP:-51.159.187.132}
       VPS_TAILSCALE_IP:       ${VPS_TAILSCALE_IP:-}
       PUBLIC_URL:             "https://mlops.jakat-inc.fr"

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Runbook — échecs du pipeline CI/CD post-merge</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  --bg:        #f0f7fb; --surface:   #ffffff; --border:    #c8dfe8;
+  --text:      #0d2233; --muted:     #5a7a8a; --accent:    #156082;
+  --accent-lt: #e6f2f7;
+  --ok-bg:  #f0fdf4; --ok-num:  #15803d; --ok-bd:  #86efac;
+  --nok-bg: #fef2f2; --nok-num: #b91c1c; --nok-bd: #fca5a5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --ok-bg: #0c2415; --ok-num: #4ade80; --ok-bd: #166534;
+    --nok-bg: #2a0f0f; --nok-num: #f87171; --nok-bd: #7f1d1d;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --ok-bg: #0c2415; --ok-num: #4ade80; --ok-bd: #166534;
+  --nok-bg: #2a0f0f; --nok-num: #f87171; --nok-bd: #7f1d1d;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --ok-bg: #f0fdf4; --ok-num: #15803d; --ok-bd: #86efac;
+  --nok-bg: #fef2f2; --nok-num: #b91c1c; --nok-bd: #fca5a5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 820px; margin: 0 auto; padding: 32px 0 48px; color: var(--text); }
+.ci-doc .page-header { margin-bottom: 28px; }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:640px; }
+.ci-doc .page-sub code { font-size:.75rem;background:var(--border);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .stage-header { font-size:.68rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:28px 0 12px; }
+.ci-doc .card { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:14px; }
+.ci-doc .card-title { font-size:.92rem;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px; }
+.ci-doc .card-title .tag { font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid; }
+.ci-doc .card-title .tag-nok { background:var(--nok-bg);border-color:var(--nok-bd);color:var(--nok-num); }
+.ci-doc .card-body { display:flex;flex-direction:column;gap:8px; }
+.ci-doc .row { display:flex;gap:8px;font-size:.80rem; }
+.ci-doc .row-label { flex-shrink:0;width:96px;font-size:.66rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding-top:2px; }
+.ci-doc .row-value { color:var(--text);line-height:1.45; }
+.ci-doc .row-value code { font-size:.72rem;background:var(--border);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .fix-list { list-style:none;display:flex;flex-direction:column;gap:4px;margin-top:2px; }
+.ci-doc .fix-list li { font-size:.80rem;color:var(--text);display:flex;gap:6px; }
+.ci-doc .fix-list li::before { content:"→";color:var(--accent);flex-shrink:0; }
+.ci-doc .footnote { margin-top:24px;font-size:.72rem;color:var(--muted);line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header class="page-header">
+    <p class="eyebrow">MLOps · Accidents routiers — CI/CD post-merge</p>
+    <h1 class="page-title">Runbook — le pipeline post-merge a échoué</h1>
+    <p class="page-sub">
+      Que faire quand le bandeau statut de l'onglet <strong>Cockpit</strong> (ou l'alerte email Grafana
+      <code>CI/CD — pipeline deploy.yml échoué</code>) signale un échec. Le code mergé sur <code>main</code>
+      et les images poussées sur GHCR sont déjà sains dans tous les cas ci-dessous — seule la
+      <strong>propagation</strong> vers le VPS/Kapsule a été interrompue. Refaire une PR n'est jamais nécessaire.
+    </p>
+  </header>
+
+  <p class="stage-header">Stage : github_cd</p>
+
+  <div class="card">
+    <div class="card-title">Scan Trivy — CVE CRITICAL détectée <span class="tag tag-nok">bloquant</span></div>
+    <div class="card-body">
+      <div class="row"><span class="row-label">Symptôme</span><span class="row-value">Job <code>build</code> en échec sur GitHub Actions, annotation <code>::error::CVE CRITICAL détectée — deploy bloqué</code>.</span></div>
+      <div class="row"><span class="row-label">Cause</span><span class="row-value">Une image (api/gradio/mlflow/caddy) contient une vulnérabilité CRITICAL non ignorée par <code>.trivyignore</code>.</span></div>
+      <div class="row"><span class="row-label">Résolution</span>
+        <ul class="fix-list">
+          <li>Lire le rapport Trivy dans les logs du job <code>build</code> pour identifier le paquet concerné.</li>
+          <li>Mettre à jour la dépendance/l'image de base si un correctif existe, ou l'ajouter à <code>.trivyignore</code> si le risque est jugé acceptable (documenter pourquoi).</li>
+          <li>Re-pousser un commit — le pipeline repart normalement, aucune action manuelle de déploiement nécessaire.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><code>prefect deploy --all</code> échoué (resync des schémas) <span class="tag tag-nok">bloquant</span></div>
+    <div class="card-body">
+      <div class="row"><span class="row-label">Symptôme</span><span class="row-value">Job <code>trigger-deploy</code> en échec, annotation <code>::error::prefect deploy --all échoué</code>.</span></div>
+      <div class="row"><span class="row-label">Cause</span><span class="row-value">Généralement transitoire — <code>prefect-worker</code> pas encore prêt, ou serveur Prefect momentanément indisponible.</span></div>
+      <div class="row"><span class="row-label">Résolution</span>
+        <ul class="fix-list">
+          <li>Onglet Actions GitHub → le run concerné → <strong>Re-run failed jobs</strong> (ou <code>gh run rerun &lt;run_id&gt; --failed</code>). Aucun rebuild d'image, quasi instantané.</li>
+          <li>Si ça persiste : SSH sur le VPS, <code>docker compose ps prefect-worker</code> pour vérifier qu'il tourne, puis rejouer manuellement <code>docker compose exec -T prefect-worker prefect deploy --all</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <p class="stage-header">Stage : prefect_trigger</p>
+
+  <div class="card">
+    <div class="card-title">Échec de <code>prefect deployment run</code> (aucun flow run créé) <span class="tag tag-nok">bloquant</span></div>
+    <div class="card-body">
+      <div class="row"><span class="row-label">Symptôme</span><span class="row-value">Ligne "Déclenchement Prefect" du bandeau Cockpit au rouge — aucun run n'apparaît dans la file d'attente ni dans l'onglet Orchestration.</span></div>
+      <div class="row"><span class="row-label">Cause</span><span class="row-value">Le plus souvent un schéma de paramètres périmé, ou un incident transitoire réseau/Prefect au moment du déclenchement.</span></div>
+      <div class="row"><span class="row-label">Résolution</span>
+        <ul class="fix-list">
+          <li><strong>Le plus rapide</strong> : bouton <strong>« Réessayer le déclenchement »</strong> dans l'onglet Cockpit — rejoue automatiquement <code>prefect deployment run</code> avec exactement les mêmes paramètres (SHA, needs_build, restart_services) que la tentative échouée.</li>
+          <li>Si le bouton indique des informations insuffisantes : relancer le job <code>trigger-deploy</code> depuis GitHub Actions (Re-run failed jobs).</li>
+          <li>En dernier recours : SSH sur le VPS et rejouer manuellement la commande <code>prefect deployment run '&lt;flow&gt;/&lt;deployment&gt;' --param ...</code> (voir <code>.github/workflows/deploy.yml</code> pour la syntaxe exacte selon T2/T3).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <p class="footnote">
+    Le flow run lui-même (gate manuelle, promotion, rolling update Kapsule), une fois créé avec succès,
+    a sa propre gestion d'erreur — alertes <code>event=alert</code> déjà couvertes par les règles Grafana existantes
+    (<code>mlops-alert-critical</code>/<code>mlops-alert-warning</code>) et visibles dans l'onglet Orchestration
+    (« Derniers flows exécutés »). Ce runbook couvre uniquement la fenêtre <strong>avant</strong> la création du flow run.
+  </p>
+</div>
+</div>
+</body>
+</html>
