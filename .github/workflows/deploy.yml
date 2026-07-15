@@ -212,6 +212,19 @@ jobs:
 
             cd "$DEPLOY_DIR"
 
+            # Pousse un événement dans Loki depuis le VPS (accès réseau Docker
+            # direct au conteneur loki, pas besoin de Tailscale/exposition
+            # publique) — alimente le bandeau statut pipeline du Cockpit
+            # (onglet Cockpit, services/gradio/app.py) et la règle Grafana
+            # dédiée (infrastructure/grafana/provisioning/alerting/alerting.yaml).
+            # Échec de CE push volontairement non bloquant (|| true) : un Loki
+            # down ne doit jamais faire échouer un déploiement par ailleurs sain.
+            loki_push() {
+              local stage="$1" status="$2" extra="$3"
+              docker compose exec -T prefect-worker python3 -c "import requests, time; requests.post('http://loki:3100/loki/api/v1/push', json={'streams': [{'stream': {'service': 'github-actions', 'stage': '$stage', 'status': '$status'}, 'values': [[str(time.time_ns()), 'event=deploy_pipeline stage=$stage status=$status sha=${SHA_SHORT} $extra']]}]}, timeout=5)" \
+                2>/dev/null || echo "::warning::push Loki échoué (non bloquant, event=$stage/$status)"
+            }
+
             # Pull code — stash les éventuels fichiers SCP'd locaux avant merge
             git stash --include-untracked || true
             git pull origin main
@@ -268,10 +281,18 @@ jobs:
             echo "==> Services à redémarrer après la gate : ${RESTART_SERVICES:-aucun}"
 
             # Re-synchroniser les schémas de deployments Prefect (paramètres, entrypoints)
-            # Doit tourner avant le trigger pour que Prefect connaisse needs_build/restart_services
-            docker compose exec -T prefect-worker prefect deploy --all \
-              && echo "prefect deploy --all ✓" \
-              || echo "::warning::prefect deploy --all échoué — schémas potentiellement périmés"
+            # Doit tourner avant le trigger pour que Prefect connaisse needs_build/restart_services.
+            # Durci en échec bloquant (2026-07-15) : un schéma périmé peut faire rejeter
+            # silencieusement le déclenchement qui suit (--param inconnu ou mal typé) —
+            # mieux vaut arrêter ici avec un signal clair que laisser courir vers un
+            # déclenchement qui peut échouer pour une raison différente et déroutante.
+            if docker compose exec -T prefect-worker prefect deploy --all; then
+              echo "prefect deploy --all ✓"
+            else
+              echo "::error::prefect deploy --all échoué — schémas potentiellement périmés, déploiement arrêté"
+              loki_push "github_cd" "failed" "reason=schema_sync"
+              exit 1
+            fi
 
             # Détecter si le blueprint DS a changé (trigger 3) — uniquement
             # config/model_params.yml, le seul artefact qui représente une
@@ -291,23 +312,64 @@ jobs:
             # D'où les guillemets littéraux dans la valeur, qui forcent un JSON
             # string (incident vécu : PR119, aucun flow run créé, gate jamais
             # apparue dans le Cockpit).
+            # Durci en échec bloquant (2026-07-15) : avant, un échec ici était avalé
+            # (::warning::) et le job GitHub restait vert alors qu'AUCUN flow run
+            # n'était créé — code mergé + images poussées, mais rien d'appliqué en
+            # prod, sans que rien ne le signale (cf. discussion event=alert Cockpit).
             if [ "${BLUEPRINT_CHANGED:-0}" -gt 0 ]; then
               echo "==> Blueprint DS modifié — déclenchement update-model-flow"
-              docker compose exec -T prefect-worker \
+              if docker compose exec -T prefect-worker \
                 prefect deployment run 'update-model-flow/update-model' \
                   --param "sha_tag=\"${SHA_SHORT}\"" \
                   --param "needs_build=${NEEDS_BUILD}" \
-                  --param "restart_services=${RESTART_SERVICES}" \
-              && echo "update-model-flow déclenché ✓" \
-              || echo "::warning::update-model-flow non déclenché — relancer depuis Prefect UI"
+                  --param "restart_services=${RESTART_SERVICES}"; then
+                echo "update-model-flow déclenché ✓"
+                loki_push "prefect_trigger" "ok" "trigger=T3 deployment=update-model-flow/update-model needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+              else
+                echo "::error::update-model-flow non déclenché"
+                loki_push "prefect_trigger" "failed" "trigger=T3 deployment=update-model-flow/update-model needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+                exit 1
+              fi
             else
               echo "==> Déploiement code seul (SHA: ${SHA_SHORT})"
-              docker compose exec -T prefect-worker \
+              if docker compose exec -T prefect-worker \
                 prefect deployment run \
                   'deploy-vps-flow/deploy-vps' \
                   --param "sha_tag=\"${SHA_SHORT}\"" \
                   --param "needs_build=${NEEDS_BUILD}" \
-                  --param "restart_services=${RESTART_SERVICES}" \
-              && echo "deploy-vps-flow déclenché ✓" \
-              || echo "::warning::Échec du déclenchement Prefect — relancer manuellement depuis l'UI"
+                  --param "restart_services=${RESTART_SERVICES}"; then
+                echo "deploy-vps-flow déclenché ✓"
+                loki_push "prefect_trigger" "ok" "trigger=T2 deployment=deploy-vps-flow/deploy-vps needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+              else
+                echo "::error::Échec du déclenchement Prefect"
+                loki_push "prefect_trigger" "failed" "trigger=T2 deployment=deploy-vps-flow/deploy-vps needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+                exit 1
+              fi
             fi
+
+            loki_push "github_cd" "ok" ""
+
+  # ── Job 3 : catch-all échec pipeline (build/Trivy) → alerte Loki/Grafana ───
+  # Le job "build" (scan Trivy CVE CRITICAL) échoue sur le runner GitHub, qui
+  # n'a pas d'accès réseau à Loki (Tailscale-only, pas d'exposition publique
+  # volontaire — cf. discussion alerting CI/CD). On réutilise donc le SEUL
+  # canal déjà de confiance vers le VPS : le SSH existant (mêmes secrets que
+  # trigger-deploy), juste pour pousser une ligne dans Loki en cas d'échec.
+  # Ne couvre PAS les échecs internes au script de trigger-deploy (déjà
+  # auto-loggés directement par ce script, cf. loki_push ci-dessus) — ce job
+  # est un filet de sécurité pour les échecs qui ne passent jamais par le VPS.
+  notify-pipeline-failure:
+    needs: [check-changes, build, trigger-deploy]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Logger l'échec pipeline dans Loki (via SSH VPS)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.SCALEWAY_HOST }}
+          username: ${{ secrets.SCALEWAY_USER }}
+          key:      ${{ secrets.SCALEWAY_SSH_KEY }}
+          script: |
+            cd "${{ secrets.DEPLOY_DIR }}"
+            docker compose exec -T prefect-worker python3 -c "import requests, time; requests.post('http://loki:3100/loki/api/v1/push', json={'streams': [{'stream': {'service': 'github-actions', 'stage': 'github_cd', 'status': 'failed'}, 'values': [[str(time.time_ns()), 'event=deploy_pipeline stage=github_cd status=failed sha=${{ github.sha }} reason=pipeline_failed run_id=${{ github.run_id }}']]}]}, timeout=5)" \
+              || echo "::warning::push Loki échoué (non bloquant)"

@@ -311,6 +311,48 @@ groups:
         labels:
           severity: warning
 
+      - uid: github-cd-pipeline-failed
+        title: "CI/CD — pipeline deploy.yml échoué (Trivy, schémas, déclenchement Prefect)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'count_over_time({service="github-actions"} | logfmt | status="failed" [5m])'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              queryType: instant
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: "__expr__"
+            model:
+              type: threshold
+              expression: "A"
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Le pipeline post-merge (deploy.yml) a échoué avant ou pendant le déclenchement Prefect — code mergé/images poussées mais potentiellement rien d'appliqué en prod. Voir le champ stage= dans les logs (github_cd = Trivy/schéma, prefect_trigger = commande de déclenchement) pour le détail."
+        labels:
+          severity: critical
+
       - uid: gate-stop
         title: "Prefect — gate refusée (STOP)"
         condition: C
