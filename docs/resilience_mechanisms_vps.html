@@ -178,11 +178,11 @@
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
+                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion RF/XGB/LGBM → @Production inchangé + alerte Grafana</span>
+                <span class="item-desc">KPI gate failed : aucun champion RF/XGB/LGBM → @Production inchangé + alerte</span>
               </li>
               <li>
                 <span class="item-label">Smoke test pré-gate</span>
@@ -194,7 +194,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s) puis test-api (6 tâches) : si fail → rollback alias MLflow @Production + restart API + alerte Prefect</span>
+                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s) puis test-api (6 tâches) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
               </li>
             </ul>
           </td>
@@ -219,11 +219,11 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">Après GO : smoke test (90 s) une fois <code>docker compose up -d --remove-orphans</code> appliqué (redémarrage ciblé des services impactés) : si fail → rollback Docker :rollback + alerte Prefect</span>
+                <span class="item-desc">Après GO : smoke test (90 s) une fois <code>docker compose up -d --remove-orphans</code> appliqué (redémarrage ciblé des services impactés) : si fail → rollback Docker :rollback + alerte</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">test-api (6 tâches) après le smoke test : si fail → rollback Docker :rollback, Kapsule non déclenché + alerte Prefect</span>
+                <span class="item-desc">test-api (6 tâches) après le smoke test : si fail → rollback Docker :rollback, Kapsule non déclenché + alerte</span>
               </li>
             </ul>
           </td>
@@ -240,7 +240,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed (train_flow) : aucun champion → @Production inchangé + alerte Grafana</span>
+                <span class="item-desc">KPI gate failed (train_flow) : aucun champion → @Production inchangé + alerte</span>
               </li>
               <li>
                 <span class="item-label">Smoke test pré-gate</span>
@@ -252,7 +252,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s), puis si code impacté <code>docker compose up -d</code> + smoke test (90 s), puis test-api (6 tâches) : si fail → rollback alias MLflow @Production ET/OU rollback Docker :rollback + alerte Prefect</span>
+                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s), puis si code impacté <code>docker compose up -d</code> + smoke test (90 s), puis test-api (6 tâches) : si fail → rollback alias MLflow @Production ET/OU rollback Docker :rollback + alerte</span>
               </li>
             </ul>
           </td>
@@ -261,7 +261,7 @@
     </table>
   </div>
   <div class="footnote">
-    <span>Alerte = email SMTP · notification GitHub Actions · alerte Grafana selon le contexte</span>
+    <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2/T3 Gate 1–2)</span>
     <span>Rollback T1 : alias MLflow Registry · Rollback T2 : images Docker · Rollback T3 : alias MLflow + images Docker si code impacté</span>
   </div>
 </div>
