@@ -1478,8 +1478,8 @@ def build_docs_html() -> str:
     PUBLIC_BASE  = os.getenv("PUBLIC_URL", "https://mlops.jakat-inc.fr")
     # (url, title, desc, label)
     docs = [
-        (f"{GITHUB_BASE}/architecture.md",    "Architecture globale",
-         "Stack complète : VPS · Kapsule · CI/CD · monitoring · sécurité",   "architecture.md"),
+        (f"{PUBLIC_BASE}/ci-docs/architecture.html", "Architecture globale",
+         "Stack interactive : VPS · Docker · Prefect · CI/CD · monitoring · Kapsule K8s", "architecture.html"),
         (f"{GITHUB_BASE}/execsum.md",         "Résumé exécutif",
          "Synthèse du projet pour les décideurs",                              "execsum.md"),
         (f"{GITHUB_BASE}/ds_guide.md",        "Guide Data Scientist",
@@ -1934,64 +1934,267 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             top_table = gr.Dataframe(label="Top 10 zones", headers=["Latitude", "Longitude", "Nb accidents", "% graves reel"], interactive=False)
             map_btn.click(fn=run_heatmap, inputs=[grav_sl, acc_sl, catr_cb, samp_sl2], outputs=[map_out, top_table, stats_map])
 
-        # ── Onglet Cockpit : gate manuelle décisionnelle ─────────────────────
-        if not IS_KAPSULE:
-            with gr.Tab("Cockpit"):
-                gr.Markdown(
-                    "### Cockpit — validation des déploiements en attente\n"
-                    "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
-                    "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
-                    "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
-                )
-                pipeline_banner = gr.HTML(value=_render_pipeline_status_banner())
-                with gr.Row():
-                    retry_btn    = gr.Button("Réessayer le déclenchement", variant="secondary", scale=3)
-                    banner_refresh = gr.Button("↻", scale=1)
-                retry_status = gr.Markdown()
-
-                _gate_choices = _paused_runs_choices()
-                _gate_default = _gate_choices[0][1] if _gate_choices else None
-
-                gate_queue = gr.Dataframe(
-                    value=_paused_runs_table(), label="File d'attente", interactive=False,
-                )
-                with gr.Row():
-                    gate_dd = gr.Dropdown(
-                        choices=_gate_choices, value=_gate_default,
-                        label="Déploiement à traiter", scale=3,
+        # ── Onglet Cockpit : gate + orchestration + healthcheck + liens ──────
+        with gr.Tab("Cockpit"):
+            if not IS_KAPSULE:
+                with gr.Accordion("⏸  Validation des déploiements en attente", open=True):
+                    gr.Markdown(
+                        "### Cockpit — validation des déploiements en attente\n"
+                        "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
+                        "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
+                        "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
                     )
-                    gate_refresh = gr.Button("Rafraîchir", scale=1)
-                gate_card = gr.HTML(value=_render_gate_card(_gate_default))
-                with gr.Row():
-                    go_btn   = gr.Button("GO — Déployer", variant="primary")
-                    stop_btn = gr.Button("STOP — Annuler", variant="stop")
-                gate_status = gr.Markdown()
+                    pipeline_banner = gr.HTML(value=_render_pipeline_status_banner())
+                    with gr.Row():
+                        retry_btn    = gr.Button("Réessayer le déclenchement", variant="secondary", scale=3)
+                        banner_refresh = gr.Button("↻", scale=1)
+                    retry_status = gr.Markdown()
 
-                gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
-                gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
-                banner_refresh.click(fn=_render_pipeline_status_banner, outputs=pipeline_banner)
+                    _gate_choices = _paused_runs_choices()
+                    _gate_default = _gate_choices[0][1] if _gate_choices else None
 
-                def _gate_go(run_id):
-                    msg = resume_run(run_id)
-                    table, dd, card = refresh_gate_queue()
-                    return msg, table, dd, card
+                    gate_queue = gr.Dataframe(
+                        value=_paused_runs_table(), label="File d'attente", interactive=False,
+                    )
+                    with gr.Row():
+                        gate_dd = gr.Dropdown(
+                            choices=_gate_choices, value=_gate_default,
+                            label="Déploiement à traiter", scale=3,
+                        )
+                        gate_refresh = gr.Button("Rafraîchir", scale=1)
+                    gate_card = gr.HTML(value=_render_gate_card(_gate_default))
+                    with gr.Row():
+                        go_btn   = gr.Button("GO — Déployer", variant="primary")
+                        stop_btn = gr.Button("STOP — Annuler", variant="stop")
+                    gate_status = gr.Markdown()
 
-                def _gate_stop(run_id):
-                    msg = cancel_run(run_id)
-                    table, dd, card = refresh_gate_queue()
-                    return msg, table, dd, card
+                    gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
+                    gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
+                    banner_refresh.click(fn=_render_pipeline_status_banner, outputs=pipeline_banner)
 
-                def _retry_trigger():
-                    msg = retry_prefect_trigger()
-                    table, dd, card = refresh_gate_queue()
-                    return msg, _render_pipeline_status_banner(), table, dd, card
+                    def _gate_go(run_id):
+                        msg = resume_run(run_id)
+                        table, dd, card = refresh_gate_queue()
+                        return msg, table, dd, card
 
-                go_btn.click(fn=_gate_go, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
-                stop_btn.click(fn=_gate_stop, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
-                retry_btn.click(
-                    fn=_retry_trigger,
-                    outputs=[retry_status, pipeline_banner, gate_queue, gate_dd, gate_card],
+                    def _gate_stop(run_id):
+                        msg = cancel_run(run_id)
+                        table, dd, card = refresh_gate_queue()
+                        return msg, table, dd, card
+
+                    def _retry_trigger():
+                        msg = retry_prefect_trigger()
+                        table, dd, card = refresh_gate_queue()
+                        return msg, _render_pipeline_status_banner(), table, dd, card
+
+                    go_btn.click(fn=_gate_go, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
+                    stop_btn.click(fn=_gate_stop, inputs=gate_dd, outputs=[gate_status, gate_queue, gate_dd, gate_card])
+                    retry_btn.click(
+                        fn=_retry_trigger,
+                        outputs=[retry_status, pipeline_banner, gate_queue, gate_dd, gate_card],
+                    )
+
+            if not IS_KAPSULE:
+                with gr.Accordion("⚙️  Orchestration — Déclenchement des flows", open=False):
+                    gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
+
+                    _FLOW_CONFIGS = {
+                        "Tester l'API (6 vérifications)": {
+                            "key": "test-api",
+                            "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=90 vs 50 — route dept nuit), rate-limit 429.",
+                            "opts": None,
+                        },
+                        "Diagnostiquer le VPS": {
+                            "key": "diag",
+                            "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
+                            "opts": None,
+                        },
+                        "Nettoyer l'espace disque": {
+                            "key": "disk-cleanup",
+                            "desc": "Purge les images Docker dangling et les conteneurs arrêtés. Alerte email si disque /data reste < 15% après nettoyage.",
+                            "opts": None,
+                        },
+                        "Réentraîner les modèles": {
+                            "key": "full-retrain",
+                            "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
+                            "opts": "full-retrain",
+                        },
+                        "Vérifier nouvelles données": {
+                            "key": "check-new-data",
+                            "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
+                            "opts": None,
+                        },
+                        "Analyser le drift": {
+                            "key": "drift-check",
+                            "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
+                            "opts": None,
+                        },
+                        "Réinitialiser la solution": {
+                            "key": "reset",
+                            "desc": "RAZ par composant, à la carte — coche uniquement ce que tu veux vider. \"RAZ totale\" force tout, pensée pour repartir sur un système propre juste avant un full-retrain.",
+                            "opts": "reset",
+                        },
+                        "Démarrer le cluster K8s": {
+                            "key": "kapsule-up",
+                            "desc": "Provisionne un cluster Kubernetes Kapsule sur Scaleway, upload le modèle @Production sur S3, puis déclenche le rolling update des pods API.",
+                            "opts": "kapsule",
+                        },
+                        "Arrêter le cluster K8s": {
+                            "key": "kapsule-down",
+                            "desc": "Déprovisionne le cluster Kubernetes Kapsule pour arrêter la facturation. Les données et artefacts restent dans S3.",
+                            "opts": None,
+                        },
+                    }
+
+                    _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
+                    _FIRST_FLOW  = _FLOW_NAMES[0]
+                    _FIRST_DESC  = _FLOW_CONFIGS[_FIRST_FLOW]["desc"]
+
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            flow_dd = gr.Dropdown(
+                                choices=_FLOW_NAMES, value=_FIRST_FLOW,
+                                show_label=False,
+                            )
+                            run_btn = gr.Button("▶", variant="primary", elem_id="pipe-run-btn")
+
+                            flow_desc = gr.Textbox(
+                                value=_FIRST_DESC,
+                                show_label=False, interactive=False, lines=3, max_lines=5,
+                                elem_id="pipe-desc",
+                            )
+
+                            with gr.Group(visible=False) as kapsule_opts:
+                                kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
+                                kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
+
+                            with gr.Group(visible=False) as reset_opts:
+                                reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
+                                reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
+                                reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow (runs + modèles, via l'API)")
+                                gr.Markdown("**Options plus radicales — décochées par défaut :**")
+                                reset_pg_full = gr.Checkbox(value=False, label="Vider TOUTE la base Postgres (predictions + tout MLflow)")
+                                reset_minio   = gr.Checkbox(value=False, label="Vider MinIO (artefacts binaires des modèles)")
+                                reset_grafana = gr.Checkbox(value=False, label="Réinitialiser Grafana (annotations, état alertes, favoris)")
+                                reset_loki    = gr.Checkbox(value=False, label="Réinitialiser Loki (efface tout l'historique de logs)")
+                                reset_full    = gr.Checkbox(value=False, label="⚠️ RAZ TOTALE — coche tout ci-dessus, système propre post-développement")
+
+                            with gr.Group(visible=False) as retrain_opts:
+                                retrain_sim_rows = gr.Number(
+                                    value=2000, precision=0,
+                                    label="Lignes simulées par cycle (défaut deployment : 2000)",
+                                )
+
+                        with gr.Column(scale=1):
+                            action_result = gr.Textbox(
+                                label="Résultat", lines=22, interactive=False,
+                            )
+                            with gr.Row():
+                                clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
+                                retrain_logs_btn = gr.Button(
+                                    "Voir logs full-retrain", variant="secondary",
+                                )
+
+                    runs_table = gr.Dataframe(
+                        value=_prefect_recent_runs(),
+                        label="Derniers flows exécutés",
+                        interactive=False,
+                    )
+
+                    table_filter = gr.Textbox(
+                        placeholder="Filtrer par flow, état…", show_label=False,
+                    )
+                    pipeline_refresh = gr.Button("↻", variant="primary", elem_id="pipe-refresh-btn")
+
+                    def _filtered_runs(query: str) -> pd.DataFrame:
+                        df = _prefect_recent_runs()
+                        if not query.strip():
+                            return df
+                        q = query.lower()
+                        mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
+                        return df[mask]
+
+                    def _on_flow_select(flow_name):
+                        cfg  = _FLOW_CONFIGS.get(flow_name, {})
+                        desc = cfg.get("desc", "")
+                        opts = cfg.get("opts")
+                        return (
+                            desc,
+                            gr.update(visible=(opts == "kapsule")),
+                            gr.update(visible=(opts == "reset")),
+                            gr.update(visible=(opts == "full-retrain")),
+                        )
+
+                    def _run_flow(
+                        flow_name, node_type, node_count,
+                        r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full,
+                        sim_rows,
+                    ):
+                        key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
+                        if key == "kapsule-up":
+                            return trigger_kapsule_up(node_type, int(node_count or 2))
+                        if key == "kapsule-down":
+                            return trigger_kapsule_down()
+                        if key == "reset":
+                            return trigger_reset(r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full)
+                        if key == "test-api":
+                            return trigger_test_api()
+                        if key == "diag":
+                            return trigger_diag()
+                        if key == "disk-cleanup":
+                            return trigger_disk_cleanup()
+                        if key == "full-retrain":
+                            return trigger_full_retrain(sim_rows)
+                        if key == "check-new-data":
+                            return trigger_check_new_data()
+                        if key == "drift-check":
+                            return trigger_drift_check()
+                        return f"Flow inconnu : {flow_name}"
+
+                    flow_dd.change(
+                        fn=_on_flow_select,
+                        inputs=flow_dd,
+                        outputs=[flow_desc, kapsule_opts, reset_opts, retrain_opts],
+                    )
+                    run_btn.click(
+                        fn=_run_flow,
+                        inputs=[
+                            flow_dd, kap_node_type, kap_node_count,
+                            reset_pred, reset_drift, reset_mlf,
+                            reset_pg_full, reset_minio, reset_grafana, reset_loki, reset_full,
+                            retrain_sim_rows,
+                        ],
+                        outputs=action_result,
+                    )
+                    pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
+                    table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
+                    clear_btn.click(fn=lambda: "", outputs=action_result)
+                    retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
+
+            with gr.Accordion("🏥  Healthcheck — État des services", open=False):
+                gr.Markdown("### Etat des services VPS et Kapsule K8s")
+                health_refresh = gr.Button("Verifier maintenant", variant="primary")
+                gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services VPS</p>")
+                health_table_vps = gr.Dataframe(
+                    value=check_health_vps(),
+                    show_label=False,
+                    column_widths=_HEALTH_COLUMN_WIDTHS,
+                    interactive=False,
                 )
+                gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services K8S</p>")
+                health_table_k8s = gr.Dataframe(
+                    value=check_health_k8s(),
+                    show_label=False,
+                    column_widths=_HEALTH_COLUMN_WIDTHS,
+                    interactive=False,
+                )
+                health_refresh.click(fn=check_health_vps, outputs=health_table_vps)
+                health_refresh.click(fn=check_health_k8s, outputs=health_table_k8s)
+
+            with gr.Accordion("🔗  Liens", open=False):
+                infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
+                infra_html    = gr.HTML(value=build_links_html())
+                infra_refresh.click(fn=build_links_html, outputs=infra_html)
 
         if not IS_KAPSULE:
             # ── Onglet 3 : Drift ─────────────────────────────────────────────────
@@ -2024,7 +2227,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
                     "Aucun smoke test ni gate automatique. "
                     "Réservé aux rollbacks d'urgence. "
-                    "Pour une promotion normale, utiliser le flow **update-model** (onglet Orchestration)."
+                    "Pour une promotion normale, utiliser le flow **update-model** (Cockpit → accordéon Orchestration)."
                 )
                 with gr.Row():
                     promote_dd  = gr.Dropdown(choices=_init_choices,
@@ -2035,496 +2238,6 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
                 models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
                 promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
-
-        if not IS_KAPSULE:
-            # ── Onglet 5 : Orchestration ─────────────────────────────────────────
-            with gr.Tab("Orchestration"):
-                gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
-
-                _FLOW_CONFIGS = {
-                    "Tester l'API (6 vérifications)": {
-                        "key": "test-api",
-                        "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=90 vs 50 — route dept nuit), rate-limit 429.",
-                        "opts": None,
-                    },
-                    "Diagnostiquer le VPS": {
-                        "key": "diag",
-                        "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
-                        "opts": None,
-                    },
-                    "Nettoyer l'espace disque": {
-                        "key": "disk-cleanup",
-                        "desc": "Purge les images Docker dangling et les conteneurs arrêtés. Alerte email si disque /data reste < 15% après nettoyage.",
-                        "opts": None,
-                    },
-                    "Réentraîner les modèles": {
-                        "key": "full-retrain",
-                        "desc": "Réentraîne les modèles sur toutes les années disponibles (auto-détectées dans data/raw/) : ETL → benchmark RF/XGBoost/LGBM → gate KPI absolue → promote. Durée ~15 min.",
-                        "opts": "full-retrain",
-                    },
-                    "Vérifier nouvelles données": {
-                        "key": "check-new-data",
-                        "desc": "Vérifie si de nouvelles données ONISR sont disponibles sur data.gouv.fr. Si trouvées : déclenche automatiquement ETL + entraînement + gate de validation.",
-                        "opts": None,
-                    },
-                    "Analyser le drift": {
-                        "key": "drift-check",
-                        "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
-                        "opts": None,
-                    },
-                    "Réinitialiser la solution": {
-                        "key": "reset",
-                        "desc": "RAZ par composant, à la carte — coche uniquement ce que tu veux vider. \"RAZ totale\" force tout, pensée pour repartir sur un système propre juste avant un full-retrain.",
-                        "opts": "reset",
-                    },
-                    "Démarrer le cluster K8s": {
-                        "key": "kapsule-up",
-                        "desc": "Provisionne un cluster Kubernetes Kapsule sur Scaleway, upload le modèle @Production sur S3, puis déclenche le rolling update des pods API.",
-                        "opts": "kapsule",
-                    },
-                    "Arrêter le cluster K8s": {
-                        "key": "kapsule-down",
-                        "desc": "Déprovisionne le cluster Kubernetes Kapsule pour arrêter la facturation. Les données et artefacts restent dans S3.",
-                        "opts": None,
-                    },
-                }
-
-                _FLOW_NAMES  = list(_FLOW_CONFIGS.keys())
-                _FIRST_FLOW  = _FLOW_NAMES[0]
-                _FIRST_DESC  = _FLOW_CONFIGS[_FIRST_FLOW]["desc"]
-
-                with gr.Row():
-                    # ── Colonne gauche : sélection + description + options ─────
-                    with gr.Column(scale=1):
-                        flow_dd = gr.Dropdown(
-                            choices=_FLOW_NAMES, value=_FIRST_FLOW,
-                            show_label=False,
-                        )
-                        run_btn = gr.Button("▶", variant="primary", elem_id="pipe-run-btn")
-
-                        flow_desc = gr.Textbox(
-                            value=_FIRST_DESC,
-                            show_label=False, interactive=False, lines=3, max_lines=5,
-                            elem_id="pipe-desc",
-                        )
-
-                        with gr.Group(visible=False) as kapsule_opts:
-                            kap_node_type  = gr.Textbox(value="BASIC3-X2C-8G", label="Type de nœud")
-                            kap_node_count = gr.Number(value=2, label="Nombre de nœuds", precision=0)
-
-                        with gr.Group(visible=False) as reset_opts:
-                            reset_pred  = gr.Checkbox(value=True, label="Effacer les prédictions")
-                            reset_drift = gr.Checkbox(value=True, label="Effacer les rapports de drift")
-                            reset_mlf   = gr.Checkbox(value=True, label="Effacer MLflow (runs + modèles, via l'API)")
-                            gr.Markdown("**Options plus radicales — décochées par défaut :**")
-                            reset_pg_full = gr.Checkbox(value=False, label="Vider TOUTE la base Postgres (predictions + tout MLflow)")
-                            reset_minio   = gr.Checkbox(value=False, label="Vider MinIO (artefacts binaires des modèles)")
-                            reset_grafana = gr.Checkbox(value=False, label="Réinitialiser Grafana (annotations, état alertes, favoris)")
-                            reset_loki    = gr.Checkbox(value=False, label="Réinitialiser Loki (efface tout l'historique de logs)")
-                            reset_full    = gr.Checkbox(value=False, label="⚠️ RAZ TOTALE — coche tout ci-dessus, système propre post-développement")
-
-                        with gr.Group(visible=False) as retrain_opts:
-                            retrain_sim_rows = gr.Number(
-                                value=2000, precision=0,
-                                label="Lignes simulées par cycle (défaut deployment : 2000)",
-                            )
-
-                    # ── Colonne droite : résultat ─────────────────────────────
-                    with gr.Column(scale=1):
-                        action_result = gr.Textbox(
-                            label="Résultat", lines=22, interactive=False,
-                        )
-                        with gr.Row():
-                            clear_btn = gr.Button("⊗", variant="primary", elem_id="pipe-clear-btn")
-                            retrain_logs_btn = gr.Button(
-                                "Voir logs full-retrain", variant="secondary",
-                            )
-
-                # Table pleine largeur
-                runs_table = gr.Dataframe(
-                    value=_prefect_recent_runs(),
-                    label="Derniers flows exécutés",
-                    interactive=False,
-                )
-
-                table_filter = gr.Textbox(
-                    placeholder="Filtrer par flow, état…", show_label=False,
-                )
-                pipeline_refresh = gr.Button("↻", variant="primary", elem_id="pipe-refresh-btn")
-
-                # ── Callbacks ────────────────────────────────────────────────
-
-                def _filtered_runs(query: str) -> pd.DataFrame:
-                    df = _prefect_recent_runs()
-                    if not query.strip():
-                        return df
-                    q = query.lower()
-                    mask = df.apply(lambda row: row.astype(str).str.lower().str.contains(q).any(), axis=1)
-                    return df[mask]
-
-                def _on_flow_select(flow_name):
-                    cfg  = _FLOW_CONFIGS.get(flow_name, {})
-                    desc = cfg.get("desc", "")
-                    opts = cfg.get("opts")
-                    return (
-                        desc,
-                        gr.update(visible=(opts == "kapsule")),
-                        gr.update(visible=(opts == "reset")),
-                        gr.update(visible=(opts == "full-retrain")),
-                    )
-
-                def _run_flow(
-                    flow_name, node_type, node_count,
-                    r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full,
-                    sim_rows,
-                ):
-                    key = _FLOW_CONFIGS.get(flow_name, {}).get("key", "")
-                    if key == "kapsule-up":
-                        return trigger_kapsule_up(node_type, int(node_count or 2))
-                    if key == "kapsule-down":
-                        return trigger_kapsule_down()
-                    if key == "reset":
-                        return trigger_reset(r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full)
-                    if key == "test-api":
-                        return trigger_test_api()
-                    if key == "diag":
-                        return trigger_diag()
-                    if key == "disk-cleanup":
-                        return trigger_disk_cleanup()
-                    if key == "full-retrain":
-                        return trigger_full_retrain(sim_rows)
-                    if key == "check-new-data":
-                        return trigger_check_new_data()
-                    if key == "drift-check":
-                        return trigger_drift_check()
-                    return f"Flow inconnu : {flow_name}"
-
-                flow_dd.change(
-                    fn=_on_flow_select,
-                    inputs=flow_dd,
-                    outputs=[flow_desc, kapsule_opts, reset_opts, retrain_opts],
-                )
-                run_btn.click(
-                    fn=_run_flow,
-                    inputs=[
-                        flow_dd, kap_node_type, kap_node_count,
-                        reset_pred, reset_drift, reset_mlf,
-                        reset_pg_full, reset_minio, reset_grafana, reset_loki, reset_full,
-                        retrain_sim_rows,
-                    ],
-                    outputs=action_result,
-                )
-                pipeline_refresh.click(fn=lambda q: _filtered_runs(q), inputs=table_filter, outputs=runs_table)
-                table_filter.change(fn=_filtered_runs, inputs=table_filter, outputs=runs_table)
-                clear_btn.click(fn=lambda: "", outputs=action_result)
-                retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
-
-        # ── Onglet 6 : Healthcheck ───────────────────────────────────────────
-        with gr.Tab("Healthcheck"):
-            gr.Markdown("### Etat des services VPS et Kapsule K8s")
-            health_refresh = gr.Button("Verifier maintenant", variant="primary")
-            gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services VPS</p>")
-            health_table_vps = gr.Dataframe(
-                value=check_health_vps(),
-                show_label=False,
-                column_widths=_HEALTH_COLUMN_WIDTHS,
-                interactive=False,
-            )
-            gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services K8S</p>")
-            health_table_k8s = gr.Dataframe(
-                value=check_health_k8s(),
-                show_label=False,
-                column_widths=_HEALTH_COLUMN_WIDTHS,
-                interactive=False,
-            )
-            health_refresh.click(fn=check_health_vps, outputs=health_table_vps)
-            health_refresh.click(fn=check_health_k8s, outputs=health_table_k8s)
-
-        # ── Onglet 7 : Infra ─────────────────────────────────────────────────
-        with gr.Tab("Liens"):
-            infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
-            infra_html    = gr.HTML(value=build_links_html())
-            infra_refresh.click(fn=build_links_html, outputs=infra_html)
-
-        # ── Onglet 8 : Architecture ──────────────────────────────────────────
-        with gr.Tab("Architecture"):
-            gr.Markdown("### Architecture globale — CAC MLOps\n"
-                        "*VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 14 flows · 3 workflows GitHub Actions*")
-
-            # ── SECTION 1 : DEV LOCAL ────────────────────────────────────────
-            with gr.Accordion("💻  DEV LOCAL", open=False):
-                gr.Markdown("""
-**Environnement Mac développeur**
-
-| Outil | Rôle |
-|---|---|
-| git + DVC | versioning code + données (remote S3 Scaleway) |
-| pytest + flake8 | tests et lint locaux avant PR |
-| kubectl + scw CLI | interaction cluster Kapsule |
-| docker-compose | stack locale complète (ports → 127.0.0.1) |
-
-**MLflow distant via Tailscale**
-`MLFLOW_TRACKING_URI = http://100.117.99.62:5001` — les expériences DS sont loggées directement sur le VPS.
-
-**Cycle quotidien DS**
-```
-git pull && dvc pull          # sync code + données depuis S3
-→ dev + expériences MLflow
-→ git push + dvc push
-→ PR vers main → CI → deploy automatique
-```
-""")
-
-            # ── SECTION 2 : VPS ──────────────────────────────────────────────
-            with gr.Accordion("🖥️  VPS Scaleway — DEV1-XL  (4 vCPU · 12 GB RAM · /data = 74 GB NVMe)", open=True):
-
-                gr.Markdown(
-                    "IP publique : **51.159.187.132** (port 8090 uniquement)  \n"
-                    "IP Tailscale : **100.117.99.62** (ports admin — VPN uniquement)"
-                )
-
-                # Docker
-                with gr.Accordion("🐳  Docker — 16 conteneurs  (15 permanents + minio-init EXIT)", open=False):
-
-                    with gr.Accordion("🔵  Notre Solution — 4 conteneurs  (3 images buildées en CI/CD)", open=True):
-                        gr.Markdown("""
-| Conteneur | Port hôte | Accès | Rôle |
-|---|---|---|---|
-| **api** | 8080 / 8000 | Tailscale + Prometheus | FastAPI — prédiction + JWT + métriques |
-| **mlflow** | 5001 | Tailscale | Tracking + Registry (image custom boto3/psycopg2) |
-| **gradio** | 7860 | Tailscale | Cockpit MLOps admin — 12 onglets (dont Cockpit — gate GO/STOP) |
-| **gradio-public** | 7862 (int.) | via nginx → PUBLIC | Cockpit public — 3 onglets (Predict, What-If, Points Noirs) |
-""")
-
-                    with gr.Accordion("⚪  Infrastructure Standard — 12 conteneurs", open=False):
-                        gr.Markdown("""
-| Conteneur | Port hôte | Accès |
-|---|---|---|
-| postgresql | 5432 | interne Docker |
-| minio | 9000 / 9001 | Tailscale |
-| minio-init | — | EXIT après init (crée bucket) |
-| nginx | 8090 | **PUBLIC 0.0.0.0** |
-| prefect-server | 4200 | Tailscale |
-| prefect-worker | — | process pool (image api + kubectl + scw) |
-| node-exporter | 9100 | interne Docker |
-| nginx-exporter | 9113 | interne Docker |
-| prometheus | 9090 | Tailscale |
-| grafana | 3000 | Tailscale |
-| loki | 3100 | interne Docker |
-| promtail | — | agent logs → loki |
-""")
-
-                    gr.Markdown("""
-**Niveaux d'accès**
-`PUBLIC` → 51.159.187.132 · `Tailscale` → 100.117.99.62 · `interne` → réseau Docker · `process pool` → aucun port · `EXIT` → one-shot init
-""")
-
-                # Prefect
-                with gr.Accordion("⚙️  Prefect — 14 flows  (prefect-server :4200 · pool: process)", open=False):
-
-                    with gr.Accordion("🤖  ML / ETL — 7 flows", open=True):
-                        gr.Markdown("""
-| Flow | Déclencheur | Rôle |
-|---|---|---|
-| **etl** | manuel / cron | download data.gouv.fr + validation schéma + preprocessing |
-| **train** | manuel / post-etl | benchmark RF / XGBoost / LGBM → sélection champion (T1: gate KPI + tolérance régression ≤1 métrique · T3: +0.01 F1 vs @Prod) |
-| **full-retrain** | manuel | tous les cycles depuis zéro — détecte automatiquement les années dispo, toutes entraînées (etl + train × N cycles + drift) |
-| **drift-check** | manuel / fin de cycle (check-new-data, full-retrain) | drift de features (indépendant du modèle) → alerte email si seuil dépassé |
-| **reset** | manuel | vide predictions + rapports drift (± MLflow selon options) |
-| **check-new-data** | cron lundi 8h UTC | détecte nouvelles données ONISR → déclenche etl + train |
-| **update-model** | trigger 3 CI/CD | extrait blueprint DS → train → gate manuelle → promote |
-""")
-
-                    with gr.Accordion("🔧  Infra / Ops — 7 flows", open=False):
-                        gr.Markdown("""
-| Flow | Déclencheur | Rôle |
-|---|---|---|
-| **deploy-vps** | nœud commun triggers 1, 2 & 3 | smoke test → **gate manuelle** (avant toute interruption VPS) → promote (T1/T3) + compose up (T2/T3 code) → test-api → Kapsule |
-| **deploy-kapsule** | post deploy-vps | rolling update pods K8s (sans gate) |
-| **kapsule-up** | manuel | provision cluster Kapsule + upload modèle S3 |
-| **kapsule-down** | manuel | déprovision cluster Kapsule |
-| **test-api** | CI/CD + manuel | 6 tests fonctionnels (JWT · /predict · what-if · 429) |
-| **diag** | manuel | snapshot VPS : disk, docker ps, ports réseau |
-| **disk-cleanup** | cron 2h UTC | nettoyage images Docker + alerte si disk < 15% |
-""")
-
-                # Monitoring
-                with gr.Accordion("📊  Monitoring — Prometheus + Grafana + Loki + Evidently", open=False):
-                    gr.Markdown("""
-**Prometheus** `:9090` (Tailscale) — + **Prometheus K8s** interrogé à distance
-depuis Grafana (datasource `prometheus-k8s`, cf. section Kubernetes)
-
-| Source | Métriques |
-|---|---|
-| api:8000/metrics | requêtes, latence p50/p95/p99, prédictions, drift |
-| node-exporter:9100 | CPU / RAM / disk VPS |
-| nginx-exporter:9113 | connexions nginx, taux 4xx/5xx |
-
-**Grafana** `:3000` (Tailscale) — 6 dashboards provisionnés (dossier `cac-mlops`),
-**seule instance Grafana du projet** (celle de K8s a été retirée le 2026-07-12,
-remplacée par une datasource distante)
-- `home` — vue d'ensemble (modèle en prod, RAM/disque, disponibilité API, liens vers les autres)
-- `resilience` — gates (GO/STOP), interruptions, rollbacks, erreurs flow, disponibilité API
-- `api-performance` — latence, taux erreur, throughput
-- `model-drift` — drift_share, features driftées (Evidently → Prometheus)
-- `system-health` — CPU / RAM / disk VPS en temps réel
-- `kapsule-k8s` — replicas disponibles, sonde publique, scrape api (Prometheus K8s)
-
-**Loki + Promtail** (interne Docker + Promtail K8s en DaemonSet)
-Promtail (VPS) scrape les logs de tous les conteneurs (dont les événements logfmt
-structurés `event=gate_open/gate_resolved/interruption_*/rollback/alert`) → Loki.
-Promtail (K8s, DaemonSet) fait de même pour tous les pods Kapsule, relayé via
-`loki-forwarder` (label `cluster="kapsule"` pour les distinguer en requête).
-
-**11 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte**
-(plus de `send_alert()` Python direct : chaque flow loggue `event=alert severity=...
-topic=...`, Grafana évalue et notifie — un seul chemin, pas de doublon)
-
-| Type | Alerte | Détection |
-|---|---|---|
-| Prometheus | Brute-force 401 | > 20 / 5 min |
-| Prometheus | DDoS 429 | > 50 / 5 min |
-| Prometheus | RAM critique | < 10% |
-| Prometheus | Disk /data | < 15% |
-| Loki | Erreur flow Prefect | `ERROR`\\|`CRITICAL` dans les logs |
-| Loki | MLOps critique | `event=alert severity=critical` (schema validation, drift, échec deploy/Kapsule, disque post-nettoyage — détail dans le `topic=`) |
-| Loki | MLOps warning | `event=alert severity=warning` (aucun champion, drift modéré, ONISR partiel) |
-| Loki | Gate refusée (STOP) | `event=gate_resolved decision=STOP` |
-| Loki | Rollback déclenché | `event=rollback` |
-| Prometheus K8s | Replicas api < min HPA | `kube_deployment_status_replicas_available < 2` — 2 min, `execErrState: OK` (Kapsule down = normal) |
-| Prometheus K8s | Endpoint public K8s down | `probe_success == 0` sur `kapsule.jakat-inc.fr/health` — 2 min |
-
-Les succès (`topic=deploy_success`/`kapsule_success`) sont loggués et visibles dans
-Loki/Grafana mais n'envoient pas d'email — un succès n'est pas une alerte.
-""")
-
-                # CI/CD
-                with gr.Accordion("🔄  CI/CD GitHub — 3 workflows", open=False):
-                    gr.Markdown("""
-| Workflow | Déclencheur | Étapes |
-|---|---|---|
-| **ci.yml** | push mlops/DS + PR → main | flake8 → pytest → bloque PR si ✗ |
-| **deploy.yml** | push → main | build images (si nécessaire) → Trivy CRITICAL → SSH VPS : git pull + pull images (préparation, sans interruption) → déclenche Prefect |
-| **cleanup.yml** | cron hebdo | purge anciennes images GHCR |
-
-**3 images Docker buildées et publiées sur GHCR**
-`ghcr.io/jakatt/cac-mlops-api:latest` · `cac-mlops-mlflow:latest` · `cac-mlops-gradio:latest`
-(gradio-public réutilise l'image gradio — commande différente au démarrage)
-
-**Rollback automatique** : images taguées `:sha-xxxxxxxx` + `:rollback` avant chaque build.
-`docker compose up` et le smoke test s'exécutent désormais **dans le flow Prefect**
-(`deploy-vps-flow`), après la gate manuelle — pas dans le script SSH. Smoke test KO
-→ restore `:rollback` (Docker) et/ou alias MLflow (modèle), selon ce qui a été appliqué.
-
-**Sécurité** : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).
-""")
-
-                # Stockage
-                with gr.Accordion("🗄️  Stockage — S3 + MinIO", open=False):
-                    gr.Markdown("""
-**Scaleway Object Storage** `s3://cac-mlops-data`
-
-| Préfixe | Contenu |
-|---|---|
-| `dvc/` | données ONISR versionnées (remote DVC) |
-| `k8s-model/` | `trained_model.joblib` — chargé par l'initContainer K8s |
-| `mlflow-k8s/` | artefacts MLflow dans Kapsule |
-
-**MinIO** `:9000 / 9001` (Tailscale) — artefacts MLflow VPS local
-Même interface S3 que Scaleway → `MLFLOW_S3_ENDPOINT_URL = http://minio:9000`
-
-**DVC** — `data/` n'est jamais commité dans git (`.gitignore`).
-`dvc pull` → récupère les données depuis S3. `dvc push` → pousse après nouvel ETL.
-""")
-
-            # ── SECTION 3 : KUBERNETES ───────────────────────────────────────
-            with gr.Accordion("☸️  Kapsule K8s — Scaleway  (on-demand, fr-par)", open=False):
-
-                gr.Markdown("""
-**Objectif** : prouver le zero-downtime — Trigger 1/2/3 se déploient sans
-jamais descendre sous 1 réplica disponible (`maxUnavailable: 0`), contrairement
-au VPS qui a une gate manuelle avant toute interruption. Pas de Cockpit admin
-sur K8s (retiré le 2026-07-13, redondant avec celui du VPS) — K8s est dédié
-au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un
-seul Cockpit (VPS), dont l'onglet Healthcheck sonde aussi les services K8s
-via Tailscale.
-""")
-
-                with gr.Accordion("🚀  Deployments  (namespace: cac-mlops, 9 Deployments + 2 DaemonSets)", open=True):
-                    gr.Markdown("""
-| Deployment | Particularité |
-|---|---|
-| **api** | HPA CPU 70% / RAM 80% → min 2 pods, max 8 pods · `maxUnavailable: 0` — pas de `replicas:` en dur dans le manifest (conflit avec le HPA sinon, cf. incident 2026-07-11) |
-| | initContainer `fetch-model` : récupère `trained_model.joblib` depuis S3 au démarrage |
-| **gradio-public** | Cockpit public 3 onglets — ClusterIP, atteint uniquement via nginx→caddy |
-| nginx | ClusterIP — rate-limiting + routing (`/token` 5r/min, `/predict` 20r/min) |
-| **caddy** | **Seul point d'entrée public** — LoadBalancer, TLS Let's Encrypt auto (`kapsule.jakat-inc.fr`) |
-| prometheus | scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 — interrogé à distance par le Grafana du VPS (plus de Grafana K8s, retiré le 2026-07-12) |
-| tailscale-subnet-router | pont vers le tailnet du VPS — advertise PodCIDR + ServiceCIDR |
-| **loki-forwarder** | client Tailscale userspace dédié (SOCKS5, pas de route advertisée) — relaie les push Promtail vers le Loki du VPS |
-| kube-state-metrics | RBAC scopé au namespace — réplicas disponibles par Deployment |
-| blackbox-exporter | sonde HTTP continue sur l'URL publique (`/health`) |
-| node-exporter *(DaemonSet)* | 1 pod/nœud, hostNetwork — CPU/RAM/disque des nœuds K8s |
-| promtail *(DaemonSet)* | 1 pod/nœud — logs des pods K8s → Loki VPS via `loki-forwarder` |
-
-**Prefect retiré de K8s** (2026-07-11) — `prefect deploy --all` ne tourne
-jamais que sur le prefect-worker du VPS, le worker K8s restait vide en
-permanence, pur gaspillage de ressources sur des nœuds déjà sous pression
-disque (incident DiskPressure, 2026-07-10).
-""")
-
-                with gr.Accordion("🔒  Sécurité — parité avec le modèle VPS", open=False):
-                    gr.Markdown("""
-Même principe que le VPS (Tailscale-only pour l'admin) plutôt que des mots
-de passe ad hoc — ni Prefect OSS ni `demo.launch()` n'ont d'authentification
-native, donc l'isolation réseau est la seule protection réelle.
-
-| Composant | Exposition | Protection |
-|---|---|---|
-| caddy | **Public** (LoadBalancer) | TLS Let's Encrypt, `/token` rate-limité 5r/min |
-| nginx, gradio-public | ClusterIP | Aucune IP publique propre — atteints par le public uniquement via caddy (reverse proxy), admin via Tailscale sinon |
-| mlflow, prometheus, kube-state-metrics, blackbox-exporter | ClusterIP | Tailscale uniquement (subnet-router + split-DNS `cluster.local`) — jamais exposés au public, même indirectement |
-| loki-forwarder | ClusterIP interne (SOCKS5 `:1055`) | Pas de route tailnet advertisée — sortant uniquement, aucun pod ne peut l'utiliser comme passerelle vers autre chose que le SOCKS5 local |
-
-Domaine `kapsule.jakat-inc.fr` (TTL 300s) — l'IP de caddy change à chaque
-cycle `kapsule-up`/`kapsule-down` (attachée au Service, pas aux pods) :
-`write_kapsule_state` met à jour le DNS automatiquement (`scw dns record set`).
-""")
-
-                with gr.Accordion("📊  Monitoring & logs K8s — consolidés dans le Grafana/Loki du VPS", open=False):
-                    gr.Markdown("""
-Depuis le 2026-07-12, **plus de Grafana ni de Loki propres à K8s** — tout
-remonte dans les instances VPS, seul point de visualisation/alerte du projet :
-
-- **Métriques** : le Grafana VPS interroge le Prometheus K8s directement
-  (datasource `prometheus-k8s`, via Tailscale — `prometheus.cac-mlops.svc.cluster.local:9090`).
-  Nouveau dashboard **Kapsule K8s** : replicas disponibles par Deployment,
-  sonde publique blackbox, scrape `up{job="cac-mlops-api"}`.
-- **Logs** : Promtail (DaemonSet K8s) pousse les logs de tous les pods vers
-  le Loki du VPS via `loki-forwarder` (label `cluster="kapsule"` pour les
-  distinguer des logs VPS dans les requêtes, ex: `{cluster="kapsule", app="api"}`).
-- **Alertes** : 2 nouvelles règles Grafana (groupe `kapsule-monitoring`) —
-  replicas `api` sous le minimum HPA, endpoint public down. `execErrState: OK`
-  (pas `Error`) : Kapsule étant on-demand, le Prometheus K8s devient injoignable
-  à chaque `kapsule-down` — état normal, pas une panne à notifier.
-""")
-
-                with gr.Accordion("🔑  Secrets K8s", open=False):
-                    gr.Markdown("""
-| Secret | Variables |
-|---|---|
-| `s3-creds` | `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` |
-| `app-creds` | `JWT_SECRET_KEY` · `API_USERNAME` · `API_PASSWORD` |
-| `tailscale-auth` | `TS_AUTHKEY` (clé reusable + ephemeral, taguée `tag:k8s-cac-mlops`) |
-""")
-
-                gr.Markdown("""
-**Cycle provision / déprovision**
-Cockpit → Orchestration → *Démarrer le cluster K8s* → `kapsule-up-flow` (provision
-+ upload modèle S3 + DNS auto) → `deploy-kapsule-flow` rolling update pods (sans
-gate, `rollout restart` — pas `set image`, qui ne déclenchait jamais rien avec un
-tag toujours `:latest`) → `kapsule-down-flow` déprovision (économie coût).
-""")
 
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
         with gr.Tab("Docs"):
