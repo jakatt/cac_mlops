@@ -100,7 +100,7 @@
   <header>
     <p class="eyebrow">MLOps · Accidents routiers</p>
     <h1 class="page-title">Architecture de la solution</h1>
-    <p class="page-sub">VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 14 flows · 3 workflows GitHub Actions · Kapsule K8s (on-demand)</p>
+    <p class="page-sub">VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 14 flows · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
   </header>
 
   <!-- DEV LOCAL -->
@@ -288,23 +288,6 @@
         </div>
       </details>
 
-      <!-- Stockage -->
-      <details>
-        <summary>🗄️ Stockage — S3 + MinIO</summary>
-        <div class="body">
-          <p><strong>Scaleway Object Storage</strong> <code>s3://cac-mlops-data</code></p>
-          <div class="tbl"><table>
-            <thead><tr><th>Préfixe</th><th>Contenu</th></tr></thead>
-            <tbody>
-              <tr><td><code>dvc/</code></td><td>données ONISR versionnées (remote DVC)</td></tr>
-              <tr><td><code>k8s-model/</code></td><td><code>trained_model.joblib</code> — chargé par l'initContainer K8s</td></tr>
-              <tr><td><code>mlflow-k8s/</code></td><td>artefacts MLflow dans Kapsule</td></tr>
-            </tbody>
-          </table></div>
-          <p><strong>MinIO</strong> <code>:9000 / 9001</code> (Tailscale) — artefacts MLflow VPS local. Même interface S3 que Scaleway → <code>MLFLOW_S3_ENDPOINT_URL = http://minio:9000</code></p>
-          <p><strong>DVC</strong> — <code>data/</code> n'est jamais commité dans git. <code>dvc pull</code> → récupère depuis S3. <code>dvc push</code> → pousse après nouvel ETL.</p>
-        </div>
-      </details>
     </div>
   </details>
 
@@ -387,6 +370,59 @@
         <p class="sec-label">Cycle provision / déprovision</p>
         <p>Cockpit → accordéon Orchestration → <em>Démarrer le cluster K8s</em> → <code>kapsule-up-flow</code> (provision + upload modèle S3 + DNS auto) → <code>deploy-kapsule-flow</code> rolling update pods → <code>kapsule-down-flow</code> déprovision (économie coût).</p>
       </div>
+    </div>
+  </details>
+
+  <!-- S3 SCALEWAY — service indépendant, hors VPS et hors K8s -->
+  <details>
+    <summary>☁️ Service Scaleway S3 — Stockage objet (fr-par)</summary>
+    <div class="body">
+      <div class="band">
+        <strong>Bucket</strong> : <code>s3://cac-mlops-data</code> · Scaleway Object Storage · région fr-par &nbsp;·&nbsp;
+        Service managé Scaleway — distinct du VPS et du cluster K8s, accessible par les trois environnements
+      </div>
+
+      <div class="tbl"><table>
+        <thead><tr><th>Préfixe</th><th>Contenu</th><th>Écrit par</th><th>Lu par</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>dvc/</code></td>
+            <td>Données ONISR versionnées (data-v1/v2/v3)</td>
+            <td>VPS — ETL flow (<code>dvc push</code>)</td>
+            <td>DEV LOCAL (<code>dvc pull</code>)</td>
+          </tr>
+          <tr>
+            <td><code>k8s-model/</code></td>
+            <td><code>trained_model.joblib</code> — promotion du champion vers Kapsule</td>
+            <td>VPS — <code>kapsule-up-flow</code> (upload après gate)</td>
+            <td>Kapsule — initContainer <code>fetch-model</code> au démarrage pod</td>
+          </tr>
+          <tr>
+            <td><code>mlflow-k8s/</code></td>
+            <td>Artefacts MLflow dans Kapsule (expériences, métriques)</td>
+            <td>Kapsule (MLflow → S3 direct)</td>
+            <td>Kapsule (MLflow)</td>
+          </tr>
+          <tr>
+            <td><code>caddy-certs/</code></td>
+            <td>Certificat TLS Let's Encrypt — partagé entre déploiements Kapsule</td>
+            <td>Kapsule (Caddy auto-write, clé IAM restreinte)</td>
+            <td>Kapsule (Caddy au restart — évite renouvellement inutile)</td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      <p class="sec-label">Flux entre environnements</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Source</th><th>Destination</th><th>Ce qui transite</th></tr></thead>
+        <tbody>
+          <tr><td>VPS</td><td>S3</td><td><code>dvc push</code> — données ONISR après ETL · <code>kapsule-up-flow</code> — upload modèle joblib</td></tr>
+          <tr><td>S3</td><td>DEV LOCAL</td><td><code>dvc pull</code> — sync données versionnées pour expérimentation</td></tr>
+          <tr><td>S3</td><td>Kapsule</td><td>initContainer : télécharge <code>trained_model.joblib</code> · Caddy : certificat TLS partagé entre cycles provision/déprovision</td></tr>
+        </tbody>
+      </table></div>
+
+      <p><strong>MinIO</strong> (VPS, <code>:9000</code> Tailscale) — stockage d'artefacts MLflow <em>local au VPS uniquement</em>, interface S3-compatible (<code>MLFLOW_S3_ENDPOINT_URL=http://minio:9000</code>). <code>data/</code> n'est jamais commité dans git — seule la référence DVC (<code>.dvc</code>) l'est.</p>
     </div>
   </details>
 

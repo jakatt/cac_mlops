@@ -161,19 +161,31 @@ def _format_gate_message(
 
     if trigger == "T1":
         lines += [
-            "  → GO   : Promouvoir @Production + déployer sur Kapsule",
+            "  → GO   : Promouvoir @Production → test-api → Kapsule",
             "  → STOP : run annulé, @Production inchangé, aucun impact",
         ]
     elif trigger == "T2":
-        lines += [
-            "  → GO   : Appliquer les changements sur le VPS",
-            "  → STOP : run annulé, aucun conteneur touché",
-        ]
+        if impacted:
+            lines += [
+                "  → GO   : Rebuild/restart des services ci-dessus → test-api → Kapsule",
+                "  → STOP : run annulé, aucun conteneur touché",
+            ]
+        else:
+            lines += [
+                "  → GO   : Valider (sources déjà actives via volumes) → test-api → Kapsule",
+                "  → STOP : run annulé, aucun conteneur touché",
+            ]
     else:
-        lines += [
-            "  → GO   : Promouvoir @Production + appliquer code + déployer sur Kapsule",
-            "  → STOP : run annulé, aucun impact",
-        ]
+        if impacted:
+            lines += [
+                "  → GO   : Promouvoir @Production + rebuild/restart services → test-api → Kapsule",
+                "  → STOP : run annulé, aucun impact",
+            ]
+        else:
+            lines += [
+                "  → GO   : Promouvoir @Production → test-api → Kapsule",
+                "  → STOP : run annulé, aucun impact",
+            ]
 
     return "\n".join(lines)
 
