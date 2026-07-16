@@ -213,6 +213,12 @@ services:
       # DOCKER_VOLUMES_PATH, ce qui a fait pointer postgresql/minio sur des
       # volumes vides lors d'un déploiement (incident vécu, 2026-07-09).
       - ./.env:${COMPOSE_PROJECT_DIR:-/home/deploy/cac_mlops}/.env:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://prefect-server:4200/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       prefect-server:
         condition: service_healthy
