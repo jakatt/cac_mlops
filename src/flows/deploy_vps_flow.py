@@ -98,6 +98,86 @@ def _trigger_label(champion: str | None, year: int | None, sha_tag: str) -> str:
     return "T2"
 
 
+def _format_gate_message(
+    trigger: str,
+    sha_tag: str,
+    needs_build: bool,
+    restart_services: str,
+    champion: str | None,
+    metrics: dict | None,
+    year: int | None,
+) -> str:
+    """Message structuré affiché dans Prefect UI / Cockpit avant la gate manuelle."""
+    CHK, DASH = "✓", "—"
+    INTERRUPT = {
+        "api": "~30 s", "gradio": "~5 s", "gradio-public": "~5 s",
+        "mlflow": "~1 s", "nginx": "~1 s",
+    }
+    SVC_ORDER = ["api", "mlflow", "gradio", "gradio-public",
+                 "nginx", "grafana", "prometheus", "loki", "promtail"]
+
+    rebuilt   = set(MANAGED_SERVICES) if needs_build else set()
+    restarted = rebuilt | {s for s in restart_services.split(",") if s}
+    impacted  = [s for s in SVC_ORDER if s in restarted]
+
+    if trigger == "T1":
+        header = f"VALIDATION REQUISE — Nouvelles données (T1) · Données : {year}"
+    elif trigger == "T2":
+        header = f"VALIDATION REQUISE — Nouveau code (T2) · SHA : {sha_tag or 'N/A'}"
+    else:
+        header = f"VALIDATION REQUISE — Nouveau blueprint (T3) · SHA : {sha_tag or 'N/A'} · Données : {year}"
+
+    W   = max(len(header) + 4, 56)
+    sep = "═" * W
+    lines = [f"╔{sep}╗", f"║  {header:<{W - 2}}║", f"╚{sep}╝", ""]
+
+    if champion and metrics:
+        m = (metrics or {}).get(champion, {})
+        lines += [
+            f"  Champion : {champion:<10}"
+            f"  F1 : {m.get('f1', 0):.4f}"
+            f"  Recall : {m.get('recall', 0):.4f}"
+            f"  AUC : {m.get('auc', 0):.4f}",
+            "",
+        ]
+
+    if champion:
+        lines += ["  Promotion @Production → redémarrage API (~30 s) après GO", ""]
+
+    if impacted:
+        C = 16
+        lines += [
+            f"  {'Service':<{C}}│ Rebuild │ Restart │ Interruption",
+            f"  {'─' * C}┼─────────┼─────────┼──────────────",
+        ]
+        for svc in impacted:
+            rb = CHK if svc in rebuilt  else DASH
+            rs = CHK if svc in restarted else DASH
+            it = INTERRUPT.get(svc, "~1 s") if svc in restarted else DASH
+            lines.append(f"  {svc:<{C}}│  {rb:<7}│  {rs:<7}│  {it}")
+        lines.append("")
+    elif not champion:
+        lines += ["  Aucun service impacté.", ""]
+
+    if trigger == "T1":
+        lines += [
+            "  → GO   : Promouvoir @Production + déployer sur Kapsule",
+            "  → STOP : run annulé, @Production inchangé, aucun impact",
+        ]
+    elif trigger == "T2":
+        lines += [
+            "  → GO   : Appliquer les changements sur le VPS",
+            "  → STOP : run annulé, aucun conteneur touché",
+        ]
+    else:
+        lines += [
+            "  → GO   : Promouvoir @Production + appliquer code + déployer sur Kapsule",
+            "  → STOP : run annulé, aucun impact",
+        ]
+
+    return "\n".join(lines)
+
+
 @task(name="smoke-test-health")
 def smoke_test_task(max_wait_s: int = 90) -> bool:
     log = get_run_logger()
@@ -315,39 +395,13 @@ def deploy_vps_flow(
 
     # ── 2. Gate manuelle ──────────────────────────────────────────────────────
     trigger = _trigger_label(champion, year, sha_tag)
-    if champion and metrics and year:
-        champion_metrics = metrics.get(champion, {})
-        log.info(
-            "\n══════════════════════════════════════════════════\n"
-            "  VALIDATION REQUISE — Mise à jour annuelle %d\n"
-            "══════════════════════════════════════════════════\n"
-            "  Champion  : %s\n"
-            "  F1        : %.4f\n"
-            "  Recall    : %.4f\n"
-            "  AUC       : %.4f\n"
-            "══════════════════════════════════════════════════\n"
-            "  → Cliquer Resume dans Prefect UI pour promouvoir\n"
-            "    @Production et déployer sur Kapsule",
-            year, champion,
-            champion_metrics.get("f1", 0),
-            champion_metrics.get("recall", 0),
-            champion_metrics.get("auc", 0),
-        )
-        log.info(
-            "event=gate_open trigger=%s year=%s champion=%s f1=%.4f sha=%s needs_build=%s restart_services=%s",
-            trigger, year, champion, champion_metrics.get("f1", 0),
-            sha_tag or "-", needs_build, restart_services or "-",
-        )
-    else:
-        log.info(
-            "Deploy code (SHA: %s) — needs_build=%s restart_services=%s\n"
-            "→ Resume dans Prefect UI (ou onglet Cockpit) pour appliquer sur le VPS",
-            sha_tag or "N/A", needs_build, restart_services or "aucun",
-        )
-        log.info(
-            "event=gate_open trigger=%s sha=%s needs_build=%s restart_services=%s",
-            trigger, sha_tag or "-", needs_build, restart_services or "-",
-        )
+    log.info("\n%s", _format_gate_message(
+        trigger, sha_tag, needs_build, restart_services, champion, metrics, year,
+    ))
+    log.info(
+        "event=gate_open trigger=%s sha=%s champion=%s needs_build=%s restart_services=%s",
+        trigger, sha_tag or "-", champion or "-", needs_build, restart_services or "-",
+    )
 
     pause_flow_run(timeout=86400)
 
