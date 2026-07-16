@@ -159,7 +159,7 @@
           <td><span class="row-label">Rollbacks<br>auto</span></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">1</span><span class="badge-unit">rollback</span></span><span style="font-size:.63rem;color:var(--rb-num);margin-top:2px">+ 1 Docker si code joint *</span></div></td>
         </tr>
         <tr>
           <td><span class="row-label">Interruptions<br>de service</span></td>
@@ -235,7 +235,7 @@
                 <span class="item-desc">CI lint/pytest fail : identique T2</span>
               </li>
               <li>
-                <span class="item-label">Gate 2</span>
+                <span class="item-label">Gate 2 *</span>
                 <span class="item-desc">Trivy CVE CRITICAL : identique T2</span>
               </li>
               <li>
@@ -248,11 +248,14 @@
               </li>
               <li class="item-manual">
                 <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint + SHA/services à redémarrer affichés dans l'onglet Cockpit ou Prefect UI. <strong>Rien n'est encore appliqué en prod.</strong> GO → promotion + (si code impacté) <code>docker compose up -d</code>. STOP → run annulé, aucun impact.</span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint + SHA/services à redémarrer affichés dans l'onglet Cockpit ou Prefect UI. <strong>Rien n'est encore appliqué en prod.</strong> GO → promotion + (si code joint *) <code>docker compose up -d</code>. STOP → run annulé, aucun impact.</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
-                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s), puis si code impacté <code>docker compose up -d</code> + smoke test (90 s), puis test-api (6 tâches) : si fail → rollback alias MLflow @Production ET/OU rollback Docker :rollback + alerte</span>
+                <span class="item-desc">Après GO : promotion @Production + redémarrage API (≈30 s), puis si code joint * : <code>docker compose up -d</code> + smoke test (90 s) ; puis test-api (6 tâches) : si fail → rollback alias MLflow @Production (toujours) · rollback Docker :rollback * + alerte</span>
+              </li>
+              <li style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+                <span class="item-desc" style="font-style:italic">* Uniquement si le blueprint s'accompagne d'un changement de code joint (rare pour ce trigger)</span>
               </li>
             </ul>
           </td>

@@ -244,7 +244,7 @@
                 <span class="item-desc">CI lint/pytest fail : identique T2</span>
               </li>
               <li>
-                <span class="item-label">Gate 2</span>
+                <span class="item-label">Gate 2 *</span>
                 <span class="item-desc">Trivy CVE CRITICAL : identique T2</span>
               </li>
               <li>
@@ -258,6 +258,9 @@
               <li>
                 <span class="item-label">Gate 4</span>
                 <span class="item-desc">Readiness probe K8s (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production</span>
+              </li>
+              <li style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+                <span class="item-desc" style="font-style:italic">* Uniquement si le blueprint s'accompagne d'un changement de code joint (rare pour ce trigger)</span>
               </li>
             </ul>
           </td>
