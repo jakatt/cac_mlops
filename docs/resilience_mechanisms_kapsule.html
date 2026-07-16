@@ -195,11 +195,11 @@
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte email SMTP</span>
+                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, Kapsule non mis à jour + alerte Grafana</span>
+                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, Kapsule non mis à jour + alerte</span>
               </li>
               <li class="item-manual">
                 <span class="item-label">Gate manuelle</span>
@@ -228,7 +228,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">Smoke test VPS post-gate (90 s) après <code>docker compose up -d</code> ciblé, puis test-api (6 tâches) : si fail → Docker VPS :rollback, Kapsule non déclenché + alerte Prefect</span>
+                <span class="item-desc">Smoke test VPS post-gate (90 s) après <code>docker compose up -d</code> ciblé, puis test-api (6 tâches) : si fail → Docker VPS :rollback, Kapsule non déclenché + alerte</span>
               </li>
               <li>
                 <span class="item-label">Gate 4</span>
@@ -249,7 +249,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, deploy-kapsule non déclenché + alerte Grafana</span>
+                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, deploy-kapsule non déclenché + alerte</span>
               </li>
               <li class="item-manual">
                 <span class="item-label">Gate manuelle</span>
@@ -266,7 +266,7 @@
     </table>
   </div>
   <div class="footnote">
-    <span>Alerte = email SMTP · notification GitHub Actions · alerte Grafana · événement K8s / Prometheus</span>
+    <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2/T3 Gate 1–2)</span>
     <span>Rollback T1 : alias MLflow Registry · Rollback T2/T3 : <code>kubectl rollout undo</code></span>
   </div>
 </div>
