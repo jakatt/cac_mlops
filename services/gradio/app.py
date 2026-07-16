@@ -1060,6 +1060,20 @@ def _render_gate_card(run_id: str) -> str:
             f'{"oui" if needs_build else "non"} · Services à redémarrer : {restart_services or "aucun"}</p>'
         )
 
+    if champion and (needs_build or restart_services):
+        go_steps = "Promouvoir @Production · rebuild/restart services · test-api · Kapsule"
+    elif champion:
+        go_steps = "Promouvoir @Production · test-api · Kapsule"
+    elif needs_build or restart_services:
+        go_steps = "Rebuild/restart services · test-api · Kapsule"
+    else:
+        go_steps = "Valider (sources déjà actives via volumes) · test-api · Kapsule"
+    parts.append(
+        f'<p style="font-size:.85rem;margin-top:10px;">'
+        f'<b style="color:{SLATE};">Après GO :</b> '
+        f'<span style="color:{NAVY};">{go_steps}</span></p>'
+    )
+
     logs = _fetch_run_logs(run_id, max_lines=15)
     if logs:
         parts.append(
