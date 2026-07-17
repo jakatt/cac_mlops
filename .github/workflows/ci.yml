@@ -1,8 +1,6 @@
 name: CI — lint + tests
 
 on:
-  push:
-    branches: ["mlops", "DS"]
   pull_request:
     branches: ["main"]
 
