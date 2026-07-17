@@ -207,7 +207,7 @@
               <div class="tbl"><table>
                 <thead><tr><th>Flow</th><th>Déclencheur</th><th>Rôle</th></tr></thead>
                 <tbody>
-                  <tr><td><strong>deploy-vps</strong></td><td>nœud commun T1, T2 &amp; T3</td><td>smoke test → <strong>gate manuelle</strong> (avant toute interruption VPS) → promote (T1/T3) + compose up (T2/T3 code) → test-api → Kapsule</td></tr>
+                  <tr><td><strong>deploy-vps</strong></td><td>nœud commun T1, T2 &amp; T3</td><td>smoke test → <strong>gate manuelle</strong> (avant toute interruption VPS) → promote (T1/T3) + compose up (T2 uniquement) → test-api → Kapsule</td></tr>
                   <tr><td><strong>deploy-kapsule</strong></td><td>post deploy-vps</td><td>rolling update pods K8s (sans gate)</td></tr>
                   <tr><td><strong>kapsule-up</strong></td><td>manuel</td><td>provision cluster Kapsule + upload modèle S3</td></tr>
                   <tr><td><strong>kapsule-down</strong></td><td>manuel</td><td>déprovision cluster Kapsule</td></tr>
