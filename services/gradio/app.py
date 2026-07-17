@@ -913,6 +913,15 @@ def refresh_recent_runs() -> pd.DataFrame:
 # src/models/validate_model.py::KPI_THRESHOLDS (service Gradio séparé, pas d'import possible).
 _KPI_THRESHOLDS = {"f1": 0.60, "auc": 0.77, "accuracy": 0.72, "recall": 0.58}
 
+# Services reconstruits (rebuild) quand needs_build=True — ordre d'affichage
+_BUILD_SERVICES = ["api", "mlflow", "gradio", "gradio-public"]
+# Durée d'interruption estimée par service (rebuild ou restart)
+_SVC_INTERRUPTION = {
+    "api": "~30 s", "mlflow": "~1 s",
+    "gradio": "~5 s", "gradio-public": "~5 s",
+    "nginx": "~1 s", "grafana": "~2 s", "prometheus": "~2 s",
+}
+
 
 def _current_production_summary() -> dict | None:
     """Résumé du modèle @Production courant — réutilise _load_models_data (onglet Modèles)."""
@@ -1055,15 +1064,29 @@ def _render_gate_card(run_id: str) -> str:
             f'<p style="font-size:.85rem;color:{SLATE};">SHA : '
             f'<a href="{commit_url}" target="_blank" style="color:{NAVY};">{sha_tag[:8]}</a></p>'
         )
-        if needs_build and restart_services:
-            impact_line = f'Images à reconstruire : oui · Services restart-only (hors rebuild) : {restart_services}'
-        elif needs_build:
-            impact_line = 'Images à reconstruire : oui (restart des services impactés — voir tableau ci-dessous)'
-        elif restart_services:
-            impact_line = f'Images à reconstruire : non · Services à redémarrer : {restart_services}'
-        else:
-            impact_line = 'Images à reconstruire : non · Services à redémarrer : aucun'
-        parts.append(f'<p style="font-size:.85rem;color:{SLATE};">{impact_line}</p>')
+        # Calcul précis de l'impact services
+        rs_list = [s.strip() for s in restart_services.split(",") if s.strip()] if restart_services else []
+        build_set = set(_BUILD_SERVICES) if needs_build else set()
+        restart_only = [s for s in rs_list if s not in build_set]  # restart sans rebuild
+
+        impact_lines = []
+        if needs_build:
+            rebuilt = " · ".join(
+                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in _BUILD_SERVICES
+            )
+            impact_lines.append(f"Rebuild + restart : {rebuilt}")
+        if restart_only:
+            ro = " · ".join(
+                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '~2 s')})" for s in restart_only
+            )
+            impact_lines.append(f"Restart config-only : {ro}")
+        if champion and not build_set and "api" not in set(rs_list):
+            impact_lines.append("Restart <b>api</b> (~5 s) — chargement du nouveau modèle @Production")
+        if not impact_lines:
+            impact_lines.append("Aucun service à redémarrer — sources actives via volumes, <b>pas d'interruption</b>")
+
+        for line in impact_lines:
+            parts.append(f'<p style="font-size:.85rem;color:{SLATE};">{line}</p>')
 
     if champion and (needs_build or restart_services):
         go_steps = "Promouvoir @Production · rebuild/restart services · test-api · Kapsule"
