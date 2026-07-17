@@ -1,10 +1,10 @@
 """
 Update model flow — Trigger 3 : nouveau blueprint DS.
 
-Chaîne : extract blueprint → train avec nouveaux hyperparamètres
+Chaîne : train avec les hyperparamètres commités dans config/model_params.yml
 → compare vs @Production
-→ si meilleur  : promote @Production + config/model_params.yml conservé (params DS gagnants)
-→ si pas meilleur : config/model_params.yml restauré + notification DS
+→ si meilleur  : promote @Production
+→ si pas meilleur : notification DS
 
 Déclenché par deploy.yml uniquement quand config/model_params.yml change lors
 d'un push → PR → merge main — le seul artefact qui représente une vraie
@@ -12,27 +12,10 @@ décision DS (hyperparamètres rf/xgboost/lgbm). Un changement de code dans
 src/models/ ou src/features/ (fix, logging, refactor) est traité comme un
 déploiement de code normal (Trigger 2), pas comme un nouveau blueprint.
 """
-from pathlib import Path
-
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger
 
 from src.flows.deploy_vps_flow import deploy_vps_flow
 from src.flows.train_flow import train_flow
-
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "model_params.yml"
-
-
-@task(name="extract-blueprint-task")
-def extract_blueprint_task() -> bool:
-    """Lit le run MLflow tagué export_to_prod=true et met à jour config/model_params.yml."""
-    from src.scripts.extract_blueprint import extract_blueprint
-    updated = extract_blueprint()
-    log = get_run_logger()
-    if updated:
-        log.info("Blueprint extrait et config/model_params.yml mis à jour")
-    else:
-        log.info("Aucun run export_to_prod=true trouvé — blueprint inchangé, training avec params actuels")
-    return updated
 
 
 @flow(name="update-model-flow", log_prints=True)
@@ -44,49 +27,29 @@ def update_model_flow(
     restart_services: str = "",
 ) -> bool:
     """
-    Trigger 3 — DS a poussé un nouveau blueprint vers MLflow explore.
+    Trigger 3 — DS a commité un nouveau config/model_params.yml.
 
-    1. Backup config/model_params.yml courant
-    2. Extrait les hyperparamètres du run tagué export_to_prod=true
-    3. Entraîne les 3 algos avec le nouveau blueprint sur données prod
-    4a. Si meilleur que @Production : gate → promote + garder config/model_params.yml (params DS gagnants)
-    4b. Si pas meilleur : restaurer config/model_params.yml + notifier DS
+    1. Entraîne les 3 algos avec les hyperparamètres commités dans config/model_params.yml
+    2a. Si meilleur que @Production : gate → promote @Production
+    2b. Si pas meilleur : notifier DS (stop)
     """
     log = get_run_logger()
 
-    # Backup avant extraction — restauré si le modèle DS ne bat pas @Production
-    config_backup: str | None = None
-    if CONFIG_PATH.exists():
-        config_backup = CONFIG_PATH.read_text()
-
-    extract_blueprint_task()
-
-    # Trigger 3 : mêmes données, nouveaux hyperparamètres → comparaison F1 vs @Production valide
     result = train_flow(year=year, cumul=cumul, promote=False, require_improvement=True)
 
     if result["champion"] is None:
-        # Restaurer le blueprint précédent — les params DS n'ont pas battu @Production
-        # (event=alert topic=no_champion déjà émis par select_champion_task)
-        if config_backup is not None:
-            CONFIG_PATH.write_text(config_backup)
-            log.info("config/model_params.yml restauré (params DS non retenus)")
         raise RuntimeError(
             f"Blueprint DS non retenu — aucun algorithme ne dépasse @Production "
             f"(SHA: {sha_tag or 'N/A'}).\n"
-            "config/model_params.yml restauré aux paramètres précédents.\n"
             f"Métriques obtenues : {result['metrics']}\n"
             "Ce résultat est attendu si les hyperparamètres DS n'améliorent pas le modèle.\n"
             "Actions possibles :\n"
-            "  1. MLflow UI → Experiments → comparer les métriques du run update-model\n"
-            "  2. Ajuster les hyperparamètres et retagger export_to_prod=true dans MLflow\n"
+            "  1. MLflow UI → Experiments → accidents_severity_dev — comparer les métriques\n"
+            "  2. Ajuster les hyperparamètres dans config/model_params.yml et ouvrir une nouvelle PR\n"
             "  3. Vérifier que le benchmark a utilisé les données les plus récentes"
         )
 
-    # Champion trouvé → config/model_params.yml garde les params DS gagnants
-    log.info(
-        "Champion identifié : %s — config/model_params.yml mis à jour avec les params DS",
-        result["champion"],
-    )
+    log.info("Champion identifié : %s", result["champion"])
 
     return deploy_vps_flow(
         champion=result["champion"],

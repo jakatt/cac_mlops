@@ -8,7 +8,7 @@ Convention DS :
   Avant de pusher, tagger le run champion dans MLflow :
     mlflow.set_tag("export_to_prod", "true")
 
-Usage (appelé automatiquement par deploy.yml si blueprint change détecté) :
+Usage (outil DS local — non appelé par le pipeline de prod) :
     python src/scripts/extract_blueprint.py [--dry-run]
 """
 from __future__ import annotations

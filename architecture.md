@@ -1410,18 +1410,16 @@ Trois déclencheurs couvrent les évolutions data (trigger 1), code (trigger 2) 
 ║  ─────────────────────────────────────────────────────────                      │  │  ║
 ║  [DS local — MLflow explore]                                                    │  │  ║
 ║    Expériences MLFLOW_RUN_MODE=explore → accidents_severity_dev                 │  │  ║
-║    DS tagge run champion : mlflow set_tag("export_to_prod", "true")             │  │  ║
-║    PR vers main : config/model_params.yml modifié (seul artefact "blueprint")   │  │  ║
+║    DS met à jour config/model_params.yml avec les hyperparamètres gagnants      │  │  ║
+║    PR vers main : config/model_params.yml seul (guard CI bloque tout mélange)   │  │  ║
 ║  [deploy.yml — JOB 2 — SSH VPS — détection BLUEPRINT_CHANGED > 0]              │  │  ║
 ║    (mêmes étapes 1-4 que Trigger 2 — build/restart calculés dans tous les cas) │  │  ║
 ║    → prefect run update-model-flow/update-model --param sha_tag=…               │  │  ║
 ║        needs_build=… restart_services=…                                         │  │  ║
 ║  [update-model-flow]                                                            │  │  ║
-║    1. Backup config/model_params.yml courant                                    │  │  ║
-║    2. extract_blueprint_task() → lit run tagué → écrit config/model_params.yml  │  │  ║
-║    3. train_flow(year, cumul, promote=False)                                    │  │  ║
-║    4a. → Pas de champion : restaurer backup + send_alert DS + stop              │  │  ║
-║    4b. → Champion : garder config/model_params.yml (params DS gagnants)         │  │  ║
+║    1. train_flow(year, cumul, promote=False)                                    │  │  ║
+║    2a. → Pas de champion : send_alert DS + stop                                 │  │  ║
+║    2b. → Champion :                                                             │  │  ║
 ║         deploy-vps-flow(champion, run_ids, metrics, year,                       │  │  ║
 ║                          sha_tag, needs_build, restart_services) ────────────── ┘  │  ║
 ║         (needs_build/restart_services non-nuls si le merge inclut aussi du code)   │  ║
@@ -1508,13 +1506,11 @@ Dans les 3 tableaux ci-dessous, la ligne **Gate manuelle** est le seul point de 
 | Étape | Description | Script / Fichier | Flow Prefect / GH Action |
 | --- | --- | --- | --- |
 | Exploration | Expériences locales dans `accidents_severity_dev` | `src/models/train_model.py` | local (MLFLOW_RUN_MODE=explore) |
-| Tag champion | DS tagge run MLflow : `export_to_prod=true` | MLflow client API | DS — action manuelle |
-| CI + merge | PR avec `src/models/` ou `config/model_params.yml` (éventuellement du code en plus) | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
+| CI + merge | PR avec `config/model_params.yml` uniquement — guard CI bloque tout mélange avec du code | pytest, flake8 | `ci.yml` + `deploy.yml` JOB 1 |
 | VPS pull + flags | Mêmes étapes que use case 2 (git pull, images, `needs_build`/`restart_services`) | SSH script | `deploy.yml` JOB 2 |
-| Détection | `git diff HEAD~1` détecte fichiers model/features/config → trigger 3 | SSH script | `deploy.yml` JOB 2 |
-| Extract blueprint | Backup config actuel + lit run tagué → écrit `config/model_params.yml` | `src/scripts/extract_blueprint.py` | `update-model-flow` |
-| Entraînement | Benchmark 3 algos avec nouveaux hyperparamètres | `src/models/train_model.py` | `update-model-flow` |
-| Sélection | Compare vs @Production (require_improvement=True, delta > +0.01 F1) — si pas meilleur : restaure config + email DS (stop, jamais de gate) | `src/flows/train_flow.py` | `update-model-flow` |
+| Détection | `git diff HEAD~1` détecte `config/model_params.yml` → trigger 3 | SSH script | `deploy.yml` JOB 2 |
+| Entraînement | Benchmark 3 algos avec les hyperparamètres commités dans `config/model_params.yml` | `src/models/train_model.py` | `update-model-flow` |
+| Sélection | Compare vs @Production (require_improvement=True, delta > +0.01 F1) — si pas meilleur : email DS (stop, jamais de gate) | `src/flows/train_flow.py` | `update-model-flow` |
 | Gate manuelle | Opérateur valide AVANT toute interruption — modèle (F1/Recall/AUC) et/ou code (SHA, flags) selon le merge | Prefect UI / Cockpit Gradio — `pause_flow_run` | `deploy-vps-flow` |
 | Promote | Alias @Production MLflow + Docker restart API (si champion) | MLflow Registry | `deploy-vps-flow` — `promote_task` |
 | Compose up | `docker compose up -d` + redémarrages ciblés (si le merge inclut aussi du code) | `src/flows/deploy_vps_flow.py` — `compose_up_task` | `deploy-vps-flow` |
@@ -1652,7 +1648,7 @@ cac_mlops/
 │   │   ├── __init__.py
 │   │   └── email_utils.py                 # alertes email SMTP (send_alert — silent si non configuré)
 │   ├── scripts/
-│   │   └── extract_blueprint.py           # lit run MLflow export_to_prod=true → écrit config/model_params.yml
+│   │   └── extract_blueprint.py           # outil DS local — exporte run MLflow tagué vers config/model_params.yml (non appelé par le pipeline de prod)
 │   └── flows/
 │       ├── etl_flow.py                    # download + validate + preprocess (paramètre urls optionnel)
 │       ├── train_flow.py                  # benchmark 3 algos + select champion, retourne dict metrics
@@ -1731,7 +1727,7 @@ cac_mlops/
 ├── .dvc/config                            # remote = Scaleway Object Storage S3
 ├── requirements.txt
 ├── architecture.md                        # ce fichier — architecture technique
-├── ds_guide.md                            # guide DS — exploration, blueprint, export_to_prod
+├── ds_guide.md                            # guide DS — exploration, blueprint, soumission PR
 ├── mlops_dev_guide.md                     # guide MLOps dev — maintenance stack, CI/CD, debug
 └── mlops_prod_guide.md                    # guide opérateur prod — gates, drift, rollback, admin
 ```
@@ -1775,16 +1771,16 @@ cac_mlops/
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  3 triggers production     │  Trigger 1 : cron Prefect (nouvelle data)     │
 │                            │  Trigger 2 : push code → deploy.yml → Prefect │
-│                            │  Trigger 3 : DS blueprint → extract_blueprint  │
-│                            │              → update-model-flow → gate        │
+│                            │  Trigger 3 : DS blueprint → update-model-flow  │
+│                            │              → gate                            │
 │                            │  Interruption VPS (promote/compose up) après  │
 │                            │  la gate, jamais avant — pour les 3 triggers  │
 ├────────────────────────────┼────────────────────────────────────────────────┤
-│  Blueprint DS              │  DS tagge run MLflow : export_to_prod=true    │
-│                            │  update-model-flow : backup config → extract  │
-│                            │  → train → si champion : garder config (params│
-│                            │  DS gagnants) ; sinon : restaurer config +    │
-│                            │  notifier DS                                  │
+│  Blueprint DS              │  DS met à jour config/model_params.yml avec   │
+│                            │  les hyperparamètres gagnants — PR seule       │
+│                            │  (guard CI bloque mélange code+blueprint)      │
+│                            │  update-model-flow : train → si champion :    │
+│                            │  gate + promote ; sinon : notifier DS          │
 ├────────────────────────────┼────────────────────────────────────────────────┤
 │  CI/CD                     │  CI dans GitHub Actions (ci.yml + deploy.yml) │
 │                            │  CD dans Prefect (deploy-vps + deploy-kapsule)│
