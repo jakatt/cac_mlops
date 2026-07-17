@@ -164,7 +164,7 @@
           <td><span class="row-label">Stops<br>volontaires</span></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span><span class="badge-unit">gates</span></span></div></td>
         </tr>
         <tr>
           <td><span class="row-label">Validation<br>humaine</span></td>
@@ -237,30 +237,23 @@
             </ul>
           </td>
           <td>
-            <p class="desc-title">4 gates auto — 1 gate manuelle — 1 rollback — 0 interruption</p>
+            <p class="desc-title">3 gates auto — 1 gate manuelle — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail : identique T2</span>
+                <span class="item-desc">CI lint/pytest fail : identique T2 (blueprint pur — pas de Trivy, aucun build)</span>
               </li>
               <li>
-                <span class="item-label">Gate 2 *</span>
-                <span class="item-desc">Trivy CVE CRITICAL : identique T2</span>
-              </li>
-              <li>
-                <span class="item-label">Gate 3</span>
+                <span class="item-label">Gate 2</span>
                 <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé, deploy-kapsule non déclenché + alerte</span>
               </li>
               <li class="item-manual">
                 <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Côté VPS (<code>deploy-vps-flow</code> mis en pause) : métriques du nouveau blueprint + SHA/services affichés dans l'onglet Cockpit ou Prefect UI, avant toute interruption. <code>deploy-kapsule-flow</code> n'est déclenché qu'après GO + <code>test-api</code> VPS réussi. STOP → aucun impact, Kapsule jamais atteint.</span>
+                <span class="item-desc">Côté VPS (<code>deploy-vps-flow</code> mis en pause) : métriques du nouveau blueprint affichées dans l'onglet Cockpit ou Prefect UI. <code>deploy-kapsule-flow</code> n'est déclenché qu'après GO + <code>test-api</code> VPS réussi. STOP → aucun impact, Kapsule jamais atteint.</span>
               </li>
               <li>
-                <span class="item-label">Gate 4</span>
+                <span class="item-label">Gate 3</span>
                 <span class="item-desc">Readiness probe K8s (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption ; si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production</span>
-              </li>
-              <li style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
-                <span class="item-desc" style="font-style:italic">* Uniquement si le blueprint s'accompagne d'un changement de code joint (rare pour ce trigger)</span>
               </li>
             </ul>
           </td>
@@ -269,8 +262,8 @@
     </table>
   </div>
   <div class="footnote">
-    <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2/T3 Gate 1–2)</span>
-    <span>Rollback T1 : alias MLflow Registry · Rollback T2/T3 : <code>kubectl rollout undo</code></span>
+    <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2 Gate 1–2 · T3 Gate 1 uniquement — pas de build, pas de Trivy)</span>
+    <span>Rollback T1 : alias MLflow Registry · Rollback T2 : <code>kubectl rollout undo</code> · Rollback T3 : <code>kubectl rollout undo</code> + alias MLflow @Production (blueprint pur)</span>
   </div>
 </div>
 </div>
