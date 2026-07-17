@@ -113,7 +113,7 @@
         <tbody>
           <tr><td><strong>git + DVC</strong></td><td>Versioning code + données (remote S3 Scaleway)</td></tr>
           <tr><td><strong>pytest + flake8</strong></td><td>Tests et lint locaux avant PR</td></tr>
-          <tr><td><strong>kubectl + scw CLI</strong></td><td>Interaction cluster Kapsule — depuis le VPS (prefect-worker, flows deploy-kapsule / kapsule-up/down) ou en local pour debug</td></tr>
+          <tr><td><strong>scw CLI + kubectl</strong></td><td><strong>scw CLI</strong> — gestion des ressources cloud Scaleway (instances VPS, clusters K8s, kubeconfig Kapsule) · <strong>kubectl</strong> — gestion des workloads K8s (déploiements, rollouts, rollbacks Kapsule)</td></tr>
           <tr><td><strong>docker-compose</strong></td><td>Stack locale complète (ports → 127.0.0.1)</td></tr>
         </tbody>
       </table></div>
@@ -196,7 +196,7 @@
                   <tr><td><strong>drift-check</strong></td><td>manuel / fin de cycle</td><td>drift de features (indépendant du modèle) → alerte si seuil dépassé</td></tr>
                   <tr><td><strong>reset</strong></td><td>manuel</td><td>vide predictions + rapports drift (± MLflow selon options)</td></tr>
                   <tr><td><strong>check-new-data</strong></td><td>cron lundi 8h UTC</td><td>détecte nouvelles données ONISR → déclenche etl + train</td></tr>
-                  <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>train avec les hyperparamètres commités dans <code>config/model_params.yml</code> → gate manuelle → promote</td></tr>
+                  <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>train avec les hyperparamètres commités dans <code>config/model_params.yml</code> → si aucun champion : alerte DS + stop · si champion : gate manuelle → promote @Production + restart API (+ <code>docker compose up</code> si code joint*) → test-api → rollback MLflow si KO (+ rollback Docker* si code joint) · <em>*rare pour ce trigger</em></td></tr>
                 </tbody>
               </table></div>
             </div>
@@ -284,7 +284,8 @@
           <code>ghcr.io/jakatt/cac-mlops-api:latest</code> · <code>cac-mlops-mlflow:latest</code> · <code>cac-mlops-gradio:latest</code><br>
           (gradio-public réutilise l'image gradio — commande différente au démarrage)</p>
           <p><strong>Rollback automatique</strong> : images taguées <code>:sha-xxxxxxxx</code> + <code>:rollback</code> avant chaque build. <code>docker compose up</code> et le smoke test s'exécutent dans le flow Prefect (<code>deploy-vps-flow</code>), après la gate manuelle.</p>
-          <p><strong>Trigger 3 — Blueprint DS</strong> : le DS met à jour <code>config/model_params.yml</code> avec ses hyperparamètres gagnants et ouvre une PR dédiée. Le CI guard bloque tout mélange code+blueprint dans la même PR. Après merge, <code>update-model-flow</code> s'entraîne directement sur ce fichier (plus d'extraction MLflow — <code>config/model_params.yml</code> est la seule source de vérité).</p>
+          <p><strong>Trigger 3 — Blueprint DS</strong> : le DS met à jour <code>config/model_params.yml</code> avec ses hyperparamètres gagnants et ouvre une PR dédiée (le CI guard bloque tout mélange code+blueprint dans la même PR). Après merge, <code>update-model-flow</code> s'entraîne directement sur ce fichier — <code>config/model_params.yml</code> commité est la seule source de vérité (aucune extraction MLflow).</p>
+          <p><strong>Séquence T3 :</strong> Gate 1 CI (lint/pytest) → Gate 2 Trivy CRITICAL* → Gate 3 KPI (train_flow : si aucun champion, stop + alerte — @Production inchangé) → smoke test pré-gate → Gate manuelle (métriques nouveau blueprint affichées, rien appliqué en prod) → GO : promotion @Production + restart API (~30 s) → Gate 4 test-api ; si KO : rollback alias MLflow @Production (toujours) + rollback Docker :rollback* · <em>* uniquement si code joint — rare pour ce trigger</em></p>
           <p><strong>Sécurité</strong> : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).</p>
         </div>
       </details>
