@@ -1055,10 +1055,15 @@ def _render_gate_card(run_id: str) -> str:
             f'<p style="font-size:.85rem;color:{SLATE};">SHA : '
             f'<a href="{commit_url}" target="_blank" style="color:{NAVY};">{sha_tag[:8]}</a></p>'
         )
-        parts.append(
-            f'<p style="font-size:.85rem;color:{SLATE};">Images à reconstruire : '
-            f'{"oui" if needs_build else "non"} · Services à redémarrer : {restart_services or "aucun"}</p>'
-        )
+        if needs_build and restart_services:
+            impact_line = f'Images à reconstruire : oui · Services restart-only (hors rebuild) : {restart_services}'
+        elif needs_build:
+            impact_line = 'Images à reconstruire : oui (restart des services impactés — voir tableau ci-dessous)'
+        elif restart_services:
+            impact_line = f'Images à reconstruire : non · Services à redémarrer : {restart_services}'
+        else:
+            impact_line = 'Images à reconstruire : non · Services à redémarrer : aucun'
+        parts.append(f'<p style="font-size:.85rem;color:{SLATE};">{impact_line}</p>')
 
     if champion and (needs_build or restart_services):
         go_steps = "Promouvoir @Production · rebuild/restart services · test-api · Kapsule"
