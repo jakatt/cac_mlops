@@ -113,15 +113,15 @@
         <tbody>
           <tr><td><strong>git + DVC</strong></td><td>Versioning code + données (remote S3 Scaleway)</td></tr>
           <tr><td><strong>pytest + flake8</strong></td><td>Tests et lint locaux avant PR</td></tr>
-          <tr><td><strong>kubectl + scw CLI</strong></td><td>Interaction cluster Kapsule</td></tr>
+          <tr><td><strong>kubectl + scw CLI</strong></td><td>Interaction cluster Kapsule — depuis le VPS (prefect-worker, flows deploy-kapsule / kapsule-up/down) ou en local pour debug</td></tr>
           <tr><td><strong>docker-compose</strong></td><td>Stack locale complète (ports → 127.0.0.1)</td></tr>
         </tbody>
       </table></div>
       <p class="sec-label">MLflow distant via Tailscale</p>
-      <p><code>MLFLOW_TRACKING_URI = http://100.117.99.62:5001</code> — les expériences DS sont loggées directement sur le VPS.</p>
+      <p><code>MLFLOW_TRACKING_URI = http://100.117.99.62:5001</code> — les expériences DS sont loggées dans l'expérience <strong>accidents_severity_dev</strong> (MLflow DEV — séparée de <code>accidents_severity_prod</code> utilisée par le pipeline de prod).</p>
       <p class="sec-label">Cycle quotidien DS</p>
       <pre>git pull &amp;&amp; dvc pull          # sync code + données depuis S3
-→ dev + expériences MLflow
+→ dev + expériences MLflow (accidents_severity_dev)
 → git push + dvc push
 → PR vers main → CI → deploy automatique</pre>
     </div>
@@ -132,7 +132,7 @@
     <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · /data = 74 GB NVMe)</summary>
     <div class="body">
       <div class="band">
-        IP publique : <strong>51.159.187.132</strong> (port 8090 uniquement) &nbsp;·&nbsp;
+        URL publique : <strong><a href="https://mlops.jakat-inc.fr" target="_blank" style="color:inherit;">https://mlops.jakat-inc.fr</a></strong> (Caddy TLS → nginx :8090 → gradio-public) &nbsp;·&nbsp;
         IP Tailscale : <strong>100.117.99.62</strong> (ports admin — VPN uniquement)
       </div>
 
@@ -196,7 +196,7 @@
                   <tr><td><strong>drift-check</strong></td><td>manuel / fin de cycle</td><td>drift de features (indépendant du modèle) → alerte si seuil dépassé</td></tr>
                   <tr><td><strong>reset</strong></td><td>manuel</td><td>vide predictions + rapports drift (± MLflow selon options)</td></tr>
                   <tr><td><strong>check-new-data</strong></td><td>cron lundi 8h UTC</td><td>détecte nouvelles données ONISR → déclenche etl + train</td></tr>
-                  <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>extrait blueprint DS → train → gate manuelle → promote</td></tr>
+                  <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>train avec les hyperparamètres commités dans <code>config/model_params.yml</code> → gate manuelle → promote</td></tr>
                 </tbody>
               </table></div>
             </div>
@@ -275,7 +275,7 @@
           <div class="tbl"><table>
             <thead><tr><th>Workflow</th><th>Déclencheur</th><th>Étapes</th></tr></thead>
             <tbody>
-              <tr><td><strong>ci.yml</strong></td><td>push mlops/DS + PR → main</td><td>flake8 → pytest → bloque PR si ✗</td></tr>
+              <tr><td><strong>ci.yml</strong></td><td>push mlops/DS + PR → main</td><td><strong>Blueprint isolation check</strong> (bloque toute PR mélangeant <code>config/model_params.yml</code> avec du code source — forcer 2 PRs séparées) → flake8 → pip-audit → pytest → bloque PR si ✗</td></tr>
               <tr><td><strong>deploy.yml</strong></td><td>push → main</td><td>build images (si nécessaire) → Trivy CRITICAL → SSH VPS : git pull + pull images → déclenche Prefect</td></tr>
               <tr><td><strong>cleanup.yml</strong></td><td>cron hebdo</td><td>purge anciennes images GHCR</td></tr>
             </tbody>
@@ -284,6 +284,7 @@
           <code>ghcr.io/jakatt/cac-mlops-api:latest</code> · <code>cac-mlops-mlflow:latest</code> · <code>cac-mlops-gradio:latest</code><br>
           (gradio-public réutilise l'image gradio — commande différente au démarrage)</p>
           <p><strong>Rollback automatique</strong> : images taguées <code>:sha-xxxxxxxx</code> + <code>:rollback</code> avant chaque build. <code>docker compose up</code> et le smoke test s'exécutent dans le flow Prefect (<code>deploy-vps-flow</code>), après la gate manuelle.</p>
+          <p><strong>Trigger 3 — Blueprint DS</strong> : le DS met à jour <code>config/model_params.yml</code> avec ses hyperparamètres gagnants et ouvre une PR dédiée. Le CI guard bloque tout mélange code+blueprint dans la même PR. Après merge, <code>update-model-flow</code> s'entraîne directement sur ce fichier (plus d'extraction MLflow — <code>config/model_params.yml</code> est la seule source de vérité).</p>
           <p><strong>Sécurité</strong> : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).</p>
         </div>
       </details>
