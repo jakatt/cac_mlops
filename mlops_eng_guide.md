@@ -30,7 +30,7 @@
 | Source VPS | Container | Note |
 |---|---|---|
 | `./src` | `/app/src:ro` | Flows Prefect — mise à jour sans rebuild |
-| `./config` | `/app/config` | Blueprint hyperparamètres (rw — extract_blueprint.py) |
+| `./config` | `/app/config` | Blueprint hyperparamètres (rw — hyperparamètres lus par train_model.py) |
 | `./data` | `/app/data` | Données brutes + préprocessées |
 | `./reports` | `/app/reports` | Rapports drift Evidently |
 | `./state` | `/app/state` | IPs Kapsule dynamiques |
@@ -95,7 +95,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 | --- | ------- | ----------- | -------- | -------------- |
 | 1 | Nouvelle data ONISR | Prefect cron hebdo (`check-new-data`, lundi 8h) | ETL → validation → train → gate (avant promote) → promote → test-api → Kapsule | KPI absolus (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72) — promu même en légère régression vs @Production, tant que ≤1 métrique régresse (≥2 → aucune promotion) |
 | 2 | Nouveau code MLOps | push → PR → merge `main` (hors modèle) | build images (si nécessaire) → VPS prépare (pull code+images, flags) → gate (avant toute interruption) → compose up + smoke test → test-api → Kapsule (si OK) | Pas de réentraînement |
-| 3 | Nouveau blueprint DS | push → PR → merge `main` (`src/models/**`, `config/**`) | backup config → extract_blueprint → train → si meilleur : garder config + gate (avant promote/compose up) ; sinon : restaurer config + email DS | KPI absolus + delta F1 > +0.01 vs @Production (même test set → comparaison valide) |
+| 3 | Nouveau blueprint DS | push → PR → merge `main` (`config/model_params.yml` uniquement — guard CI bloque tout mélange avec du code) | train → si meilleur : gate (avant promote/compose up) ; sinon : email DS | KPI absolus + delta F1 > +0.01 vs @Production (même test set → comparaison valide) |
 
 **Split temporel (Triggers 1 & 3) :** `make_dataset.py` auto-détecte les années disponibles dans `data/raw/`. Dernière année = test set (~55k lignes). Toutes les précédentes = train. Aucune configuration manuelle nécessaire lors de l'ajout d'une nouvelle année. `year_acc` supprimé des features (évite fuite temporelle).
 
@@ -103,7 +103,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops && docker compose up -d <service>"
 
 `deploy.yml` JOB 2 compare les fichiers modifiés :
 ```bash
-BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -cE '^(src/models/|src/features/|config/model_params\.yml)')
+BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -c '^config/model_params\.yml$')
 ```
 - `BLUEPRINT_CHANGED > 0` → `update-model-flow/update-model` (trigger 3)
 - Sinon → `deploy-vps-flow/deploy-vps` (trigger 2)

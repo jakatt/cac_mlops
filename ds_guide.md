@@ -82,41 +82,28 @@ Dans MLflow UI → **Experiments** → `accidents_severity_dev` → trier par F1
 
 Quand tu as identifié un modèle champion dans MLflow explore :
 
-### Étape 1 — Tagger le run champion
+### Étape 1 — Mettre à jour config/model_params.yml et commiter
 
-```python
-import mlflow
-mlflow.set_tracking_uri("http://localhost:5001")
-client = mlflow.tracking.MlflowClient()
-# Remplace <run_id> par le run_id de ton champion (visible dans MLflow UI)
-client.set_tag("<run_id>", "export_to_prod", "true")
-```
-
-Ce tag signale au pipeline de prod que ce run contient les hyperparamètres à utiliser.
-
-### Étape 2 — Commiter et pusher
+Copie les hyperparamètres gagnants dans `config/model_params.yml`, puis :
 
 ```bash
 git checkout -b feature/nouveau-blueprint-lgbm   # ou ta branche habituelle
-# Optionnel : mettre à jour config/model_params.yml manuellement pour review
-git add config/model_params.yml   # si tu l'as modifié
+git add config/model_params.yml
 git push origin feature/nouveau-blueprint-lgbm
 ```
 
 Ouvre une PR vers `main`. Le MLOps lead review et merge.
 
+> **Important** : ne pas mélanger modification de `config/model_params.yml` et changements de code source (`src/`, `services/`) dans la même PR — le CI bloquera avec un message d'erreur explicite. Si les deux sont nécessaires, ouvrir deux PRs séparées : PR1 code, PR2 blueprint.
+
 ### Ce qui se passe automatiquement après merge
 
-`deploy.yml` détecte que `src/models/`, `src/features/` ou `config/model_params.yml` ont changé et déclenche `update-model-flow` qui :
+`deploy.yml` détecte que `config/model_params.yml` a changé et déclenche `update-model-flow` qui :
 
-1. Sauvegarde `config/model_params.yml` courant
-2. Lit le run tagué `export_to_prod=true` → écrit `config/model_params.yml` avec tes hyperparamètres
-3. Entraîne les 3 algos avec ce nouveau blueprint sur données prod
-4. Compare vs `@Production` :
-   - **Meilleur** → `config/model_params.yml` conservé (tes params sont adoptés) + gate manuelle (onglet Cockpit ou Prefect UI) + promote `@Production` + restart API
-   - **Pas meilleur** → `config/model_params.yml` restauré à son état précédent + email de notification
-
-**Si aucun run n'est tagué** `export_to_prod=true` : le pipeline s'entraîne avec les params actuels de `config/model_params.yml` (utile si seul le code de feature engineering a changé).
+1. Entraîne les 3 algos avec les hyperparamètres de `config/model_params.yml` sur données prod
+2. Compare vs `@Production` :
+   - **Meilleur** → gate manuelle (onglet Cockpit ou Prefect UI) + promote `@Production` + restart API
+   - **Pas meilleur** → email de notification (stop)
 
 ---
 

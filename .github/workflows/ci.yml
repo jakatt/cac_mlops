@@ -12,6 +12,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Blueprint isolation check
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED=$(git diff origin/main HEAD --name-only 2>/dev/null || true)
+          else
+            CHANGED=$(git diff HEAD~1 HEAD --name-only 2>/dev/null || true)
+          fi
+
+          BLUEPRINT=$(echo "$CHANGED" | grep -c '^config/model_params\.yml$' || true)
+          CODE=$(echo "$CHANGED" | grep -cE \
+            '^(services/api/Dockerfile|services/api/requirements.*\.txt|services/api/app/.*|services/monitoring/.*|services/__init__\.py|src/.*|scripts/.*|prefect\.yaml|requirements.*\.txt|pyproject\.toml|setup\.cfg)$' \
+            || true)
+
+          if [ "${BLUEPRINT:-0}" -gt 0 ] && [ "${CODE:-0}" -gt 0 ]; then
+            echo "::error::Blueprint (config/model_params.yml) modifié avec du code source dans la même PR."
+            echo "::error::Séparer en 2 PRs — PR1 : code seul (T2) · PR2 : config/model_params.yml seul (T3)"
+            exit 1
+          fi
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
