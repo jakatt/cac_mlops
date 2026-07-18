@@ -63,6 +63,7 @@ VPS_IP           = os.getenv("VPS_IP",               "51.159.187.132")
 VPS_TAILSCALE_IP = os.getenv("VPS_TAILSCALE_IP",     "") or VPS_IP
 PUBLIC_URL       = os.getenv("PUBLIC_URL",            "https://mlops.jakat-inc.fr")
 GITHUB_REPO      = os.getenv("GITHUB_REPO",          "jakatt/cac_mlops")
+GITHUB_TOKEN     = os.getenv("GITHUB_TOKEN",         "")
 KAPSULE_STATE    = Path(os.getenv("KAPSULE_STATE",   "/app/state/kapsule_ips"))
 
 NAVY  = "#156082"
@@ -935,6 +936,79 @@ def _current_production_summary() -> dict | None:
     return {"version": row["Version"], "f1": row["F1"], "auc": row["AUC"]}
 
 
+_PIPELINE: dict[str, dict] = {
+    "T1": {
+        "steps": ["Détection données", "ETL", "Retrain", "⏸ Gate", "VPS", "Test API", "Kapsule"],
+        "gate_idx": 3,
+    },
+    "T2": {
+        "steps": ["Push mlops", "PR", "Merge main", "CI", "CD", "⏸ Gate", "VPS", "Test API", "Kapsule"],
+        "gate_idx": 5,
+    },
+    "T3": {
+        "steps": ["Push DS", "PR", "Merge main", "CI", "Retrain", "CD", "⏸ Gate", "VPS", "Test API", "Kapsule"],
+        "gate_idx": 6,
+    },
+}
+
+_GH_PR_CACHE: dict[str, dict | None] = {}
+
+
+def _fetch_github_pr(sha: str) -> dict | None:
+    """Retourne {number, title, author, url} pour un SHA (court) via l'API GitHub, ou None."""
+    if sha in _GH_PR_CACHE:
+        return _GH_PR_CACHE[sha]
+    try:
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+        r = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/commits/{sha}/pulls",
+            headers=headers,
+            timeout=5,
+        )
+        if r.status_code == 200:
+            prs = r.json()
+            if isinstance(prs, list) and prs:
+                pr = prs[0]
+                result: dict | None = {
+                    "number": pr.get("number"),
+                    "title":  pr.get("title", ""),
+                    "author": (pr.get("user") or {}).get("login", ""),
+                    "url":    pr.get("html_url", ""),
+                }
+                _GH_PR_CACHE[sha] = result
+                return result
+    except Exception:
+        pass
+    _GH_PR_CACHE[sha] = None
+    return None
+
+
+def _render_pipeline_bar(trigger: str) -> str:
+    cfg = _PIPELINE[trigger]
+    steps = cfg["steps"]
+    gate = cfg["gate_idx"]
+    items = []
+    for i, step in enumerate(steps):
+        if i < gate:
+            bg, color, weight = "#d1fae5", "#065f46", 400
+        elif i == gate:
+            bg, color, weight = "#fef3c7", "#92400e", 700
+        else:
+            bg, color, weight = "#fee2e2", "#991b1b", 400
+        items.append(
+            f'<span style="background:{bg};color:{color};padding:3px 8px;border-radius:4px;'
+            f'font-size:.75rem;font-weight:{weight};white-space:nowrap;">{step}</span>'
+        )
+        if i < len(steps) - 1:
+            items.append('<span style="color:#9ca3af;font-size:.75rem;margin:0 1px;">→</span>')
+    return (
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:8px 0 14px 0;">'
+        + "".join(items) + "</div>"
+    )
+
+
 def _prefect_paused_runs() -> list[dict]:
     """Flow runs deploy-vps-flow en pause (gate manuelle en attente de décision)."""
     try:
@@ -1012,7 +1086,10 @@ def _render_gate_card(run_id: str) -> str:
     needs_build       = params.get("needs_build", False)
     restart_services  = params.get("restart_services", "")
 
+    trigger = "T3" if (champion and sha_tag) else ("T1" if champion else "T2")
+
     parts = ['<div style="font-family:\'Inter\',system-ui,sans-serif;">']
+    parts.append(_render_pipeline_bar(trigger))
 
     if champion:
         label = "Trigger 3 — Nouveau blueprint DS" if sha_tag else "Trigger 1 — Nouvelles données"
@@ -1064,6 +1141,15 @@ def _render_gate_card(run_id: str) -> str:
             f'<p style="font-size:.85rem;color:{SLATE};">SHA : '
             f'<a href="{commit_url}" target="_blank" style="color:{NAVY};">{sha_tag[:8]}</a></p>'
         )
+        pr = _fetch_github_pr(sha_tag)
+        if pr:
+            parts.append(
+                f'<p style="font-size:.85rem;color:{SLATE};">'
+                f'<a href="{pr["url"]}" target="_blank" style="color:{NAVY};font-weight:600;">'
+                f'PR #{pr["number"]}</a>'
+                f' · <span style="font-style:italic;">{pr["title"]}</span>'
+                f' · <span style="color:{MUTED};">@{pr["author"]}</span></p>'
+            )
         # Calcul précis de l'impact services
         rs_list = [s.strip() for s in restart_services.split(",") if s.strip()] if restart_services else []
         build_set = set(_BUILD_SERVICES) if needs_build else set()
