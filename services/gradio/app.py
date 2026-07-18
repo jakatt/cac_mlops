@@ -1010,27 +1010,62 @@ def _render_pipeline_bar(trigger: str) -> str:
 
 
 def _prefect_paused_runs() -> list[dict]:
-    """Flow runs deploy-vps-flow en pause (gate manuelle en attente de décision)."""
+    """Flow runs deploy-vps-flow en pause (gate manuelle en attente de décision).
+
+    Prefect 3 + work pool 'process' : le processus worker reste vivant pendant
+    la pause → le state_type reste RUNNING au lieu de PAUSED dans l'API après
+    quelques secondes. On cherche donc PAUSED | RUNNING sans end_time, puis on
+    vérifie les logs pour confirmer que le run est bien à la gate (event=gate_open
+    présent, event=gate_resolved absent).
+    """
     try:
         r = requests.post(
             f"{PREFECT_API}/flow_runs/filter",
             json={
                 "flows": {"name": {"any_": ["deploy-vps-flow"]}},
-                "flow_runs": {"state": {"type": {"any_": ["PAUSED"]}}},
+                "flow_runs": {
+                    "state": {"type": {"any_": ["PAUSED", "RUNNING"]}},
+                    "end_time": {"is_null_": True},
+                },
                 "sort": "START_TIME_DESC",
             },
             timeout=5,
         )
-        runs = r.json()
-        if not isinstance(runs, list):
+        candidates = r.json()
+        if not isinstance(candidates, list):
             return []
-        for run in runs:
-            if "parameters" not in run:
+
+        runs = []
+        for run in candidates:
+            run_id = run.get("id", "")
+            # Récupère les paramètres si absents
+            if "parameters" not in run or not run.get("parameters"):
                 try:
-                    r2 = requests.get(f"{PREFECT_API}/flow_runs/{run['id']}", timeout=5)
+                    r2 = requests.get(f"{PREFECT_API}/flow_runs/{run_id}", timeout=5)
                     run["parameters"] = r2.json().get("parameters", {})
                 except Exception:
                     run["parameters"] = {}
+            # Vérifie la présence de gate_open et l'absence de gate_resolved dans les logs
+            try:
+                r3 = requests.post(
+                    f"{PREFECT_API}/logs/filter",
+                    json={
+                        "logs": {"flow_run_id": {"any_": [run_id]}, "message": {"like_": "%event=gate%"}},
+                        "sort": "TIMESTAMP_ASC",
+                        "limit": 20,
+                    },
+                    timeout=5,
+                )
+                log_data = r3.json()
+                log_msgs = " ".join(
+                    (lg.get("message") or "") for lg in (log_data if isinstance(log_data, list) else [])
+                )
+                if "event=gate_open" in log_msgs and "event=gate_resolved" not in log_msgs:
+                    runs.append(run)
+            except Exception:
+                # En cas d'erreur API logs, on inclut le run par défaut s'il est PAUSED
+                if run.get("state_type") == "PAUSED":
+                    runs.append(run)
         return runs
     except Exception:
         return []
