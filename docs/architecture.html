@@ -107,12 +107,12 @@
   <details>
     <summary>💻 DEV LOCAL</summary>
     <div class="body">
-      <p><strong>Environnement Mac développeur</strong></p>
+      <p><strong>Environnement développeur</strong></p>
       <div class="tbl"><table>
         <thead><tr><th>Outil</th><th>Rôle</th></tr></thead>
         <tbody>
-          <tr><td><strong>git + DVC</strong></td><td>Versioning code + données (remote S3 Scaleway)</td></tr>
-          <tr><td><strong>pytest + flake8</strong></td><td>Tests et lint locaux avant PR</td></tr>
+          <tr><td><strong>git + DVC</strong></td><td>Versioning code + données en remote sur S3 Scaleway</td></tr>
+          <tr><td><strong>pytest + flake8</strong></td><td><a href="https://mlops.jakat-inc.fr/ci-docs/tests_catalogue.html" target="_blank" style="color:var(--accent);">Tests</a> et lint locaux avant PR</td></tr>
           <tr><td><strong>scw CLI + kubectl</strong></td><td><strong>scw CLI</strong> — gestion des ressources cloud Scaleway (instances VPS, clusters K8s, kubeconfig Kapsule) · <strong>kubectl</strong> — gestion des workloads K8s (déploiements, rollouts, rollbacks Kapsule)</td></tr>
           <tr><td><strong>docker-compose</strong></td><td>Stack locale complète (ports → 127.0.0.1)</td></tr>
         </tbody>
@@ -122,18 +122,18 @@
       <p class="sec-label">Cycle quotidien DS</p>
       <pre>git pull &amp;&amp; dvc pull          # sync code + données depuis S3
 → dev + expériences MLflow (accidents_severity_dev)
-→ git push + dvc push
+→ git push
 → PR vers main → CI → deploy automatique</pre>
     </div>
   </details>
 
   <!-- VPS -->
   <details open>
-    <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · /data = 74 GB NVMe)</summary>
+    <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · 100 GB STORAGE)</summary>
     <div class="body">
       <div class="band">
         URL publique : <strong><a href="https://mlops.jakat-inc.fr" target="_blank" style="color:inherit;">https://mlops.jakat-inc.fr</a></strong> (Caddy TLS → nginx :8090 → gradio-public) &nbsp;·&nbsp;
-        IP Tailscale : <strong>100.117.99.62</strong> (ports admin — VPN uniquement)
+        Cockpit Admin : <strong><a href="http://100.117.99.62:7860" target="_blank" style="color:inherit;">http://100.117.99.62:7860</a></strong> (Tailscale — VPN uniquement)
       </div>
 
       <!-- Docker -->
@@ -146,10 +146,10 @@
               <div class="tbl"><table>
                 <thead><tr><th>Conteneur</th><th>Port hôte</th><th>Accès</th><th>Rôle</th></tr></thead>
                 <tbody>
-                  <tr><td><strong>api</strong></td><td>8080 / 8000</td><td>Tailscale + Prometheus</td><td>FastAPI — prédiction + JWT + métriques</td></tr>
+                  <tr><td><strong>api</strong></td><td>8080 / 8000</td><td>Tailscale</td><td>FastAPI — prédiction + JWT + métriques</td></tr>
                   <tr><td><strong>mlflow</strong></td><td>5001</td><td>Tailscale</td><td>Tracking + Registry (image custom boto3/psycopg2)</td></tr>
-                  <tr><td><strong>gradio</strong></td><td>7860</td><td>Tailscale</td><td>Cockpit MLOps admin (gate GO/STOP · Orchestration · Healthcheck · Drift · Modèles · Docs)</td></tr>
-                  <tr><td><strong>gradio-public</strong></td><td>7862 (int.)</td><td>via nginx → PUBLIC</td><td>Cockpit public — 3 onglets (Predict, What-If, Points Noirs)</td></tr>
+                  <tr><td><strong>gradio</strong></td><td>7860</td><td>Tailscale</td><td>Cockpit Admin</td></tr>
+                  <tr><td><strong>gradio-public</strong></td><td>7862 (int.)</td><td>Caddy TLS → nginx</td><td>Cockpit public</td></tr>
                 </tbody>
               </table></div>
             </div>
@@ -163,7 +163,7 @@
                   <tr><td><strong>postgresql</strong></td><td>5432</td><td>interne Docker</td></tr>
                   <tr><td><strong>minio</strong></td><td>9000 / 9001</td><td>Tailscale</td></tr>
                   <tr><td><strong>minio-init</strong></td><td>—</td><td>EXIT après init (crée bucket)</td></tr>
-                  <tr><td><strong>nginx</strong></td><td>8090</td><td><strong>PUBLIC 0.0.0.0</strong></td></tr>
+                  <tr><td><strong>nginx</strong></td><td>8090</td><td>localhost (via Caddy)</td></tr>
                   <tr><td><strong>prefect-server</strong></td><td>4200</td><td>Tailscale</td></tr>
                   <tr><td><strong>prefect-worker</strong></td><td>—</td><td>process pool (image api + kubectl + scw)</td></tr>
                   <tr><td><strong>node-exporter</strong></td><td>9100</td><td>interne Docker</td></tr>
@@ -171,10 +171,10 @@
                   <tr><td><strong>prometheus</strong></td><td>9090</td><td>Tailscale</td></tr>
                   <tr><td><strong>grafana</strong></td><td>3000</td><td>Tailscale</td></tr>
                   <tr><td><strong>loki</strong></td><td>3100</td><td>interne Docker</td></tr>
-                  <tr><td><strong>promtail</strong></td><td>—</td><td>agent logs → loki</td></tr>
+                  <tr><td><strong>promtail</strong></td><td>—</td><td>interne Docker</td></tr>
                 </tbody>
               </table></div>
-              <p><code>PUBLIC</code> → 51.159.187.132 · <code>Tailscale</code> → 100.117.99.62 · <code>interne</code> → réseau Docker · <code>process pool</code> → aucun port · <code>EXIT</code> → one-shot init</p>
+              <p><code>Tailscale</code> → 100.117.99.62 · <code>localhost</code> → 127.0.0.1 (hôte VPS) · <code>interne</code> → réseau Docker · <code>process pool</code> → aucun port · <code>EXIT</code> → one-shot init</p>
             </div>
           </details>
         </div>
@@ -191,12 +191,12 @@
                 <thead><tr><th>Flow</th><th>Déclencheur</th><th>Rôle</th></tr></thead>
                 <tbody>
                   <tr><td><strong>etl</strong></td><td>manuel / cron</td><td>download data.gouv.fr + validation schéma + preprocessing</td></tr>
-                  <tr><td><strong>train</strong></td><td>manuel / post-etl</td><td>benchmark RF / XGBoost / LGBM → sélection champion (T1: gate KPI + tolérance régression ≤1 métrique · T3: +0.01 F1 vs @Prod)</td></tr>
+                  <tr><td><strong>train</strong></td><td>manuel / post-etl</td><td>benchmark RF / XGBoost / LGBM → sélection champion (T1: tolérance régression ≤1 métrique vs @Prod · T3: +0.01 F1 vs @Prod)</td></tr>
                   <tr><td><strong>full-retrain</strong></td><td>manuel</td><td>tous les cycles depuis zéro — détecte automatiquement les années dispo (etl + train × N cycles + drift)</td></tr>
-                  <tr><td><strong>drift-check</strong></td><td>manuel / fin de cycle</td><td>drift de features (indépendant du modèle) → alerte si seuil dépassé</td></tr>
-                  <tr><td><strong>reset</strong></td><td>manuel</td><td>vide predictions + rapports drift (± MLflow selon options)</td></tr>
+                  <tr><td><strong>drift-check</strong></td><td>manuel / fin de cycle T1</td><td>drift de features (indépendant du modèle) → <code>event=alert</code> loggué → Loki → Grafana alerte email SMTP</td></tr>
+                  <tr><td><strong>reset</strong></td><td>manuel</td><td>7 options : <code>predictions</code> · <code>drift</code> · <code>mlflow</code> · <code>postgres_full</code> · <code>minio</code> · <code>grafana</code> · <code>loki</code> + <code>full_reset</code> (force toutes les options)</td></tr>
                   <tr><td><strong>check-new-data</strong></td><td>cron lundi 8h UTC</td><td>détecte nouvelles données ONISR → déclenche etl + train</td></tr>
-                  <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>train avec les hyperparamètres commités dans <code>config/model_params.yml</code> → si aucun champion : alerte DS + stop · si champion : gate manuelle → promote @Production + restart API (~30 s) → test-api → rollback alias MLflow @Production si KO</td></tr>
+                  <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>train avec les hyperparamètres commités dans <code>config/model_params.yml</code> → si aucun champion : alerte DS + stop · si champion : gate manuelle → promote @Production + restart API (~30 s) → test-api → rollback alias MLflow @Production si KO → Kapsule</td></tr>
                 </tbody>
               </table></div>
             </div>
@@ -207,7 +207,7 @@
               <div class="tbl"><table>
                 <thead><tr><th>Flow</th><th>Déclencheur</th><th>Rôle</th></tr></thead>
                 <tbody>
-                  <tr><td><strong>deploy-vps</strong></td><td>nœud commun T1, T2 &amp; T3</td><td>smoke test → <strong>gate manuelle</strong> (avant toute interruption VPS) → promote (T1/T3) + compose up (T2 uniquement) → test-api → Kapsule</td></tr>
+                  <tr><td><strong>deploy-vps</strong></td><td>flow parent (T1: check-new-data · T2: CD SSH · T3: update-model)</td><td>nœud commun T1, T2 &amp; T3 — smoke test → <strong>gate manuelle</strong> (avant toute interruption VPS) → promote (T1/T3) + compose up (T2 uniquement) → test-api → Kapsule</td></tr>
                   <tr><td><strong>deploy-kapsule</strong></td><td>post deploy-vps</td><td>rolling update pods K8s (sans gate)</td></tr>
                   <tr><td><strong>kapsule-up</strong></td><td>manuel</td><td>provision cluster Kapsule + upload modèle S3</td></tr>
                   <tr><td><strong>kapsule-down</strong></td><td>manuel</td><td>déprovision cluster Kapsule</td></tr>
@@ -225,13 +225,23 @@
       <details>
         <summary>📊 Monitoring — Prometheus + Grafana + Loki + Evidently</summary>
         <div class="body">
-          <p><strong>Prometheus</strong> <code>:9090</code> (Tailscale) + <strong>Prometheus K8s</strong> interrogé à distance depuis Grafana (datasource <code>prometheus-k8s</code>)</p>
+          <p><strong>Prometheus VPS</strong> <code>:9090</code> (Tailscale)</p>
           <div class="tbl"><table>
             <thead><tr><th>Source</th><th>Métriques</th></tr></thead>
             <tbody>
               <tr><td><code>api:8000/metrics</code></td><td>requêtes, latence p50/p95/p99, prédictions, drift</td></tr>
               <tr><td><code>node-exporter:9100</code></td><td>CPU / RAM / disk VPS</td></tr>
               <tr><td><code>nginx-exporter:9113</code></td><td>connexions nginx, taux 4xx/5xx</td></tr>
+            </tbody>
+          </table></div>
+          <p class="sec-label">Prometheus K8s — datasource Grafana directe (via Tailscale)</p>
+          <div class="tbl"><table>
+            <thead><tr><th>Source</th><th>Métriques</th></tr></thead>
+            <tbody>
+              <tr><td><code>api:8000/metrics</code></td><td>requêtes, latence, disponibilité</td></tr>
+              <tr><td><code>kube-state-metrics</code></td><td>réplicas disponibles par Deployment</td></tr>
+              <tr><td><code>blackbox-exporter</code></td><td>sonde HTTP publique (<code>kapsule.jakat-inc.fr/health</code>)</td></tr>
+              <tr><td><code>node-exporter ×2</code></td><td>CPU / RAM / disk des nœuds K8s</td></tr>
             </tbody>
           </table></div>
           <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 6 dashboards provisionnés (dossier <code>cac-mlops</code>), seule instance du projet</p>
@@ -298,7 +308,7 @@
     <summary>☸️ Kapsule K8s — Scaleway (on-demand, fr-par)</summary>
     <div class="body">
       <div class="band">
-        <strong>Objectif</strong> : prouver le zero-downtime — Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>), contrairement au VPS qui a une gate manuelle avant toute interruption. Pas de Cockpit admin sur K8s (retiré le 2026-07-13, redondant avec celui du VPS) — K8s est dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
+        Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>). Pas de Cockpit admin sur K8s car dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
       </div>
 
       <details open>
@@ -309,7 +319,7 @@
             <tbody>
               <tr><td><strong>api</strong></td><td>HPA CPU 70% / RAM 80% → min 2 pods, max 8 · <code>maxUnavailable: 0</code> — pas de <code>replicas:</code> en dur (conflit avec le HPA, cf. incident 2026-07-11)</td></tr>
               <tr><td></td><td>initContainer <code>fetch-model</code> : récupère <code>trained_model.joblib</code> depuis S3 au démarrage</td></tr>
-              <tr><td><strong>gradio-public</strong></td><td>Cockpit public 3 onglets — ClusterIP, atteint uniquement via nginx→caddy</td></tr>
+              <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP, atteint uniquement via nginx→caddy</td></tr>
               <tr><td><strong>nginx</strong></td><td>ClusterIP — rate-limiting + routing (<code>/token</code> 5r/min, <code>/predict</code> 20r/min)</td></tr>
               <tr><td><strong>caddy</strong></td><td><strong>Seul point d'entrée public</strong> — LoadBalancer, TLS Let's Encrypt auto (<code>kapsule.jakat-inc.fr</code>)</td></tr>
               <tr><td><strong>prometheus</strong></td><td>scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 — interrogé à distance par le Grafana du VPS</td></tr>
@@ -321,7 +331,6 @@
               <tr><td><strong>promtail</strong> <em>(DaemonSet)</em></td><td>1 pod/nœud — logs des pods K8s → Loki VPS via <code>loki-forwarder</code></td></tr>
             </tbody>
           </table></div>
-          <p><strong>Prefect retiré de K8s</strong> (2026-07-11) — le worker K8s restait vide en permanence, pur gaspillage de ressources sur des nœuds déjà sous pression disque (incident DiskPressure, 2026-07-10).</p>
         </div>
       </details>
 
@@ -389,14 +398,14 @@
         <tbody>
           <tr>
             <td><code>dvc/</code></td>
-            <td>Données ONISR versionnées (data-v1/v2/v3)</td>
+            <td>Données ONISR versionnées (data-v1/v2/v3 ...)</td>
             <td>VPS — ETL flow (<code>dvc push</code>)</td>
             <td>DEV LOCAL (<code>dvc pull</code>)</td>
           </tr>
           <tr>
             <td><code>k8s-model/</code></td>
             <td><code>trained_model.joblib</code> — promotion du champion vers Kapsule</td>
-            <td>VPS — <code>kapsule-up-flow</code> (upload après gate)</td>
+            <td>VPS — <code>kapsule-up-flow</code> (upload initial) · <code>deploy_kapsule_flow</code> (réexporte modèle + dataset à chaque deploy T1/T2/T3)</td>
             <td>Kapsule — initContainer <code>fetch-model</code> au démarrage pod</td>
           </tr>
           <tr>
@@ -418,9 +427,10 @@
       <div class="tbl"><table>
         <thead><tr><th>Source</th><th>Destination</th><th>Ce qui transite</th></tr></thead>
         <tbody>
-          <tr><td>VPS</td><td>S3</td><td><code>dvc push</code> — données ONISR après ETL · <code>kapsule-up-flow</code> — upload modèle joblib</td></tr>
+          <tr><td>VPS</td><td>S3</td><td><code>dvc push</code> — données ONISR après ETL · <code>deploy_kapsule_flow</code> — réexporte modèle joblib + dataset à chaque deploy</td></tr>
           <tr><td>S3</td><td>DEV LOCAL</td><td><code>dvc pull</code> — sync données versionnées pour expérimentation</td></tr>
           <tr><td>S3</td><td>Kapsule</td><td>initContainer : télécharge <code>trained_model.joblib</code> · Caddy : certificat TLS partagé entre cycles provision/déprovision</td></tr>
+          <tr><td>VPS</td><td>Kapsule</td><td><code>deploy_kapsule_flow</code> → <code>kubectl rollout restart</code> (via Tailscale) — déclenche redémarrage pods · initContainer <code>fetch-model</code> repull modèle depuis S3</td></tr>
         </tbody>
       </table></div>
 
