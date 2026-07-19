@@ -1,3 +1,4 @@
+# demo T2 — 2026-07-19 - 13:18
 """
 Diagnostic flow — snapshots de l'état du VPS (containers, disk, ports).
 Remplace .github/workflows/diag.yml
