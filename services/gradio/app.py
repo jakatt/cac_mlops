@@ -1050,16 +1050,15 @@ def _prefect_paused_runs() -> list[dict]:
                 r3 = requests.post(
                     f"{PREFECT_API}/logs/filter",
                     json={
-                        "logs": {"flow_run_id": {"any_": [run_id]}, "message": {"like_": "%event=gate%"}},
-                        "sort": "TIMESTAMP_ASC",
+                        "logs": {"flow_run_id": {"any_": [run_id]}},
+                        "sort": "TIMESTAMP_DESC",
                         "limit": 20,
                     },
                     timeout=5,
                 )
                 log_data = r3.json()
-                log_msgs = " ".join(
-                    (lg.get("message") or "") for lg in (log_data if isinstance(log_data, list) else [])
-                )
+                logs = log_data if isinstance(log_data, list) else []
+                log_msgs = " ".join((lg.get("message") or "") for lg in logs)
                 if "event=gate_open" in log_msgs and "event=gate_resolved" not in log_msgs:
                     runs.append(run)
             except Exception:
