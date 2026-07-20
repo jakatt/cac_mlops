@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Guide administrateur — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 920px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:680px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+.ci-doc .toc { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;margin:12px 0; }
+.ci-doc .toc-item { background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.79rem;color:var(--muted); }
+.ci-doc .toc-item a { color:var(--accent);text-decoration:none;font-weight:600; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Guide administrateur — Architecture technique</h1>
+    <p class="page-sub">Documentation complète de l'architecture : données · pipeline ETL · validation · versioning · infrastructure VPS · Kubernetes · CI/CD · monitoring · sécurité réseau</p>
+  </header>
+
+  <!-- 1. CONTEXTE -->
+  <details open>
+    <summary>1 — Contexte &amp; Objectif</summary>
+    <div class="body">
+      <details open>
+        <summary>Problème métier &amp; cible</summary>
+        <div class="body">
+          <p>Prédire la <strong>gravité d'un accident de la route</strong> à partir de ses caractéristiques au moment de la déclaration : conditions météo, type de voie, heure, caractéristiques de l'usager et du véhicule.</p>
+          <pre>grav = 1  →  victime avec blessure grave ou décès  (PRIORITAIRE)
+grav = 0  →  blessé léger ou indemne               (NON PRIORITAIRE)</pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>KPIs &amp; seuils de performance</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>KPI</th><th>Seuil minimum</th><th>Pourquoi</th></tr></thead>
+            <tbody>
+              <tr><td>F1-score</td><td>≥ 0.60</td><td>Équilibre précision/rappel sur classes déséquilibrées</td></tr>
+              <tr><td>AUC-ROC</td><td>≥ 0.77</td><td>Capacité discriminante globale</td></tr>
+              <tr><td>Accuracy</td><td>≥ 0.72</td><td>Indicateur de référence global</td></tr>
+              <tr><td>Recall (grav=1)</td><td>≥ 0.58</td><td>Minimiser les faux négatifs — ne pas manquer un blessé grave</td></tr>
+            </tbody>
+          </table></div>
+          <div class="band"><strong>Modèle actuel @Production :</strong> lgbm_accidents — cumul 2021+2022+2023 · F1=0.664 · AUC=0.839 · Recall=0.631 · Acc=0.783 · Marge ~8% pour absorber la variance inter-années</div>
+          <p><strong>Seuil delta minimal :</strong> +0.01 sur F1 pour remplacer @Production (évite les swaps sur bruit statistique).</p>
+          <p><strong>Seuil de régression :</strong> si le nouveau modèle régresse vs @Production sur ≥2 métriques → aucune promotion, @Production inchangé.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Métriques API &amp; pipeline</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Métrique</th><th>Seuil alerte</th><th>Outil</th></tr></thead>
+            <tbody>
+              <tr><td>Latence p95 /predict</td><td>&lt; 300 ms</td><td>Prometheus</td></tr>
+              <tr><td>Taux erreur HTTP 5xx</td><td>&lt; 1%</td><td>Prometheus</td></tr>
+              <tr><td>Disponibilité</td><td>&gt; 99.5%</td><td>Grafana uptime</td></tr>
+              <tr><td>Validation schéma</td><td>0 erreur CRITICAL</td><td>Pandera — stop immédiat</td></tr>
+              <tr><td>Dérive données (Evidently)</td><td>share &gt; 10% WARNING · &gt; 25% CRITICAL</td><td>Evidently + Prometheus</td></tr>
+              <tr><td>Volume annuel accidents</td><td>40 000 – 90 000</td><td>schema_validator WARNING</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 2. DONNÉES -->
+  <details>
+    <summary>2 — Source des données &amp; stratégie d'ingestion</summary>
+    <div class="body">
+      <div class="band">
+        <strong>Source :</strong> ONISR (Observatoire National Interministériel de la Sécurité Routière) — data.gouv.fr · Dataset ID : 53698f4ca3a729239d2036df · Publication annuelle (données N publiées en mai-juin N+1)
+      </div>
+
+      <details open>
+        <summary>Périmètre retenu : 2021 → 2024</summary>
+        <div class="body">
+          <p>Schéma ONISR stable depuis 2021 (refonte majeure en 2019). Données 2021→2023 = entraînement cumulatif. Données 2024 = simulation production drift.</p>
+          <div class="tbl"><table>
+            <thead><tr><th>Année calendaire</th><th>Entraînement cumulatif</th><th>Drift de features</th></tr></thead>
+            <tbody>
+              <tr><td>2023 (1ère prod)</td><td>2021 → Modèle v1 @Production</td><td>— (pas de référence)</td></tr>
+              <tr><td>2024</td><td>2021+2022 → Modèle v2</td><td>2022 vs réf. 2021</td></tr>
+              <tr><td>2025</td><td>2021+2022+2023 → Modèle v3</td><td>2023 vs réf. 2021+2022</td></tr>
+              <tr><td>2026</td><td>2021+2022+2023+2024 → v4</td><td>2024 vs réf. 2021+2022+2023</td></tr>
+            </tbody>
+          </table></div>
+          <p><em>Chaque nouvelle année sert à la fois de test set temporel (évaluation F1/AUC) ET de sujet du drift de features vs années précédentes — les deux opérations sont indépendantes.</em></p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Résolution dynamique des URLs (fuzzy-match)</summary>
+        <div class="body">
+          <p>L'ONISR change la convention de nommage à chaque période. Les URLs sont résolues dynamiquement par <strong>fuzzy-match via l'API data.gouv.fr</strong> (<code>CATEGORY_KEYWORDS</code>) — aucune mise à jour manuelle requise.</p>
+          <div class="tbl"><table>
+            <thead><tr><th>Année</th><th>Fichier caract.</th><th>Keyword match</th></tr></thead>
+            <tbody>
+              <tr><td>2021</td><td>carcteristiques-2021.csv</td><td>"caract" ✓</td></tr>
+              <tr><td>2022</td><td>carcteristiques-2022.csv</td><td>"caract" ✓</td></tr>
+              <tr><td>2023</td><td>caract-2023.csv</td><td>"caract" ✓</td></tr>
+              <tr><td>2024</td><td>Caract_2024.csv</td><td>"caract" ✓ (case-insensitive)</td></tr>
+              <tr><td>202X</td><td>?????-202X.csv</td><td>"caract" ✓ — aucune MAJ</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Volume des données</summary>
+        <div class="body">
+          <pre>caracteristiques-{year}.csv  ·  ~56 500 lignes  ·  1 ligne par accident
+lieux-{year}.csv             ·  ~56 500 lignes  ·  1 ligne par accident
+usagers-{year}.csv           ·  ~129 000 lignes ·  1 ligne par usager
+vehicules-{year}.csv         ·  ~97 000 lignes  ·  1 ligne par véhicule
+
+APRÈS FUSION ET PREPROCESSING
+─────────────────────────────
+~55 450 lignes × 27 features + 1 cible (par année)
+Cumul 3 années : ~166 000 lignes (train + test)</pre>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 3. PIPELINE ETL -->
+  <details>
+    <summary>3 — Pipeline ETL détaillé</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Étape</th><th>Script</th><th>Sortie</th><th>Si KO</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1. Ingestion</strong></td><td><code>import_raw_data.py</code></td><td><code>data/raw/{year}/*.csv</code></td><td>—</td></tr>
+          <tr><td><strong>2. Validation N1 — Format</strong></td><td><code>schema_validator.py</code></td><td>Séparateur, encodage, nb fichiers</td><td>❌ CRITICAL → stop + alerte</td></tr>
+          <tr><td><strong>3. Validation N2 — Schéma</strong></td><td><code>schema_validator.py</code></td><td>Colonnes requises, types, nouvelles colonnes</td><td>❌ CRITICAL (colonnes) / ⚠️ WARNING (inconnues)</td></tr>
+          <tr><td><strong>4. Validation N3 — Qualité</strong></td><td><code>schema_validator.py</code></td><td>Distributions, taux NaN, volume</td><td>⚠️ WARNING → log + continue</td></tr>
+          <tr><td><strong>5. Normalisation</strong></td><td><code>normalizer/normalize.py</code></td><td>DataFrames format 2021-standard</td><td>—</td></tr>
+          <tr><td><strong>6. Preprocessing</strong></td><td><code>make_dataset.py</code></td><td><code>data/preprocessed/cumul_{years}/</code></td><td>—</td></tr>
+          <tr><td><strong>7. Versioning DVC</strong></td><td>DVC + git</td><td>S3 + tag <code>data-v{N}</code></td><td>—</td></tr>
+        </tbody>
+      </table></div>
+
+      <details>
+        <summary>Preprocessing détaillé (make_dataset.py)</summary>
+        <div class="body">
+          <ul>
+            <li>Feature engineering : âge victime (<code>year_acc - an_nais</code>), heure (<code>hrmn</code>), <code>nb_victim</code>, <code>nb_vehicules</code></li>
+            <li>Nettoyage : remplacement -1 et 0 → NaN · recodage <code>catv</code> (40→7 classes) · <code>atm</code> (9→2) · Corse 2A→201, 2B→202</li>
+            <li>Fusion 4 tables sur Num_Acc · tri par grav DESC · dédoublonnage (1 ligne/accident — victime la plus grave)</li>
+            <li>Cible binaire : <code>grav {2,3,4} → {0,1,1}</code></li>
+            <li>Suppression colonnes identifiants (<code>id_usager</code>, <code>year_acc</code>)</li>
+            <li>Train/Test split : 70/30, <code>random_state=42</code></li>
+            <li>Imputation NaN sur 4 colonnes par mode(X_train)</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 4. VALIDATION PANDERA -->
+  <details>
+    <summary>4 — Validation de schéma — Pandera</summary>
+    <div class="body">
+      <p>Pandera est retenu (léger, natif pandas, intégrable Prefect, unitestable) vs Great Expectations (overkill) et pur Python (non standardisé).</p>
+
+      <div class="tbl"><table>
+        <thead><tr><th>Niveau</th><th>Vérifié</th><th>Si KO</th></tr></thead>
+        <tbody>
+          <tr><td><strong>1 — Format fichier</strong></td><td>Séparateur ( ; ) · encodage (UTF-8) · 4 fichiers présents · aucun vide</td><td>❌ CRITICAL → pipeline stoppé, modèle N-1 actif</td></tr>
+          <tr><td><strong>2 — Schéma colonnes</strong></td><td>Colonnes requises présentes · types corrects · colonnes inconnues (nouvelles ONISR)</td><td>❌ CRITICAL (colonnes requises) / ⚠️ WARNING (inconnues)</td></tr>
+          <tr><td><strong>3 — Qualité données</strong></td><td>Volume 40k–90k accidents · codes modalités connus · taux NaN &lt;30% · lat/long France</td><td>⚠️ WARNING → log + pipeline continue</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 5. VERSIONING -->
+  <details>
+    <summary>5 — Versioning bout en bout — Git · DVC · MLflow</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>GIT (GitHub)</th><th>DVC (Scaleway S3)</th><th>MLflow (MinIO VPS)</th></tr></thead>
+        <tbody>
+          <tr><td>Code Python · Dockerfiles · CI/CD yaml · K8s manifests · requirements.txt</td><td>data/raw/*.csv · data/preprocessed/ · .dvc pointeurs</td><td>Runs (paramètres, métriques) · Modèles (.joblib) · Model Registry (@Production)</td></tr>
+          <tr><td>❌ JAMAIS les CSV</td><td>❌ Jamais le code</td><td>❌ Jamais le code</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 6. ARCHITECTURE GLOBALE -->
+  <details>
+    <summary>6 — Architecture globale</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Zone</th><th>Composant</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>POSTE DEV</strong></td><td>Mac développeur</td><td>git · dvc · pytest · flake8 · kubectl · docker-compose local</td></tr>
+          <tr><td rowspan="3"><strong>VPS SCALEWAY</strong><br>51.159.187.132<br>100.117.99.62 (Tailscale)</td><td>16 conteneurs Docker</td><td>Voir §7</td></tr>
+          <tr><td>14 deployments Prefect</td><td>Orchestration ETL, train, deploy, drift, kapsule, diag…</td></tr>
+          <tr><td>PLG Stack + Evidently</td><td>Monitoring + alertes</td></tr>
+          <tr><td><strong>KAPSULE K8s</strong><br>on-demand</td><td>11 Deployments + 2 DaemonSets</td><td>Voir §9 — zéro-downtime rolling updates</td></tr>
+          <tr><td><strong>PARTAGÉ</strong></td><td>GitHub · GHCR · Scaleway Object Storage</td><td>Code · Images · DVC remote · Artefacts K8s</td></tr>
+        </tbody>
+      </table></div>
+
+      <details>
+        <summary>Flux de données de bout en bout</summary>
+        <div class="body">
+          <pre>[data.gouv.fr]
+     │  HTTP GET year=N
+     ▼
+[import_raw_data]  →  data/raw/{year}/
+     │
+     ▼
+[schema_validator]  →  ❌ CRITICAL : stop + alerte / ⚠️ WARNING : log + continue
+     │ OK
+     ▼
+[normalizer]        →  DataFrames format standard 2021
+     │
+     ▼
+[make_dataset]      →  data/preprocessed/cumul_{years}/
+     │
+     ├──► [DVC push]   →  Scaleway Object Storage
+     │
+     ▼
+[train_model]       →  benchmark RF / XGBoost / LightGBM
+     │
+     ├──► [MLflow log]  →  run, métriques, modèle → MinIO + PostgreSQL
+     │
+     ▼
+[select_champion]   →  quality gate KPI · delta vs @Production
+     │ champion qualifié
+     ▼
+[deploy-vps-flow]   →  gate manuelle (AVANT interruption) → promote + compose up → test-api
+     │
+     ▼
+[api service]       →  recharge modèle @Production (restart)
+     │
+     ▼
+[CADDY :443]        ←  HTTPS externe (TLS Let's Encrypt)
+     │  HTTP 127.0.0.1:8090
+     ▼
+[NGINX :8090]       →  rate-limit + routing
+     │
+     ▼
+[simulate_prod]     →  ~55k accidents via POST /predict (données 2024)
+     │
+     ▼
+[Evidently]         →  rapport drift HTML + métriques Prometheus</pre>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 7. VPS -->
+  <details>
+    <summary>7 — Infrastructure VPS — Scaleway DEV1-XL</summary>
+    <div class="body">
+      <div class="band">
+        <strong>Serveur :</strong> DEV1-XL — 4 vCPU / 12 GB RAM / 500 Mbps &nbsp;·&nbsp;
+        <strong>IP publique :</strong> 51.159.187.132 (HTTPS via Caddy → mlops.jakat-inc.fr) &nbsp;·&nbsp;
+        <strong>IP Tailscale :</strong> 100.117.99.62 (ports admin — tailnet uniquement) &nbsp;·&nbsp;
+        <strong>Répertoire :</strong> /data/cac_mlops (symlink depuis /home/deploy)
+      </div>
+
+      <details open>
+        <summary>16 conteneurs Docker (15 permanents + minio-init EXIT)</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Conteneur</th><th>Port hôte</th><th>Accès</th></tr></thead>
+            <tbody>
+              <tr><td><strong>postgresql</strong></td><td>5432</td><td>interne Docker uniquement</td></tr>
+              <tr><td><strong>minio</strong></td><td>9000/9001</td><td>http://100.117.99.62:9001 (Tailscale)</td></tr>
+              <tr><td><strong>minio-init</strong></td><td>—</td><td>EXIT après init (crée bucket)</td></tr>
+              <tr><td><strong>mlflow</strong></td><td>5001</td><td>http://100.117.99.62:5001 (Tailscale)</td></tr>
+              <tr><td><strong>api</strong></td><td>8080/8000</td><td>http://100.117.99.62:8080/docs (Tailscale) + prod via Caddy+NGINX</td></tr>
+              <tr><td><strong>nginx</strong></td><td>8090</td><td>127.0.0.1 uniquement (Caddy → https://mlops.jakat-inc.fr)</td></tr>
+              <tr><td><strong>prefect-server</strong></td><td>4200</td><td>http://100.117.99.62:4200 (Tailscale)</td></tr>
+              <tr><td><strong>prefect-worker</strong></td><td>—</td><td>process pool (image api)</td></tr>
+              <tr><td><strong>gradio</strong></td><td>7860</td><td>http://100.117.99.62:7860 (Tailscale)</td></tr>
+              <tr><td><strong>gradio-public</strong></td><td>7862 (interne)</td><td>via Caddy+nginx → https://mlops.jakat-inc.fr</td></tr>
+              <tr><td><strong>node-exporter</strong></td><td>9100</td><td>interne Docker (Prometheus)</td></tr>
+              <tr><td><strong>nginx-exporter</strong></td><td>9113</td><td>interne Docker (Prometheus)</td></tr>
+              <tr><td><strong>prometheus</strong></td><td>9090</td><td>http://100.117.99.62:9090 (Tailscale)</td></tr>
+              <tr><td><strong>grafana</strong></td><td>3000</td><td>http://100.117.99.62:3000 (Tailscale)</td></tr>
+              <tr><td><strong>loki</strong></td><td>3100</td><td>interne Docker (logs agrégation)</td></tr>
+              <tr><td><strong>promtail</strong></td><td>—</td><td>agent scrape logs → loki</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Disques</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Device</th><th>Mount</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr><td>/dev/vda1 NVMe</td><td>/</td><td>OS + système (~30% utilisé)</td></tr>
+              <tr><td>/dev/sda Block</td><td>/data</td><td>Docker + volumes + données (74 GB) · <code>data-root=/data/docker</code></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Autre application sur ce VPS (NE PAS TOUCHER)</summary>
+        <div class="body">
+          <div class="band">Caddy (port 80/443) + 2× uvicorn Python (port 8000/8001) · Qdrant vector DB (Docker, localhost:6333-6334 uniquement) — application séparée, ne pas supprimer les images Docker sans vérification.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Scaleway Object Storage — s3://cac-mlops-data</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Chemin</th><th>Contenu</th></tr></thead>
+            <tbody>
+              <tr><td><code>dvc/</code></td><td>Données brutes versionnées (DVC remote)</td></tr>
+              <tr><td><code>k8s-model/</code></td><td>trained_model.joblib (pour initContainer K8s)</td></tr>
+              <tr><td><code>mlflow-k8s/</code></td><td>Artefacts MLflow dans Kapsule</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 8. TAILSCALE -->
+  <details>
+    <summary>8 — Sécurité réseau — Tailscale VPN</summary>
+    <div class="body">
+      <details open>
+        <summary>Modèle d'accès à deux niveaux</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Niveau</th><th>Accès</th><th>URL / port</th></tr></thead>
+            <tbody>
+              <tr><td><strong>PUBLIC (internet)</strong></td><td>HTTPS via Caddy</td><td>https://mlops.jakat-inc.fr → Cockpit public · /predict (JWT requis) · /health · /reports/drift/*</td></tr>
+              <tr><td><strong>ÉQUIPE (Tailscale)</strong></td><td>100.117.99.62 uniquement</td><td>:7860 Cockpit admin · :5001 MLflow · :3000 Grafana · :4200 Prefect UI · :8080 API Swagger · :9001 MinIO · :9090 Prometheus</td></tr>
+              <tr><td><strong>SSH</strong></td><td>Internet (clé uniquement)</td><td>ssh deploy@51.159.187.132 — auth par mot de passe désactivée</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Implémentation technique</summary>
+        <div class="body">
+          <ul>
+            <li>Tailscale installé sur le VPS (<code>tailscaled.service</code> — démarrage auto) · IP stable : <strong>100.117.99.62</strong></li>
+            <li>Docker bind ports admin à l'IP Tailscale : <code>ports: "${VPS_TAILSCALE_IP:-127.0.0.1}:PORT:PORT"</code></li>
+            <li>UFW : <code>allow 22/tcp</code> · <code>allow in on tailscale0</code> (toute l'équipe tailnet)</li>
+            <li><code>VPS_TAILSCALE_IP=100.117.99.62</code> dans <code>/data/cac_mlops/.env</code></li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Onboarding d'un nouveau membre</summary>
+        <div class="body">
+          <ul>
+            <li>Installer Tailscale sur son Mac (tailscale.com/download) → se connecter</li>
+            <li>L'admin approuve son appareil → console.tailscale.com</li>
+            <li>Accès immédiat aux URLs Tailscale ci-dessus</li>
+            <li>Configurer <code>.env</code> local : <code>MLFLOW_TRACKING_URI=http://100.117.99.62:5001</code></li>
+          </ul>
+          <pre>Host vps-tailscale
+    HostName 100.117.99.62
+    User deploy
+    IdentityFile ~/.ssh/&lt;clé_deploy&gt;</pre>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 9. KUBERNETES -->
+  <details>
+    <summary>9 — Infrastructure Kubernetes — Kapsule</summary>
+    <div class="body">
+      <div class="band">
+        <strong>Scaleway Kapsule</strong> — cluster cac-mlops (Kubernetes 1.35.3) · Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB) · Activé à la demande via Prefect flows <code>kapsule-up</code> / <code>kapsule-down</code>
+      </div>
+
+      <details open>
+        <summary>Deployments (namespace: cac-mlops)</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Deployment</th><th>Rôle</th><th>Note</th></tr></thead>
+            <tbody>
+              <tr><td><strong>api</strong></td><td>FastAPI inference</td><td>initContainer fetch S3 → /app/model/ · HPA CPU 70%/RAM 80% (min 2→max 8 pods) · maxUnavailable: 0</td></tr>
+              <tr><td><strong>gradio</strong></td><td>Cockpit admin — ClusterIP</td><td>COCKPIT_ENV=kapsule masque onglets VPS-only (Drift/Modèles/Orchestration/Cockpit)</td></tr>
+              <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP</td><td>via nginx→caddy</td></tr>
+              <tr><td><strong>mlflow</strong></td><td>SQLite emptyDir isolé</td><td>PAS le vrai registre VPS</td></tr>
+              <tr><td><strong>nginx</strong></td><td>Rate-limiting + routing — ClusterIP</td><td>—</td></tr>
+              <tr><td><strong>caddy</strong></td><td>SEUL point d'entrée public — LoadBalancer</td><td>TLS Let's Encrypt auto · kapsule.jakat-inc.fr</td></tr>
+              <tr><td><strong>prometheus</strong></td><td>Scrape api + kube-state-metrics + blackbox + node-exporter</td><td>Interrogé à distance par Grafana VPS</td></tr>
+              <tr><td><strong>tailscale-subnet-router</strong></td><td>Pont vers le tailnet du VPS</td><td>—</td></tr>
+              <tr><td><strong>loki-forwarder</strong></td><td>Client Tailscale userspace dédié (SOCKS5 :1055)</td><td>Relaie logs Promtail → Loki VPS</td></tr>
+              <tr><td><strong>kube-state-metrics</strong></td><td>RBAC scopé namespace</td><td>Réplicas disponibles</td></tr>
+              <tr><td><strong>blackbox-exporter</strong></td><td>Sonde HTTP sur l'URL publique</td><td>—</td></tr>
+              <tr><td><strong>node-exporter</strong> (DaemonSet)</td><td>1/nœud — CPU/RAM/disque</td><td>—</td></tr>
+              <tr><td><strong>promtail</strong> (DaemonSet)</td><td>1/nœud — logs pods → Loki VPS</td><td>Label cluster="kapsule"</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Monitoring K8s — consolidé dans Grafana/Loki VPS (2026-07-12)</summary>
+        <div class="body">
+          <p>Plus de Grafana ni de Loki propres à K8s — consolidés dans les instances VPS (simplicité opérationnelle + libère des ressources).</p>
+          <ul>
+            <li><strong>Métriques :</strong> Grafana VPS interroge Prometheus K8s via Tailscale (datasource uid: prometheus-k8s) · Dashboard "Kapsule K8s"</li>
+            <li><strong>Logs :</strong> Promtail (DaemonSet) → loki-forwarder (SOCKS5) → Loki VPS · label <code>cluster="kapsule"</code></li>
+            <li><strong>Alertes K8s (groupe kapsule-monitoring) :</strong> réplicas api &lt; minimum HPA · endpoint public down · <code>execErrState: OK</code> (Kapsule injoignable à chaque kapsule-down = état normal)</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Prefect retiré de K8s (2026-07-11)</summary>
+        <div class="body">
+          <p>prefect-server/prefect-worker existaient sur K8s mais n'avaient jamais de deployments enregistrés. Toute l'orchestration Kapsule est pilotée depuis le Prefect du VPS via kubectl/scw, jamais depuis l'intérieur du cluster. Retiré — ressources libérées sur nœuds sous pression.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Secrets K8s (injectés par kapsule-up)</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Secret</th><th>Contenu</th></tr></thead>
+            <tbody>
+              <tr><td><code>s3-creds</code></td><td>AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY</td></tr>
+              <tr><td><code>app-creds</code></td><td>JWT_SECRET_KEY · API_USERNAME · API_PASSWORD · POSTGRES_PASSWORD</td></tr>
+              <tr><td><code>tailscale-auth</code></td><td>TS_AUTHKEY (reusable + ephemeral, tag:k8s-cac-mlops)</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 10. STACK TECHNIQUE -->
+  <details>
+    <summary>10 — Stack technique détaillée</summary>
+    <div class="body">
+      <details open>
+        <summary>API — FastAPI</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST /token</code></td><td>form: username + password → {"access_token": "...", "token_type": "bearer"}</td></tr>
+              <tr><td><code>POST /predict</code></td><td>Bearer JWT requis → {"prediction": 0/1, "probability": 0.71, ...} · log PostgreSQL</td></tr>
+              <tr><td><code>GET /health</code></td><td>{"status": "ok", "model_version": "lgbm_accidents@Production"}</td></tr>
+              <tr><td><code>GET /metrics</code></td><td>Métriques Prometheus (format text/plain)</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Auth :</strong> JWT HS256 (python-jose + passlib) · <strong>Chargement modèle :</strong> cherche @Production dans MLflow Registry · Ordre : lgbm_accidents → rf_accidents → xgb_accidents · Fallback : LOCAL_MODEL_PATH</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>NGINX — Gateway &amp; rate limiting</summary>
+        <div class="body">
+          <pre>Client externe
+     │  HTTPS :443
+     ▼
+Caddy (TLS Let's Encrypt, mlops.jakat-inc.fr)
+     │  HTTP 127.0.0.1:8090
+     ▼
+NGINX (nginx:alpine)
+     ├── /          → gradio-public:7862 (WebSocket/SSE)
+     ├── /predict   → api:8000 (rate-limited 20r/min, burst=5)
+     ├── /health    → api:8000
+     ├── /token     → api:8000
+     ├── /metrics   → api:8000
+     ├── /docs      → api:8000
+     └── /reports/  → /srv/reports/ (rapports Evidently HTML)</pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>MLflow — Tracking &amp; Model Registry</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Paramètre</th><th>Valeur</th></tr></thead>
+            <tbody>
+              <tr><td>Backend</td><td>PostgreSQL (runs, params, métriques)</td></tr>
+              <tr><td>Artefacts</td><td>MinIO bucket "mlflow" (modèles .joblib, plots)</td></tr>
+              <tr><td>Alias actif</td><td>@Production (un seul actif — effacé des autres familles lors de la promotion)</td></tr>
+              <tr><td>Expériences</td><td><code>accidents_severity_prod</code> (officiel) · <code>accidents_severity_dev</code> (explore DS)</td></tr>
+              <tr><td>Familles</td><td>lgbm_accidents · rf_accidents · xgb_accidents</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Prefect — 14 deployments</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Deployment</th><th>Flow</th><th>Trigger</th></tr></thead>
+            <tbody>
+              <tr><td><code>etl</code></td><td>etl_flow.py</td><td>manuel / chaîné</td></tr>
+              <tr><td><code>train</code></td><td>train_flow.py</td><td>manuel / chaîné</td></tr>
+              <tr><td><code>drift-check</code></td><td>drift_monitoring_flow.py</td><td>manuel / fin retrain</td></tr>
+              <tr><td><code>full-retrain</code></td><td>full_retrain_flow.py</td><td>manuel (init complète)</td></tr>
+              <tr><td><code>reset</code></td><td>reset_flow.py</td><td>manuel (RAZ)</td></tr>
+              <tr><td><code>check-new-data</code></td><td>check_new_data_flow.py</td><td>cron lundi 8h UTC</td></tr>
+              <tr><td><code>update-model</code></td><td>update_model_flow.py</td><td>deploy.yml trigger 3</td></tr>
+              <tr><td><code>deploy-vps</code></td><td>deploy_vps_flow.py</td><td>deploy.yml trigger 2</td></tr>
+              <tr><td><code>deploy-kapsule</code></td><td>deploy_kapsule_flow.py</td><td>fin de deploy-vps-flow (si test-api OK)</td></tr>
+              <tr><td><code>kapsule-up</code></td><td>kapsule_up_flow.py</td><td>manuel</td></tr>
+              <tr><td><code>kapsule-down</code></td><td>kapsule_down_flow.py</td><td>manuel</td></tr>
+              <tr><td><code>test-api</code></td><td>test_api_flow.py</td><td>fin de deploy-vps-flow + manuel</td></tr>
+              <tr><td><code>diag</code></td><td>diag_flow.py</td><td>manuel</td></tr>
+              <tr><td><code>disk-cleanup</code></td><td>disk_cleanup_flow.py</td><td>cron 2h UTC quotidien</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Monitoring — Stack PLG + Evidently</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Outil</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Prometheus</strong></td><td>Métriques numériques (API, système, drift)</td></tr>
+              <tr><td><strong>Loki</strong></td><td>Logs centralisés (tous conteneurs Docker + K8s)</td></tr>
+              <tr><td><strong>Grafana</strong></td><td>Dashboards + 7 alertes (4 Prometheus + 3 Loki) · email</td></tr>
+              <tr><td><strong>Promtail</strong></td><td>Agent Docker → collecte logs → Loki</td></tr>
+              <tr><td><strong>Evidently</strong></td><td>Drift features (X_train vs X_test) · rapport HTML + 6 gauges Prometheus</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Métriques Prometheus API :</strong> <code>api_requests_total</code> · <code>api_request_duration_seconds</code> · <code>api_predictions_total</code> · <code>model_version_info</code></p>
+          <p><strong>Métriques Evidently :</strong> <code>drift_score{feature}</code> · <code>drift_detected</code> · <code>drift_share</code> · <code>drifted_features_count</code> · <code>production_rows</code> · <code>drift_level{level}</code></p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Cockpit Gradio</summary>
+        <div class="body">
+          <p><strong>Cockpit MLOps complet</strong> (gradio — Tailscale uniquement) — <code>http://100.117.99.62:7860</code></p>
+          <div class="tbl"><table>
+            <thead><tr><th>Onglet</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr><td>1. Accueil</td><td>Présentation du projet, liens rapides</td></tr>
+              <tr><td>2. Predict</td><td>27 features → prédiction @Production + probabilité · 5 exemples préremplis</td></tr>
+              <tr><td>3. What-If</td><td>Scénarios (météo/nuit/alcool/vitesse), compare % graves avant vs après</td></tr>
+              <tr><td>4. Points Noirs</td><td>density_mapbox accidents France, filtres gravité/catr</td></tr>
+              <tr><td>5. Cockpit</td><td>Gate manuelle GO/STOP · accordéon Drift (rapports Evidently) · accordéon Modèles (versions MLflow + promotion)</td></tr>
+              <tr><td>6. Orchestration</td><td>Déclenchement flows Prefect depuis le cockpit · tableau 20 derniers runs</td></tr>
+              <tr><td>7. Healthcheck</td><td>Check HTTP tous services VPS + cluster Kapsule</td></tr>
+              <tr><td>8. Liens</td><td>URLs Tailscale admin + API publique + IPs Kapsule</td></tr>
+              <tr><td>9. Architecture</td><td>Stack interactive architecture.html</td></tr>
+              <tr><td>10. Docs</td><td>Guides DS / MLOps / admin en HTML</td></tr>
+            </tbody>
+          </table></div>
+          <p><em>Sur Kapsule (COCKPIT_ENV=kapsule) : onglets Cockpit, Orchestration, Drift (accordéon), Modèles (accordéon) masqués — dépendent du Prefect/MLflow du VPS.</em></p>
+          <p><strong>Cockpit public</strong> (gradio-public) — <code>https://mlops.jakat-inc.fr</code> · Script : <code>services/gradio/app_public.py</code> · 3 onglets (Predict + What-If + Points Noirs)</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 11. DEV LOCAL -->
+  <details>
+    <summary>11 — Développement local</summary>
+    <div class="body">
+      <p><strong>Prérequis :</strong> Docker Desktop · Git + Python 3.11+ · Tailscale connecté au tailnet · DVC</p>
+      <pre>git clone git@github.com:jakatt/cac_mlops.git
+cp .env.example .env
+# Renseigner dans .env :
+#   MLFLOW_TRACKING_URI=http://100.117.99.62:5001   (VPS via Tailscale)
+#   MLFLOW_S3_ENDPOINT_URL=http://100.117.99.62:9000
+#   SCW_ACCESS_KEY_ID + SCW_SECRET_ACCESS_KEY       (DVC remote)
+
+dvc pull              # récupère les données depuis Scaleway S3
+docker compose up -d  # lance toute la stack locale (optionnel)</pre>
+
+      <details>
+        <summary>Variables d'environnement : local vs VPS</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Variable</th><th>Local (mode Tailscale)</th><th>VPS (/data/cac_mlops/.env)</th></tr></thead>
+            <tbody>
+              <tr><td>MLFLOW_TRACKING_URI</td><td>http://100.117.99.62:5001</td><td>http://mlflow:5000 (interne Docker)</td></tr>
+              <tr><td>MLFLOW_S3_ENDPOINT_URL</td><td>http://100.117.99.62:9000</td><td>http://minio:9000</td></tr>
+              <tr><td>VPS_TAILSCALE_IP</td><td>—</td><td>100.117.99.62</td></tr>
+              <tr><td>DOCKER_VOLUMES_PATH</td><td>—</td><td>/data</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 12. CI/CD -->
+  <details>
+    <summary>12 — CI/CD — GitHub Actions</summary>
+    <div class="body">
+      <div class="band">
+        <strong>Branch protection main (activée) :</strong> CI obligatoire avant merge · 1 review requise · force push interdit · suppression interdite
+      </div>
+
+      <details open>
+        <summary>ci.yml — push mlops/DS / PR→main</summary>
+        <div class="body">
+          <ul>
+            <li>pip install -r requirements.txt</li>
+            <li>pip-audit -r requirements.txt (audit CVE dépendances Python)</li>
+            <li>flake8 (erreurs bloquantes E9/F63/F7/F82)</li>
+            <li>pytest tests/unit/ -v → la PR ne peut pas merger si ✗</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>deploy.yml — push/merge main</summary>
+        <div class="body">
+          <p><strong>Concurrence group :</strong> annule deploy précédent si nouveau commit.</p>
+          <p><strong>JOB 1 — build</strong> (runner GitHub Actions) :</p>
+          <ul>
+            <li>Build + push images :latest ET :sha-xxxxxxxx (8 chars) → ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}</li>
+            <li>Scan Trivy CRITICAL (ignore-unfixed) sur 3 images → bloque si CVE critique</li>
+          </ul>
+          <p><strong>JOB 2 — trigger-deploy</strong> (SSH sur l'hôte VPS — /data/cac_mlops) :</p>
+          <ol>
+            <li>git stash + git pull origin main</li>
+            <li>Si build détecté : login GHCR · tag images courantes → :rollback · docker compose pull (images seulement, aucune interruption)</li>
+            <li>Calcul RESTART_SERVICES : <code>git diff HEAD~1</code> → nginx/gradio/grafana/prometheus/loki/promtail selon fichiers changés</li>
+            <li><code>prefect deploy --all</code> (resync schémas)</li>
+            <li>Détection trigger 2 vs 3 → lancement flow Prefect (fire-and-forget)</li>
+          </ol>
+        </div>
+      </details>
+
+      <details>
+        <summary>cleanup.yml — cron dimanche 3h UTC</summary>
+        <div class="body">
+          <p>Nettoyage Docker VPS : dangling images/volumes, optionnellement logs+tmp.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 13. CHAINE COMPLETE -->
+  <details>
+    <summary>13 — Chaîne complète — 3 déclencheurs</summary>
+    <div class="body">
+      <p>Tous les triggers convergent vers le même nœud <code>deploy-vps-flow</code>, avec gate manuelle <strong>avant toute interruption</strong>.</p>
+
+      <details open>
+        <summary>deploy-vps-flow — nœud commun (triggers 1, 2, 3)</summary>
+        <div class="body">
+          <ul>
+            <li><strong>1.</strong> Smoke test baseline : GET /health (retry 18×5s) → si KO : alerte + stop</li>
+            <li><strong>2. ★ GATE MANUELLE</strong> : <code>pause_flow_run(timeout=86400s)</code> — AVANT toute interruption<br>→ Opérateur : Prefect UI "Resume" OU cockpit Gradio onglet Cockpit (GO/STOP)</li>
+            <li><strong>3a.</strong> Si champion : sauvegarde @Production → promote MLflow → restart api</li>
+            <li><strong>3b.</strong> Si needs_build/restart_services : <code>docker compose up -d --remove-orphans</code> + redémarrages ciblés → 2nd smoke test → si KO : rollback :rollback</li>
+            <li><strong>4.</strong> test-api (6 tests, skip_rate_limit=True) → si KO : rollback promote ET/OU rollback Docker :rollback</li>
+            <li><strong>5.</strong> deploy-kapsule-flow (si test-api OK)</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Interruptions de service</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Infra</th><th>Interruption</th><th>Quand</th></tr></thead>
+            <tbody>
+              <tr><td><strong>VPS Scaleway</strong></td><td>~30–90s pendant <code>docker compose up -d</code></td><td>Toujours APRÈS la gate manuelle — sur les 3 triggers</td></tr>
+              <tr><td><strong>Kapsule K8s</strong></td><td>ZÉRO — maxUnavailable:0</td><td>Jamais &lt;1 réplica disponible</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 14. WORKFLOW COLLABORATIF -->
+  <details>
+    <summary>14 — Flux de travail collaboratif</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Branche</th><th>Règle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>mlops / DS</strong></td><td>Commits libres, push direct · CI sur push</td></tr>
+          <tr><td><strong>main</strong></td><td>Pas de commit direct — uniquement via PR · CI obligatoire · 1 review requise</td></tr>
+        </tbody>
+      </table></div>
+
+      <details>
+        <summary>Cycle d'ajout d'une nouvelle année ONISR</summary>
+        <div class="body">
+          <p><strong>Automatique (via check-new-data-flow — lundi 8h UTC) :</strong></p>
+          <ul>
+            <li>check-new-data-flow détecte les données N sur data.gouv.fr (fuzzy-match CATEGORY_KEYWORDS)</li>
+            <li>etl_flow déclenché (download, validation, preprocessing, dvc push)</li>
+            <li>train_flow (benchmark 3 algos, gate KPI, promote=False)</li>
+            <li>deploy-vps-flow : gate manuelle → GO → promote @Production → test-api → Kapsule</li>
+            <li>Commiter le .dvc pointer généré → PR → main (seule action manuelle)</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 15. STRUCTURE DOSSIERS -->
+  <details>
+    <summary>15 — Structure des dossiers</summary>
+    <div class="body">
+      <pre>cac_mlops/
+├── .github/workflows/     ci.yml · deploy.yml · cleanup.yml
+├── data/                  ignoré Git — géré DVC (raw/ + preprocessed/)
+├── services/
+│   ├── api/               FastAPI (main, auth, model_loader, routes/, schemas/)
+│   ├── gradio/            app.py (10 onglets Tailscale) · app_public.py (3 onglets public)
+│   │                      scenarios.py · Dockerfile
+│   ├── mlflow/            Dockerfile custom (boto3 + psycopg2)
+│   ├── nginx/             nginx.conf (rate-limit + routing + /reports/)
+│   └── monitoring/        drift_detection.py (Evidently + Prometheus)
+├── src/
+│   ├── data/              import_raw_data · schema · schema_validator · make_dataset
+│   │                      normalizer/normalize.py
+│   ├── models/            train_model · predict_model · validate_model
+│   ├── flows/             14 flows Prefect
+│   └── utils/             email_utils (SMTP silent si non configuré)
+├── k8s/                   Manifests Kubernetes (1 dossier/composant)
+│   ├── api/               deployment (HPA + initContainer) · hpa · service
+│   ├── gradio/ gradio-public/ mlflow/ nginx/ caddy/ prometheus/
+│   ├── tailscale/         subnet-router
+│   ├── loki-forwarder/    SOCKS5 proxy → Loki VPS
+│   ├── promtail/          DaemonSet + rbac
+│   ├── kube-state-metrics/ blackbox-exporter/ node-exporter/
+│   └── local/             kind-cluster.yaml (dev local)
+├── infrastructure/
+│   ├── tailscale/         setup.sh (install + UFW)
+│   ├── prometheus/        prometheus.yml
+│   └── grafana/           provisioning/ · dashboards/ (6 dashboards)
+├── config/
+│   └── model_params.yml   Blueprint DS — hyperparamètres RF/XGB/LGBM
+├── docs/                  HTML statiques servies par nginx (/ci-docs/)
+├── reports/drift/         Rapports HTML/JSON Evidently (gitignored)
+├── state/kapsule_ips      URL publique + DNS K8s (écrit par kapsule_up_flow)
+├── tests/
+│   ├── unit/              test_preprocessing · test_schema_validator · test_predict
+│   └── integration/       test_api (Docker Compose requis)
+├── scripts/               simulate_production.py · raz_mlops.sh · setup_branch_protection.sh
+├── docker-compose.yml     Stack 16 conteneurs (local + VPS)
+├── prefect.yaml           14 deployments Prefect
+├── .env.example
+├── .dvc/config            remote = Scaleway Object Storage S3
+└── requirements.txt</pre>
+    </div>
+  </details>
+
+  <!-- 16. DECISIONS -->
+  <details>
+    <summary>16 — Décisions d'architecture actées</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Décision</th><th>Choix retenu</th><th>Raison</th></tr></thead>
+        <tbody>
+          <tr><td>Source des données</td><td>data.gouv.fr (ONISR)</td><td>Source officielle multi-années vs proxy DataScientest figé</td></tr>
+          <tr><td>Périmètre temporel</td><td>2021–2024 (schéma stable)</td><td>Refonte ONISR 2019 — avant incompatible</td></tr>
+          <tr><td>Validation de schéma</td><td>Pandera — 3 niveaux</td><td>Léger, natif pandas, unitestable — vs Great Expectations trop lourd</td></tr>
+          <tr><td>Versioning données</td><td>DVC → Scaleway S3</td><td>Reproductibilité bit-à-bit</td></tr>
+          <tr><td>Versioning modèles</td><td>MLflow Registry · alias @Production</td><td>Rollback en 1 commande</td></tr>
+          <tr><td>Algorithme</td><td>Benchmark RF / XGBoost / LightGBM à chaque cycle</td><td>Champion = meilleur F1 + gate KPI · Actuel : lgbm_accidents</td></tr>
+          <tr><td>API</td><td>FastAPI + Pydantic + JWT HS256</td><td>Performance + validation + sécurité</td></tr>
+          <tr><td>Gateway</td><td>NGINX (rate limit 20r/min) + Caddy (TLS)</td><td>Rate-limiting + TLS Let's Encrypt auto</td></tr>
+          <tr><td>Orchestration</td><td>Prefect (14 deployments)</td><td>Plus léger qu'Airflow · gate native pause_flow_run()</td></tr>
+          <tr><td>Monitoring</td><td>PLG stack + Evidently · K8s consolidé dans VPS</td><td>Cohérence · moins de ressources K8s</td></tr>
+          <tr><td>Sécurité réseau</td><td>Tailscale VPN mesh</td><td>Pas d'IP fixes à maintenir · invisible depuis internet</td></tr>
+          <tr><td>Infrastructure VPS</td><td>Scaleway DEV1-XL (4 vCPU, 12 GB RAM)</td><td>Coût/performance · block storage séparé</td></tr>
+          <tr><td>Infrastructure K8s</td><td>Scaleway Kapsule on-demand</td><td>HPA + zero-downtime · coût nul hors soutenance</td></tr>
+          <tr><td>Drift — pas d'auto-retrain</td><td>Signal pour planifier le cycle</td><td>Labels N+1 indisponibles (ONISR +2 ans)</td></tr>
+          <tr><td>CI/CD</td><td>CI dans GH Actions · CD dans Prefect</td><td>Séparation build/deploy · gate manuelle Prefect</td></tr>
+          <tr><td>Blueprint DS</td><td>config/model_params.yml (guard CI)</td><td>Séparation code/hyperparamètres — PR indépendantes</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

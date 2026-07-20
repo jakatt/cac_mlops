@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Guide MLOps Engineer — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Guide MLOps Engineer</h1>
+    <p class="page-sub">Maintenir et faire évoluer la stack MLOps — Docker Compose, flows Prefect, GitHub Actions, infra Scaleway. Architecture interne, patterns de deploy et procédures de debug.</p>
+  </header>
+
+  <!-- 1. ARCHITECTURE -->
+  <details open>
+    <summary>1 — Architecture technique</summary>
+    <div class="body">
+      <pre>┌──────────────────────────────────────────────────────────────────────┐
+│  VPS Scaleway (51.159.187.132) — /data/cac_mlops                     │
+│                                                                       │
+│  Caddy :443 ──► nginx :127.0.0.1:8090 ──┬── api :8000 (FastAPI)      │
+│                                          └── gradio-public :7862      │
+│                                                                       │
+│  prefect-server :4200   prefect-worker (process pool)                 │
+│  mlflow :5001           minio :9000/:9001  postgresql :5432           │
+│  prometheus :9090       grafana :3000                                 │
+│  node-exporter :9100    nginx-exporter :9113                          │
+│  loki :3100             promtail (scrape Docker SD)                   │
+│                                                                       │
+│  gradio :7860  (cockpit MLOps 10 onglets — Tailscale)                 │
+└──────────────────────────────────────────────────────────────────────┘</pre>
+
+      <p class="sec-label">Bind mounts critiques (prefect-worker)</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Source VPS</th><th>Container</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td><code>./src</code></td><td><code>/app/src:ro</code></td><td>Flows Prefect — mise à jour sans rebuild</td></tr>
+          <tr><td><code>./config</code></td><td><code>/app/config</code></td><td>Blueprint hyperparamètres (rw — lu par train_model.py)</td></tr>
+          <tr><td><code>./data</code></td><td><code>/app/data</code></td><td>Données brutes + préprocessées</td></tr>
+          <tr><td><code>./reports</code></td><td><code>/app/reports</code></td><td>Rapports drift Evidently</td></tr>
+          <tr><td><code>./state</code></td><td><code>/app/state</code></td><td>IPs Kapsule dynamiques</td></tr>
+          <tr><td><code>/var/run/docker.sock</code></td><td>idem</td><td>Docker-in-Docker pour restart API</td></tr>
+        </tbody>
+      </table></div>
+      <p><strong>Important :</strong> les flows Prefect sont chargés depuis le bind-mount (pas l'image). Un SCP suffit pour mettre à jour un flow sans rebuild.</p>
+    </div>
+  </details>
+
+  <!-- 2. DEPLOY DIRECT -->
+  <details>
+    <summary>2 — Deploy direct (phase dev — sans GitHub Actions)</summary>
+    <div class="body">
+      <pre># Flow Prefect
+scp src/flows/mon_flow.py deploy@51.159.187.132:/data/cac_mlops/src/flows/
+# Effet immédiat au prochain run Prefect (pas de restart nécessaire)
+
+# Config blueprint
+scp config/model_params.yml deploy@51.159.187.132:/data/cac_mlops/config/
+# Effet immédiat (bind-mount rw)
+
+# Fichier nginx
+scp services/nginx/nginx.conf deploy@51.159.187.132:/data/cac_mlops/services/nginx/nginx.conf
+ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart nginx"
+
+# docker-compose.yml (nouveau service ou nouveau volume)
+scp docker-compose.yml deploy@51.159.187.132:/data/cac_mlops/docker-compose.yml
+ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose up -d --no-recreate"</pre>
+    </div>
+  </details>
+
+  <!-- 3. GITHUB ACTIONS -->
+  <details>
+    <summary>3 — GitHub Actions — workflows</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Workflow</th><th>Trigger</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ci.yml</strong></td><td>push/PR → <code>main</code>, branches <code>mlops</code> et <code>DS</code></td><td>pip-audit + flake8 + pytest tests/unit/</td></tr>
+          <tr><td><strong>deploy.yml</strong></td><td>push → <code>main</code></td><td>Build images (si changées) → VPS prépare (git pull, pull images, calcul flags) → déclenche <code>deploy-vps-flow</code> ou <code>update-model-flow</code> (Prefect) — interruption APRÈS la gate manuelle</td></tr>
+          <tr><td><strong>cleanup.yml</strong></td><td>cron dimanche 3h UTC</td><td>Nettoyage NVMe (docker prune, logs)</td></tr>
+        </tbody>
+      </table></div>
+
+      <p class="sec-label">Secrets GitHub requis</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Secret</th><th>Valeur</th></tr></thead>
+        <tbody>
+          <tr><td><code>SCALEWAY_HOST</code></td><td><code>51.159.187.132</code></td></tr>
+          <tr><td><code>SCALEWAY_USER</code></td><td><code>deploy</code></td></tr>
+          <tr><td><code>SCALEWAY_SSH_KEY</code></td><td>Clé privée SSH du runner</td></tr>
+          <tr><td><code>DEPLOY_DIR</code></td><td><code>/data/cac_mlops</code></td></tr>
+          <tr><td><code>JWT_SECRET_KEY</code></td><td>Secret JWT production</td></tr>
+          <tr><td><code>API_USERNAME</code> / <code>API_PASSWORD</code></td><td>Credentials API</td></tr>
+          <tr><td><code>MINIO_ROOT_USER</code> / <code>MINIO_ROOT_PASSWORD</code></td><td>Credentials MinIO</td></tr>
+          <tr><td><code>KAPSULE_CLUSTER_ID</code></td><td>(optionnel) ID cluster K8s Scaleway</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 4. TRIGGERS -->
+  <details>
+    <summary>4 — Les 3 triggers de mise en production</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>#</th><th>Trigger</th><th>Déclencheur</th><th>Pipeline</th><th>Gate promotion</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>1</strong></td>
+            <td>Nouvelle data ONISR</td>
+            <td>Prefect cron hebdo (<code>check-new-data</code>, lundi 8h)</td>
+            <td>ETL → validation → train → gate → promote → test-api → Kapsule</td>
+            <td>KPI absolus — promu même en légère régression, tant que ≤1 métrique régresse (≥2 → aucune promotion)</td>
+          </tr>
+          <tr>
+            <td><strong>2</strong></td>
+            <td>Nouveau code MLOps</td>
+            <td>push → PR → merge <code>main</code> (hors modèle)</td>
+            <td>build images (si nécessaire) → VPS prépare (pull code+images, flags) → gate (avant toute interruption) → compose up + smoke test → test-api → Kapsule (si OK)</td>
+            <td>Pas de réentraînement</td>
+          </tr>
+          <tr>
+            <td><strong>3</strong></td>
+            <td>Nouveau blueprint DS</td>
+            <td>push → PR → merge <code>main</code> (<code>config/model_params.yml</code> — guard CI bloque tout mélange code+blueprint)</td>
+            <td>train → si meilleur : gate → promote → test-api → Kapsule ; sinon : email DS</td>
+            <td>KPI absolus + delta F1 &gt; +0.01 vs @Production (même test set)</td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      <p class="sec-label">Détecter trigger 2 vs trigger 3 dans deploy.yml</p>
+      <pre>BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -c '^config/model_params\.yml$')
+# &gt; 0 → update-model-flow/update-model  (trigger 3)
+# = 0 → deploy-vps-flow/deploy-vps      (trigger 2)</pre>
+      <p><strong>Split temporel</strong> : <code>make_dataset.py</code> auto-détecte les années dans <code>data/raw/</code>. Dernière année = test set (~55k lignes). Toutes les précédentes = train. Aucune configuration manuelle lors de l'ajout d'une nouvelle année. <code>year_acc</code> supprimé des features.</p>
+    </div>
+  </details>
+
+  <!-- 5. PREFECT -->
+  <details>
+    <summary>5 — Prefect — deployments</summary>
+    <div class="body">
+      <p>Tous définis dans <code>prefect.yaml</code>. Pour re-enregistrer après modification :</p>
+      <pre>ssh deploy@51.159.187.132
+docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</pre>
+      <div class="tbl"><table>
+        <thead><tr><th>Deployment</th><th>Flow</th><th>Trigger</th></tr></thead>
+        <tbody>
+          <tr><td><code>check-new-data</code></td><td><code>check_new_data_flow</code></td><td>cron lundi 8h</td></tr>
+          <tr><td><code>etl</code></td><td><code>etl_flow</code></td><td>manuel / chaîné</td></tr>
+          <tr><td><code>train</code></td><td><code>train_flow</code></td><td>manuel / chaîné</td></tr>
+          <tr><td><code>update-model</code></td><td><code>update_model_flow</code></td><td>deploy.yml trigger 3</td></tr>
+          <tr><td><code>deploy-vps</code></td><td><code>deploy_vps_flow</code></td><td>deploy.yml trigger 2</td></tr>
+          <tr><td><code>drift-check</code></td><td><code>drift_monitoring_flow</code></td><td>manuel / fin de retrain</td></tr>
+          <tr><td><code>full-retrain</code></td><td><code>full_retrain_flow</code></td><td>manuel (init complète)</td></tr>
+          <tr><td><code>reset</code></td><td><code>reset_flow</code></td><td>manuel (RAZ)</td></tr>
+          <tr><td><code>kapsule-up/down</code></td><td>flows Kapsule</td><td>manuel</td></tr>
+          <tr><td><code>diag</code></td><td><code>diag_flow</code></td><td>manuel</td></tr>
+          <tr><td><code>disk-cleanup</code></td><td><code>disk_cleanup_flow</code></td><td>cron 2h UTC quotidien + manuel</td></tr>
+          <tr><td><code>test-api</code></td><td><code>test_api_flow</code></td><td>fin de <code>deploy-vps-flow</code> + manuel</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 6. IMAGES DOCKER -->
+  <details>
+    <summary>6 — Images Docker</summary>
+    <div class="body">
+      <p>Trois images buildées par <code>deploy.yml</code> et pushées sur GHCR :</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Image</th><th>Dockerfile</th><th>Contient</th></tr></thead>
+        <tbody>
+          <tr><td><code>ghcr.io/jakatt/cac-mlops-api:latest</code></td><td><code>services/api/Dockerfile</code></td><td>FastAPI + flows Prefect + scripts + CLI docker/docker-compose (prefect-worker réutilise cette image)</td></tr>
+          <tr><td><code>ghcr.io/jakatt/cac-mlops-mlflow:latest</code></td><td><code>services/mlflow/Dockerfile</code></td><td>MLflow server (custom : boto3 + psycopg2)</td></tr>
+          <tr><td><code>ghcr.io/jakatt/cac-mlops-gradio:latest</code></td><td><code>services/gradio/Dockerfile</code></td><td>Cockpit admin (<code>app.py</code> — Tailscale) ET Cockpit public (<code>app_public.py</code>) — même image, <code>command:</code> overridée dans <code>docker-compose.yml</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Le prefect-worker utilise <code>cac-mlops-api</code> (toutes les dépendances ML sont là).</p>
+
+      <p class="sec-label">Build local (debug)</p>
+      <pre>docker compose build api
+docker compose up -d api</pre>
+    </div>
+  </details>
+
+  <!-- 7. AJOUTER FLOW -->
+  <details>
+    <summary>7 — Ajouter un nouveau flow Prefect</summary>
+    <div class="body">
+      <ul>
+        <li>Créer <code>src/flows/mon_flow.py</code> avec <code>@flow(name="mon-flow")</code></li>
+        <li>Ajouter l'entrée dans <code>prefect.yaml</code> :</li>
+      </ul>
+      <pre>- name: mon-flow
+  entrypoint: src/flows/mon_flow.py:mon_flow
+  work_pool:
+    name: default-process-pool</pre>
+      <ul>
+        <li>Re-enregistrer : <code>docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</code></li>
+        <li>SCP le fichier sur le VPS : <code>scp src/flows/mon_flow.py deploy@VPS:/data/cac_mlops/src/flows/</code></li>
+      </ul>
+    </div>
+  </details>
+
+  <!-- 8. MONITORING -->
+  <details>
+    <summary>8 — Monitoring (PLG stack)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Outil</th><th>URL</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Prometheus</strong></td><td><code>http://100.117.99.62:9090</code></td><td>Métriques brutes PromQL (API + système + drift)</td></tr>
+          <tr><td><strong>Loki</strong></td><td><code>http://100.117.99.62:3100</code></td><td>Logs centralisés (scrape Promtail Docker SD)</td></tr>
+          <tr><td><strong>Grafana</strong></td><td><code>http://100.117.99.62:3000</code></td><td>Dashboards + alertes unifiées (email) — datasource K8s distante</td></tr>
+        </tbody>
+      </table></div>
+
+      <details open>
+        <summary>7 alertes Grafana</summary>
+        <div class="body">
+          <p><strong>Groupe security-monitoring (Prometheus, éval 1 min) :</strong></p>
+          <ul>
+            <li><code>brute-force-401</code> : &gt; 20 erreurs 401 / 5 min</li>
+            <li><code>ddos-429</code> : &gt; 50 erreurs 429 / 5 min</li>
+            <li><code>ram-critical</code> : RAM disponible &lt; 10%</li>
+            <li><code>disk-data-critical</code> : /data libre &lt; 15%</li>
+          </ul>
+          <p><strong>Groupe logs-monitoring (Loki, éval 2 min) :</strong></p>
+          <ul>
+            <li><code>prefect-error-logs</code> : ERROR ou CRITICAL dans prefect-worker (5 min)</li>
+            <li><code>no-champion-log</code> : "Aucun algorithme" dans prefect-worker (10 min) — train_flow terminé sans amélioration @Production</li>
+            <li><code>drift-critical-log</code> : "CRITICAL drift detected" dans prefect-worker</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Dashboards Grafana (6)</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Dashboard</th><th>Contenu</th></tr></thead>
+            <tbody>
+              <tr><td><code>home.json</code></td><td>Vue d'ensemble (modèle en prod, RAM/disque, disponibilité API, liens vers les autres)</td></tr>
+              <tr><td><code>api-performance.json</code></td><td>Latence p50/p95/p99, volume req/h, taux 5xx, distribution prédictions</td></tr>
+              <tr><td><code>resilience.json</code></td><td>Gates (GO/STOP), interruptions, rollbacks, erreurs flow, disponibilité API (Loki)</td></tr>
+              <tr><td><code>model-drift.json</code></td><td>drift_share évolution, features driftées, dernière date de détection</td></tr>
+              <tr><td><code>system-health.json</code></td><td>CPU / RAM / disk en temps réel (node-exporter)</td></tr>
+              <tr><td><code>kapsule-k8s.json</code></td><td>Replicas disponibles par Deployment, sonde publique blackbox, scrape up (Prometheus K8s distant)</td></tr>
+            </tbody>
+          </table></div>
+          <p>Dashboards définis dans <code>infrastructure/grafana/dashboards/</code>. Alertes dans <code>infrastructure/grafana/provisioning/alerting/alerting.yaml</code>.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 9. TRIVY -->
+  <details>
+    <summary>9 — Trivy — scan CVE</summary>
+    <div class="body">
+      <p>Exécuté dans <code>deploy.yml</code> après chaque build (CRITICAL uniquement, fixées uniquement) :</p>
+      <pre># Reproduire localement
+trivy image --severity CRITICAL --ignore-unfixed \
+  --ignorefile .trivyignore ghcr.io/jakatt/cac-mlops-api:latest</pre>
+      <p>Pour ignorer un CVE légitimement non-fixable : ajouter dans <code>.trivyignore</code>.</p>
+    </div>
+  </details>
+
+  <!-- 10. DEPANNAGE -->
+  <details>
+    <summary>10 — Dépannage</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Symptôme</th><th>Cause probable</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>Flow Prefect ne démarre pas</td><td>Worker déconnecté</td><td><code>docker compose restart prefect-worker</code></td></tr>
+          <tr><td><code>prefect deploy --all</code> échoue</td><td>Fichier flow absent sur VPS host</td><td>SCP le fichier manquant</td></tr>
+          <tr><td>Déploiement "Completed" mais rien n'a changé</td><td><code>restart_services</code>/<code>needs_build</code> a échoué silencieusement dans <code>compose_up_task</code></td><td>Consulter les logs du flow run — chercher <code>Restart échoué</code></td></tr>
+          <tr><td><code>docker: 'compose' is not a docker command</code> dans logs Prefect</td><td>Plugin <code>docker-compose</code> absent dans l'image api (réutilisée par prefect-worker)</td><td>Vérifier <code>services/api/Dockerfile</code></td></tr>
+          <tr><td>Smoke test échec dans <code>deploy-vps-flow</code></td><td>Image corrompue ou service en crash</td><td>Vérifier <code>docker compose logs &lt;service&gt;</code> — rollback Docker <code>:rollback</code> automatique si test-api KO</td></tr>
+          <tr><td><code>docker compose pull</code> échoue</td><td>Token GHCR expiré</td><td>Vérifier <code>GHCR_TOKEN</code> dans <code>/data/cac_mlops/.env</code></td></tr>
+          <tr><td><code>config/model_params.yml</code> non mis à jour dans le flow</td><td><code>./config</code> pas bind-mounté</td><td>Vérifier <code>docker compose up -d prefect-worker</code> après changement compose</td></tr>
+          <tr><td>MLflow 403 "Invalid Host header"</td><td><code>--allowed-hosts</code> incomplet</td><td>Ajouter le nom d'hôte/port dans la commande mlflow server dans <code>docker-compose.yml</code></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>
