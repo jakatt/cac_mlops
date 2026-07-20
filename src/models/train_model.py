@@ -94,44 +94,30 @@ def _load_splits(years: list[int]) -> tuple[
     return X_train, X_test, y_train, y_test
 
 
-def _build_classifier(
-    algorithm: str,
-    n_estimators: int,
-    max_depth: int | None,
-    learning_rate: float,
-    num_leaves: int,
-):
-    """Instancie le classificateur selon l'algorithme choisi."""
+# Params infra fixes — non exposés dans le blueprint DS (n_jobs, random_state, verbose)
+_INFRA_PARAMS: dict[str, dict[str, Any]] = {
+    "rf":      {"n_jobs": -1, "random_state": 42},
+    "xgboost": {"n_jobs": -1, "random_state": 42, "verbosity": 0, "eval_metric": "logloss"},
+    "lgbm":    {"n_jobs": -1, "random_state": 42, "verbose": -1},
+}
+
+
+def _build_classifier(algorithm: str, **user_params: Any):
+    """Instancie le classificateur en fusionnant params DS (blueprint) + params infra.
+
+    Priorité : user_params < _INFRA_PARAMS (les params infra ne peuvent pas être
+    écrasés par le blueprint DS — ils garantissent reproductibilité et silence logs).
+    """
+    params = {**user_params, **_INFRA_PARAMS[algorithm]}
     if algorithm == "rf":
         from sklearn.ensemble import RandomForestClassifier
-        return RandomForestClassifier(
-            n_estimators=n_estimators,
-            max_depth=max_depth,
-            n_jobs=-1,
-            random_state=42,
-        )
+        return RandomForestClassifier(**params)
     elif algorithm == "xgboost":
         from xgboost import XGBClassifier
-        return XGBClassifier(
-            n_estimators=n_estimators,
-            max_depth=max_depth or 6,
-            learning_rate=learning_rate,
-            n_jobs=-1,
-            random_state=42,
-            verbosity=0,
-            eval_metric="logloss",
-        )
+        return XGBClassifier(**params)
     elif algorithm == "lgbm":
         from lightgbm import LGBMClassifier
-        return LGBMClassifier(
-            n_estimators=n_estimators,
-            num_leaves=num_leaves,
-            max_depth=max_depth or -1,
-            learning_rate=learning_rate,
-            n_jobs=-1,
-            random_state=42,
-            verbose=-1,
-        )
+        return LGBMClassifier(**params)
     else:
         raise ValueError(f"Algorithme inconnu : {algorithm}")
 
@@ -148,15 +134,17 @@ def train(
     """
     Entraîne, évalue, logue dans MLflow et optionnellement enregistre le modèle.
     Retourne (metrics, run_id).
-    Hyperparamètres : valeur explicite > blueprint config/model_params.yml > défaut codé.
+    Hyperparamètres : CLI explicit > blueprint config/model_params.yml > défaut sklearn.
+    Tous les params du blueprint sont transmis au classificateur via **kwargs.
     """
     bp = _load_algo_params(algorithm)
     if bp:
-        logger.info("Blueprint chargé depuis config/model_params.yml (%s)", algorithm)
-    n_estimators  = n_estimators  if n_estimators  is not None else bp.get("n_estimators",  100)
-    max_depth     = max_depth     if max_depth     is not None else bp.get("max_depth",      None)
-    learning_rate = learning_rate if learning_rate is not None else bp.get("learning_rate",  0.1)
-    num_leaves    = num_leaves    if num_leaves    is not None else bp.get("num_leaves",      31)
+        logger.info("Blueprint chargé depuis config/model_params.yml (%s) — %d params", algorithm, len(bp))
+    # Overrides CLI (pour expérimentation locale sans modifier le YAML)
+    if n_estimators  is not None: bp["n_estimators"]  = n_estimators
+    if max_depth     is not None: bp["max_depth"]     = max_depth
+    if learning_rate is not None: bp["learning_rate"] = learning_rate
+    if num_leaves    is not None: bp["num_leaves"]    = num_leaves
 
     model_name = MODEL_NAMES[algorithm]
     mlflow.set_experiment(EXPERIMENT_NAME)
@@ -168,20 +156,14 @@ def train(
         X_train, X_test, y_train, y_test = _load_splits(years)
         logger.info("Data: %d train / %d test", len(X_train), len(X_test))
 
-        mlflow.log_param("algorithm",     algorithm)
-        mlflow.log_param("years",         sorted(years))
-        mlflow.log_param("n_train",       len(X_train))
-        mlflow.log_param("n_test",        len(X_test))
-        mlflow.log_param("n_features",    X_train.shape[1])
-        mlflow.log_param("n_estimators",  n_estimators)
-        mlflow.log_param("max_depth",     max_depth)
-        if algorithm in ("xgboost", "lgbm"):
-            mlflow.log_param("learning_rate", learning_rate)
-        if algorithm == "lgbm":
-            mlflow.log_param("num_leaves", num_leaves)
+        mlflow.log_param("algorithm",  algorithm)
+        mlflow.log_param("years",      sorted(years))
+        mlflow.log_param("n_train",    len(X_train))
+        mlflow.log_param("n_test",     len(X_test))
+        mlflow.log_param("n_features", X_train.shape[1])
+        mlflow.log_params(bp)  # tous les hyperparamètres DS du blueprint
 
-        clf = _build_classifier(algorithm, n_estimators, max_depth,
-                                 learning_rate, num_leaves)
+        clf = _build_classifier(algorithm, **bp)
         clf.fit(X_train, y_train)
         logger.info("Training complete (%s)", algorithm)
 
