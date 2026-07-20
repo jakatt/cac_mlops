@@ -62,25 +62,34 @@
 .ci-doc .badge.pf  .badge-num { color:var(--pf-num); }
 .ci-doc .badge-label { font-size:.72rem;font-weight:600;color:var(--muted);text-align:center; }
 
-/* ── Section headers ── */
-.ci-doc .section {
-  border-left:3px solid;border-radius:0 8px 8px 0;margin-bottom:24px;
-}
-.ci-doc .section.ci  { border-color:var(--ci-num); }
-.ci-doc .section.cd  { border-color:var(--cd-num); }
-.ci-doc .section.pf  { border-color:var(--pf-num); }
-.ci-doc .section-head {
-  padding:12px 16px;font-size:.90rem;font-weight:700;color:var(--text);
-  display:flex;align-items:center;gap:10px;
-}
+/* ── Section pills ── */
 .ci-doc .section-pill {
   font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
-  padding:2px 8px;border-radius:4px;
+  padding:2px 8px;border-radius:4px;flex-shrink:0;
 }
+
+/* ── Section-level accordions (CI / CD / PREFECT) ── */
+.ci-doc details.section {
+  border:1px solid var(--border);border-left:3px solid;border-radius:0 8px 8px 0;
+  margin-bottom:20px;background:var(--surface);
+}
+.ci-doc details.section.ci  { border-color:var(--ci-bd); border-left-color:var(--ci-num); }
+.ci-doc details.section.cd  { border-color:var(--cd-bd); border-left-color:var(--cd-num); }
+.ci-doc details.section.pf  { border-color:var(--pf-bd); border-left-color:var(--pf-num); }
+.ci-doc details.section > summary {
+  padding:12px 16px;font-size:.90rem;font-weight:700;color:var(--text);
+  background:transparent;border-radius:0 7px 7px 0;
+  list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;
+}
+.ci-doc details.section > summary:hover { background:var(--accent-lt); }
+.ci-doc details.section[open] > summary { border-bottom:1px solid var(--border);border-radius:0 7px 0 0; }
+.ci-doc details.section > summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details.section[open] > summary::after { transform:rotate(90deg); }
+.ci-doc details.section > summary::-webkit-details-marker { display:none; }
 .ci-doc .section.ci .section-pill { background:var(--ci-bd);color:var(--ci-num); }
 .ci-doc .section.cd .section-pill { background:var(--cd-bd);color:var(--cd-num); }
 .ci-doc .section.pf .section-pill { background:var(--pf-bd);color:var(--pf-num); }
-.ci-doc .section-meta { font-size:.76rem;color:var(--muted);padding:0 16px 12px;font-family:monospace; }
+.ci-doc .section-meta { font-size:.76rem;color:var(--muted);padding:8px 16px 12px;font-family:monospace;border-bottom:1px solid var(--border);margin-bottom:4px; }
 
 /* ── Accordions ── */
 .ci-doc details { border:1px solid var(--border);border-radius:8px;margin:0 16px 8px;background:var(--surface); }
@@ -131,11 +140,8 @@
   </div>
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
-  <div class="section ci">
-    <div class="section-head">
-      <span class="section-pill ci">CI</span>
-      Tests unitaires — <code>ci.yml</code>
-    </div>
+  <details class="section ci" open>
+    <summary><span class="section-pill ci">CI</span> Tests unitaires — <code>ci.yml</code></summary>
     <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main</div>
 
     <details open>
@@ -206,14 +212,11 @@
         </div>
       </div>
     </details>
-  </div><!-- section ci -->
+  </details><!-- section ci -->
 
   <!-- ════════════════════ 2. CD ════════════════════ -->
-  <div class="section cd">
-    <div class="section-head">
-      <span class="section-pill cd">CD</span>
-      Pipeline de déploiement — <code>deploy.yml</code>
-    </div>
+  <details class="section cd">
+    <summary><span class="section-pill cd">CD</span> Pipeline de déploiement — <code>deploy.yml</code></summary>
     <div class="section-meta">Déclenché automatiquement après chaque merge sur main (ou via workflow_dispatch)</div>
 
     <div style="padding:0 16px 16px;">
@@ -273,14 +276,11 @@
     </table>
     </div>
     </div>
-  </div><!-- section cd -->
+  </details><!-- section cd -->
 
   <!-- ════════════════════ 3. POST-DEPLOY ════════════════════ -->
-  <div class="section pf">
-    <div class="section-head">
-      <span class="section-pill pf">PREFECT</span>
-      Tests post-deploy — <code>test-api-flow</code>
-    </div>
+  <details class="section pf">
+    <summary><span class="section-pill pf">PREFECT</span> Tests post-deploy — <code>test-api-flow</code></summary>
     <div class="section-meta">Déclenché automatiquement par deploy-vps-flow après chaque déploiement VPS réussi · Exécuté dans le réseau Docker (http://nginx:80)</div>
 
     <div style="padding:0 16px 16px;">
@@ -326,7 +326,7 @@
     </div>
     <p class="note">Les tests post-deploy s'exécutent à l'intérieur du réseau Docker via <code>http://nginx:80</code> — ils testent l'API en conditions réelles (load balancer, auth, modèle chargé en mémoire) et non via un mock.</p>
     </div>
-  </div><!-- section pf -->
+  </details><!-- section pf -->
 
 </div><!-- .wrapper -->
 </div><!-- .ci-doc -->
