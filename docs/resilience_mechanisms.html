@@ -124,7 +124,7 @@
 .ci-doc .item-manual .item-label::before { content:"⏸";color:var(--man-num); }
 .ci-doc .item-manual .item-desc { color:var(--text); }
 /* Gate VPS post-GO (bleu ciel) */
-.ci-doc .item-vps { background:var(--vps-bg);border:1px solid var(--vps-bd);border-radius:6px;padding:8px 10px 8px 12px; }
+.ci-doc .item-vps { background:var(--vps-bg);border:1px solid var(--vps-bd);border-left:3px solid var(--vps-num);border-radius:6px;padding:8px 10px 8px 12px; }
 .ci-doc .item-vps .item-label { color:var(--vps-num); }
 .ci-doc .item-vps .item-label::before { content:"→";color:var(--vps-num); }
 .ci-doc .item-vps .item-desc { color:var(--text); }
@@ -156,15 +156,6 @@
     <p class="page-sub">Gate humaine → déploiement VPS → Kapsule uniquement si VPS passe. Un seul verrou protège les deux environnements.</p>
   </header>
 
-  <div class="legend">
-    <div class="legend-item"><span class="dot dot-stop"></span>Stop auto + alerte</div>
-    <div class="legend-item"><span class="dot dot-man"></span>Gate manuelle (validation humaine)</div>
-    <div class="legend-item"><span class="dot dot-vps"></span>Gate VPS post-GO</div>
-    <div class="legend-item"><span class="dot dot-k8s"></span>Gate K8s (si VPS OK)</div>
-    <div class="legend-item"><span class="dot dot-int"></span>Interruption VPS</div>
-    <div class="legend-item"><span class="dot dot-rb"></span>Rollback auto</div>
-  </div>
-
   <div class="tbl-wrap">
     <table>
       <thead>
@@ -190,24 +181,24 @@
       <tbody>
         <!-- Stops (total VPS + K8s) -->
         <tr>
-          <td><span class="row-label">Stops</span></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span><span class="badge-unit">gates</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span><span class="badge-unit">gates</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span><span class="badge-unit">gates</span></span></div></td>
+          <td><span class="row-label">Stops &amp; Alertes</span></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span></span></div></td>
         </tr>
         <!-- Validation humaine -->
         <tr>
           <td><span class="row-label">Validation<br>humaine</span></td>
-          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant deploy</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span><span class="badge-unit">validations</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span><span class="badge-unit">validations</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span></span></div></td>
         </tr>
         <!-- Rollbacks (total VPS + K8s) -->
         <tr>
-          <td><span class="row-label">Rollbacks<br>auto</span></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span><span class="badge-unit">rollbacks</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span><span class="badge-unit">rollbacks</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span><span class="badge-unit">rollbacks</span></span></div></td>
+          <td><span class="row-label">Rollbacks<br>&amp; Alerte</span></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span></span></div></td>
         </tr>
         <!-- Interruptions VPS -->
         <tr>
@@ -223,9 +214,9 @@
           <td>
             <span class="row-label">Interruptions<br><span class="row-sub row-sub-k8s">K8s</span></span>
           </td>
-          <td><div class="count-cell"><span class="badge badge-k8s"><span class="badge-num">0</span><span class="badge-unit">rolling update</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-k8s"><span class="badge-num">0</span><span class="badge-unit">rolling update</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-k8s"><span class="badge-num">0</span><span class="badge-unit">rolling update</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-k8s"><span class="badge-num">0</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-k8s"><span class="badge-num">0</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-k8s"><span class="badge-num">0</span></span></div></td>
         </tr>
         <!-- Détail -->
         <tr class="desc-row">
