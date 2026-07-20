@@ -199,8 +199,8 @@
         <tr>
           <td><span class="row-label">Validation<br>humaine</span></td>
           <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant deploy</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant deploy</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span><span class="badge-unit">avant deploy</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span><span class="badge-unit">validations</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span><span class="badge-unit">validations</span></span></div></td>
         </tr>
         <!-- Rollbacks (total VPS + K8s) -->
         <tr>
@@ -268,11 +268,15 @@
 
           <!-- T2 -->
           <td>
-            <p class="desc-title">VPS · 4 gates — 1 manuelle — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
+            <p class="desc-title">VPS · 4 gates — 2 manuelles — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
                 <span class="item-desc">CI lint/pytest fail → merge bloqué par branch protection + notification GitHub Actions</span>
+              </li>
+              <li class="item-manual">
+                <span class="item-label">Merge PR</span>
+                <span class="item-desc">MLOps lead review et merge la PR — premier verrou humain, <strong>avant</strong> tout déclenchement du pipeline CD.</span>
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
@@ -303,11 +307,15 @@
 
           <!-- T3 -->
           <td>
-            <p class="desc-title">VPS · 3 gates — 1 manuelle — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
+            <p class="desc-title">VPS · 3 gates — 2 manuelles — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
                 <span class="item-desc">CI lint/pytest fail — blueprint pur, pas de build Docker, pas de Trivy</span>
+              </li>
+              <li class="item-manual">
+                <span class="item-label">Merge PR</span>
+                <span class="item-desc">MLOps lead review et merge la PR DS — premier verrou humain, <strong>avant</strong> le lancement du retrain.</span>
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
