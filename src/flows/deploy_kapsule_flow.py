@@ -1,17 +1,23 @@
 """
-Deploy Kapsule flow — rolling update de api/gradio-public/nginx/caddy sur le cluster K8s.
+Deploy Kapsule flow — rolling update conditionnel sur le cluster K8s.
 
 Vérifie d'abord si Kapsule est actif (state/kapsule_ips non vide).
 Si inactif : skip silencieux.
-Si actif : réexporte modèle @Production + dataset courant vers S3 (cf.
-upload_model_s3/upload_data_s3 — sinon jamais rappelées après le kapsule-up
-initial, K8s continuait de servir un modèle/dataset figé après Trigger 1/3)
-→ kubectl apply -f k8s/ (resynchro manifests) → ménage léger
-(pods Completed/Failed + log des conditions de pression nœuds) → rollout
-restart SÉQUENTIEL (un deployment à la fois, pas les 3 en parallèle — cf.
-rolling_update_task) + rollout status + rééquilibrage topologie (cf.
-rebalance_topology_task — un rollout restart seul ne garantit pas le
-maxSkew des topologySpreadConstraints). Rollback auto si échec
+
+Paramètres de contexte passés par deploy_vps_flow :
+  new_model  : nouveau @Production promu → upload_model_s3 + restart api
+  new_data   : nouveau dataset → upload_data_s3 (+ restart api si new_model aussi)
+  new_images : nouvelles images buildées (CI rebuild) → restart api + gradio-public
+
+Déploiements redémarrés :
+  api           si new_images ou new_model  (initContainer refetch model depuis S3)
+  gradio-public si new_images
+  nginx/caddy   jamais explicitement — apply_manifests gère les changements de spec
+
+Si aucun restart nécessaire (docs/config VPS uniquement) : apply_manifests +
+cleanup défensif puis return sans aucun rollout restart.
+
+Rollback auto si rollout restart échoue
 (event=alert severity=critical topic=kapsule_failure — alerte Grafana).
 """
 import os
@@ -28,7 +34,7 @@ CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
 K8S_NAMESPACE = "cac-mlops"
 
-DEPLOYMENTS = ["api", "gradio-public", "nginx", "caddy"]
+_ALL_KAPSULE_DEPLOYMENTS = ["api", "gradio-public", "nginx", "caddy"]
 
 
 def _scw(args: list[str], timeout: int = 60) -> str:
@@ -187,9 +193,9 @@ def rebalance_topology_task(kubeconfig: str, deploy_name: str, max_attempts: int
         _kubectl(kubeconfig, ["delete", "pod", pod_to_delete, "-n", K8S_NAMESPACE, "--wait=false"], check=False)
         _kubectl(kubeconfig, [
             "wait", f"deployment/{deploy_name}", "-n", K8S_NAMESPACE,
-            "--for=condition=available", "--timeout=120s",
+            "--for=condition=available", "--timeout=60s",
         ], check=False)
-        time.sleep(10)  # laisse le scheduler/HPA se stabiliser avant de revérifier
+        time.sleep(5)  # laisse le scheduler/HPA se stabiliser avant de revérifier
 
     log.warning(
         "event=alert severity=warning topic=kapsule_topology_skew_persistent deploy=%s "
@@ -199,42 +205,43 @@ def rebalance_topology_task(kubeconfig: str, deploy_name: str, max_attempts: int
 
 
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
-def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
+def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, list[str]]:
     """
     Rollout restart SÉQUENTIEL (un deployment à la fois : restart puis
-    attente avant de passer au suivant) — pas les 3 en parallèle. Un rollout
-    parallèle fait temporairement coexister l'ancien ET le nouveau pod pour
-    api + gradio + gradio-public en même temps, ce qui double quasiment la
-    charge instantanée sur des nœuds déjà petits (BASIC3-X2C-8G ×2) et a
-    fait timeout le rollout `api` à 300s alors qu'un retry séquentiel juste
-    après a réussi en 3m26s sans aucun changement de code (incident vécu,
-    2026-07-11). Le séquentiel réduit le pic de charge et échoue/alerte plus
-    vite (sur le premier deployment bloqué, pas après avoir attendu les 3).
+    attente avant de passer au suivant). Un rollout parallèle fait
+    temporairement coexister l'ancien ET le nouveau pod pour tous les
+    deployments en même temps, ce qui double quasiment la charge
+    instantanée sur des nœuds déjà petits (BASIC3-X2C-8G ×2) et a
+    fait timeout le rollout `api` à 300s alors qu'un retry séquentiel
+    juste après a réussi en 3m26s sans aucun changement de code
+    (incident vécu, 2026-07-11). Le séquentiel réduit le pic de charge
+    et échoue/alerte plus vite (sur le premier deployment bloqué).
 
     Returns (ok, touched) — touched liste les deployments dont le `rollout
     restart` a réellement démarré (donc les seuls à rollback en cas
-    d'échec). Avec le séquentiel, un échec sur `api` (1er de la liste)
-    signifie que gradio/gradio-public n'ont jamais été touchés — les
-    inclure quand même dans le rollback fait échouer `kubectl rollout undo`
-    avec "no rollout history found" (aucune révision précédente puisque
-    jamais redémarrés), une erreur trompeuse mais sans conséquence
-    (bug vécu, 2026-07-12).
+    d'échec). Avec le séquentiel, un échec sur le 1er deployment signifie
+    que les suivants n'ont jamais été touchés — les inclure dans le rollback
+    ferait échouer `kubectl rollout undo` avec "no rollout history found"
+    (aucune révision précédente puisque jamais redémarrés, bug vécu
+    2026-07-12).
 
-    `kubectl set image` avec la même chaîne (toujours ":latest", jamais de
-    tag par SHA) ne produit AUCUN diff de spec pour Kubernetes — donc
-    AUCUN rollout, même si le contenu réel de l'image a changé sur le
-    registre (bug vécu, jamais détecté avant : confirmé par
-    `rollout history` inchangé après un `set image` réel, 2026-07-10).
-    `rollout restart` force toujours une nouvelle ReplicaSet (patch d'une
-    annotation de redémarrage), donc un vrai repull de l'image ET un
-    re-run de l'initContainer fetch-model — nécessaire aussi bien pour
-    Trigger 1 (nouveau modèle promu, jamais rechargé par un pod déjà
-    tournant) que Trigger 2 (nouveau code).
+    `kubectl set image` avec la même chaîne (":latest") ne produit AUCUN
+    diff de spec pour Kubernetes donc AUCUN rollout même si le contenu de
+    l'image a changé sur le registre (bug vécu, confirmé par `rollout
+    history` inchangé, 2026-07-10). `rollout restart` force toujours une
+    nouvelle ReplicaSet (patch annotation), donc un vrai repull ET un
+    re-run de l'initContainer fetch-model.
+
+    Rééquilibrage topologie : max_attempts=1 pour les deployments sans HPA
+    (nginx, caddy, gradio-public — un rééquilibrage réussi ne sera pas
+    défait), max_attempts=3 pour api (HPA actif, peut redéfaire l'équilibre
+    après un scale-down, bug vécu 2× en direct 2026-07-14). Passe finale
+    uniquement sur api pour la même raison.
     """
     log = get_run_logger()
     touched: list[str] = []
     try:
-        for deploy_name in DEPLOYMENTS:
+        for deploy_name in deployments:
             log.info("Rolling restart %s", deploy_name)
             _kubectl(kubeconfig, [
                 "rollout", "restart",
@@ -249,18 +256,19 @@ def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
                 "-n", K8S_NAMESPACE,
                 "--timeout=300s",
             ])
-            rebalance_topology_task(kubeconfig, deploy_name)
+            rebalance_topology_task(
+                kubeconfig, deploy_name,
+                max_attempts=3 if deploy_name == "api" else 1,
+            )
 
-        # Passe finale après la boucle complète : le rééquilibrage individuel
-        # de chaque deployment (ci-dessus) peut être défait plus tard dans le
-        # même cycle par un scale-down HPA sur `api` (déclenché par le pic de
-        # charge du déploiement complet, pas celui d'un seul deployment) — le
-        # temps déjà écoulé en traitant les autres deployments laisse au HPA
-        # l'occasion de se stabiliser avant cette dernière vérification
-        # (bug vécu 2 fois de suite, 2026-07-14, uniquement sur api — seul
-        # des 4 deployments avec un HPA actif).
-        for deploy_name in DEPLOYMENTS:
-            rebalance_topology_task(kubeconfig, deploy_name)
+        # Passe finale uniquement sur api : seul deployment avec HPA actif.
+        # Un scale-down HPA déclenché par le pic de charge du déploiement
+        # complet peut défaire un rééquilibrage pourtant réussi en cours de
+        # boucle — le temps écoulé à traiter les autres deployments laisse
+        # au HPA l'occasion de se stabiliser avant cette vérification finale
+        # (bug vécu 2× de suite, 2026-07-14).
+        if "api" in deployments:
+            rebalance_topology_task(kubeconfig, "api", max_attempts=3)
 
         log.info("Rolling update Kapsule OK")
         return True, touched
@@ -269,12 +277,9 @@ def rolling_update_task(kubeconfig: str) -> tuple[bool, list[str]]:
         # Exception large et pas seulement RuntimeError : _kubectl utilise
         # subprocess.run(timeout=300), qui lève subprocess.TimeoutExpired
         # (pas une RuntimeError) si le rollout ne converge pas dans les
-        # temps. Avant ce fix, ce cas précis échappait entièrement au except
-        # ci-dessus, crashait le flow sans jamais appeler rollback_kapsule_task
-        # — donc AUCUN rollback n'était tenté malgré ce que dit le message
-        # d'erreur de deploy_kapsule_flow (incident vécu, 2026-07-10 :
-        # DiskPressure sur les 2 nœuds a fait dépasser les 300s deux fois de
-        # suite, le rollback annoncé n'a jamais eu lieu).
+        # temps. Avant ce fix, ce cas précis crashait le flow sans jamais
+        # appeler rollback_kapsule_task (incident vécu, 2026-07-10 :
+        # DiskPressure sur les 2 nœuds, le rollback annoncé n'a jamais eu lieu).
         log.error("Rolling update échoué : %s", exc)
         return False, touched
 
@@ -296,10 +301,21 @@ def rollback_kapsule_task(kubeconfig: str, deployments: list[str]) -> None:
 
 
 @flow(name="deploy-kapsule-flow", log_prints=True)
-def deploy_kapsule_flow() -> bool:
+def deploy_kapsule_flow(
+    new_model: bool = False,
+    new_data: bool = False,
+    new_images: bool = True,
+) -> bool:
     """
-    Rolling update sur Kapsule si le cluster est actif.
+    Rolling update conditionnel sur Kapsule si le cluster est actif.
     Entièrement automatique — pas de gate manuelle.
+
+    new_model  : nouveau @Production promu — upload_model_s3 + restart api
+    new_data   : nouveau dataset — upload_data_s3
+    new_images : nouvelles images buildées par CI — restart api + gradio-public
+
+    Si aucun restart n'est nécessaire (new_model=False, new_images=False) :
+    apply_manifests + cleanup défensif, aucun rollout restart.
     """
     log = get_run_logger()
 
@@ -310,29 +326,53 @@ def deploy_kapsule_flow() -> bool:
 
     kubeconfig = get_kubeconfig_task()
 
-    # Réexporte systématiquement le modèle @Production courant + le dataset
-    # courant vers S3 — sans ça, ces deux tasks n'étaient appelées qu'au
-    # kapsule-up, JAMAIS ici. Conséquence (bug silencieux, jamais détecté
-    # avant, jamais testé en conditions réelles) : après une promotion de
-    # modèle (Trigger 1/3) ou une MAJ de dataset (Trigger 1), le rollout
-    # "réussissait" (health OK) mais K8s continuait de servir l'ANCIEN
-    # modèle/dataset jusqu'au prochain kapsule-down/up complet. Réexporter à
-    # l'identique si rien n'a changé est inoffensif (juste un upload S3 de
-    # plus, quelques secondes).
-    upload_model_s3()
-    upload_data_s3()
+    # Uploads S3 conditionnels — n'uploader que ce qui a réellement changé.
+    # Contexte : ces tasks n'étaient pas appelées au kapsule-up initial (bug
+    # silencieux) — K8s continuait de servir l'ANCIEN modèle/dataset jusqu'au
+    # prochain kapsule-down/up. Réexporter systématiquement quand pertinent est
+    # inoffensif (upload S3 idempotent) mais uploader un modèle/dataset inchangé
+    # sur un déploiement docs-only est inutile (bug vécu : PR #172, docs HTML
+    # uniquement, upload_model_s3 et upload_data_s3 tournaient quand même).
+    if new_model:
+        upload_model_s3()
+    if new_data:
+        upload_data_s3()
 
-    # Resynchronise les manifests k8s/ avant le rollout : `rollout restart` seul
-    # ne fait que redémarrer les pods avec le spec DÉJÀ enregistré sur le cluster —
-    # tout changement de manifest (env var, ressources...) fait depuis le dernier
-    # kapsule-up restait invisible tant qu'on ne relançait pas kapsule-down/up ou
-    # qu'on n'appliquait pas manuellement (bug vécu : COCKPIT_ENV ajouté à
-    # k8s/gradio/deployment.yaml après le dernier kapsule-up, jamais propagé sur
-    # plusieurs déploiements malgré des rollout restart réussis, 2026-07-11).
+    # Resynchronise les manifests k8s/ — idempotent, fast, toujours utile :
+    # `rollout restart` seul redémarre les pods avec le spec DÉJÀ enregistré,
+    # tout changement de manifest (env var, ressources, configmap...) depuis le
+    # dernier kapsule-up restait invisible (bug vécu : COCKPIT_ENV ajouté à
+    # k8s/gradio/deployment.yaml, jamais propagé sur plusieurs déploiements
+    # malgré des rollout restart réussis, 2026-07-11). Pour nginx et caddy
+    # (images standard), apply_manifests est le seul vecteur de propagation
+    # d'un changement de spec — pas de rollout restart explicite nécessaire.
     apply_manifests(kubeconfig)
     cleanup_before_deploy_task(kubeconfig)
 
-    ok, touched = rolling_update_task(kubeconfig)
+    # Calcul du périmètre de restart :
+    #   api           si new_images (image CI reconstruite) OU new_model
+    #                 (initContainer doit refetch le modèle depuis S3)
+    #   gradio-public si new_images (image gradio CI reconstruite)
+    #   nginx/caddy   jamais explicitement — leurs changements de spec sont
+    #                 propagés par apply_manifests (qui déclenche un rolling
+    #                 update automatique si la spec du Deployment change).
+    to_restart: list[str] = []
+    if new_images:
+        to_restart.extend(["api", "gradio-public"])
+    if new_model and "api" not in to_restart:
+        to_restart.append("api")
+
+    if not to_restart:
+        log.info(
+            "Aucun rollout restart nécessaire (new_model=%s new_images=%s) "
+            "— manifests resynchronisés, skip rolling update",
+            new_model, new_images,
+        )
+        log.info("event=alert severity=info topic=kapsule_success")
+        return True
+
+    log.info("Rollout restart : %s", ", ".join(to_restart))
+    ok, touched = rolling_update_task(kubeconfig, to_restart)
 
     if not ok:
         rollback_kapsule_task(kubeconfig, touched)
@@ -347,6 +387,5 @@ def deploy_kapsule_flow() -> bool:
             "  4. Si cluster instable : kapsule-down puis kapsule-up"
         )
 
-    # Confirmation de succès : visible dans Loki/Grafana, pas d'email (cf. deploy_vps_flow.py).
     log.info("event=alert severity=info topic=kapsule_success")
     return True

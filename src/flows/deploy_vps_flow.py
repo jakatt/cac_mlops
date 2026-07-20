@@ -489,7 +489,11 @@ def deploy_vps_flow(
             )
 
         # ── 5. Deploy Kapsule (seulement si test-api OK) ─────────────────────────
-        deploy_kapsule_flow()
+        deploy_kapsule_flow(
+            new_model=bool(champion and run_ids),
+            new_data=bool(year),
+            new_images=needs_build,
+        )
     finally:
         release_deploy_lock_task(lock_fd)
 
