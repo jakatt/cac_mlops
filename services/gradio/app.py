@@ -2353,53 +2353,51 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 health_refresh.click(fn=check_health_vps, outputs=health_table_vps)
                 health_refresh.click(fn=check_health_k8s, outputs=health_table_k8s)
 
+            if not IS_KAPSULE:
+                with gr.Accordion("📉  Drift — Rapports de dérive", open=False):
+                    gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
+                    with gr.Row():
+                        drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
+                                                    value=(_list_drift_reports() or [None])[0])
+                        drift_refresh = gr.Button("Rafraichir", scale=1)
+                    drift_iframe = gr.HTML(value=load_drift_report((_list_drift_reports() or [None])[0]))
+                    drift_dd.change(fn=load_drift_report, inputs=drift_dd, outputs=drift_iframe)
+                    drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
+
+            if not IS_KAPSULE:
+                with gr.Accordion("🧠  Modèles — Versions et promotion", open=False):
+                    gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
+                    with gr.Row():
+                        models_refresh = gr.Button("Rafraichir", scale=1)
+
+                    _init_df, _init_choices = _load_models_data()
+                    models_table = gr.Dataframe(
+                        value=_init_df,
+                        label="Versions MLflow",
+                        interactive=False,
+                    )
+
+                    gr.Markdown("#### Promouvoir une version en Production")
+                    gr.Markdown(
+                        "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
+                        "Aucun smoke test ni gate automatique. "
+                        "Réservé aux rollbacks d'urgence. "
+                        "Pour une promotion normale, utiliser le flow **update-model** (Cockpit → accordéon Orchestration)."
+                    )
+                    with gr.Row():
+                        promote_dd  = gr.Dropdown(choices=_init_choices,
+                                                  value=_init_choices[-1] if _init_choices else None,
+                                                  label="Version", scale=2)
+                        promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
+                    promote_result = gr.Markdown()
+
+                    models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
+                    promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
+
             with gr.Accordion("🔗  Liens", open=False):
                 infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
                 infra_html    = gr.HTML(value=build_links_html())
                 infra_refresh.click(fn=build_links_html, outputs=infra_html)
-
-        if not IS_KAPSULE:
-            # ── Onglet 3 : Drift ─────────────────────────────────────────────────
-            with gr.Tab("Drift"):
-                gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
-                with gr.Row():
-                    drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
-                                                value=(_list_drift_reports() or [None])[0])
-                    drift_refresh = gr.Button("Rafraichir", scale=1)
-                drift_iframe = gr.HTML(value=load_drift_report((_list_drift_reports() or [None])[0]))
-                drift_dd.change(fn=load_drift_report, inputs=drift_dd, outputs=drift_iframe)
-                drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
-
-        if not IS_KAPSULE:
-            # ── Onglet 4 : Modèles ───────────────────────────────────────────────
-            with gr.Tab("Modeles"):
-                gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
-                with gr.Row():
-                    models_refresh = gr.Button("Rafraichir", scale=1)
-
-                _init_df, _init_choices = _load_models_data()
-                models_table = gr.Dataframe(
-                    value=_init_df,
-                    label="Versions MLflow",
-                    interactive=False,
-                )
-
-                gr.Markdown("#### Promouvoir une version en Production")
-                gr.Markdown(
-                    "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
-                    "Aucun smoke test ni gate automatique. "
-                    "Réservé aux rollbacks d'urgence. "
-                    "Pour une promotion normale, utiliser le flow **update-model** (Cockpit → accordéon Orchestration)."
-                )
-                with gr.Row():
-                    promote_dd  = gr.Dropdown(choices=_init_choices,
-                                              value=_init_choices[-1] if _init_choices else None,
-                                              label="Version", scale=2)
-                    promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
-                promote_result = gr.Markdown()
-
-                models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
-                promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
 
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
         with gr.Tab("Docs"):
