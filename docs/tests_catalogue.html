@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Catalogue des tests — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --ci-bg:  #eff6ff; --ci-num:  #1d4ed8; --ci-bd:  #93c5fd;
+  --cd-bg:  #fffbeb; --cd-num:  #b45309; --cd-bd:  #fcd34d;
+  --pf-bg:  #f0fdf4; --pf-num:  #15803d; --pf-bd:  #86efac;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+    --ci-bg:  #0a1a38; --ci-num:  #60a5fa; --ci-bd:  #1e3a8a;
+    --cd-bg:  #2a1f00; --cd-num:  #fbbf24; --cd-bd:  #78350f;
+    --pf-bg:  #052e16; --pf-num:  #4ade80; --pf-bd:  #14532d;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  --ci-bg:  #0a1a38; --ci-num:  #60a5fa; --ci-bd:  #1e3a8a;
+  --cd-bg:  #2a1f00; --cd-num:  #fbbf24; --cd-bd:  #78350f;
+  --pf-bg:  #052e16; --pf-num:  #4ade80; --pf-bd:  #14532d;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --ci-bg:  #eff6ff; --ci-num:  #1d4ed8; --ci-bd:  #93c5fd;
+  --cd-bg:  #fffbeb; --cd-num:  #b45309; --cd-bd:  #fcd34d;
+  --pf-bg:  #f0fdf4; --pf-num:  #15803d; --pf-bd:  #86efac;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc body, .ci-doc { background: var(--bg); }
+.ci-doc .wrapper { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:680px;margin-bottom:28px;line-height:1.6; }
+
+/* ── Summary badges ── */
+.ci-doc .summary-row { display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap; }
+.ci-doc .badge {
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:12px 20px;border-radius:8px;border:1px solid;min-width:110px;
+}
+.ci-doc .badge.ci  { background:var(--ci-bg); border-color:var(--ci-bd); }
+.ci-doc .badge.cd  { background:var(--cd-bg); border-color:var(--cd-bd); }
+.ci-doc .badge.pf  { background:var(--pf-bg); border-color:var(--pf-bd); }
+.ci-doc .badge-num { font-size:1.5rem;font-weight:700; }
+.ci-doc .badge.ci  .badge-num { color:var(--ci-num); }
+.ci-doc .badge.cd  .badge-num { color:var(--cd-num); }
+.ci-doc .badge.pf  .badge-num { color:var(--pf-num); }
+.ci-doc .badge-label { font-size:.72rem;font-weight:600;color:var(--muted);text-align:center; }
+
+/* ── Section headers ── */
+.ci-doc .section {
+  border-left:3px solid;border-radius:0 8px 8px 0;margin-bottom:24px;
+}
+.ci-doc .section.ci  { border-color:var(--ci-num); }
+.ci-doc .section.cd  { border-color:var(--cd-num); }
+.ci-doc .section.pf  { border-color:var(--pf-num); }
+.ci-doc .section-head {
+  padding:12px 16px;font-size:.90rem;font-weight:700;color:var(--text);
+  display:flex;align-items:center;gap:10px;
+}
+.ci-doc .section-pill {
+  font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 8px;border-radius:4px;
+}
+.ci-doc .section.ci .section-pill { background:var(--ci-bd);color:var(--ci-num); }
+.ci-doc .section.cd .section-pill { background:var(--cd-bd);color:var(--cd-num); }
+.ci-doc .section.pf .section-pill { background:var(--pf-bd);color:var(--pf-num); }
+.ci-doc .section-meta { font-size:.76rem;color:var(--muted);padding:0 16px 12px;font-family:monospace; }
+
+/* ── Accordions ── */
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin:0 16px 8px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:10px 14px;cursor:pointer;font-size:.85rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:12px 14px 14px; }
+.ci-doc .count { font-size:.73rem;font-weight:600;margin-left:4px;padding:1px 7px;border-radius:10px;background:var(--accent-lt);color:var(--accent); }
+
+/* ── Tables ── */
+.ci-doc .overflow-x { overflow-x:auto; }
+.ci-doc table { width:100%;border-collapse:collapse;font-size:.80rem; }
+.ci-doc th {
+  text-align:left;padding:7px 12px;background:var(--sum-bg);
+  color:var(--accent);font-weight:600;font-size:.73rem;letter-spacing:.04em;
+  border-bottom:2px solid var(--border);white-space:nowrap;
+}
+.ci-doc td { padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top; }
+.ci-doc tr:last-child td { border-bottom:none; }
+.ci-doc tr:hover td { background:var(--accent-lt); }
+.ci-doc code { font-family:monospace;font-size:.82rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;color:var(--accent); }
+.ci-doc .note { font-size:.77rem;color:var(--muted);font-style:italic;margin-top:10px;padding:8px 12px;border-left:2px solid var(--border); }
+.ci-doc .tag-skip { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#fef9c3;color:#92400e;font-weight:600; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">CI/CD — Qualité</div>
+  <h1 class="page-title">Catalogue des tests</h1>
+  <p class="page-sub">
+    Trois niveaux de tests automatisés couvrent l'ensemble du cycle de vie : du commit local au déploiement en production.
+    Les tests CI bloquent toute PR, les tests CD valident le déploiement, les tests Prefect garantissent la stack en conditions réelles.
+  </p>
+
+  <div class="summary-row">
+    <div class="badge ci"><span class="badge-num">36</span><span class="badge-label">Tests unitaires CI<br>pytest · 0 ignoré</span></div>
+    <div class="badge cd"><span class="badge-num">10</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
+    <div class="badge pf"><span class="badge-num">6</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow</span></div>
+  </div>
+
+  <!-- ════════════════════ 1. CI ════════════════════ -->
+  <div class="section ci">
+    <div class="section-head">
+      <span class="section-pill ci">CI</span>
+      Tests unitaires — <code>ci.yml</code>
+    </div>
+    <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main</div>
+
+    <details open>
+      <summary>test_predict.py — Endpoint API <span class="count">11</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_valid_request_returns_200</code></td><td>Payload 27 features valide → HTTP 200</td></tr>
+          <tr><td><code>test_response_has_required_fields</code></td><td>Réponse contient <code>prediction</code>, <code>probability</code>, <code>model_version</code></td></tr>
+          <tr><td><code>test_prediction_is_binary</code></td><td><code>prediction</code> vaut 0 ou 1</td></tr>
+          <tr><td><code>test_probability_in_range</code></td><td><code>probability</code> ∈ [0.0, 1.0]</td></tr>
+          <tr><td><code>test_missing_field_returns_422</code></td><td>Champ obligatoire absent → HTTP 422</td></tr>
+          <tr><td><code>test_wrong_type_returns_422</code></td><td>Type incorrect sur un champ → HTTP 422</td></tr>
+          <tr><td><code>test_extra_field_ignored</code></td><td>Champ inconnu dans le payload → ignoré (pas de 422)</td></tr>
+          <tr><td><code>test_health_returns_200</code></td><td>GET /health → HTTP 200</td></tr>
+          <tr><td><code>test_metrics_endpoint_returns_200</code></td><td>GET /metrics → HTTP 200 (scrape Prometheus)</td></tr>
+          <tr><td><code>test_test_features_json_is_valid_payload</code></td><td>Le fichier <code>test_features.json</code> est un payload valide complet</td></tr>
+          <tr><td><code>test_model_version_in_response</code></td><td><code>model_version</code> contient <code>"@Production"</code></td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>test_preprocessing.py — Feature engineering <span class="count">14</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_returns_one_row_per_accident</code></td><td>Une seule ligne par <code>Num_Acc</code> après fusion des 4 fichiers ONISR</td></tr>
+          <tr><td><code>test_grav_is_binary</code></td><td>Cible <code>grav</code> vaut uniquement 0 ou 1</td></tr>
+          <tr><td><code>test_target_recoding_blessure_grave</code></td><td>Blessure grave (grav=2) → <code>grav=1</code></td></tr>
+          <tr><td><code>test_grav_indemne_maps_to_zero</code></td><td>Indemne (grav=4) → <code>grav=0</code></td></tr>
+          <tr><td><code>test_hrmn_converted_to_hour</code></td><td><code>hrmn</code> (format HHMM) → colonne <code>hour</code> entier 0–23</td></tr>
+          <tr><td><code>test_midnight_hrmn_gives_hour_zero</code></td><td><code>hrmn=0</code> → <code>hour=0</code> (cas limite minuit)</td></tr>
+          <tr><td><code>test_victim_age_computed</code></td><td><code>victim_age = year_acc − an_nais</code> calculé correctement</td></tr>
+          <tr><td><code>test_year_acc_derived_from_an</code></td><td><code>year_acc</code> correspond à la colonne <code>an</code> de caractéristiques</td></tr>
+          <tr><td><code>test_corse_dep_normalized</code></td><td>Département 2A → code normalisé 201</td></tr>
+          <tr><td><code>test_corse_2b_normalized</code></td><td>Département 2B → code normalisé 202</td></tr>
+          <tr><td><code>test_lat_long_are_float</code></td><td><code>lat</code> et <code>long</code> sont des float (pas des strings)</td></tr>
+          <tr><td><code>test_features_present_after_engineering</code></td><td>Les 27 features modèle + <code>year_acc</code> (intermédiaire) + <code>grav</code> sont présentes</td></tr>
+          <tr><td><code>test_no_id_columns_in_output</code></td><td>Colonnes techniques supprimées (<code>Num_Acc</code>, <code>an_nais</code>, <code>hrmn</code>…)</td></tr>
+          <tr><td><code>test_nb_victim_aggregated_per_accident</code></td><td><code>nb_victim</code> = nombre d'usagers impliqués par accident</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>test_schema_validator.py — Validation Pandera <span class="count">11</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_all_files_present_returns_true</code></td><td>4 fichiers CSV ONISR présents → niveau 1 OK</td></tr>
+          <tr><td><code>test_missing_file_raises_critical</code></td><td>Fichier manquant → niveau CRITICAL (bloque le pipeline T1)</td></tr>
+          <tr><td><code>test_empty_file_raises_critical</code></td><td>Fichier vide → CRITICAL</td></tr>
+          <tr><td><code>test_nonexistent_dir_raises_critical</code></td><td>Répertoire source inexistant → CRITICAL</td></tr>
+          <tr><td><code>test_missing_required_column_raises_critical</code></td><td>Colonne requise absente dans un CSV → CRITICAL</td></tr>
+          <tr><td><code>test_low_accident_count_triggers_warning</code></td><td>Volume &lt; 40 000 lignes → WARNING (données potentiellement tronquées)</td></tr>
+          <tr><td><code>test_normal_count_no_warning</code></td><td>Volume nominal → pas de warning</td></tr>
+          <tr><td><code>test_invalid_grav_value_triggers_warning</code></td><td>Modalité inconnue dans <code>grav</code> → WARNING</td></tr>
+          <tr><td><code>test_overall_level_ok_when_no_messages</code></td><td>Aucun message → niveau global OK</td></tr>
+          <tr><td><code>test_overall_level_critical_after_critical_message</code></td><td>1 message CRITICAL → niveau global CRITICAL (correctement agrégé)</td></tr>
+          <tr><td><code>test_summary_contains_year</code></td><td>Le rapport de validation mentionne l'année traitée</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+  </div><!-- section ci -->
+
+  <!-- ════════════════════ 2. CD ════════════════════ -->
+  <div class="section cd">
+    <div class="section-head">
+      <span class="section-pill cd">CD</span>
+      Pipeline de déploiement — <code>deploy.yml</code>
+    </div>
+    <div class="section-meta">Déclenché automatiquement après chaque merge sur main (ou via workflow_dispatch)</div>
+
+    <div style="padding:0 16px 16px;">
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Étape</th><th>Description</th></tr>
+      <tr>
+        <td>1</td>
+        <td><code>check-changes</code></td>
+        <td>Détecte si Dockerfiles / <code>requirements.txt</code> / fichiers Python de service ont changé → <code>needs_build=true/false</code>. Calcule aussi <code>RESTART_SERVICES</code> (nginx · gradio · grafana · prometheus · loki · promtail).</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Build API</td>
+        <td><code>docker build</code> + push <code>cac-mlops-api:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Build MLflow</td>
+        <td><code>docker build</code> + push <code>cac-mlops-mlflow:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>Build Gradio</td>
+        <td><code>docker build</code> + push <code>cac-mlops-gradio:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>Scan Trivy</td>
+        <td>Scan CVE CRITICAL sur les 4 images — <strong>bloque le deploy</strong> si vulnérabilité non corrigée détectée</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td>SSH VPS → git pull</td>
+        <td><code>git pull origin main</code> sur le VPS (+ stash des fichiers locaux bind-mountés)</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>docker compose up</td>
+        <td><code>docker compose pull</code> (si build) + <code>docker compose up -d --remove-orphans</code></td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td>Restarts ciblés</td>
+        <td>Restart sélectif des conteneurs modifiés uniquement (nginx · gradio · grafana · prometheus · loki · promtail)</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td>prefect deploy --all</td>
+        <td>Resynchronisation des schémas de déploiement Prefect — bloque le deploy si schéma périmé</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td>Déclenchement flow</td>
+        <td><code>update-model-flow</code> si <code>config/model_params.yml</code> modifié (T3) · <code>deploy-vps-flow</code> sinon (T2). Rollback images <code>:rollback</code> si smoke test pré-gate échoue.</td>
+      </tr>
+    </table>
+    </div>
+    </div>
+  </div><!-- section cd -->
+
+  <!-- ════════════════════ 3. POST-DEPLOY ════════════════════ -->
+  <div class="section pf">
+    <div class="section-head">
+      <span class="section-pill pf">PREFECT</span>
+      Tests post-deploy — <code>test-api-flow</code>
+    </div>
+    <div class="section-meta">Déclenché automatiquement par deploy-vps-flow après chaque déploiement VPS réussi · Exécuté dans le réseau Docker (http://nginx:80)</div>
+
+    <div style="padding:0 16px 16px;">
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
+      <tr>
+        <td>1</td>
+        <td><code>test-health</code></td>
+        <td><code>GET /health</code> → HTTP 200 — confirme que l'API est démarrée et le modèle chargé</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><code>test-token</code></td>
+        <td><code>POST /token</code> (OAuth2 password grant) → JWT valide retourné</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><code>test-401-sans-token</code></td>
+        <td><code>POST /predict</code> sans en-tête Authorization → HTTP 401 (authentification obligatoire)</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><code>test-200-avec-token</code></td>
+        <td><code>POST /predict</code> avec Bearer JWT → HTTP 200 + <code>prediction</code> · <code>probability</code> · <code>model_version</code></td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><code>test-whatif-vitesse-90-vs-50</code></td>
+        <td>
+          <strong>Test de cohérence métier</strong> — route départementale, nuit sans éclairage, hors agglomération :<br>
+          <code>proba(vma=90) &gt; proba(vma=50)</code> (Δ ≈ +0.17)<br>
+          <em>Garantit que le modèle en production répond de manière cohérente avec la physique des accidents
+          (vitesse maximale autorisée plus élevée → risque de blessure grave plus élevé, toutes choses égales).</em>
+        </td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><code>test-429-rate-limit</code> <span class="tag-skip">skippé en CD</span></td>
+        <td>22 requêtes consécutives → HTTP 429 déclenché par le rate limiter. Actif uniquement en test manuel (évite de saturer le rate limiter pendant les déploiements automatisés).</td>
+      </tr>
+    </table>
+    </div>
+    <p class="note">Les tests post-deploy s'exécutent à l'intérieur du réseau Docker via <code>http://nginx:80</code> — ils testent l'API en conditions réelles (load balancer, auth, modèle chargé en mémoire) et non via un mock.</p>
+    </div>
+  </div><!-- section pf -->
+
+</div><!-- .wrapper -->
+</div><!-- .ci-doc -->
+</body>
+</html>

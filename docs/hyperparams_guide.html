@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Guide hyperparamètres — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --rf:  #1d4ed8; --rf-bg:  #eff6ff; --rf-bd:  #93c5fd;
+  --xgb: #b45309; --xgb-bg: #fffbeb; --xgb-bd: #fcd34d;
+  --lgbm:#15803d; --lgbm-bg:#f0fdf4; --lgbm-bd:#86efac;
+  --infra:#6b7280; --infra-bg:#f9fafb; --infra-bd:#d1d5db;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+    --rf:  #60a5fa; --rf-bg:  #0a1a38; --rf-bd:  #1e3a8a;
+    --xgb: #fbbf24; --xgb-bg: #2a1f00; --xgb-bd: #78350f;
+    --lgbm:#4ade80; --lgbm-bg:#052e16; --lgbm-bd:#14532d;
+    --infra:#9ca3af; --infra-bg:#1a2535; --infra-bd:#374151;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  --rf:  #60a5fa; --rf-bg:  #0a1a38; --rf-bd:  #1e3a8a;
+  --xgb: #fbbf24; --xgb-bg: #2a1f00; --xgb-bd: #78350f;
+  --lgbm:#4ade80; --lgbm-bg:#052e16; --lgbm-bd:#14532d;
+  --infra:#9ca3af; --infra-bg:#1a2535; --infra-bd:#374151;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --rf:  #1d4ed8; --rf-bg:  #eff6ff; --rf-bd:  #93c5fd;
+  --xgb: #b45309; --xgb-bg: #fffbeb; --xgb-bd: #fcd34d;
+  --lgbm:#15803d; --lgbm-bg:#f0fdf4; --lgbm-bd:#86efac;
+  --infra:#6b7280; --infra-bg:#f9fafb; --infra-bd:#d1d5db;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc body, .ci-doc { background: var(--bg); }
+.ci-doc .wrapper { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:680px;margin-bottom:10px;line-height:1.6; }
+.ci-doc .workflow-box {
+  border:1px solid var(--border);border-radius:8px;background:var(--surface);
+  padding:14px 18px;margin-bottom:28px;font-size:.81rem;color:var(--muted);
+}
+.ci-doc .workflow-box strong { color:var(--text); }
+.ci-doc .workflow-box ol { padding-left:18px;margin-top:6px;line-height:1.8; }
+
+/* ── Tabs ── */
+.ci-doc .tabs { display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap; }
+.ci-doc .tab-btn {
+  padding:7px 18px;border-radius:6px;border:1.5px solid var(--border);
+  background:var(--surface);color:var(--muted);font-size:.82rem;font-weight:600;
+  cursor:pointer;transition:all .15s;
+}
+.ci-doc .tab-btn:hover { border-color:var(--accent);color:var(--accent); }
+.ci-doc .tab-btn.active { background:var(--accent);color:#fff;border-color:var(--accent); }
+.ci-doc .tab-panel { display:none; }
+.ci-doc .tab-panel.active { display:block; }
+
+/* ── Model header ── */
+.ci-doc .model-header {
+  display:flex;align-items:center;gap:12px;margin-bottom:18px;
+  padding:14px 18px;border-radius:8px;border-left:4px solid;
+}
+.ci-doc .model-header.rf   { background:var(--rf-bg);  border-color:var(--rf);  }
+.ci-doc .model-header.xgb  { background:var(--xgb-bg); border-color:var(--xgb); }
+.ci-doc .model-header.lgbm { background:var(--lgbm-bg);border-color:var(--lgbm);}
+.ci-doc .model-badge {
+  font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:3px 10px;border-radius:4px;
+}
+.ci-doc .model-badge.rf   { background:var(--rf-bd);  color:var(--rf);  }
+.ci-doc .model-badge.xgb  { background:var(--xgb-bd); color:var(--xgb); }
+.ci-doc .model-badge.lgbm { background:var(--lgbm-bd);color:var(--lgbm);}
+.ci-doc .model-title { font-size:.95rem;font-weight:700;color:var(--text); }
+.ci-doc .model-sub   { font-size:.78rem;color:var(--muted);margin-top:2px; }
+
+/* ── Sections ── */
+.ci-doc .section-title {
+  font-size:.75rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);margin:20px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--border);
+}
+
+/* ── Param table ── */
+.ci-doc .param-table { width:100%;border-collapse:collapse;font-size:.81rem;margin-bottom:8px; }
+.ci-doc .param-table th {
+  text-align:left;padding:8px 12px;background:var(--sum-bg);
+  color:var(--accent);font-weight:600;font-size:.74rem;letter-spacing:.04em;
+  border-bottom:2px solid var(--border);
+}
+.ci-doc .param-table td { padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top; }
+.ci-doc .param-table tr:last-child td { border-bottom:none; }
+.ci-doc .param-table tr:hover td { background:var(--accent-lt); }
+.ci-doc .param-name { font-family:monospace;font-size:.83rem;color:var(--accent);font-weight:600; }
+.ci-doc .param-type { font-size:.74rem;color:var(--muted);white-space:nowrap; }
+.ci-doc .param-default { font-family:monospace;font-size:.78rem;color:var(--text); }
+.ci-doc .param-desc { font-size:.80rem;color:var(--muted);line-height:1.5; }
+.ci-doc .param-desc strong { color:var(--text); }
+
+/* ── Infra note ── */
+.ci-doc .infra-note {
+  border:1px solid var(--infra-bd);border-radius:7px;background:var(--infra-bg);
+  padding:12px 16px;margin-top:20px;font-size:.79rem;color:var(--muted);
+}
+.ci-doc .infra-note strong { color:var(--text); }
+.ci-doc .infra-note code { font-family:monospace;font-size:.82rem;color:var(--infra); }
+
+.ci-doc .overflow-x { overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">Data Science — Blueprint</div>
+  <h1 class="page-title">Guide des hyperparamètres</h1>
+  <p class="page-sub">
+    Référence complète des hyperparamètres configurables pour chacun des trois algorithmes.
+    Ces valeurs sont consignées dans <code style="font-size:.82rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;">config/model_params.yml</code>
+    après expérimentation locale, puis transmises au réentraînement de production via le Trigger&nbsp;3.
+  </p>
+
+  <div class="workflow-box">
+    <strong>Workflow DS (Trigger 3)</strong>
+    <ol>
+      <li>Expérimenter localement : GridSearch / RandomizedSearch / Optuna — <em>MLflow tracking</em></li>
+      <li>Consigner les meilleurs params dans <code>config/model_params.yml</code></li>
+      <li><code>git commit + PR → main</code> → déclenche automatiquement <code>update-model-flow</code></li>
+      <li>Benchmark RF / XGBoost / LightGBM → gate KPI → gate manuelle → promote <code>@Production</code></li>
+    </ol>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('rf', this)">Random Forest</button>
+    <button class="tab-btn" onclick="showTab('xgb', this)">XGBoost</button>
+    <button class="tab-btn" onclick="showTab('lgbm', this)">LightGBM</button>
+  </div>
+
+  <!-- ═══════════════════════ RANDOM FOREST ═══════════════════════ -->
+  <div id="tab-rf" class="tab-panel active">
+    <div class="model-header rf">
+      <span class="model-badge rf">RF</span>
+      <div>
+        <div class="model-title">Random Forest — <code style="font-size:.85rem;">sklearn.ensemble.RandomForestClassifier</code></div>
+        <div class="model-sub">Ensemble de CART, bagging + feature sampling. Robuste, peu sensible aux hyperparamètres, bon point de départ.</div>
+      </div>
+    </div>
+
+    <div class="section-title">Complexité des arbres</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">n_estimators</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">200</span></td>
+        <td class="param-desc">Nombre d'arbres. <strong>↑ = meilleure perf + variance réduite</strong>, ↑ temps linéaire. Diminuer si durée trop longue (≥100 en prod).</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">max_depth</span></td>
+        <td><span class="param-type">int | null</span></td>
+        <td><span class="param-default">null</span></td>
+        <td class="param-desc"><strong>null = illimité</strong> (conseillé pour RF — la profondeur est naturellement contrainte par <code>min_samples_leaf</code>). Fixer une valeur (ex: 15–30) uniquement si mémoire critique.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">min_samples_split</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">2</span></td>
+        <td class="param-desc">Nœud splitté uniquement si ≥ N échantillons. <strong>↑ = moins de splits, arbres plus simples</strong>. Tester 5–20 si surapprentissage.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">min_samples_leaf</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">1</span></td>
+        <td class="param-desc">Min échantillons dans une feuille. <strong>↑ = arbres plus lisses, moins de surfit</strong>. Tester 2–10 sur ce dataset.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">max_features</span></td>
+        <td><span class="param-type">str | float</span></td>
+        <td><span class="param-default">"sqrt"</span></td>
+        <td class="param-desc">Features évaluées à chaque split. <strong><code>"sqrt"</code> = √(nb_features)</strong> (défaut sklearn, 27 features → 5/6). <code>"log2"</code> = plus rapide mais moins expressif. Float 0–1 pour contrôle fin (ex: <code>0.5</code> = 50%).</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Échantillonnage</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">bootstrap</span></td>
+        <td><span class="param-type">bool</span></td>
+        <td><span class="param-default">true</span></td>
+        <td class="param-desc">Tirage avec remplacement (bagging). <strong>true = RF classique</strong>. false = pasting (chaque arbre sur tout le dataset, moins de diversité).</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">max_samples</span></td>
+        <td><span class="param-type">float | null</span></td>
+        <td><span class="param-default">null</span></td>
+        <td class="param-desc">Fraction du dataset par arbre (nécessite <code>bootstrap=true</code>). <strong>null = 100%</strong>. Ex: <code>0.8</code> → 80% des lignes par arbre, accélère et diversifie.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Critère &amp; classes déséquilibrées</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">criterion</span></td>
+        <td><span class="param-type">str</span></td>
+        <td><span class="param-default">"gini"</span></td>
+        <td class="param-desc">Critère de qualité des splits. <strong><code>"gini"</code></strong> (défaut, rapide) ou <code>"entropy"</code> (information gain, légèrement plus lent). En pratique très peu de différence sur de grands datasets.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">class_weight</span></td>
+        <td><span class="param-type">str | null</span></td>
+        <td><span class="param-default">null</span></td>
+        <td class="param-desc">Pondération des classes. <strong><code>"balanced"</code> = poids inversement proportionnel à la fréquence</strong> → utile si le ratio blessés graves / indemnes est déséquilibré. <code>"balanced_subsample"</code> recalcule à chaque arbre.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="infra-note">
+      <strong>Params infra (non modifiables via blueprint) :</strong>
+      <code>n_jobs=-1</code> (parallélisme total) · <code>random_state=42</code> (reproductibilité)
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ XGBOOST ═══════════════════════ -->
+  <div id="tab-xgb" class="tab-panel">
+    <div class="model-header xgb">
+      <span class="model-badge xgb">XGB</span>
+      <div>
+        <div class="model-title">XGBoost — <code style="font-size:.85rem;">xgboost.XGBClassifier</code></div>
+        <div class="model-sub">Gradient boosting séquentiel avec régularisation L1/L2 intégrée. Très performant, nombreux leviers de contrôle du surapprentissage.</div>
+      </div>
+    </div>
+
+    <div class="section-title">Complexité &amp; apprentissage</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">n_estimators</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">300</span></td>
+        <td class="param-desc">Nombre de boosting rounds. <strong>↑ avec ↓ learning_rate pour meilleure perf</strong>. Surveiller overfitting via early stopping en local.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">max_depth</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">5</span></td>
+        <td class="param-desc">Profondeur max par arbre. <strong>Plage typique : 3–8</strong>. ↑ = plus expressif, risque surfit. Pour XGBoost contrairement à RF, il faut fixer une valeur (pas null).</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">learning_rate</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">0.05</span></td>
+        <td class="param-desc">Taux de shrinkage (eta). <strong>↓ = plus robuste, nécessite ↑ n_estimators</strong>. Typiquement 0.01–0.3. Couple {0.05, 300} ou {0.01, 1000} selon contrainte temps.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Sous-échantillonnage (anti-surapprentissage)</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">subsample</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">1.0</span></td>
+        <td class="param-desc">Fraction des <strong>lignes</strong> par arbre. <strong>Ex: 0.8 = 80% des données</strong> → réduit le surfit et accélère. Plage recommandée : 0.6–1.0.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">colsample_bytree</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">1.0</span></td>
+        <td class="param-desc">Fraction des <strong>features</strong> par arbre. <strong>Ex: 0.8</strong> → diversifie les arbres, réduit corrélation. Très efficace sur nos 27 features. Plage : 0.5–1.0.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Régularisation</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">min_child_weight</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">1</span></td>
+        <td class="param-desc">Poids minimum (somme des hessiens) dans une feuille. <strong>↑ = feuilles moins spécifiques</strong>, freine les splits rares. Tester 3–10 si surfit.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">gamma</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">0</span></td>
+        <td class="param-desc">Gain minimum pour accepter un split. <strong>0 = aucune contrainte</strong>. ↑ = arbres plus conservateurs (moins de splits). Tester 0.1–1.0.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">reg_alpha</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">0</span></td>
+        <td class="param-desc">Régularisation L1 (lasso) sur les poids des feuilles. <strong>↑ = sparsité, poids proches de 0</strong>. Utile si peu de features vraiment informatives.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">reg_lambda</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">1</span></td>
+        <td class="param-desc">Régularisation L2 (ridge) sur les poids des feuilles. <strong>↑ = poids plus petits et lisses</strong>. Défaut = 1 (actif). Tester 0.5–5.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Déséquilibre de classes</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">scale_pos_weight</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">1</span></td>
+        <td class="param-desc">Ratio classe négative / positive. <strong>Si n_neg/n_pos ≈ 3 → mettre 3</strong>. Améliore recall sur la classe minoritaire (blessures graves). Vérifier via <code>y_train.value_counts()</code>.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="infra-note">
+      <strong>Params infra (non modifiables via blueprint) :</strong>
+      <code>n_jobs=-1</code> · <code>random_state=42</code> · <code>verbosity=0</code> · <code>eval_metric="logloss"</code>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ LIGHTGBM ═══════════════════════ -->
+  <div id="tab-lgbm" class="tab-panel">
+    <div class="model-header lgbm">
+      <span class="model-badge lgbm">LGBM</span>
+      <div>
+        <div class="model-title">LightGBM — <code style="font-size:.85rem;">lightgbm.LGBMClassifier</code></div>
+        <div class="model-sub">Gradient boosting leaf-wise (vs. level-wise XGBoost). Plus rapide, très efficace sur les grands datasets. Champion actuel @Production.</div>
+      </div>
+    </div>
+
+    <div class="section-title">Complexité &amp; apprentissage</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">n_estimators</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">300</span></td>
+        <td class="param-desc">Nombre de boosting rounds. <strong>Coupler avec learning_rate</strong> : ↓ lr → ↑ n_estimators.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">num_leaves</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">63</span></td>
+        <td class="param-desc"><strong>Paramètre de complexité principal de LightGBM</strong> (leaf-wise). Max feuilles par arbre. Valeur théorique : 2^max_depth. <strong>↑ = plus expressif, risque surfit</strong>. Typiquement 31–255. Toujours garder num_leaves &lt; 2^max_depth si max_depth fixé.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">max_depth</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">-1</span></td>
+        <td class="param-desc"><strong>-1 = illimité</strong> (contrôlé par num_leaves). Fixer uniquement pour contraindre durement la profondeur (ex: 10–15).</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">learning_rate</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">0.05</span></td>
+        <td class="param-desc">Taux de shrinkage. <strong>↓ = plus robuste, ↑ n_estimators</strong>. Même logique que XGBoost.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Sous-échantillonnage</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">subsample</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">1.0</span></td>
+        <td class="param-desc">Fraction des <strong>lignes</strong> par arbre. <strong>Nécessite subsample_freq &gt; 0 pour être actif</strong>. Ex: 0.8 + subsample_freq=5.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">subsample_freq</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">0</span></td>
+        <td class="param-desc">Fréquence du bagging. <strong>0 = désactivé</strong>. Ex: 5 → bagging tous les 5 arbres. Mettre &gt; 0 pour activer <code>subsample</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">colsample_bytree</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">1.0</span></td>
+        <td class="param-desc">Fraction des <strong>features</strong> par arbre. Actif sans condition. <strong>Ex: 0.8</strong>. Alias LightGBM : <code>feature_fraction</code>.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Régularisation</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">min_child_samples</span></td>
+        <td><span class="param-type">int</span></td>
+        <td><span class="param-default">20</span></td>
+        <td class="param-desc">Min données dans une feuille. <strong>Contrôle majeur du surfit pour LightGBM</strong>. ↑ = feuilles moins spécifiques. Tester 10–100 selon taille du dataset.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">reg_alpha</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">0.0</span></td>
+        <td class="param-desc">Régularisation L1 (lasso). <strong>↑ = sparsité</strong>. Tester 0–1.</td>
+      </tr>
+      <tr>
+        <td><span class="param-name">reg_lambda</span></td>
+        <td><span class="param-type">float</span></td>
+        <td><span class="param-default">0.0</span></td>
+        <td class="param-desc">Régularisation L2 (ridge). <strong>↑ = poids plus petits</strong>. Tester 0–10.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="section-title">Classes déséquilibrées</div>
+    <div class="overflow-x">
+    <table class="param-table">
+      <tr><th>Paramètre</th><th>Type</th><th>Valeur actuelle</th><th>Effet &amp; conseils</th></tr>
+      <tr>
+        <td><span class="param-name">class_weight</span></td>
+        <td><span class="param-type">str | null</span></td>
+        <td><span class="param-default">null</span></td>
+        <td class="param-desc">Pondération des classes. <strong><code>"balanced"</code></strong> = poids inversement proportionnel à la fréquence. Améliore recall sur la classe minoritaire. Peut être combiné avec <code>subsample</code>.</td>
+      </tr>
+    </table>
+    </div>
+
+    <div class="infra-note">
+      <strong>Params infra (non modifiables via blueprint) :</strong>
+      <code>n_jobs=-1</code> · <code>random_state=42</code> · <code>verbose=-1</code>
+    </div>
+  </div>
+
+</div><!-- .wrapper -->
+</div><!-- .ci-doc -->
+
+<script>
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
