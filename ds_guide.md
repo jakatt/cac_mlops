@@ -62,15 +62,46 @@ MLflow UI : [http://localhost:5001](http://localhost:5001)
 
 Le `.env` est pré-configuré avec `MLFLOW_TRACKING_URI=http://localhost:5001`.
 
-### Lancer une expérience
+### Lancer une expérience — Levier 2 : recherche des meilleurs hyperparamètres
+
+**Objectif de cette phase** : identifier les valeurs optimales à consigner ensuite dans `config/model_params.yml`.
+
+#### Approche 1 — Override CLI (rapide, 1 run)
 
 ```bash
 # MLFLOW_RUN_MODE=explore (défaut) → runs dans "accidents_severity_dev"
 python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
-  --n-estimators 500 --num-leaves 63 --learning-rate 0.03
+  --n-estimators 500 --num-leaves 127 --learning-rate 0.03
 ```
 
-Les runs vont dans l'expérience `accidents_severity_dev` (séparée de `accidents_severity_prod` utilisée en production).
+Les 4 args CLI (`--n-estimators`, `--max-depth`, `--num-leaves`, `--learning-rate`) **surchargent temporairement** le blueprint — utile pour tester une idée rapidement sans modifier le YAML. Les autres params viennent du fichier `config/model_params.yml`.
+
+#### Approche 2 — Grid search / RandomizedSearch / Optuna (exhaustif)
+
+```python
+from sklearn.model_selection import RandomizedSearchCV
+from lightgbm import LGBMClassifier
+import mlflow, pandas as pd, numpy as np
+
+X_train = pd.read_csv("data/preprocessed/cumul_2021_2022_2023/X_train.csv")
+y_train = np.ravel(pd.read_csv("data/preprocessed/cumul_2021_2022_2023/y_train.csv"))
+
+param_grid = {
+    "n_estimators":     [200, 300, 500],
+    "num_leaves":       [31, 63, 127],
+    "learning_rate":    [0.01, 0.05, 0.1],
+    "min_child_samples":[10, 20, 50],
+    "colsample_bytree": [0.8, 1.0],
+}
+clf = LGBMClassifier(n_jobs=-1, random_state=42, verbose=-1)
+search = RandomizedSearchCV(clf, param_grid, n_iter=20, scoring="f1",
+                             cv=3, random_state=42, n_jobs=-1)
+search.fit(X_train, y_train)
+print(search.best_params_)
+# → copier ces valeurs dans config/model_params.yml
+```
+
+> Les paramètres infra (`n_jobs=-1`, `random_state=42`, `verbose=-1`) sont gérés automatiquement par le pipeline — ne pas les inclure dans la grille.
 
 ### Comparer les runs
 
@@ -109,11 +140,27 @@ Ouvre une PR vers `main`. Le MLOps lead review et merge.
 
 ## 5. Algorithmes et hyperparamètres
 
-| Algorithme | Paramètres clés |
+### Deux leviers distincts
+
+| Levier | Où | Quand |
+| --- | --- | --- |
+| **Levier 1 — Blueprint** | `config/model_params.yml` | Valeurs optimales figées → commit → prod |
+| **Levier 2 — Expérimentation** | Local : Grid Search / Optuna / CLI | Pour trouver les valeurs à mettre dans le levier 1 |
+
+### Params DS vs params infra
+
+**Params DS** (dans `config/model_params.yml`, modifiables) :
+
+| Algorithme | Paramètres configurables |
 |---|---|
-| `rf` | `n_estimators`, `max_depth` |
-| `xgboost` | `n_estimators`, `max_depth`, `learning_rate` |
-| `lgbm` | `n_estimators`, `max_depth`, `num_leaves`, `learning_rate` |
+| `rf` | `n_estimators` · `max_depth` · `min_samples_split` · `min_samples_leaf` · `max_features` · `bootstrap` · `max_samples` · `criterion` · `class_weight` |
+| `xgboost` | `n_estimators` · `max_depth` · `learning_rate` · `subsample` · `colsample_bytree` · `min_child_weight` · `gamma` · `reg_alpha` · `reg_lambda` · `scale_pos_weight` |
+| `lgbm` | `n_estimators` · `num_leaves` · `max_depth` · `learning_rate` · `subsample` · `subsample_freq` · `colsample_bytree` · `min_child_samples` · `reg_alpha` · `reg_lambda` · `class_weight` |
+
+**Params infra** (gérés par le pipeline, **non modifiables**) :
+`n_jobs=-1` · `random_state=42` · `verbose=-1` / `verbosity=0`
+
+> **Référence complète** : description détaillée de chaque paramètre (effet, plage recommandée, conseils) → [docs/hyperparams_guide.html](docs/hyperparams_guide.html) (accessible dans le cockpit, onglet Docs).
 
 Le benchmark entraîne **les 3 algorithmes** à chaque cycle. Le champion est sélectionné automatiquement sur F1.
 
