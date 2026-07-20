@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>README — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+.ci-doc .link-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:10px 0; }
+.ci-doc .link-card { background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px; }
+.ci-doc .link-card a { color:var(--accent);text-decoration:none;font-size:.82rem;font-weight:600; }
+.ci-doc .link-card p { margin:3px 0 0;font-size:.74rem; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Vue d'ensemble — CAC MLOps</h1>
+    <p class="page-sub">Système MLOps de prédiction de gravité d'accidents routiers — pipeline automatisé de données à la production · versioning intégral · monitoring temps réel</p>
+  </header>
+
+  <!-- PROJET -->
+  <details open>
+    <summary>🎯 Le projet en bref</summary>
+    <div class="body">
+      <p><strong>Objectif :</strong> prédire si un accident de la route impliquera une victime grave (classification binaire <code>grav ∈ {0, 1}</code>) à partir de 27 features (conditions météo, type de voie, heure, caractéristiques de l'usager et du véhicule).</p>
+      <p><strong>Source de données :</strong> données officielles ONISR (Observatoire National Interministériel de la Sécurité Routière) téléchargées depuis <code>data.gouv.fr</code> via API — 4 fichiers CSV par année, ~55 000 accidents/an. Périmètre actuel : 2021 → 2024.</p>
+      <p><strong>Ce que démontre le projet :</strong></p>
+      <ul>
+        <li>Ingérer une nouvelle année de données de manière fiable et automatisée</li>
+        <li>Détecter automatiquement tout changement de format source (Pandera — 3 niveaux)</li>
+        <li>Versionner chaque évolution : données (DVC) · code (Git) · modèle (MLflow)</li>
+        <li>Benchmarker 3 algorithmes (RF / XGBoost / LightGBM) et sélectionner le champion</li>
+        <li>Déployer sans interruption de service (gate manuelle + rollback automatique)</li>
+        <li>Surveiller le comportement du modèle en production (drift Evidently + Grafana)</li>
+        <li>Sécuriser l'accès aux outils d'administration (Tailscale VPN mesh)</li>
+      </ul>
+      <div class="band">
+        <strong>Modèle en production :</strong> lgbm_accidents@Production · cumul 2021+2022+2023 · 27 features
+        &nbsp;·&nbsp; <strong>Métriques :</strong> F1 = 0.664 · AUC = 0.839 · Recall = 0.631 · Acc = 0.783
+      </div>
+    </div>
+  </details>
+
+  <!-- STACK -->
+  <details>
+    <summary>🛠️ Stack technique</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Couche</th><th>Outil</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td>Données</td><td><strong>DVC + Scaleway S3</strong></td><td>Versioning données — remote <code>s3://cac-mlops-data/dvc</code></td></tr>
+          <tr><td>Validation</td><td><strong>Pandera</strong></td><td>3 niveaux CRITICAL/WARNING/OK sur les 4 fichiers ONISR</td></tr>
+          <tr><td>ML</td><td><strong>scikit-learn / XGBoost / LightGBM</strong></td><td>Benchmark 3 algos · sélection champion par F1</td></tr>
+          <tr><td>Tracking</td><td><strong>MLflow</strong></td><td>Runs, paramètres, métriques, Model Registry (@Production)</td></tr>
+          <tr><td>API</td><td><strong>FastAPI + Pydantic + JWT</strong></td><td>POST /predict · GET /health · GET /metrics</td></tr>
+          <tr><td>Gateway</td><td><strong>NGINX + Caddy</strong></td><td>Rate-limit 20r/min · TLS Let's Encrypt · <code>mlops.jakat-inc.fr</code></td></tr>
+          <tr><td>Orchestration</td><td><strong>Prefect</strong></td><td>14 deployments · gate manuelle pause_flow_run()</td></tr>
+          <tr><td>CI/CD</td><td><strong>GitHub Actions</strong></td><td>3 workflows (ci · deploy · cleanup) · Trivy CVE</td></tr>
+          <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 6 dashboards · 7 alertes email</td></tr>
+          <tr><td>Drift</td><td><strong>Evidently</strong></td><td>Features drift par année vs référence précédente</td></tr>
+          <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>10 onglets admin (Tailscale) + 3 onglets public (internet)</td></tr>
+          <tr><td>Infra VPS</td><td><strong>Scaleway DEV1-XL</strong></td><td>16 conteneurs Docker · 4 vCPU / 12 GB RAM / 80 GB /data</td></tr>
+          <tr><td>Infra K8s</td><td><strong>Scaleway Kapsule</strong></td><td>On-demand · HPA · zero-downtime rolling updates</td></tr>
+          <tr><td>Sécurité</td><td><strong>Tailscale VPN</strong></td><td>Ports admin invisibles depuis internet · mesh réseau</td></tr>
+          <tr><td>Container Registry</td><td><strong>GHCR</strong></td><td><code>ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}</code></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- DÉMARRAGE RAPIDE -->
+  <details>
+    <summary>🚀 Démarrage rapide (développeur)</summary>
+    <div class="body">
+      <pre>git clone git@github.com:jakatt/cac_mlops.git
+cd cac_mlops
+
+python3 -m venv my_env &amp;&amp; source my_env/bin/activate
+pip install -r requirements.txt
+pip install "dvc[s3]&gt;=3.0"
+pip install -e .
+cp .env.example .env</pre>
+
+      <p class="sec-label">Credentials DVC</p>
+      <pre>dvc remote modify --local scaleway access_key_id     &lt;ACCESS_KEY&gt;
+dvc remote modify --local scaleway secret_access_key &lt;SECRET_KEY&gt;
+dvc pull   # télécharge les données depuis Scaleway S3</pre>
+
+      <p class="sec-label">MLflow (via tunnel SSH + Tailscale)</p>
+      <pre>ssh -L 5001:localhost:5001 -L 9000:localhost:9000 deploy@100.117.99.62 -N &amp;
+# MLFLOW_TRACKING_URI=http://localhost:5001 (déjà dans .env)</pre>
+
+      <p class="sec-label">Tests locaux</p>
+      <pre>pytest tests/unit/ -v
+# Tests d'intégration (Docker Compose requis)
+RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
+    </div>
+  </details>
+
+  <!-- WORKFLOW -->
+  <details>
+    <summary>🔄 Workflow Git</summary>
+    <div class="body">
+      <pre>feature/xxx  →  PR vers main  →  CI (lint + tests)  →  review  →  merge
+                                                                     │
+                                                          deploy.yml (GH Actions)
+                                                                     │
+                                                        build images → deploy VPS
+                                                                     │
+                                                         Prefect gate manuelle
+                                                                     │
+                                                        compose up + test-api
+                                                                     │
+                                                          Kapsule (si actif)</pre>
+      <div class="tbl"><table>
+        <thead><tr><th>Branche</th><th>Règle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>mlops / DS</strong></td><td>Commits libres, push direct · CI s'exécute sur push</td></tr>
+          <tr><td><strong>main</strong></td><td>Jamais de commit direct — uniquement via PR · CI obligatoire · 1 review requise</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- LIENS RAPIDES -->
+  <details>
+    <summary>🔗 Liens rapides (Tailscale requis pour l'admin)</summary>
+    <div class="body">
+      <div class="link-grid">
+        <div class="link-card"><a href="http://100.117.99.62:7860" target="_blank">Cockpit Gradio</a><p>10 onglets MLOps</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:4200" target="_blank">Prefect UI</a><p>Flows, runs, gates</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:5001" target="_blank">MLflow UI</a><p>Expériences + Registry</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:3000" target="_blank">Grafana</a><p>Dashboards + alertes</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:9090" target="_blank">Prometheus</a><p>Métriques PromQL</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:9001" target="_blank">MinIO Console</a><p>Object Storage</p></div>
+        <div class="link-card"><a href="https://mlops.jakat-inc.fr" target="_blank">API / Gradio public</a><p>Internet · Caddy TLS</p></div>
+        <div class="link-card"><a href="https://github.com/jakatt/cac_mlops" target="_blank">GitHub</a><p>Code source</p></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- STRUCTURE -->
+  <details>
+    <summary>📁 Structure du repository</summary>
+    <div class="body">
+      <pre>cac_mlops/
+├── .github/workflows/   ci.yml · deploy.yml · cleanup.yml
+├── data/                géré par DVC (gitignored) — raw/ + preprocessed/
+├── services/
+│   ├── api/             FastAPI — routes, auth JWT, model_loader
+│   ├── gradio/          Cockpit MLOps (app.py) + public (app_public.py)
+│   ├── mlflow/          Dockerfile custom (boto3 + psycopg2)
+│   ├── nginx/           nginx.conf — rate-limit + routing
+│   └── monitoring/      drift_detection.py — Evidently + Prometheus
+├── src/
+│   ├── data/            import_raw_data · schema · schema_validator · make_dataset
+│   ├── models/          train_model · predict_model · validate_model
+│   ├── flows/           14 flows Prefect (etl, train, deploy-vps, deploy-kapsule…)
+│   └── utils/           email_utils (alertes SMTP)
+├── k8s/                 Manifests Kubernetes — 1 dossier/composant
+├── infrastructure/      Grafana dashboards + alertes · Prometheus config · Tailscale
+├── config/
+│   └── model_params.yml Blueprint DS — hyperparamètres par algo (RF / XGB / LGBM)
+├── tests/
+│   ├── unit/            test_preprocessing · test_schema_validator · test_predict
+│   └── integration/     test_api (Docker Compose requis)
+├── scripts/             simulate_production.py · raz_mlops.sh
+├── docs/                HTML docs statiques servies par nginx (/ci-docs/)
+├── docker-compose.yml   Stack 16 conteneurs
+├── prefect.yaml         14 deployments Prefect
+└── requirements.txt</pre>
+    </div>
+  </details>
+
+  <!-- 3 TRIGGERS -->
+  <details>
+    <summary>⚡ Les 3 triggers de mise en production</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Trigger</th><th>Déclencheur</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><strong>T1 — Nouvelle data</strong></td><td>Prefect cron lundi 8h · détection ONISR automatique</td><td>ETL → validation → benchmark 3 algos → gate manuelle → promote → test-api → Kapsule</td></tr>
+          <tr><td><strong>T2 — Nouveau code</strong></td><td>Push vers main (hors blueprint)</td><td>CI → build images → VPS prépare → gate manuelle → compose up → test-api → Kapsule</td></tr>
+          <tr><td><strong>T3 — Nouveau modèle DS</strong></td><td>PR avec <code>config/model_params.yml</code> uniquement</td><td>Benchmark avec nouveaux hyperparamètres → si champion : gate manuelle → promote → test-api → Kapsule</td></tr>
+        </tbody>
+      </table></div>
+      <p><strong>Gate manuelle (tous triggers) :</strong> <code>pause_flow_run()</code> Prefect natif — validée via l'onglet <strong>Cockpit</strong> du cockpit Gradio (GO/STOP) ou Prefect UI. Intervient <strong>avant toute interruption VPS</strong>.</p>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

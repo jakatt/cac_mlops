@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Résumé exécutif — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+.ci-doc .kpi-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0; }
+.ci-doc .kpi-card { background:var(--accent-lt);border:1px solid var(--border);border-radius:8px;padding:12px 14px;text-align:center; }
+.ci-doc .kpi-val { font-size:1.25rem;font-weight:800;color:var(--accent);line-height:1; }
+.ci-doc .kpi-lab { font-size:.70rem;color:var(--muted);margin-top:4px; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Résumé exécutif</h1>
+    <p class="page-sub">Synthèse complète du projet — données ONISR · modèle de classification binaire · infrastructure MLOps opérationnelle en production (2026-07)</p>
+  </header>
+
+  <!-- SYNTHESE -->
+  <details open>
+    <summary>📋 En deux phrases</summary>
+    <div class="body">
+      <p>Système MLOps complet de <strong>prédiction de gravité d'accidents routiers</strong>, entraîné sur les données officielles ONISR (data.gouv.fr) — années 2021 → 2024 disponibles. Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise la dernière année disponible comme source de données pour le monitoring drift Evidently (simulation production via <code>scripts/simulate_production.py</code>).</p>
+      <p><strong>Année drift auto-détectée :</strong> quand les données 2025 seront disponibles (publiées ~juin 2027), elles deviendront automatiquement l'année drift et 2024 rejoindra le train set.</p>
+    </div>
+  </details>
+
+  <!-- STATUT -->
+  <details open>
+    <summary>✅ Statut d'implémentation</summary>
+    <div class="body">
+      <div class="band"><strong>SOLUTION COMPLÈTE — EN PRODUCTION</strong> (branche main — 2026-07)</div>
+
+      <details open>
+        <summary>Données &amp; Modèle</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Module</th><th>État</th><th>Note</th></tr></thead>
+            <tbody>
+              <tr><td><strong>import_raw_data.py</strong></td><td>✅</td><td>CATEGORY_KEYWORDS fuzzy-match · API data.gouv.fr · <code>--year</code></td></tr>
+              <tr><td><strong>schema.py + schema_validator.py</strong></td><td>✅</td><td>Schémas Pandera 4 fichiers ONISR · 3 niveaux CRITICAL/WARNING/OK</td></tr>
+              <tr><td><strong>make_dataset.py</strong></td><td>✅</td><td>Paramétré <code>--year/--cumul</code> · split temporel</td></tr>
+              <tr><td><strong>train_model.py</strong></td><td>✅</td><td>MLflow tracking · benchmark RF/XGB/LGBM · gate KPI · Model Registry</td></tr>
+              <tr><td><strong>Modèle en prod</strong></td><td>✅</td><td><strong>lgbm_accidents@Production</strong> — cumul 2021+2022+2023 · 27 features · F1=0.664 · AUC=0.839</td></tr>
+              <tr><td><strong>Expériences MLflow</strong></td><td>✅</td><td><code>accidents_severity_prod</code> (officiel) · <code>accidents_severity_dev</code> (explore DS)</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Infrastructure VPS</summary>
+        <div class="body">
+          <p><strong>Scaleway DEV1-XL</strong> — 4 vCPU / 12 GB RAM · /data 80 GB block storage</p>
+          <div class="tbl"><table>
+            <thead><tr><th>Composant</th><th>Détail</th></tr></thead>
+            <tbody>
+              <tr><td><strong>16 conteneurs Docker</strong></td><td>PostgreSQL · MinIO · MLflow · API FastAPI · Prefect (server+worker) · Nginx · Grafana · Prometheus · Loki · Promtail · Gradio (Tailscale) · Gradio-public (internet) · node-exporter · nginx-exporter · minio-init (EXIT)</td></tr>
+              <tr><td><strong>DVC remote</strong></td><td>Scaleway Object Storage s3://cac-mlops-data/dvc</td></tr>
+              <tr><td><strong>Accès admin</strong></td><td>Tailscale VPN uniquement — IP stable 100.117.99.62</td></tr>
+              <tr><td><strong>Accès public</strong></td><td>Caddy TLS → nginx → gradio-public · <code>https://mlops.jakat-inc.fr</code></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>CI/CD · Orchestration · Monitoring · Cockpit</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Couche</th><th>État</th><th>Détail</th></tr></thead>
+            <tbody>
+              <tr><td><strong>CI/CD GitHub Actions</strong></td><td>✅</td><td>3 workflows : ci · deploy · cleanup · 36 tests unitaires</td></tr>
+              <tr><td><strong>Orchestration Prefect</strong></td><td>✅</td><td>14 flows · crons + déclenchements manuels + cockpit</td></tr>
+              <tr><td><strong>Monitoring</strong></td><td>✅</td><td>Prometheus + Loki/Promtail + Grafana (VPS+Kapsule consolidés) · 7 alertes · SMTP ✓</td></tr>
+              <tr><td><strong>Cockpit</strong></td><td>✅</td><td>Gradio 10 onglets (Tailscale) + Gradio-public 3 onglets (internet)</td></tr>
+              <tr><td><strong>Kubernetes</strong></td><td>✅</td><td>Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- SLIDE 1 -->
+  <details>
+    <summary>📊 Slide 1 — Flow annuel de mise à jour des données</summary>
+    <div class="body">
+      <p><em>Déclenché chaque année en juin, à la publication des données ONISR de l'année N-1.</em></p>
+
+      <details>
+        <summary>Étape 1 — Validation du schéma (Pandera)</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Niveau</th><th>Contrôle</th><th>Si KO</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Niveau 1</strong></td><td>Format fichier (encodage, séparateur, présence, non vide)</td><td>❌ CRITICAL → STOP + alerte équipe · modèle année N-1 reste en production</td></tr>
+              <tr><td><strong>Niveau 2</strong></td><td>Colonnes requises présentes, types corrects</td><td>❌ CRITICAL → STOP + alerte équipe</td></tr>
+              <tr><td><strong>Niveau 3</strong></td><td>Distributions dans les plages historiques</td><td>⚠️ WARNING → log + pipeline continue</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Étape 2 — Preprocessing (make_dataset.py)</summary>
+        <div class="body">
+          <p>Fusion des 4 tables → <strong>~55 000 lignes × 27 features</strong></p>
+          <p>Feature engineering, nettoyage, split temporel (N-1 ans train / dernière année test) — ratio ~55k lignes/an stable.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Étape 3 — Versioning DVC</summary>
+        <div class="body">
+          <p><code>dvc add</code> → <code>dvc push</code> → Scaleway Object Storage <code>s3://cac-mlops-data/dvc</code></p>
+          <p>Tag Git : <code>data-v{N}</code> — reproductibilité totale des données à chaque cycle.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Étape 4 — Entraînement (train_model.py)</summary>
+        <div class="body">
+          <p>Benchmark <strong>RF / XGBoost / LightGBM</strong> sur cumul 2021 → année N</p>
+          <p>Tracking : paramètres, métriques, modèle → MLflow run #{N}</p>
+          <p>Sélection du champion : meilleur F1 + gate KPI absolue + delta vs @Production</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Étape 5 — Validation du modèle</summary>
+        <div class="body">
+          <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-val">≥ 0.60</div><div class="kpi-lab">F1-score minimum</div></div>
+            <div class="kpi-card"><div class="kpi-val">≥ 0.77</div><div class="kpi-lab">AUC-ROC minimum</div></div>
+            <div class="kpi-card"><div class="kpi-val">≥ 0.58</div><div class="kpi-lab">Recall minimum</div></div>
+            <div class="kpi-card"><div class="kpi-val">≥ 0.72</div><div class="kpi-lab">Accuracy minimum</div></div>
+          </div>
+          <p>✅ Meilleur → gate manuelle → promote @Production (MLflow Registry)</p>
+          <p>❌ Dégradé (≥2 métriques régressent) → Alerte + aucune promotion</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Étape 6 — Déploiement</summary>
+        <div class="body">
+          <p>Gate manuelle dans <strong>l'onglet Cockpit du cockpit Gradio</strong> (ou Prefect UI) → GO/STOP</p>
+          <p>Après GO : promotion @Production MLflow + restart API → test-api (6 tests) → rolling update Kapsule (si actif)</p>
+          <p>Interruption VPS : <strong>~30-90 s</strong> (pendant <code>docker compose up -d</code>) — <strong>jamais avant</strong> la gate manuelle.</p>
+          <p>Kapsule K8s : <strong>zéro interruption</strong> (<code>maxUnavailable:0</code>).</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Étape 7 — Monitoring continu</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Outil</th><th>Ce qu'il mesure</th><th>Seuil d'alerte</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Prometheus</strong></td><td>Latence API, volume, erreurs HTTP</td><td>p95 &lt; 300 ms · 5xx &lt; 1%</td></tr>
+              <tr><td><strong>Evidently</strong></td><td>Drift de features (X_train vs données drift)</td><td>share &gt; 10% WARNING · &gt; 25% CRITICAL</td></tr>
+              <tr><td><strong>Grafana</strong></td><td>Dashboards API-perf + model-drift + alertes</td><td>Email sur toutes alertes critiques</td></tr>
+            </tbody>
+          </table></div>
+          <p><em>Source de simulation production : données 2024 rejouées via <code>scripts/simulate_production.py</code> (~55k req/cycle).</em></p>
+          <p><em>Si drift CRITICAL → alerte email → planifier cycle annuel manuellement (pas de réentraînement automatique — labels N+1 indisponibles).</em></p>
+        </div>
+      </details>
+
+      <p class="sec-label">Traçabilité complète à chaque exécution</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Traçabilité</th><th>Ce qui est capturé</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Git commit</strong></td><td>Code exact utilisé pour ce run</td></tr>
+          <tr><td><strong>DVC tag</strong></td><td>Données exactes (reproductible bit-à-bit)</td></tr>
+          <tr><td><strong>MLflow run</strong></td><td>Paramètres + métriques + modèle archivés</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- SLIDE 2 -->
+  <details>
+    <summary>📊 Slide 2 — Architecture &amp; composants principaux</summary>
+    <div class="body">
+      <details open>
+        <summary>Outils par responsabilité</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Responsabilité</th><th>Outil</th><th>Où stocké</th></tr></thead>
+            <tbody>
+              <tr><td>Valider le schéma données</td><td><strong>Pandera</strong></td><td>—</td></tr>
+              <tr><td>Versionner les données</td><td><strong>DVC</strong></td><td>Scaleway Object Storage</td></tr>
+              <tr><td>Versionner le code</td><td><strong>Git</strong></td><td>GitHub</td></tr>
+              <tr><td>Tracker les expériences</td><td><strong>MLflow</strong></td><td>Scaleway S3 + PostgreSQL</td></tr>
+              <tr><td>Orchestrer les pipelines</td><td><strong>Prefect</strong></td><td>VPS (prod)</td></tr>
+              <tr><td>Servir le modèle</td><td><strong>FastAPI</strong></td><td>VPS (prod) + Kapsule (on-demand)</td></tr>
+              <tr><td>Sécuriser l'API</td><td><strong>NGINX / Caddy</strong></td><td>VPS (prod) + Kapsule (ingress)</td></tr>
+              <tr><td>Monitorer les perfs</td><td><strong>Prometheus</strong></td><td>VPS (prod) + Kapsule (distant)</td></tr>
+              <tr><td>Visualiser les métriques</td><td><strong>Grafana</strong></td><td>VPS (prod) — datasource K8s distante</td></tr>
+              <tr><td>Détecter le drift</td><td><strong>Evidently</strong></td><td>VPS (prod) uniquement</td></tr>
+              <tr><td>Intégrer en continu</td><td><strong>GitHub Actions</strong></td><td>GitHub</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Local vs VPS Scaleway</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Dimension</th><th>LOCAL (développement)</th><th>VPS SCALEWAY (production)</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Stack</strong></td><td>Docker Compose (tous services sur localhost)</td><td>Docker Compose · 16 conteneurs</td></tr>
+              <tr><td><strong>MLflow</strong></td><td>MinIO local simule S3 · PostgreSQL local</td><td>MinIO (S3) · PostgreSQL · Registry réel</td></tr>
+              <tr><td><strong>Tests</strong></td><td>pytest · flake8 · pip-audit</td><td>CI/CD : lint → test → build → push → deploy</td></tr>
+              <tr><td><strong>K8s</strong></td><td>kind (optionnel, dev local)</td><td>Kapsule Scaleway (on-demand, HA)</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

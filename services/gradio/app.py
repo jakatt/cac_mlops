@@ -1640,18 +1640,21 @@ def build_docs_html() -> str:
     PUBLIC_BASE  = os.getenv("PUBLIC_URL", "https://mlops.jakat-inc.fr")
     # (url, title, desc, label)
     docs = [
+        (f"{PUBLIC_BASE}/ci-docs/guide_administrateur.html", "Guide administrateur",
+         "Infrastructure VPS · Docker Compose · Tailscale · monitoring · Kapsule K8s — référence technique complète",
+         "guide_administrateur.html"),
         (f"{PUBLIC_BASE}/ci-docs/architecture.html", "Architecture globale",
          "Stack interactive : VPS · Docker · Prefect · CI/CD · monitoring · Kapsule K8s", "architecture.html"),
-        (f"{GITHUB_BASE}/execsum.md",         "Résumé exécutif",
-         "Synthèse du projet pour les décideurs",                              "execsum.md"),
-        (f"{GITHUB_BASE}/ds_guide.md",        "Guide Data Scientist",
-         "Workflow DS : expérimentation MLflow, blueprint, DVC",               "ds_guide.md"),
-        (f"{GITHUB_BASE}/mlops_eng_guide.md", "Guide MLOps Engineer",
-         "Infrastructure, déploiement, maintenance VPS et Kapsule",           "mlops_eng_guide.md"),
-        (f"{GITHUB_BASE}/mlops_lead_guide.md","Guide MLOps Lead",
-         "Gouvernance, pilotage, gate de promotion",                           "mlops_lead_guide.md"),
-        (f"{GITHUB_BASE}/data_dictionary.md", "Dictionnaire des données",
-         "Description des 27 features du modèle et de la cible binaire",      "data_dictionary.md"),
+        (f"{PUBLIC_BASE}/ci-docs/execsum.html",       "Résumé exécutif",
+         "Synthèse du projet pour les décideurs",                              "execsum.html"),
+        (f"{PUBLIC_BASE}/ci-docs/ds_guide.html",      "Guide Data Scientist",
+         "Workflow DS : expérimentation MLflow, blueprint, DVC",               "ds_guide.html"),
+        (f"{PUBLIC_BASE}/ci-docs/mlops_eng_guide.html", "Guide MLOps Engineer",
+         "Infrastructure, déploiement, maintenance VPS et Kapsule",           "mlops_eng_guide.html"),
+        (f"{PUBLIC_BASE}/ci-docs/mlops_lead_guide.html","Guide MLOps Lead",
+         "Gouvernance, pilotage, gate de promotion",                           "mlops_lead_guide.html"),
+        (f"{PUBLIC_BASE}/ci-docs/data_dictionary.html", "Dictionnaire des données",
+         "Description des 27 features du modèle et de la cible binaire",      "data_dictionary.html"),
         (f"{PUBLIC_BASE}/ci-docs/tests_catalogue.html", "Catalogue des tests",
          "36 tests unitaires CI · pipeline CD · 6 tests Prefect post-deploy", "tests_catalogue.html"),
         (f"{PUBLIC_BASE}/ci-docs/hyperparams_guide.html", "Guide hyperparamètres",
@@ -1663,8 +1666,8 @@ def build_docs_html() -> str:
         (f"{PUBLIC_BASE}/ci-docs/ci_cd_pipeline_runbook.html", "Runbook — échec pipeline CI/CD",
          "Que faire quand le déploiement post-merge échoue avant même de créer le flow run",
          "ci_cd_pipeline_runbook.html"),
-        (f"{GITHUB_BASE}/README.md",          "README",
-         "Vue d'ensemble et démarrage rapide du repository",                   "README.md"),
+        (f"{PUBLIC_BASE}/ci-docs/readme.html",         "README",
+         "Vue d'ensemble et démarrage rapide du repository",                   "readme.html"),
     ]
     cards = "".join(f"""
   <a href="{url}" target="_blank"
@@ -1683,7 +1686,7 @@ def build_docs_html() -> str:
     return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:860px;">
   <p style="margin:0 0 20px;font-size:0.82rem;color:#6B7280;">
-    Documentation versionnée dans GitHub —
+    Documentation interactive — code source sur
     <a href="https://github.com/{GITHUB_REPO}" target="_blank"
        style="color:#156082;text-decoration:none;font-weight:500;">
       github.com/{GITHUB_REPO}

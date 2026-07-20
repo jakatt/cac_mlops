@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Dictionnaire des données — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 920px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:680px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Dictionnaire des données</h1>
+    <p class="page-sub">27 features du modèle — issues de la fusion des 4 fichiers ONISR après preprocessing par <code>src/data/make_dataset.py</code>. La cible <code>grav</code> (binaire) vaut <code>1</code> si victime grave ou décès, <code>0</code> sinon.</p>
+  </header>
+
+  <div class="band">
+    <strong>Note sur <code>year_acc</code> :</strong> l'année de l'accident est utilisée comme <strong>clé de split temporel</strong> (dernière année disponible = test set). Elle est supprimée des features avant l'entraînement pour éviter toute fuite temporelle — non envoyée à l'API.
+  </div>
+
+  <!-- TEMPOREL -->
+  <details open>
+    <summary>🕐 Features temporelles (3 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Source</th><th>Description</th><th>Modalités / plage</th></tr></thead>
+        <tbody>
+          <tr><td><code>mois</code></td><td>int</td><td>caracteristiques</td><td>Mois de l'accident</td><td>1 – 12</td></tr>
+          <tr><td><code>jour</code></td><td>int</td><td>caracteristiques</td><td>Jour de la semaine (1 = lundi)</td><td>1 – 7</td></tr>
+          <tr><td><code>hour</code></td><td>int</td><td>caracteristiques</td><td>Heure de l'accident, extraite de la colonne <code>hrmn</code> (format HHMM)</td><td>0 – 23</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- GEOGRAPHIQUES -->
+  <details>
+    <summary>🗺️ Features géographiques (5 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Source</th><th>Description</th><th>Modalités / plage</th></tr></thead>
+        <tbody>
+          <tr><td><code>dep</code></td><td>int</td><td>caracteristiques</td><td>Code département (Corse normalisée : 2A → 201, 2B → 202)</td><td>1 – 976</td></tr>
+          <tr><td><code>com</code></td><td>int</td><td>caracteristiques</td><td>Code commune INSEE (même normalisation Corse)</td><td>—</td></tr>
+          <tr><td><code>lat</code></td><td>float</td><td>caracteristiques</td><td>Latitude en degrés décimaux (virgule → point)</td><td>41.0 – 51.5</td></tr>
+          <tr><td><code>long</code></td><td>float</td><td>caracteristiques</td><td>Longitude en degrés décimaux</td><td>−5.5 – 9.6</td></tr>
+          <tr><td><code>agg_</code></td><td>int</td><td>caracteristiques</td><td>Localisation en agglomération (<code>agg</code> renommé pour éviter conflit Python)</td><td>1 = hors agglomération, 2 = en agglomération</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- CONDITIONS -->
+  <details>
+    <summary>🌧️ Features de conditions de l'accident (4 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Source</th><th>Description</th><th>Modalités / plage</th></tr></thead>
+        <tbody>
+          <tr><td><code>lum</code></td><td>int</td><td>caracteristiques</td><td>Conditions d'éclairage au moment de l'accident</td><td>1 = plein jour, 2 = crépuscule/aube, 3 = nuit sans éclairage, 4 = nuit éclairage non allumé, 5 = nuit éclairage allumé</td></tr>
+          <tr><td><code>atm</code></td><td>float</td><td>caracteristiques</td><td>Conditions atmosphériques <strong>recodées en binaire</strong></td><td>0 = normal (clair/peu nuageux), 1 = dégradé (pluie, neige, brouillard, vent, éblouissement…)</td></tr>
+          <tr><td><code>col</code></td><td>float</td><td>caracteristiques</td><td>Type de collision</td><td>−1 = non renseigné, 1 = front, 2 = arrière, 3 = côté, 4 = chaîne 3+, 5 = multiples 3+, 6 = autre, 7 = sans collision</td></tr>
+          <tr><td><code>int</code></td><td>int</td><td>caracteristiques</td><td>Type d'intersection</td><td>1 = hors intersection, 2 = en X, 3 = en T, 4 = en Y, 5 = 4+ branches, 6 = giratoire, 7 = place, 8 = passage à niveau, 9 = autre</td></tr>
+        </tbody>
+      </table></div>
+      <p class="sec-label">Recodage atm (9 modalités → binaire)</p>
+      <pre>Original → Binaire
+────────────────────
+1 (normal)        → 0
+2 (pluie légère)  → 1
+3 (pluie forte)   → 1
+4 (neige/grêle)   → 1
+5 (brouillard)    → 1
+6 (vent/tempête)  → 1
+7 (éblouissant)   → 1
+8 (couvert)       → 0
+9 (autre)         → 0</pre>
+    </div>
+  </details>
+
+  <!-- VOIRIE -->
+  <details>
+    <summary>🛣️ Features de voirie (5 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Source</th><th>Description</th><th>Modalités / plage</th></tr></thead>
+        <tbody>
+          <tr><td><code>catr</code></td><td>int</td><td>lieux</td><td>Catégorie de route</td><td>1 = autoroute, 2 = nationale, 3 = départementale, 4 = communale, 5 = hors réseau public, 6 = parking, 7 = métropole urbaine, 9 = autre</td></tr>
+          <tr><td><code>circ</code></td><td>float</td><td>lieux</td><td>Régime de circulation</td><td>1 = sens unique, 2 = bidirectionnel, 3 = chaussées séparées, 4 = voies d'affectation variable</td></tr>
+          <tr><td><code>surf</code></td><td>float</td><td>lieux</td><td>État de la surface de chaussée</td><td>1 = normale, 2 = mouillée, 3 = flaques, 4 = inondée, 5 = enneigée, 6 = boue, 7 = verglacée, 8 = corps gras/huile, 9 = autre</td></tr>
+          <tr><td><code>situ</code></td><td>float</td><td>lieux</td><td>Situation de l'accident sur la voie</td><td>1 = sur chaussée, 2 = BAU, 3 = accotement, 4 = trottoir, 5 = piste cyclable, 6 = autre voie spéciale, 8 = autres</td></tr>
+          <tr><td><code>vma</code></td><td>float</td><td>lieux</td><td>Vitesse maximale autorisée (km/h)</td><td>10 – 130</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- USAGER -->
+  <details>
+    <summary>👤 Features relatives à l'usager — victime la plus grave (5 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Source</th><th>Description</th><th>Modalités / plage</th></tr></thead>
+        <tbody>
+          <tr><td><code>place</code></td><td>int</td><td>usagers</td><td>Place occupée dans le véhicule</td><td>1 = conducteur, 2 – 9 = passagers</td></tr>
+          <tr><td><code>catu</code></td><td>int</td><td>usagers</td><td>Catégorie d'usager</td><td>1 = conducteur, 2 = passager, 3 = piéton</td></tr>
+          <tr><td><code>sexe</code></td><td>int</td><td>usagers</td><td>Sexe de l'usager</td><td>1 = masculin, 2 = féminin</td></tr>
+          <tr><td><code>secu1</code></td><td>float</td><td>usagers</td><td>Présence et usage du dispositif de sécurité 1 (ceinture, casque…)</td><td>1 = ceinture, 2 = casque, 3 = dispositif enfant, 4 = réfléchissant, 5 = autre, 9 = non déterminable</td></tr>
+          <tr><td><code>victim_age</code></td><td>float</td><td>usagers</td><td>Âge calculé : <code>year_acc − an_nais</code> (<code>year_acc</code> intermédiaire, non feature)</td><td>0 – 120 (hors plage → NaN)</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- VEHICULE -->
+  <details>
+    <summary>🚗 Features relatives au véhicule (3 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Source</th><th>Description</th><th>Modalités / plage</th></tr></thead>
+        <tbody>
+          <tr><td><code>catv</code></td><td>int</td><td>vehicules</td><td>Catégorie du véhicule <strong>recodée</strong> en 7 classes (40 modalités d'origine)</td><td>0 = indéterminé, 1 = VL, 2 = poids lourd/bus, 3 = 2 roues ≥50cc, 4 = utilitaire, 5 = transport commun/spécial, 6 = trottinette/EDP/cycle</td></tr>
+          <tr><td><code>obsm</code></td><td>int</td><td>vehicules</td><td>Obstacle mobile heurté</td><td>0 = sans objet, 1 = piéton, 2 = véhicule, 4 = rail, 5 = animal dom., 6 = animal sauvage, 9 = autre</td></tr>
+          <tr><td><code>motor</code></td><td>int</td><td>vehicules</td><td>Type de motorisation</td><td>1 = hydrocarbures, 2 = hybride, 3 = électrique, 4 = hydrogène, 5 = humaine, 6 = autre</td></tr>
+        </tbody>
+      </table></div>
+      <p class="sec-label">Recodage catv</p>
+      <p>40 modalités d'origine regroupées en 7 classes homogènes pour réduire la cardinalité et améliorer la robustesse du modèle face aux faibles effectifs.</p>
+    </div>
+  </details>
+
+  <!-- AGREGEES -->
+  <details>
+    <summary>📊 Features agrégées calculées (2 features)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Feature</th><th>Type</th><th>Calcul</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>nb_victim</code></td><td>int</td><td><code>pd.crosstab(usagers.Num_Acc, "count")</code></td><td>Nombre total de victimes impliquées dans le même accident</td></tr>
+          <tr><td><code>nb_vehicules</code></td><td>int</td><td><code>pd.crosstab(vehicules.Num_Acc, "count")</code></td><td>Nombre total de véhicules impliqués dans le même accident</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- PREPROCESSING NOTES -->
+  <details>
+    <summary>⚙️ Notes de preprocessing importantes</summary>
+    <div class="body">
+      <details open>
+        <summary>Logique de fusion multi-usagers</summary>
+        <div class="body">
+          <p>Un accident peut impliquer plusieurs usagers. Pour obtenir <strong>une ligne par accident</strong>, on retient la victime présentant la <strong>gravité maximale</strong> (<code>grav</code> le plus élevé avant recodage). Les comptages <code>nb_victim</code> et <code>nb_vehicules</code> sont calculés avant ce dédoublonnage.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Valeurs manquantes — stratégie d'imputation</summary>
+        <div class="body">
+          <p><strong>Colonnes obligatoires</strong> (toute ligne avec NaN supprimée) : <code>catv</code>, <code>vma</code>, <code>secu1</code>, <code>obsm</code>, <code>atm</code></p>
+          <p><strong>Colonnes imputées par mode sur X_train</strong> (appliqué à X_test avec les mêmes valeurs) : <code>surf</code>, <code>circ</code>, <code>col</code>, <code>motor</code></p>
+          <p><strong>Convention −1 et 0 :</strong> dans les fichiers ONISR, <code>−1</code> = « non renseigné » et <code>0</code> peut signifier « sans objet » ou « non renseigné » selon la colonne. Ces deux valeurs sont converties en <code>NaN</code> avant imputation.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- EXEMPLE API -->
+  <details>
+    <summary>🔌 Exemple de requête API (27 features)</summary>
+    <div class="body">
+      <pre>{
+  "place": 10, "catu": 3, "sexe": 1, "secu1": 0.0,
+  "victim_age": 60, "catv": 2, "obsm": 1,
+  "motor": 1, "catr": 3, "circ": 2, "surf": 1, "situ": 1,
+  "vma": 50, "jour": 7, "mois": 12, "lum": 5, "dep": 77,
+  "com": 77317, "agg_": 2, "int": 1, "atm": 0, "col": 6,
+  "lat": 48.60, "long": 2.89, "hour": 17,
+  "nb_victim": 2, "nb_vehicules": 1
+}</pre>
+      <p class="sec-label">Réponse attendue</p>
+      <pre>{
+  "prediction": 0,
+  "probability": 0.72,
+  "model_version": "lgbm_accidents/Production"
+}</pre>
+      <p><code>prediction: 1</code> = victime grave ou décès (prioritaire) · <code>prediction: 0</code> = blessé léger ou indemne</p>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

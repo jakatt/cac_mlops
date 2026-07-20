@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Guide MLOps Lead — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Guide MLOps Lead</h1>
+    <p class="page-sub">Opérer la solution en production — valider les gates de déploiement, surveiller via Grafana/Gradio, gérer le cycle annuel ONISR, promouvoir/rollback des modèles, administrer le VPS.</p>
+  </header>
+
+  <!-- 1. INTERFACES -->
+  <details open>
+    <summary>1 — Interfaces disponibles</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Interface</th><th>URL</th><th>Accès</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Gradio Cockpit</strong></td><td><code>http://100.117.99.62:7860</code></td><td>Tailscale</td><td>Cockpit MLOps 10 onglets — <strong>Cockpit</strong> (gates GO/STOP) · Drift/Modèles (accordéons dans Cockpit)</td></tr>
+          <tr><td><strong>Prefect UI</strong></td><td><code>http://100.117.99.62:4200</code></td><td>Tailscale</td><td>Flows, runs, gates manuelles</td></tr>
+          <tr><td><strong>MLflow UI</strong></td><td><code>http://100.117.99.62:5001</code></td><td>Tailscale</td><td>Expériences, Model Registry</td></tr>
+          <tr><td><strong>Grafana</strong></td><td><code>http://100.117.99.62:3000</code></td><td>Tailscale</td><td>Métriques API, alertes</td></tr>
+          <tr><td><strong>Prometheus</strong></td><td><code>http://100.117.99.62:9090</code></td><td>Tailscale</td><td>PromQL brut</td></tr>
+          <tr><td><strong>API public</strong></td><td><code>https://mlops.jakat-inc.fr</code></td><td>Internet</td><td>/predict rate-limité · /health · /reports/drift/*</td></tr>
+          <tr><td><strong>Gradio public</strong></td><td><code>https://mlops.jakat-inc.fr</code></td><td>Internet</td><td>Predict + What-If + Points Noirs (3 onglets)</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 2. TRIGGERS -->
+  <details>
+    <summary>2 — Les 3 scénarios de mise en production</summary>
+    <div class="body">
+      <details open>
+        <summary>Trigger 1 — Nouvelle data ONISR (automatique, hebdo)</summary>
+        <div class="body">
+          <p><code>check-new-data-flow</code> tourne chaque <strong>lundi 8h UTC</strong>. S'il détecte une nouvelle année sur data.gouv.fr (4/4 fichiers disponibles) :</p>
+          <pre>ETL → validation schéma → train (année incluse, test set temporel) → sélection champion
+  → GATE MANUELLE → promote → test-api (6 tests) → Kapsule (si OK) → drift</pre>
+          <p><strong>Règle de promotion T1 :</strong> gate KPI absolue (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72). Le nouveau modèle est promu même s'il régresse légèrement vs @Production (test sets différents). Tolérance : régression sur <strong>au plus 1 métrique</strong>. Régression sur ≥2 → @Production inchangé.</p>
+          <p><strong>Ton rôle :</strong> valider la gate — onglet <strong>Cockpit</strong> du cockpit Gradio (bouton GO/STOP) ou Prefect UI — quand tu reçois la notification email.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Trigger 2 — Nouveau code MLOps</summary>
+        <div class="body">
+          <pre>build images (si nécessaire) → git pull VPS + pull images (préparation, sans interruption)
+  → GATE MANUELLE (avant toute interruption VPS) → docker compose up + redémarrages ciblés
+  → smoke test → test-api (6 tests) → Kapsule (si OK)</pre>
+          <p>La gate intervient <strong>avant</strong> que quoi que ce soit soit appliqué sur le VPS — rien n'est interrompu tant que tu n'as pas validé. Un <strong>STOP</strong> annule proprement sans rollback (rien n'a encore tourné).</p>
+          <p><strong>Ton rôle :</strong> valider la gate (onglet <strong>Cockpit</strong> — SHA du commit, images à reconstruire, services à redémarrer affichés) ou Prefect UI.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Trigger 3 — Nouveau modèle DS</summary>
+        <div class="body">
+          <pre>extract blueprint → train avec nouveaux params → compare @Production
+  → si meilleur (+0.01 F1, même test set) : GATE MANUELLE → promote → test-api → Kapsule
+  → si non meilleur : @Production inchangé, email notification DS</pre>
+          <p><strong>Règle de promotion T3 :</strong> KPI absolus + delta F1 &gt; +0.01 vs @Production. La comparaison est valide car les deux modèles utilisent le même test set (même année).</p>
+          <p><strong>Ton rôle :</strong> valider la gate (onglet <strong>Cockpit</strong> ou Prefect UI) si un champion est trouvé. Si le merge inclut aussi du code, la gate affiche le SHA + services — tout est appliqué seulement après validation.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 3. GATE -->
+  <details>
+    <summary>3 — Valider une gate manuelle</summary>
+    <div class="body">
+      <details open>
+        <summary>Via Gradio Cockpit — onglet Cockpit (recommandé)</summary>
+        <div class="body">
+          <ul>
+            <li>Onglet <strong>Cockpit</strong> → la file d'attente liste les déploiements <code>deploy-vps-flow</code> en pause</li>
+            <li>Sélectionner le run → le détail affiche les métriques du champion (F1/Recall/AUC vs @Production) ou le SHA/services impactés</li>
+            <li><strong>GO</strong> → applique le déploiement (promote et/ou compose up selon le trigger) → test-api → Kapsule (si OK)</li>
+            <li><strong>STOP</strong> → annule proprement — rien n'a encore été appliqué, aucun rollback nécessaire</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Via Prefect UI (alternative)</summary>
+        <div class="body">
+          <ul>
+            <li>Ouvrir Prefect UI → <strong>Flow Runs</strong></li>
+            <li>Trouver le run <code>deploy-vps-flow</code> ou <code>update-model-flow</code> en état <strong>Paused</strong></li>
+            <li>Vérifier les métriques dans les logs (F1, Recall, AUC du champion, ou SHA/flags si code)</li>
+            <li>Cliquer <strong>Resume</strong> pour valider → promote et/ou compose up → test-api → Kapsule (si OK)</li>
+            <li>En cas de doute : laisser le run expirer (24h timeout) ou cliquer <strong>Cancel</strong></li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 4. ONISR -->
+  <details>
+    <summary>4 — Cycle annuel ONISR — opérations manuelles</summary>
+    <div class="body">
+      <p>Si <code>check-new-data-flow</code> n'a pas détecté automatiquement une nouvelle année (ex : ONISR a changé son format de nommage) :</p>
+      <pre># Déclencher manuellement depuis Prefect UI : Deployments → check-new-data → Quick run</pre>
+      <p>Si l'email d'alerte indique « &lt; 4/4 fichiers matchés » : consulter data.gouv.fr manuellement et déclencher l'ETL avec les URLs explicites via Prefect UI.</p>
+    </div>
+  </details>
+
+  <!-- 5. DRIFT -->
+  <details>
+    <summary>5 — Drift — surveillance et action</summary>
+    <div class="body">
+      <p>Le drift est calculé automatiquement après chaque cycle de retrain. Pour le vérifier manuellement :</p>
+      <p><strong>Gradio Cockpit</strong> → onglet <strong>Cockpit</strong> → accordéon <strong>Drift</strong> → sélectionner l'année</p>
+      <p><strong>Prefect UI</strong> : Deployments → <code>drift-check</code> → Quick run</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Drift share</th><th>Niveau</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>&lt; 10%</td><td>OK</td><td>Rien</td></tr>
+          <tr><td>10–25%</td><td>WARNING</td><td>Email d'alerte — surveiller l'évolution</td></tr>
+          <tr><td>&gt; 25%</td><td>CRITICAL</td><td>Email d'alerte — planifier le prochain cycle annuel manuellement</td></tr>
+        </tbody>
+      </table></div>
+      <p>Aucun réentraînement automatique sur drift : les labels N+1 sont indisponibles (ONISR publie avec ~2 ans de délai). Réentraîner sur les mêmes données produirait un modèle identique. Le drift est un signal pour décider quand déclencher le prochain cycle via <code>check-new-data-flow</code>.</p>
+    </div>
+  </details>
+
+  <!-- 6. PROMOTION ROLLBACK -->
+  <details>
+    <summary>6 — Promouvoir ou rollback un modèle</summary>
+    <div class="body">
+      <details open>
+        <summary>Via Gradio Cockpit (recommandé)</summary>
+        <div class="body">
+          <p>Onglet <strong>Cockpit</strong> → accordéon <strong>Modèles</strong> → sélectionner la version → <strong>Promouvoir @Production</strong></p>
+          <p>Puis : SSH → <code>docker compose restart api</code> pour charger la nouvelle version.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Via MLflow UI</summary>
+        <div class="body">
+          <p><code>http://100.117.99.62:5001/#/models</code> → sélectionner le modèle → Aliases → éditer <code>@Production</code>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Via CLI Python</summary>
+        <div class="body">
+          <pre>python3 - &lt;&lt;'EOF'
+import mlflow
+mlflow.set_tracking_uri("http://localhost:5001")   # tunnel SSH actif
+client = mlflow.tracking.MlflowClient()
+
+# Lister les versions
+for v in client.search_model_versions("name='lgbm_accidents'"):
+    print(f"v{v.version}  run_id={v.run_id[:8]}")
+
+# Promouvoir (MLflow v3 — aliases, pas stages)
+client.set_registered_model_alias("lgbm_accidents", "Production", "7")
+EOF
+
+# Recharger l'API
+ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart api"</pre>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 7. MONITORING -->
+  <details>
+    <summary>7 — Monitoring Grafana</summary>
+    <div class="body">
+      <p>Dashboard <strong>API Performance</strong> : <code>http://100.117.99.62:3000</code></p>
+      <div class="tbl"><table>
+        <thead><tr><th>Panel</th><th>Seuil d'alerte</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td>Latence p95</td><td>&gt; 500 ms</td><td>Vérifier <code>docker compose logs api</code></td></tr>
+          <tr><td>Taux erreurs 5xx</td><td>&gt; 1%</td><td>Vérifier le modèle @Production</td></tr>
+          <tr><td>Distribution prédictions grav=1</td><td>Dérive anormale</td><td>Lancer drift-check</td></tr>
+          <tr><td>RAM disponible</td><td>&lt; 10%</td><td>Libérer mémoire, vérifier OOM</td></tr>
+          <tr><td>Disque /data</td><td>&lt; 15%</td><td>Lancer disk-cleanup manuellement</td></tr>
+        </tbody>
+      </table></div>
+      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code> pour : brute-force 401, DDoS 429, RAM critique, disque critique, erreurs Prefect, aucun champion, drift CRITICAL.</p>
+    </div>
+  </details>
+
+  <!-- 8. ADMIN VPS -->
+  <details>
+    <summary>8 — Administration VPS</summary>
+    <div class="body">
+      <pre>ssh deploy@51.159.187.132
+
+# État des conteneurs (15 permanents attendus + minio-init EXIT)
+cd /data/cac_mlops &amp;&amp; docker compose ps
+
+# Logs en temps réel
+docker compose logs -f api              # inference + métriques
+docker compose logs -f prefect-worker   # flows MLOps
+docker compose logs -f nginx            # accès + rate-limit
+
+# Espace disque
+df -h / /data</pre>
+      <p class="sec-label">Redémarrer un service</p>
+      <pre>ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart &lt;service&gt;"
+# api            → recharge le modèle @Production depuis MLflow
+# prefect-worker → reconnecte le worker (flows en attente reprennent)
+# prefect-server → si Prefect UI inaccessible
+# nginx          → recharge la config (rate-limit, routes)
+# grafana        → recharge les dashboards provisionnés</pre>
+    </div>
+  </details>
+
+  <!-- 9. RAZ -->
+  <details>
+    <summary>9 — RAZ complète de la stack</summary>
+    <div class="body">
+      <pre># Via Prefect UI : Deployments → reset → Run with params :
+# clear_predictions=true, clear_drift=true, clear_mlflow=false (ou true)
+
+# Puis relancer tous les cycles depuis zéro :
+# Deployments → full-retrain → Quick run</pre>
+      <p><strong>Ce qui est conservé :</strong> données brutes DVC sur Scaleway S3 (toujours intactes).</p>
+    </div>
+  </details>
+
+  <!-- 10. DEPANNAGE -->
+  <details>
+    <summary>10 — Dépannage rapide</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Symptôme</th><th>Cause</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><code>/predict</code> → 401</td><td>Token expiré (24h)</td><td>Re-POST <code>/token</code> pour renouveler</td></tr>
+          <tr><td><code>/predict</code> → 503</td><td>Aucun modèle @Production</td><td>Promouvoir un modèle → <code>docker compose restart api</code></td></tr>
+          <tr><td>API → 429</td><td>Rate-limit nginx atteint (20r/min)</td><td>Normal si trafic légitime → augmenter dans <code>nginx.conf</code></td></tr>
+          <tr><td>Gate Prefect non reçue</td><td>Worker déconnecté</td><td><code>docker compose restart prefect-worker</code></td></tr>
+          <tr><td>Email Grafana "DatasourceError"</td><td>Prometheus scrape KO</td><td>Vérifier que prometheus scrape l'API sur <code>:8000/metrics</code></td></tr>
+          <tr><td><code>check-new-data</code> re-trigger chaque semaine</td><td><code>data/raw/{year}/</code> absent</td><td>Vérifier que le téléchargement ETL a bien eu lieu</td></tr>
+          <tr><td>Drift CRITICAL email reçu</td><td>Dérive &gt; 25% — alerte seulement</td><td>Planifier manuellement le prochain cycle via Prefect UI (<code>check-new-data</code>)</td></tr>
+          <tr><td>NVMe &gt; 70%</td><td>Accumulation Docker layers / logs</td><td>Lancer <code>cleanup.yml</code> manuellement (GitHub Actions)</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

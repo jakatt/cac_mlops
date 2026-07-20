@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Guide Data Scientist — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header>
+    <p class="eyebrow">MLOps · Accidents routiers</p>
+    <h1 class="page-title">Guide Data Scientist</h1>
+    <p class="page-sub">Développer et optimiser un modèle en local, tracer les expériences dans MLflow, soumettre un blueprint via PR. La mise en production est déclenchée automatiquement après merge (trigger 3).</p>
+  </header>
+
+  <!-- 1. SETUP -->
+  <details open>
+    <summary>1 — Setup initial (une seule fois)</summary>
+    <div class="body">
+      <pre>git clone git@github.com:jakatt/cac_mlops.git
+cd cac_mlops
+
+python3 -m venv my_env
+source my_env/bin/activate
+pip install -r requirements.txt
+pip install "dvc[s3]&gt;=3.0"
+pip install -e .
+cp .env.example .env</pre>
+      <p class="sec-label">Credentials DVC (accès données brutes sur Scaleway S3)</p>
+      <pre>dvc remote modify --local scaleway access_key_id     &lt;ACCESS_KEY&gt;
+dvc remote modify --local scaleway secret_access_key &lt;SECRET_KEY&gt;</pre>
+      <p>Ces credentials vont dans <code>.dvc/config.local</code> — <strong>gitignored, ne jamais commiter</strong>.</p>
+    </div>
+  </details>
+
+  <!-- 2. DONNEES -->
+  <details>
+    <summary>2 — Récupérer les données</summary>
+    <div class="body">
+      <pre># Données brutes → data/raw/{year}/
+dvc pull data/raw/2023.dvc
+
+# Preprocessing (cumul 2021+2022+2023) → data/preprocessed/cumul_2021_2022_2023/
+python -m src.data.make_dataset --year 2023 --cumul</pre>
+    </div>
+  </details>
+
+  <!-- 3. MLFLOW -->
+  <details>
+    <summary>3 — Tracer les expériences dans MLflow</summary>
+    <div class="body">
+      <p>Les runs locaux remontent sur le <strong>MLflow partagé du VPS</strong> via un tunnel SSH.</p>
+
+      <details open>
+        <summary>Ouvrir le tunnel SSH (une fois par session)</summary>
+        <div class="body">
+          <pre># Via Tailscale (recommandé — plus sécurisé, IP stable)
+ssh -L 5001:localhost:5001 \
+    -L 9000:localhost:9000 \
+    -L 9001:localhost:9001 \
+    deploy@100.117.99.62 -N &amp;
+
+# Alternative : via IP publique (si Tailscale indisponible)
+# ssh -L 5001:localhost:5001 deploy@51.159.187.132 -N &amp;</pre>
+          <p>MLflow UI : <code>http://localhost:5001</code> — le <code>.env</code> est pré-configuré avec <code>MLFLOW_TRACKING_URI=http://localhost:5001</code>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Levier 2 — Approche 1 : Override CLI (rapide, 1 run)</summary>
+        <div class="body">
+          <p><strong>Objectif :</strong> identifier les valeurs optimales à consigner ensuite dans <code>config/model_params.yml</code>.</p>
+          <pre># MLFLOW_RUN_MODE=explore (défaut) → runs dans "accidents_severity_dev"
+python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
+  --n-estimators 500 --num-leaves 127 --learning-rate 0.03</pre>
+          <p>Les 4 args CLI (<code>--n-estimators</code>, <code>--max-depth</code>, <code>--num-leaves</code>, <code>--learning-rate</code>) <strong>surchargent temporairement</strong> le blueprint — utile pour tester une idée rapidement. Les autres params viennent du fichier <code>config/model_params.yml</code>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Levier 2 — Approche 2 : Grid Search / RandomizedSearch / Optuna (exhaustif)</summary>
+        <div class="body">
+          <pre>from sklearn.model_selection import RandomizedSearchCV
+from lightgbm import LGBMClassifier
+import pandas as pd, numpy as np
+
+X_train = pd.read_csv("data/preprocessed/cumul_2021_2022_2023/X_train.csv")
+y_train = np.ravel(pd.read_csv("data/preprocessed/cumul_2021_2022_2023/y_train.csv"))
+
+param_grid = {
+    "n_estimators":      [200, 300, 500],
+    "num_leaves":        [31, 63, 127],
+    "learning_rate":     [0.01, 0.05, 0.1],
+    "min_child_samples": [10, 20, 50],
+    "colsample_bytree":  [0.8, 1.0],
+}
+clf = LGBMClassifier(n_jobs=-1, random_state=42, verbose=-1)
+search = RandomizedSearchCV(clf, param_grid, n_iter=20, scoring="f1",
+                             cv=3, random_state=42, n_jobs=-1)
+search.fit(X_train, y_train)
+print(search.best_params_)
+# → copier ces valeurs dans config/model_params.yml</pre>
+          <p>Les paramètres infra (<code>n_jobs=-1</code>, <code>random_state=42</code>, <code>verbose=-1</code>) sont gérés automatiquement — <strong>ne pas les inclure dans la grille</strong>.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Comparer les runs dans MLflow</summary>
+        <div class="body">
+          <p>MLflow UI → <strong>Experiments</strong> → <code>accidents_severity_dev</code> → trier par F1 / AUC / Recall.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 4. BLUEPRINT -->
+  <details>
+    <summary>4 — Soumettre un blueprint vers la production (trigger 3)</summary>
+    <div class="body">
+      <p>Quand tu as identifié un modèle champion dans MLflow explore :</p>
+
+      <details open>
+        <summary>Étape 1 — Mettre à jour config/model_params.yml et commiter</summary>
+        <div class="body">
+          <pre>git checkout -b feature/nouveau-blueprint-lgbm   # ou ta branche habituelle
+git add config/model_params.yml
+git push origin feature/nouveau-blueprint-lgbm</pre>
+          <p>Ouvre une PR vers <code>main</code>. Le MLOps lead review et merge.</p>
+          <div class="band"><strong>⚠️ Important :</strong> ne pas mélanger modification de <code>config/model_params.yml</code> et changements de code source (<code>src/</code>, <code>services/</code>) dans la même PR — le CI bloquera avec un message d'erreur explicite. Si les deux sont nécessaires, ouvrir deux PRs séparées : PR1 code, PR2 blueprint.</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Ce qui se passe automatiquement après merge</summary>
+        <div class="body">
+          <p><code>deploy.yml</code> détecte que <code>config/model_params.yml</code> a changé et déclenche <code>update-model-flow</code> qui :</p>
+          <ul>
+            <li>Entraîne les 3 algos avec les hyperparamètres de <code>config/model_params.yml</code> sur données prod</li>
+            <li><strong>Meilleur</strong> → gate manuelle (onglet Cockpit ou Prefect UI) + promote @Production + restart API</li>
+            <li><strong>Pas meilleur</strong> → email de notification (stop, aucune promotion)</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- 5. HYPERPARAMS -->
+  <details>
+    <summary>5 — Algorithmes et hyperparamètres</summary>
+    <div class="body">
+      <details open>
+        <summary>Deux leviers distincts</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <thead><tr><th>Levier</th><th>Où</th><th>Quand</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Levier 1 — Blueprint</strong></td><td><code>config/model_params.yml</code></td><td>Valeurs optimales figées → commit → prod</td></tr>
+              <tr><td><strong>Levier 2 — Expérimentation</strong></td><td>Local : Grid Search / Optuna / CLI</td><td>Pour trouver les valeurs à mettre dans le Levier 1</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Params DS vs params infra</summary>
+        <div class="body">
+          <p><strong>Params DS</strong> (dans <code>config/model_params.yml</code>, modifiables) :</p>
+          <div class="tbl"><table>
+            <thead><tr><th>Algorithme</th><th>Paramètres configurables</th></tr></thead>
+            <tbody>
+              <tr><td><strong>rf</strong></td><td><code>n_estimators</code> · <code>max_depth</code> · <code>min_samples_split</code> · <code>min_samples_leaf</code> · <code>max_features</code> · <code>bootstrap</code> · <code>max_samples</code> · <code>criterion</code> · <code>class_weight</code></td></tr>
+              <tr><td><strong>xgboost</strong></td><td><code>n_estimators</code> · <code>max_depth</code> · <code>learning_rate</code> · <code>subsample</code> · <code>colsample_bytree</code> · <code>min_child_weight</code> · <code>gamma</code> · <code>reg_alpha</code> · <code>reg_lambda</code> · <code>scale_pos_weight</code></td></tr>
+              <tr><td><strong>lgbm</strong></td><td><code>n_estimators</code> · <code>num_leaves</code> · <code>max_depth</code> · <code>learning_rate</code> · <code>subsample</code> · <code>subsample_freq</code> · <code>colsample_bytree</code> · <code>min_child_samples</code> · <code>reg_alpha</code> · <code>reg_lambda</code> · <code>class_weight</code></td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Params infra</strong> (gérés par le pipeline, <strong>non modifiables</strong>) : <code>n_jobs=-1</code> · <code>random_state=42</code> · <code>verbose=-1</code> / <code>verbosity=0</code></p>
+          <p>Référence complète (description, plages, conseils) → <a href="hyperparams_guide.html" target="_blank" style="color:var(--accent);">Guide hyperparamètres</a> (accessible dans le cockpit, onglet Docs).</p>
+        </div>
+      </details>
+
+      <p>Le benchmark entraîne <strong>les 3 algorithmes</strong> à chaque cycle. Le champion est sélectionné automatiquement sur F1.</p>
+    </div>
+  </details>
+
+  <!-- 6. KPI -->
+  <details>
+    <summary>6 — Seuils KPI (quality gate prod)</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Trigger</th><th>Règle de promotion</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Trigger 3</strong> (nouveaux hyperparamètres, mêmes données)</td><td>Dépasser <strong>tous</strong> les seuils absolus ET améliorer @Production d'au moins <strong>+0.01 sur F1</strong></td></tr>
+          <tr><td><strong>Trigger 1</strong> (nouvelles données annuelles)</td><td>Dépasser <strong>tous</strong> les seuils absolus — promu même en légère régression vs @Production tant que ≤1 métrique régresse (≥2 → aucune promotion)</td></tr>
+        </tbody>
+      </table></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Métrique</th><th>Seuil minimum</th></tr></thead>
+        <tbody>
+          <tr><td>F1</td><td>≥ 0.60</td></tr>
+          <tr><td>AUC</td><td>≥ 0.77</td></tr>
+          <tr><td>Recall</td><td>≥ 0.58</td></tr>
+          <tr><td>Accuracy</td><td>≥ 0.72</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 7. TESTS -->
+  <details>
+    <summary>7 — Tests locaux</summary>
+    <div class="body">
+      <pre># Tests unitaires (pas de Docker requis)
+pytest tests/unit/ -v
+
+# Avec couverture
+pytest tests/unit/ --cov=src --cov=services --cov-report=term-missing
+
+# Tests d'intégration (Docker Compose requis)
+RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
+      <p>La CI (<code>ci.yml</code>) tourne automatiquement sur chaque push/PR.</p>
+    </div>
+  </details>
+
+  <!-- 8. GIT -->
+  <details>
+    <summary>8 — Branches et workflow Git</summary>
+    <div class="body">
+      <pre>feature/xxx  →  PR vers main  →  review MLOps lead  →  merge  →  CI + deploy auto</pre>
+      <ul>
+        <li>Travailler sur une branche feature, <strong>jamais directement sur <code>main</code></strong></li>
+        <li>Les pushes sur <code>main</code> déclenchent <code>deploy.yml</code> (build images + deploy VPS)</li>
+        <li>Toujours ouvrir une PR — les workflows CI vérifient les tests avant merge</li>
+      </ul>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>
