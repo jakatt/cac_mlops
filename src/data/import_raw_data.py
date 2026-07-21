@@ -29,6 +29,23 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "vehicules":        ["vehicules", "vehicul"],
 }
 
+# Colonnes obligatoires par catégorie (présence dans l'entête = fichier brut ONISR authentique)
+_ONISR_REQUIRED_COLS: dict[str, list[str]] = {
+    "caracteristiques": ["num_acc", "jour", "mois", "an", "lum"],
+    "lieux":            ["num_acc", "catr", "vma"],
+    "usagers":          ["num_acc", "grav", "catu"],
+    "vehicules":        ["num_acc", "catv"],
+}
+
+# Taille minimale d'un fichier ONISR brut (les fichiers réels font plusieurs Mo)
+_ONISR_MIN_SIZE_KB = 500
+
+# Mots dans les titres data.gouv.fr indiquant un dataset enrichi/dérivé à exclure
+_TITLE_EXCLUSIONS = [
+    "enrichi", "consolidé", "traitement", "qualité", "bilan",
+    "synthèse", "analyse", "open data", "résumé",
+]
+
 FIRST_TRAINING_YEAR = 2021
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -97,6 +114,45 @@ def training_years_up_to(year: int) -> list[int]:
     return list(range(FIRST_TRAINING_YEAR, year + 1))
 
 
+def _validate_onisr_csv(path: Path, category: str) -> None:
+    """Vérifie qu'un fichier téléchargé est bien un fichier ONISR brut authentique.
+
+    Contrôles :
+      - Taille > _ONISR_MIN_SIZE_KB (rejette les fichiers trop petits)
+      - Séparateur ';' présent dans l'entête
+      - Colonnes obligatoires de la catégorie présentes (insensible à la casse)
+
+    Lève ValueError avec message diagnostique si un contrôle échoue.
+    """
+    size_kb = path.stat().st_size // 1024
+    if size_kb < _ONISR_MIN_SIZE_KB:
+        raise ValueError(
+            f"{path.name}: trop petit ({size_kb} KB < {_ONISR_MIN_SIZE_KB} KB) "
+            f"— probablement pas un fichier ONISR brut"
+        )
+
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            header = f.readline().strip()
+    except Exception as exc:
+        raise ValueError(f"{path.name}: impossible de lire l'entête — {exc}") from exc
+
+    if ";" not in header:
+        raise ValueError(
+            f"{path.name}: séparateur ';' absent — format inattendu "
+            f"(entête: {header[:120]!r}). Attendu: CSV ONISR avec ';'"
+        )
+
+    cols = {c.strip().strip('"').lower() for c in header.split(";")}
+    required = _ONISR_REQUIRED_COLS.get(category, ["num_acc"])
+    missing = [c for c in required if c not in cols]
+    if missing:
+        raise ValueError(
+            f"{path.name}: colonnes manquantes pour '{category}': {missing}. "
+            f"Colonnes trouvées: {sorted(cols)}"
+        )
+
+
 def _fetch_resources() -> list[dict]:
     """Return all resource objects from the ONISR dataset."""
     resp = requests.get(_API_BASE, timeout=15)
@@ -110,20 +166,51 @@ def resolve_year_urls(year: int, resources: list[dict] | None = None) -> dict[st
 
     Returns {category: download_url} for all 4 categories.
     Raises RuntimeError if fewer than 4 files can be matched.
+
+    Résistance aux changements ONISR :
+      - Filtre sur format CSV et taille minimale (évite les datasets enrichis/dérivés)
+      - Exclut les ressources dont le titre contient des mots-clés d'enrichissement
+      - En cas de plusieurs candidats, préfère le titre le plus court (= fichier brut)
     """
     if resources is None:
         resources = _fetch_resources()
 
     year_str = str(year)
-    year_resources = [r for r in resources if year_str in r.get("title", "")]
 
+    # 1. Garder uniquement les ressources de l'année, au format CSV, non enrichies
+    year_resources = []
+    for r in resources:
+        title = r.get("title", "")
+        if year_str not in title:
+            continue
+        fmt = r.get("format", "").lower()
+        if fmt and fmt != "csv":
+            continue
+        filesize = r.get("filesize") or 0
+        if filesize and filesize < _ONISR_MIN_SIZE_KB * 1024:
+            continue
+        title_low = title.lower()
+        if any(excl in title_low for excl in _TITLE_EXCLUSIONS):
+            logger.debug("resolve_year_urls: exclusion titre enrichi — %r", title)
+            continue
+        year_resources.append(r)
+
+    # 2. Matcher chaque catégorie — en cas d'ambiguïté, préférer le titre le plus court
     matched: dict[str, str] = {}
     for category, keywords in CATEGORY_KEYWORDS.items():
-        for r in year_resources:
-            title = r.get("title", "").lower()
-            if any(kw in title for kw in keywords):
-                matched[category] = r["url"]
-                break
+        candidates = [
+            r for r in year_resources
+            if any(kw in r.get("title", "").lower() for kw in keywords)
+        ]
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda r: len(r.get("title", "")))
+        if len(candidates) > 1:
+            logger.warning(
+                "resolve_year_urls: %d candidats pour '%s' year=%d — choix: %r",
+                len(candidates), category, year, best.get("title"),
+            )
+        matched[category] = best["url"]
 
     if len(matched) < 4:
         missing = set(CATEGORY_KEYWORDS) - set(matched)
@@ -131,7 +218,7 @@ def resolve_year_urls(year: int, resources: list[dict] | None = None) -> dict[st
         raise RuntimeError(
             f"Cannot resolve all 4 files for year {year}. "
             f"Missing categories: {missing}. "
-            f"Titles found for {year}: {titles}"
+            f"Available titles for {year}: {titles}"
         )
 
     return matched
@@ -224,7 +311,18 @@ def download_year(
                 fh.write(chunk)
 
         size_kb = out_path.stat().st_size // 1024
-        logger.info("  ✓ %s (%d KB)", filename, size_kb)
+
+        # Validation schéma : rejette immédiatement les fichiers suspects
+        try:
+            _validate_onisr_csv(out_path, category)
+        except ValueError as exc:
+            out_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"[CRITICAL] year={year} category={category}: fichier invalide — {exc}. "
+                f"Source URL: {url}"
+            ) from exc
+
+        logger.info("  ✓ %s (%d KB) — schéma valide", filename, size_kb)
         downloaded.append(out_path)
 
     return downloaded
