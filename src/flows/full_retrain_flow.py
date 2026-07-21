@@ -31,6 +31,7 @@ import requests as _req
 from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import discover_available_years, training_years_up_to
+from src.flows.deploy_kapsule_flow import deploy_kapsule_flow
 from src.flows.drift_monitoring_flow import drift_monitoring_flow
 from src.flows.etl_flow import etl_flow
 from src.flows.train_flow import train_flow
@@ -154,3 +155,8 @@ def full_retrain_flow(max_sim_rows: int = 100) -> None:
             drift_monitoring_flow(year=year)
 
     log.info("Full retrain complete — %d cycles", len(cycles))
+
+    # Deploy le modèle final (@Production du dernier cycle) sur Kapsule si actif.
+    # Appelé hors boucle : seul le champion toutes-années est déployé, pas les
+    # modèles intermédiaires des cycles précédents.
+    deploy_kapsule_flow(new_model=True, new_data=False, new_images=False)
