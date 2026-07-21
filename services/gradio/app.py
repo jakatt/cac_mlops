@@ -1611,7 +1611,7 @@ def build_links_html() -> str:
         + _link_row("MinIO Console",                f"http://{VPS_TAILSCALE_IP}:9001", "Tailscale")
         + _link_row("Prometheus",                   f"http://{VPS_TAILSCALE_IP}:9090", "Tailscale")
         + _link_row("GitHub Actions (CI/CD)",       f"https://github.com/{GITHUB_REPO}/actions", "Public")
-        + _link_row("DVC Data Tags",                f"https://github.com/{GITHUB_REPO}/tags", "Public")
+        + _link_row("DVC Data (.dvc files)",        f"https://github.com/{GITHUB_REPO}/tree/main/data/raw", "Public")
     )
     return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
