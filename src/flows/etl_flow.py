@@ -67,6 +67,67 @@ def dvc_push_task(year: int) -> None:
         log.info("dvc push OK — data/raw/%d → Scaleway S3", year)
 
 
+@task(name="dvc-git-commit", retries=1, retry_delay_seconds=10)
+def dvc_git_commit_task(year: int) -> None:
+    """Commite data/raw/{year}.dvc dans git et push vers origin/main.
+
+    Requiert GH_PAT dans l'env : token GitHub avec scope 'repo' (contents write).
+    Le commit utilise [skip ci] — deploy.yml a aussi un paths-ignore data/**
+    pour qu'un commit .dvc ne déclenche jamais le CD (Trigger 1 = Prefect only).
+    """
+    import os
+    log = get_run_logger()
+
+    dvc_file = f"data/raw/{year}.dvc"
+    pat = os.getenv("GH_PAT", "")
+    if not pat:
+        log.warning(
+            "GH_PAT non défini — %s non commité dans git. "
+            "Le DS ne pourra pas dvc pull année %d.",
+            dvc_file, year,
+        )
+        return
+
+    r = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True)
+    remote = r.stdout.strip()
+    if "https://" in remote:
+        auth_remote = remote.replace("https://", f"https://oauth2:{pat}@")
+    else:
+        repo_path = remote.split(":")[-1].removesuffix(".git")
+        auth_remote = f"https://oauth2:{pat}@github.com/{repo_path}.git"
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "prefect-worker",
+        "GIT_AUTHOR_EMAIL": "ci@cac-mlops.fr",
+        "GIT_COMMITTER_NAME": "prefect-worker",
+        "GIT_COMMITTER_EMAIL": "ci@cac-mlops.fr",
+    }
+
+    subprocess.run(["git", "add", dvc_file], capture_output=True, env=env)
+
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True, text=True, env=env,
+    ).stdout.strip()
+    if not staged:
+        log.info("%s déjà tracké dans git — rien à commiter", dvc_file)
+        return
+
+    subprocess.run(
+        ["git", "commit", "-m", f"data: DVC track {year} raw ONISR data [skip ci]"],
+        capture_output=True, env=env,
+    )
+    r = subprocess.run(
+        ["git", "push", auth_remote, "HEAD:main"],
+        capture_output=True, text=True, env=env,
+    )
+    if r.returncode != 0:
+        log.warning("git push failed: %s", r.stderr.strip())
+    else:
+        log.info("git push OK — data/raw/%d.dvc → origin/main", year)
+
+
 @task(name="preprocess-data")
 def preprocess_task(years: list[int]) -> None:
     from src.data.make_dataset import process_years
@@ -95,6 +156,7 @@ def etl_flow(
     download_task(year, urls=urls)
     validate_task(year)
     dvc_push_task(year)
+    dvc_git_commit_task(year)
     if explicit_years is not None:
         years = explicit_years
     elif cumul:
