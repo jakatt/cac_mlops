@@ -3,6 +3,10 @@ name: Deploy — main → Scaleway
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "data/**"
+      - "**/*.dvc"
+      - ".dvcignore"
   workflow_dispatch:
     inputs:
       sha_tag:
