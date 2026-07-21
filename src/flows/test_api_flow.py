@@ -115,16 +115,23 @@ def test_rate_limit(token: str) -> str:
 
 
 @flow(name="test-api", log_prints=True)
-def test_api_flow(skip_rate_limit: bool = False) -> dict[str, str]:
+def test_api_flow(
+    skip_rate_limit: bool = False,
+    require_model: bool = True,
+) -> dict[str, str]:
     """
     Tests fonctionnels de l'API via nginx.
 
     skip_rate_limit=True en CD pour éviter de saturer nginx sur la prod.
+    require_model=False en état post-reset (aucun @Production enregistré) :
+      seuls /health et /token sont testés, les tests /predict sont ignorés.
     Laisser False pour un test manuel complet (6 tests).
 
-    Toujours exécutés (1-5) :
+    Toujours exécutés (1-2) :
       1. health check
       2. obtention d'un token JWT
+
+    Uniquement si require_model=True (3-5) :
       3. 401 sans token
       4. 200 avec token
       5. What-If vitesse : proba(vma=90) > proba(vma=50) — route dept nuit hors agglo
@@ -132,20 +139,32 @@ def test_api_flow(skip_rate_limit: bool = False) -> dict[str, str]:
     Optionnel (6) :
       6. 429 rate-limit après 22 requêtes (skip si skip_rate_limit=True)
     """
-    health    = test_health()
-    token     = test_token()
+    health = test_health()
+    token  = test_token()
+
+    results: dict[str, str] = {
+        "health": health,
+        "token":  "OK",
+    }
+
+    if not require_model:
+        print("⚠ Tests /predict ignorés — aucun modèle @Production enregistré (état post-reset attendu)")
+        results["no_auth"]      = "skipped (no model)"
+        results["with_auth"]    = "skipped (no model)"
+        results["whatif_speed"] = "skipped (no model)"
+        results["rate_limit"]   = "skipped (no model)"
+        return results
+
     no_auth   = test_no_auth()
     with_auth = test_with_auth(token)
     whatif    = test_whatif_speed(token)
 
-    results = {
-        "health":       health,
-        "token":        "OK",
-        "no_auth":      no_auth,
-        "with_auth":    with_auth,
+    results.update({
+        "no_auth":    no_auth,
+        "with_auth":  with_auth,
         "whatif_speed": whatif,
-        "rate_limit":   "skipped (CD mode)",
-    }
+        "rate_limit": "skipped (CD mode)",
+    })
 
     if not skip_rate_limit:
         results["rate_limit"] = test_rate_limit(token)

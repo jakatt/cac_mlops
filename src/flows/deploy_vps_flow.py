@@ -363,6 +363,15 @@ def rollback_promote_task(previous: dict | None, champion: str) -> None:
         log.warning("Aucun @Production précédent à restaurer")
 
 
+def _try_alias(client, model_name: str) -> bool:
+    """Retourne True si le modèle @Production existe dans MLflow."""
+    try:
+        client.get_model_version_by_alias(model_name, "Production")
+        return True
+    except Exception:
+        return False
+
+
 @flow(name="deploy-vps-flow", log_prints=True)
 def deploy_vps_flow(
     champion: str | None = None,
@@ -454,8 +463,20 @@ def deploy_vps_flow(
                 )
 
         # ── 4. Test-api — validation finale en production ───────────────────────
+        # Post-reset : aucun modèle @Production enregistré → les tests /predict
+        # sont ignorés (état attendu, le full-retrain les restaurera).
+        import mlflow as _mlflow
+        from src.models.train_model import MODEL_NAMES as _MODEL_NAMES
+        _client = _mlflow.tracking.MlflowClient()
+        _has_model = any(_try_alias(_client, n) for n in _MODEL_NAMES.values())
+        if not _has_model:
+            log.warning(
+                "event=alert severity=warning topic=deploy_no_model "
+                "reason=post_reset — aucun modèle @Production. "
+                "Tests /predict ignorés. Lancer full-retrain pour restaurer."
+            )
         try:
-            test_api_flow(skip_rate_limit=True)
+            test_api_flow(skip_rate_limit=True, require_model=_has_model)
             log.info("test-api OK ✓")
         except Exception as exc:
             log.error("test-api ÉCHOUÉ : %s", exc)
