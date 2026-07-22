@@ -290,21 +290,13 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
               <div class="efd-step">
                 <div class="efd-box">
                   <span class="efd-label">dvc_push_task</span>
-                  <span class="efd-detail">dvc add + push <code>data/raw/{year}</code></span>
+                  <span class="efd-detail">dvc add + push <code>data/raw/{year}</code>, puis commit <code>data/raw/{year}.dvc</code> → <code>origin/main</code> <code>[skip ci]</code> — le tout dans un clone git jetable (PAT récupéré depuis S3, créé/détruit à chaque exécution — indépendant de <code>/app/.git</code>, jamais présent dans l'image)</span>
                 </div>
               </div>
               <span class="efd-side-arrow">→</span>
               <div class="efd-dvc-box">
                 <span class="efd-dvc-title">DVC #1 — Raw</span>
                 <span class="efd-dvc-detail">CSV tel que téléchargé, intact. Les corrections restent en mémoire — <strong>jamais réécrites sur disque.</strong></span>
-              </div>
-            </div>
-            <div class="efd-arrow">↓</div>
-
-            <div class="efd-step">
-              <div class="efd-box">
-                <span class="efd-label">dvc_git_commit_task</span>
-                <span class="efd-detail">commit <code>data/raw/{year}.dvc</code> → <code>origin/main</code> <code>[skip ci]</code></span>
               </div>
             </div>
             <div class="efd-arrow">↓</div>
@@ -325,21 +317,13 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
               <div class="efd-step">
                 <div class="efd-box">
                   <span class="efd-label">dvc_push_preprocessed_task</span>
-                  <span class="efd-detail">dvc add + push <code>data/preprocessed/cumul_{years}</code></span>
+                  <span class="efd-detail">dvc add + push <code>data/preprocessed/cumul_{years}</code>, puis commit <code>data/preprocessed/cumul_{years}.dvc</code> → <code>origin/main</code> <code>[skip ci]</code> — même clone jetable</span>
                 </div>
               </div>
               <span class="efd-side-arrow">→</span>
               <div class="efd-dvc-box">
                 <span class="efd-dvc-title">DVC #2 — Preprocessed</span>
                 <span class="efd-dvc-detail"><code>X_train/X_test/y_*.csv</code> — seul endroit où renommages et coercion sont réellement <strong>persistés</strong>.</span>
-              </div>
-            </div>
-            <div class="efd-arrow">↓</div>
-
-            <div class="efd-step">
-              <div class="efd-box">
-                <span class="efd-label">dvc_git_commit_preprocessed_task</span>
-                <span class="efd-detail">commit <code>data/preprocessed/cumul_{years}.dvc</code> → <code>origin/main</code> <code>[skip ci]</code></span>
               </div>
             </div>
           </div>
