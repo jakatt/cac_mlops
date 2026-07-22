@@ -134,7 +134,7 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">36</span><span class="badge-label">Tests unitaires CI<br>pytest · 0 ignoré</span></div>
+    <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests unitaires CI<br>pytest · 0 ignoré</span></div>
     <div class="badge cd"><span class="badge-num">10</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
     <div class="badge pf"><span class="badge-num">6</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow</span></div>
   </div>
@@ -167,7 +167,7 @@
     </details>
 
     <details>
-      <summary>test_preprocessing.py — Feature engineering <span class="count">14</span></summary>
+      <summary>test_preprocessing.py — Feature engineering <span class="count">15</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -186,13 +186,14 @@
           <tr><td><code>test_features_present_after_engineering</code></td><td>Les 27 features modèle + <code>year_acc</code> (intermédiaire) + <code>grav</code> sont présentes</td></tr>
           <tr><td><code>test_no_id_columns_in_output</code></td><td>Colonnes techniques supprimées (<code>Num_Acc</code>, <code>an_nais</code>, <code>hrmn</code>…)</td></tr>
           <tr><td><code>test_nb_victim_aggregated_per_accident</code></td><td><code>nb_victim</code> = nombre d'usagers impliqués par accident</td></tr>
+          <tr><td><code>test_missing_raw_dir_raises_runtime_error</code></td><td><code>_load_year</code> (délègue à <code>load_and_validate_year</code>) lève <code>RuntimeError</code> si CRITICAL — stoppe le preprocessing au lieu de continuer silencieusement</td></tr>
         </table>
         </div>
       </div>
     </details>
 
     <details>
-      <summary>test_schema_validator.py — Validation Pandera <span class="count">11</span></summary>
+      <summary>test_schema_validator.py — Validation Pandera <span class="count">16</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -208,6 +209,45 @@
           <tr><td><code>test_overall_level_ok_when_no_messages</code></td><td>Aucun message → niveau global OK</td></tr>
           <tr><td><code>test_overall_level_critical_after_critical_message</code></td><td>1 message CRITICAL → niveau global CRITICAL (correctement agrégé)</td></tr>
           <tr><td><code>test_summary_contains_year</code></td><td>Le rapport de validation mentionne l'année traitée</td></tr>
+          <tr><td><code>test_rename_reported_as_auto_corrected</code></td><td>Renommage <code>Accident_Id→Num_Acc</code> appliqué → message <strong>AUTO_CORRECTED</strong>, n'escalade pas le niveau global</td></tr>
+          <tr><td><code>test_coercible_value_reported_as_auto_corrected</code></td><td>Colonne numérique lue en texte (artefact formatage) → coercée par Pandera + reportée AUTO_CORRECTED</td></tr>
+          <tr><td><code>test_uncoercible_value_stays_warning_not_critical</code></td><td>Valeur non convertible (ex. <code>"abc"</code>) → coercion échoue proprement, reste WARNING (comportement de repli inchangé)</td></tr>
+          <tr><td><code>test_returns_dfs_for_all_4_tables</code></td><td><code>load_and_validate_year</code> renvoie les 4 DataFrames corrigés/typés, prêts pour le feature engineering</td></tr>
+          <tr><td><code>test_critical_returns_empty_dfs</code></td><td><code>load_and_validate_year</code> renvoie <code>{}</code> si Level 1 échoue (pas de DataFrames à moitié chargés)</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>test_import_raw_data.py — Découverte des fichiers ONISR <span class="count">7</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_strips_trailing_year</code></td><td><code>carcteristiques-2021</code> → <code>carcteristiques</code> (retire le suffixe année pour le matching fuzzy)</td></tr>
+          <tr><td><code>test_strips_underscore_year</code></td><td><code>Caract_2024</code> → <code>caract</code> (convention 2024, underscore)</td></tr>
+          <tr><td><code>test_no_year_suffix_unchanged</code></td><td>Nom sans suffixe année laissé inchangé</td></tr>
+          <tr><td><code>test_strict_match_canonical_names</code></td><td>Noms canoniques (<code>caracteristiques-2021.csv</code>…) → matching strict par mot-clé, sans fallback</td></tr>
+          <tr><td><code>test_fuzzy_fallback_catches_typo</code></td><td>Reproduit l'incident <code>carcteristiques-2021.csv</code> (faute de frappe source ONISR) → fallback fuzzy (difflib) retrouve le bon fichier + WARNING loggué</td></tr>
+          <tr><td><code>test_unmatchable_file_raises_runtime_error</code></td><td>Nom trop éloigné de toute catégorie connue → <code>RuntimeError</code>, aucun faux positif</td></tr>
+          <tr><td><code>test_nonexistent_dir_raises_file_not_found</code></td><td>Répertoire source inexistant → <code>FileNotFoundError</code></td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>test_known_fixes.py — Registre centralisé de correctifs <span class="count">5</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_renames_accident_id_to_num_acc</code></td><td>Renommage ONISR 2022+ appliqué automatiquement</td></tr>
+          <tr><td><code>test_no_rename_when_num_acc_already_present</code></td><td>Ne renomme pas si <code>Num_Acc</code> existe déjà (évite d'écraser une colonne réelle)</td></tr>
+          <tr><td><code>test_no_rename_for_other_tables</code></td><td>Le renommage <code>caracteristiques</code> ne s'applique pas aux 3 autres tables</td></tr>
+          <tr><td><code>test_strips_nbsp_and_whitespace</code></td><td>Espaces insécables (<code>\xa0</code>) et superflus nettoyés sur les colonnes texte</td></tr>
+          <tr><td><code>test_numeric_columns_untouched</code></td><td>Les colonnes déjà numériques ne sont pas affectées par le nettoyage texte</td></tr>
         </table>
         </div>
       </div>
