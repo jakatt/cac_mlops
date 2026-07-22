@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import pytest
 
-from src.data.make_dataset import _engineer
+from src.data.make_dataset import _engineer, _load_year
 
 
 def _minimal_dfs() -> tuple:
@@ -175,3 +175,13 @@ class TestEngineer:
         df = _engineer(*_minimal_dfs())
         assert "year_acc" in df.columns
         assert (df["year_acc"] == 2021).all()
+
+
+class TestLoadYear:
+    """_load_year délègue désormais à schema_validator.load_and_validate_year
+    (pipeline unique — cf. Phase B+D) : vérifie que le CRITICAL stoppe bien
+    le preprocessing au lieu de continuer silencieusement."""
+
+    def test_missing_raw_dir_raises_runtime_error(self, tmp_path):
+        with pytest.raises(RuntimeError, match="CRITICAL"):
+            _load_year(2021, tmp_path / "nonexistent")

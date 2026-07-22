@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from .import_raw_data import PROJECT_ROOT, training_years_up_to, discover_raw_files  # noqa: F401
+from .import_raw_data import PROJECT_ROOT, training_years_up_to
+from .schema_validator import load_and_validate_year
 from src.utils.logging_utils import init_logging
 
 init_logging()  # au niveau module : fixe le niveau INFO que ce fichier soit importé
@@ -32,25 +33,22 @@ def _raw_dir(year: int) -> Path:
 def _load_year(year: int, raw_dir: Path | None = None) -> tuple[
     pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
 ]:
-    """Load the 4 raw CSVs for *year*. Returns (df_users, df_caract, df_places, df_veh)."""
+    """Load+validate the 4 raw CSVs for *year* via schema_validator (pipeline
+    unique — mêmes correctifs/coercion que la validation, pas de double
+    lecture). Returns (df_users, df_caract, df_places, df_veh).
+
+    Raises RuntimeError si la validation Level 1 échoue (fichiers illisibles
+    ou introuvables) — stoppe le preprocessing plutôt que de continuer sur
+    une donnée invalide.
+    """
     d = raw_dir or _raw_dir(year)
-    files = discover_raw_files(year, d)
+    dfs, report = load_and_validate_year(year, d)
+    if report.overall_level == "CRITICAL":
+        raise RuntimeError(
+            f"Validation CRITICAL pour year={year} — preprocessing stoppé.\n{report.summary()}"
+        )
 
-    df_caract = pd.read_csv(files["caracteristiques"], sep=";", low_memory=False)
-    df_places  = pd.read_csv(files["lieux"],            sep=";", encoding="utf-8")
-    df_users   = pd.read_csv(files["usagers"],          sep=";")
-    df_veh     = pd.read_csv(files["vehicules"],        sep=";")
-
-    # 2022+ : ONISR renomme Num_Acc → Accident_Id dans le fichier caracteristiques
-    df_caract.rename(columns={"Accident_Id": "Num_Acc"}, inplace=True)
-
-    # 2022+ : certaines colonnes contiennent des espaces insécables (\xa0)
-    # utilisés comme séparateurs de milliers (formatage français) → nettoyage
-    for df in (df_caract, df_places, df_users, df_veh):
-        for col in df.select_dtypes(include="object").columns:
-            df[col] = df[col].astype(str).str.replace("\xa0", "", regex=False).str.strip()
-
-    return df_users, df_caract, df_places, df_veh
+    return dfs["usagers"], dfs["caracteristiques"], dfs["lieux"], dfs["vehicules"]
 
 
 def _engineer(

@@ -9,6 +9,7 @@ from src.data.schema_validator import (
     _validate_level2,
     _validate_level3,
     ValidationReport,
+    load_and_validate_year,
 )
 
 # Filenames that match CATEGORY_KEYWORDS for year 2021 (used in fixtures)
@@ -162,3 +163,74 @@ class TestLevel2:
 
         criticals = [m for m in report.messages if m.level == "CRITICAL"]
         assert len(criticals) >= 1
+
+
+# ── Auto-correction (renommage + coercion Pandera) ─────────────────────────────
+
+class TestAutoCorrected:
+    def test_rename_reported_as_auto_corrected(self, tmp_2021):
+        caract_path = tmp_2021 / _TEST_FILES["caracteristiques"]
+        df = pd.read_csv(caract_path, sep=";").rename(columns={"Num_Acc": "Accident_Id"})
+        df.to_csv(caract_path, sep=";", index=False)
+
+        report = ValidationReport(year=2021)
+        _validate_level1(2021, tmp_2021, report)
+        _validate_level2(2021, tmp_2021, report)
+
+        auto = [m for m in report.messages
+                if m.level == "AUTO_CORRECTED" and m.check == "column_rename"]
+        assert len(auto) == 1
+        assert report.overall_level in ("OK", "WARNING")  # AUTO_CORRECTED n'escalade pas
+
+    def test_coercible_value_reported_as_auto_corrected(self, tmp_2021):
+        """Colonne numérique lue en object (artefact \\xa0) → coercée + reportée.
+
+        Note : Num_Acc est systématiquement coercé (int64 lu depuis un CSV
+        purement numérique → object attendu par le schéma) sur les 4 tables,
+        même sans cet artefact — c'est le comportement voulu. On restreint
+        donc l'assertion à la table 'caracteristiques' et à la colonne 'jour'.
+        """
+        caract_path = tmp_2021 / _TEST_FILES["caracteristiques"]
+        df = pd.read_csv(caract_path, sep=";")
+        df["jour"] = df["jour"].astype(str) + "\xa0"
+        df.to_csv(caract_path, sep=";", index=False)
+
+        report = ValidationReport(year=2021)
+        _validate_level1(2021, tmp_2021, report)
+        dfs = _validate_level2(2021, tmp_2021, report)
+
+        caract_auto = [m for m in report.messages
+                       if m.level == "AUTO_CORRECTED" and m.check == "type_coercion"
+                       and m.table == "caracteristiques"]
+        assert len(caract_auto) == 1
+        assert "jour" in caract_auto[0].detail
+        assert dfs["caracteristiques"]["jour"].dtype.kind == "i"  # coercé en int
+
+    def test_uncoercible_value_stays_warning_not_critical(self, tmp_2021):
+        caract_path = tmp_2021 / _TEST_FILES["caracteristiques"]
+        df = pd.read_csv(caract_path, sep=";")
+        df["jour"] = df["jour"].astype(object)
+        df.loc[0, "jour"] = "abc"
+        df.to_csv(caract_path, sep=";", index=False)
+
+        report = ValidationReport(year=2021)
+        _validate_level1(2021, tmp_2021, report)
+        _validate_level2(2021, tmp_2021, report)
+
+        warns = [m for m in report.messages if m.level == "WARNING" and m.check == "type_check"]
+        assert len(warns) == 1
+        assert not any(m.level == "CRITICAL" for m in report.messages)
+
+
+# ── load_and_validate_year (pipeline unique validation + preprocessing) ────────
+
+class TestLoadAndValidateYear:
+    def test_returns_dfs_for_all_4_tables(self, tmp_2021):
+        dfs, report = load_and_validate_year(2021, tmp_2021)
+        assert set(dfs.keys()) == {"caracteristiques", "lieux", "usagers", "vehicules"}
+        assert report.overall_level in ("OK", "WARNING")
+
+    def test_critical_returns_empty_dfs(self, tmp_path):
+        dfs, report = load_and_validate_year(2021, tmp_path / "nonexistent")
+        assert dfs == {}
+        assert report.overall_level == "CRITICAL"

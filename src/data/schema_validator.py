@@ -6,6 +6,9 @@ Level 2 — SCHEMA     : required columns present, types compatible
 Level 3 — QUALITY    : distributions, NaN rates, value ranges
 
 Result levels : CRITICAL (stop pipeline) / WARNING (log + continue) / OK
+AUTO_CORRECTED : correctif appliqué automatiquement (renommage, coercion de
+                  type) — informatif, n'affecte pas overall_level (traité
+                  comme OK/INFO dans la hiérarchie de gravité).
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ import pandera.pandas as pa
 
 from .schema import QUALITY_BOUNDS, REQUIRED_COLUMNS, TABLE_SCHEMAS
 from .import_raw_data import discover_raw_files, PROJECT_ROOT
+from .known_fixes import apply_known_fixes
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +121,12 @@ def _validate_level2(
         if df is None:
             continue  # already flagged in Level 1
 
-        # 2022+ : ONISR renamed Num_Acc → Accident_Id in caracteristiques
-        if table == "caracteristiques" and "Accident_Id" in df.columns and "Num_Acc" not in df.columns:
-            df = df.rename(columns={"Accident_Id": "Num_Acc"})
+        df, renamed = apply_known_fixes(df, table)
+        if renamed:
+            report.add(
+                "AUTO_CORRECTED", table, "column_rename",
+                f"Renommage appliqué automatiquement : {renamed}"
+            )
 
         # ── required columns ─────────────────────────────────────────────────
         required = set(REQUIRED_COLUMNS.get(table, []))
@@ -141,9 +148,23 @@ def _validate_level2(
                 f"New columns not in schema (ignored): {sorted(unknown)}"
             )
 
-        # ── pandera type validation ───────────────────────────────────────────
+        # ── pandera type validation + coercion (coerce=True, cf. schema.py) ───
+        # Succès → validate() renvoie le DataFrame coercé (types déclarés
+        # imposés) : on l'utilise à la place de df, et on rapporte les
+        # colonnes réellement modifiées. Échec (valeur non convertible) →
+        # WARNING, on garde df tel quel — comportement inchangé.
+        dtypes_before = df.dtypes.to_dict()
         try:
-            TABLE_SCHEMAS[table].validate(df, lazy=True)
+            df = TABLE_SCHEMAS[table].validate(df, lazy=True)
+            coerced = [
+                c for c, t in dtypes_before.items()
+                if c in df.columns and df[c].dtype != t
+            ]
+            if coerced:
+                report.add(
+                    "AUTO_CORRECTED", table, "type_coercion",
+                    f"Colonnes coercées vers le type attendu : {coerced}"
+                )
         except pa.errors.SchemaErrors as exc:
             # Collect type errors; column-presence errors already handled above
             # exc.schema_errors is a list of SchemaError objects (pandera >= 0.14)
@@ -226,29 +247,47 @@ def _validate_level3(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def validate(year: int, raw_dir: Path | None = None) -> ValidationReport:
+def load_and_validate_year(
+    year: int, raw_dir: Path | None = None
+) -> tuple[dict[str, pd.DataFrame], ValidationReport]:
     """
-    Run all 3 validation levels for *year*.
+    Lit, corrige (known_fixes + coercion Pandera) et valide les 4 fichiers
+    ONISR de *year*. Pipeline unique partagé par validate_task (etl_flow) et
+    make_dataset (preprocessing) — élimine la double lecture / double logique
+    de typage qui existait auparavant entre les deux (validation vs training
+    lisaient et corrigeaient chacun leur propre copie, indépendamment).
 
-    raw_dir defaults to data/raw/{year}/ (or data/production/{year}/ for 2024).
+    Retourne (dfs, report). dfs contient les DataFrames nettoyés et typés,
+    prêts pour le feature engineering — vide ({}) si Level 1 échoue.
     """
     if raw_dir is None:
         raw_dir = PROJECT_ROOT / "data" / "raw" / str(year)
 
     report = ValidationReport(year=year)
-    logger.info("=== Schema validation year=%d (dir=%s) ===", year, raw_dir)
+    logger.info("=== Load+validate year=%d (dir=%s) ===", year, raw_dir)
 
     # Level 1 — abort if files unreadable
     l1_ok = _validate_level1(year, raw_dir, report)
     if not l1_ok:
         logger.critical("Level 1 FAILED — pipeline must stop for year=%d", year)
-        return report
+        return {}, report
 
-    # Level 2 — load DataFrames
+    # Level 2 — load + fix + coerce DataFrames
     dfs = _validate_level2(year, raw_dir, report)
 
     # Level 3 — quality
     _validate_level3(year, dfs, report)
 
     logger.info("=== Validation complete: %s ===", report.overall_level)
+    return dfs, report
+
+
+def validate(year: int, raw_dir: Path | None = None) -> ValidationReport:
+    """
+    Run all 3 validation levels for *year*. Conservé pour compat (validate_task
+    dans etl_flow) — wrapper autour de load_and_validate_year().
+
+    raw_dir defaults to data/raw/{year}/ (or data/production/{year}/ for 2024).
+    """
+    _, report = load_and_validate_year(year, raw_dir)
     return report
