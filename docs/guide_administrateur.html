@@ -198,13 +198,12 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
       <div class="tbl"><table>
         <thead><tr><th>Étape</th><th>Script</th><th>Sortie</th><th>Si KO</th></tr></thead>
         <tbody>
-          <tr><td><strong>1. Ingestion</strong></td><td><code>import_raw_data.py</code></td><td><code>data/raw/{year}/*.csv</code></td><td>—</td></tr>
-          <tr><td><strong>2. Validation N1 — Format</strong></td><td><code>schema_validator.py</code></td><td>Séparateur, encodage, nb fichiers</td><td>❌ CRITICAL → stop + alerte</td></tr>
-          <tr><td><strong>3. Validation N2 — Schéma</strong></td><td><code>schema_validator.py</code></td><td>Colonnes requises, types, nouvelles colonnes</td><td>❌ CRITICAL (colonnes) / ⚠️ WARNING (inconnues)</td></tr>
+          <tr><td><strong>1. Ingestion</strong></td><td><code>import_raw_data.py</code></td><td><code>data/raw/{year}/*.csv</code> — nom canonique <code>{catégorie}-{year}.csv</code> imposé au download (indépendant du nom serveur)</td><td>—</td></tr>
+          <tr><td><strong>2. Validation N1 — Format</strong></td><td><code>schema_validator.py</code></td><td>Séparateur, encodage, nb fichiers (fallback fuzzy sur le nom si le matching strict échoue)</td><td>❌ CRITICAL → stop + alerte</td></tr>
+          <tr><td><strong>3. Auto-correction + Validation N2 — Schéma</strong></td><td><code>known_fixes.py</code> + <code>schema_validator.py</code></td><td>Renommages ONISR connus + coercion de type (Pandera <code>coerce=True</code>) → <strong>AUTO_CORRECTED</strong> · colonnes requises, types, nouvelles colonnes</td><td>❌ CRITICAL (colonnes requises) / ⚠️ WARNING (inconnues, coercion impossible)</td></tr>
           <tr><td><strong>4. Validation N3 — Qualité</strong></td><td><code>schema_validator.py</code></td><td>Distributions, taux NaN, volume</td><td>⚠️ WARNING → log + continue</td></tr>
-          <tr><td><strong>5. Normalisation</strong></td><td><code>normalizer/normalize.py</code></td><td>DataFrames format 2021-standard</td><td>—</td></tr>
-          <tr><td><strong>6. Preprocessing</strong></td><td><code>make_dataset.py</code></td><td><code>data/preprocessed/cumul_{years}/</code></td><td>—</td></tr>
-          <tr><td><strong>7. Versioning DVC</strong></td><td>DVC + git</td><td>S3 + tag <code>data-v{N}</code></td><td>—</td></tr>
+          <tr><td><strong>5. Preprocessing</strong></td><td><code>make_dataset.py</code> (via <code>load_and_validate_year</code>, pipeline unique)</td><td><code>data/preprocessed/cumul_{years}/</code> — revalide chaque année du cumul à chaque cycle, pas seulement la nouvelle</td><td>❌ RuntimeError si CRITICAL sur une année quelconque du cumul</td></tr>
+          <tr><td><strong>6. Versioning DVC</strong></td><td>DVC + git</td><td>S3 — <code>.dvc</code> commités (raw <em>et</em> preprocessé, versionnés séparément)</td><td>—</td></tr>
         </tbody>
       </table></div>
 
@@ -239,6 +238,22 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
           <tr><td><strong>3 — Qualité données</strong></td><td>Volume 40k–90k accidents · codes modalités connus · taux NaN &lt;30% · lat/long France</td><td>⚠️ WARNING → log + pipeline continue</td></tr>
         </tbody>
       </table></div>
+
+      <details>
+        <summary>Auto-correction — au-delà de la détection</summary>
+        <div class="body">
+          <p>En plus de détecter et signaler les anomalies, certaines sont désormais <strong>corrigées automatiquement</strong> avant que la donnée n'atteigne le preprocessing — tracé dans le rapport sous un niveau dédié <strong>AUTO_CORRECTED</strong> (informatif, n'escalade jamais au-dessus de OK/WARNING).</p>
+          <div class="tbl"><table>
+            <thead><tr><th>Mécanisme</th><th>Corrige</th><th>Exemple</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Registre centralisé</strong><br><code>known_fixes.py</code></td><td>Renommages ONISR connus + espaces insécables/superflus sur colonnes texte</td><td><code>Accident_Id</code> → <code>Num_Acc</code> (ONISR 2022+) — appliqué identiquement en validation <em>et</em> en preprocessing (source unique, ex-duplication corrigée)</td></tr>
+              <tr><td><strong>Coercion de type</strong><br>Pandera <code>coerce=True</code></td><td>Colonne lue avec le mauvais type à cause d'un artefact de formatage</td><td>Colonne entière lue en texte (espace insécable résiduel) → reconvertie en <code>int</code>. Échec de conversion (valeur réellement invalide) → jamais de NaN silencieux, redescend proprement en WARNING</td></tr>
+              <tr><td><strong>Fallback fuzzy nom de fichier</strong><br><code>import_raw_data.discover_raw_files</code></td><td>Nom de fichier source légèrement différent de l'attendu</td><td>Incident réel <code>carcteristiques-2021.csv</code> (faute de frappe ONISR, jamais rattrapée) — similarité de chaîne (difflib) retrouve la bonne catégorie, WARNING loggué pour traçabilité</td></tr>
+            </tbody>
+          </table></div>
+          <p class="note" style="margin-top:10px;font-size:.78rem;color:var(--muted);">Depuis l'unification du pipeline (<code>load_and_validate_year</code>), <code>make_dataset.py</code> ne relit plus les CSV séparément : il consomme directement les DataFrames déjà corrigés/validés par <code>schema_validator.py</code>. Conséquence utile : <strong>chaque cycle ETL revalide automatiquement toutes les années du cumul</strong> avec les règles les plus récentes, pas seulement la nouvelle — un correctif qui casserait silencieusement une année déjà en production est détecté au prochain cycle, sans tâche dédiée.</p>
+        </div>
+      </details>
     </div>
   </details>
 
@@ -282,14 +297,11 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
      │
      ▼
 [schema_validator]  →  ❌ CRITICAL : stop + alerte / ⚠️ WARNING : log + continue
-     │ OK
+     │ OK (renommages + coercion auto-appliqués → AUTO_CORRECTED)
      ▼
-[normalizer]        →  DataFrames format standard 2021
+[make_dataset]      →  data/preprocessed/cumul_{years}/  (revalide tout le cumul)
      │
-     ▼
-[make_dataset]      →  data/preprocessed/cumul_{years}/
-     │
-     ├──► [DVC push]   →  Scaleway Object Storage
+     ├──► [DVC push]   →  Scaleway Object Storage (raw + preprocessé)
      │
      ▼
 [train_model]       →  benchmark RF / XGBoost / LightGBM
@@ -794,8 +806,8 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 │   ├── nginx/             nginx.conf (rate-limit + routing + /reports/)
 │   └── monitoring/        drift_detection.py (Evidently + Prometheus)
 ├── src/
-│   ├── data/              import_raw_data · schema · schema_validator · make_dataset
-│   │                      normalizer/normalize.py
+│   ├── data/              import_raw_data · schema · schema_validator · known_fixes
+│   │                      make_dataset
 │   ├── models/            train_model · predict_model · validate_model
 │   ├── flows/             14 flows Prefect
 │   └── utils/             email_utils (SMTP silent si non configuré)
@@ -818,8 +830,10 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 ├── state/kapsule_ips      URL publique + DNS K8s (écrit par kapsule_up_flow)
 ├── tests/
 │   ├── unit/              test_preprocessing · test_schema_validator · test_predict
+│   │                      test_import_raw_data · test_known_fixes
 │   └── integration/       test_api (Docker Compose requis)
 ├── scripts/               simulate_production.py · raz_mlops.sh · setup_branch_protection.sh
+│                          ds_session_start.sh (routine début de session DS)
 ├── docker-compose.yml     Stack 16 conteneurs (local + VPS)
 ├── prefect.yaml           14 deployments Prefect
 ├── .env.example
