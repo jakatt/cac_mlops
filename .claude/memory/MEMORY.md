@@ -1,8 +1,8 @@
 - [Project setup](project_setup.md) — fork de DataScientest, venv `my_env`, notes de récupération historique
 - [MLOps architecture](project_mlops_architecture.md) — stack (FastAPI, MLflow, DVC, Prefect, Scaleway)
 - [VPS access](user_vps_access.md) — SSH user=`deploy`, IP=51.159.187.132, fail2ban, Tailscale
-- [VPS & stack state](project_state_vps.md) — 16 conteneurs, mécanisme DVC/git self-suffisant (S3), full-retrain post-fix en cours (à vérifier)
-- [CI/CD state](project_cicd_state.md) — PRs #35→#186, 54 tests CI, ETL renforcée (auto-correction + DVC self-suffisant)
+- [VPS & stack state](project_state_vps.md) — 16 conteneurs, lgbm@Production v4 confirmé, base DVC 100% clean (raw+preprocessed), VPS arrêté en fin de session 2026-07-22
+- [CI/CD state](project_cicd_state.md) — PRs #35→#189, 54 tests CI, ETL renforcée + DVC self-suffisant validé (base 100% clean) + incident disque résolu
 - [KPI thresholds](project_kpi_thresholds.md) — f1≥0.60 · auc≥0.77 · acc≥0.72 · recall≥0.58 (split temporel, ~8% marge)
 - [Soutenance schemas](project_soutenance_schemas.md) — 3 triggers CI/CD, blueprint mécanisme, slide sécurité + archi à updater
 - [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
