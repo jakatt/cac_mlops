@@ -6,12 +6,17 @@ Triggered manually, from check-new-data-flow (with pre-resolved URLs),
 or as the first step of full_retrain_flow (once per cycle — each cycle's
 year-combination gets its own versioned clean dataset).
 """
+import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import download_year, training_years_up_to, get_training_years
+
+GITHUB_REPO = os.getenv("GITHUB_REPO", "jakatt/cac_mlops")
 
 
 @task(name="download-raw-data", retries=2, retry_delay_seconds=30)
@@ -43,85 +48,114 @@ def validate_task(year: int) -> None:
     log.info("Validation level=%s year=%d", level, year)
 
 
-def _dvc_track_and_push(path: str, log) -> bool:
-    """dvc add --no-commit + dvc push pour *path*. Retourne True si le push a réussi."""
-    dvc_file = Path(f"{path}.dvc")
+def _fetch_gh_pat(log) -> str | None:
+    """Récupère le PAT GitHub depuis S3 (secrets/gh_pat) plutôt qu'une variable
+    d'environnement figée à la création du conteneur.
 
-    r = subprocess.run(
-        ["dvc", "add", "--no-commit", path],
-        capture_output=True, text=True,
-    )
-    if r.returncode != 0:
-        log.warning("dvc add failed (%s): %s", path, r.stderr.strip())
-        return False
-
-    push_target = str(dvc_file) if dvc_file.exists() else path
-    r = subprocess.run(
-        ["dvc", "push", push_target],
-        capture_output=True, text=True,
-    )
-    if r.returncode != 0:
-        log.warning("dvc push failed (%s): %s", path, r.stderr.strip())
-        return False
-
-    log.info("dvc push OK — %s → Scaleway S3", path)
-    return True
-
-
-def _git_commit_dvc_file(path: str, commit_message: str, log) -> None:
-    """Commite {path}.dvc dans git et push vers origin/main.
-
-    Requiert GH_PAT dans l'env : token GitHub avec scope 'repo' (contents write).
-    Le commit utilise [skip ci] — deploy.yml a aussi un paths-ignore data/**
-    pour qu'un commit .dvc ne déclenche jamais le CD (Trigger 1 = Prefect only).
+    Pourquoi : /app (image api, utilisée par prefect-worker) ne contient jamais
+    .git — le Dockerfile ne fait que des COPY sélectifs — et prefect-worker ne
+    peut pas se recréer lui-même pour appliquer un changement docker-compose.yml
+    (la tâche qui le ferait tourne dans le conteneur qu'elle recréerait,
+    tuant le flow en cours). Lire le PAT depuis S3 à chaque exécution rend le
+    mécanisme indépendant du cycle de vie du conteneur et du pipeline de
+    déploiement : rotation du PAT = un nouvel upload S3, jamais de redémarrage.
     """
-    import os
-
-    dvc_file = f"{path}.dvc"
-    pat = os.getenv("GH_PAT", "")
-    if not pat:
-        log.warning(
-            "GH_PAT non défini — %s non commité dans git. "
-            "Le DS ne pourra pas dvc pull cette donnée.",
-            dvc_file,
+    try:
+        import boto3
+        s3 = boto3.client(
+            "s3",
+            endpoint_url="https://s3.fr-par.scw.cloud",
+            aws_access_key_id=os.environ["SCW_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["SCW_SECRET_ACCESS_KEY"],
         )
+        obj = s3.get_object(Bucket="cac-mlops-data", Key="secrets/gh_pat")
+        return obj["Body"].read().decode().strip()
+    except Exception as exc:
+        log.warning("Impossible de récupérer GH_PAT depuis S3 : %s", exc)
+        return None
+
+
+def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
+    """dvc add --no-commit + dvc push + commit/push du .dvc — le tout dans un
+    clone git jetable, créé et détruit à chaque exécution.
+
+    Aucune dépendance à un .git présent dans /app (jamais le cas, cf.
+    _fetch_gh_pat) : *path* (ex. data/raw/2024) pointe vers les données
+    réelles montées dans /app — un lien symbolique dans le clone permet à dvc
+    de calculer les hash sur les vrais fichiers sans les dupliquer.
+    """
+    pat = _fetch_gh_pat(log)
+    if not pat:
+        log.warning("GH_PAT indisponible — %s non versionné dans DVC/git.", path)
         return
 
-    r = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True)
-    remote = r.stdout.strip()
-    if "https://" in remote:
-        auth_remote = remote.replace("https://", f"https://oauth2:{pat}@")
-    else:
-        repo_path = remote.split(":")[-1].removesuffix(".git")
-        auth_remote = f"https://oauth2:{pat}@github.com/{repo_path}.git"
-
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "prefect-worker",
-        "GIT_AUTHOR_EMAIL": "ci@cac-mlops.fr",
-        "GIT_COMMITTER_NAME": "prefect-worker",
-        "GIT_COMMITTER_EMAIL": "ci@cac-mlops.fr",
-    }
-
-    subprocess.run(["git", "add", dvc_file], capture_output=True, env=env)
-
-    staged = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],
-        capture_output=True, text=True, env=env,
-    ).stdout.strip()
-    if not staged:
-        log.info("%s déjà tracké dans git — rien à commiter", dvc_file)
+    real_path = Path("/app") / path
+    if not real_path.exists():
+        log.warning("Chemin introuvable, rien à versionner : %s", real_path)
         return
 
-    subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, env=env)
-    r = subprocess.run(
-        ["git", "push", auth_remote, "HEAD:main"],
-        capture_output=True, text=True, env=env,
-    )
-    if r.returncode != 0:
-        log.warning("git push failed: %s", r.stderr.strip())
-    else:
-        log.info("git push OK — %s → origin/main", dvc_file)
+    with tempfile.TemporaryDirectory(prefix="dvc-sync-") as tmp:
+        clone_dir = Path(tmp) / "repo"
+        repo_url = f"https://oauth2:{pat}@github.com/{GITHUB_REPO}.git"
+
+        r = subprocess.run(
+            ["git", "clone", "--depth", "1", "--quiet", repo_url, str(clone_dir)],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            log.warning("git clone failed : %s", r.stderr.strip())
+            return
+
+        target = clone_dir / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() or target.exists():
+            shutil.rmtree(target) if target.is_dir() and not target.is_symlink() else target.unlink()
+        target.symlink_to(real_path)
+
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "prefect-worker",
+            "GIT_AUTHOR_EMAIL": "ci@cac-mlops.fr",
+            "GIT_COMMITTER_NAME": "prefect-worker",
+            "GIT_COMMITTER_EMAIL": "ci@cac-mlops.fr",
+        }
+
+        r = subprocess.run(
+            ["dvc", "add", "--no-commit", path],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        )
+        if r.returncode != 0:
+            log.warning("dvc add failed (%s) : %s", path, r.stderr.strip())
+            return
+
+        dvc_file = f"{path}.dvc"
+        r = subprocess.run(
+            ["dvc", "push", dvc_file],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        )
+        if r.returncode != 0:
+            log.warning("dvc push failed (%s) : %s", path, r.stderr.strip())
+            return
+        log.info("dvc push OK — %s → Scaleway S3", path)
+
+        subprocess.run(["git", "add", dvc_file], cwd=clone_dir, capture_output=True, env=env)
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        ).stdout.strip()
+        if not staged:
+            log.info("%s déjà à jour dans git — rien à commiter", dvc_file)
+            return
+
+        subprocess.run(["git", "commit", "-m", commit_message], cwd=clone_dir, capture_output=True, env=env)
+        r = subprocess.run(
+            ["git", "push", "origin", "HEAD:main"],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        )
+        if r.returncode != 0:
+            log.warning("git push failed : %s", r.stderr.strip())
+        else:
+            log.info("git push OK — %s → origin/main", dvc_file)
 
 
 def _preprocessed_path(years: list[int]) -> str:
@@ -133,17 +167,12 @@ def _preprocessed_path(years: list[int]) -> str:
     return f"data/preprocessed/{subdir}"
 
 
-@task(name="dvc-push", retries=1, retry_delay_seconds=30)
+@task(name="dvc-sync-raw", retries=1, retry_delay_seconds=30)
 def dvc_push_task(year: int) -> None:
-    """Track raw data with DVC and push to Scaleway S3 (source de vérité partagée)."""
+    """Track raw data with DVC, push to Scaleway S3 et commite le .dvc dans git
+    (source de vérité partagée) — clone jetable, cf. _dvc_push_and_git_commit."""
     log = get_run_logger()
-    _dvc_track_and_push(f"data/raw/{year}", log)
-
-
-@task(name="dvc-git-commit", retries=1, retry_delay_seconds=10)
-def dvc_git_commit_task(year: int) -> None:
-    log = get_run_logger()
-    _git_commit_dvc_file(
+    _dvc_push_and_git_commit(
         f"data/raw/{year}",
         f"data: DVC track {year} raw ONISR data [skip ci]",
         log,
@@ -159,21 +188,15 @@ def preprocess_task(years: list[int]) -> None:
     log.info("Preprocessing complete — %d years", len(years))
 
 
-@task(name="dvc-push-preprocessed", retries=1, retry_delay_seconds=30)
+@task(name="dvc-sync-preprocessed", retries=1, retry_delay_seconds=30)
 def dvc_push_preprocessed_task(years: list[int]) -> None:
-    """Track le dataset préprocessé (clean) avec DVC et push sur Scaleway S3 —
-    permet à tout consommateur (DS local, VPS) de `dvc pull` le résultat exact
-    de ce cycle ETL sans avoir à rejouer make_dataset localement."""
-    log = get_run_logger()
-    _dvc_track_and_push(_preprocessed_path(years), log)
-
-
-@task(name="dvc-git-commit-preprocessed", retries=1, retry_delay_seconds=10)
-def dvc_git_commit_preprocessed_task(years: list[int]) -> None:
+    """Track le dataset préprocessé (clean) avec DVC, push sur Scaleway S3 et
+    commite le .dvc dans git — permet à tout consommateur (DS local, VPS) de
+    `dvc pull` le résultat exact de ce cycle ETL sans rejouer make_dataset."""
     log = get_run_logger()
     path = _preprocessed_path(years)
     label = path.rsplit("/", maxsplit=1)[-1]
-    _git_commit_dvc_file(
+    _dvc_push_and_git_commit(
         path,
         f"data: DVC track preprocessed {label} [skip ci]",
         log,
@@ -199,7 +222,6 @@ def etl_flow(
     download_task(year, urls=urls)
     validate_task(year)
     dvc_push_task(year)
-    dvc_git_commit_task(year)
     if explicit_years is not None:
         years = explicit_years
     elif cumul:
@@ -209,4 +231,3 @@ def etl_flow(
         years = [year]
     preprocess_task(years)
     dvc_push_preprocessed_task(years)
-    dvc_git_commit_preprocessed_task(years)
