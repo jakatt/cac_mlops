@@ -4,8 +4,9 @@
 #
 # Automatise :
 #   1. Sync branche DS avec origin/main (git fetch + reset --hard)
-#   2. dvc pull (données à jour)
-#   3. Preprocessing cumulatif sur toutes les années disponibles (si absent en local)
+#   2. dvc pull (données brutes à jour)
+#   3. Dataset cumulatif préprocessé : dvc pull si l'ETL l'a déjà versionné
+#      (Phase 0 — data/preprocessed/*.dvc), sinon génération locale de secours
 #
 # Usage : ./scripts/ds_session_start.sh
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -66,22 +67,10 @@ fi
 dvc pull
 info "Données DVC à jour"
 
-# Faute de frappe ONISR connue sur 2021/2022 (carcteristiques → caracteristiques)
-# — corrigée manuellement sur le VPS mais toujours présente dans les fichiers
-# tels que versionnés dans DVC/S3, donc reproduite à chaque dvc pull sur une
-# nouvelle machine.
-shopt -s nullglob
-for f in data/raw/*/carcteristiques-*.csv; do
-  fixed="${f/carcteristiques/caracteristiques}"
-  warn "Correction faute de frappe ONISR : $(basename "$f") → $(basename "$fixed")"
-  mv "$f" "$fixed"
-done
-shopt -u nullglob
-
-# ── 3. Preprocessing cumulatif (si absent en local) ───────────────────────────
+# ── 3. Dataset preprocessé (clean) — dvc pull si versionné, sinon génération ──
 echo ""
 step "════════════════════════════════════════════════════════════════"
-step "  3/3 — Preprocessing cumulatif (toutes les années disponibles)"
+step "  3/3 — Dataset cumulatif préprocessé (toutes les années disponibles)"
 step "════════════════════════════════════════════════════════════════"
 
 read -r MAX_YEAR PREPROCESSED_DIR <<PYEOF
@@ -97,10 +86,15 @@ PYINNER
 )
 PYEOF
 
-if [[ -f "$PREPROCESSED_DIR/X_train.csv" ]]; then
-  info "Preprocessing déjà présent : $PREPROCESSED_DIR — skip"
+DVC_FILE="${PREPROCESSED_DIR}.dvc"
+
+if git cat-file -e "HEAD:${DVC_FILE}" 2>/dev/null; then
+  info "Dataset versionné par l'ETL trouvé — dvc pull : $DVC_FILE"
+  dvc pull "$DVC_FILE"
+elif [[ -f "$PREPROCESSED_DIR/X_train.csv" ]]; then
+  info "Pas de version DVC pour ce dataset — copie locale déjà présente, skip"
 else
-  info "Génération du preprocessing cumulatif (jusqu'à $MAX_YEAR)..."
+  info "Pas de version DVC pour ce dataset — génération locale (jusqu'à $MAX_YEAR)..."
   python -m src.data.make_dataset --year "$MAX_YEAR" --cumul
 fi
 
