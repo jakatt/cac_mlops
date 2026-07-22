@@ -360,7 +360,7 @@ def download_year(
                 f"Source URL: {url}"
             ) from exc
 
-        logger.info("  ✓ %s (%d KB) — schéma valide", filename, size_kb)
+        logger.info("  ✓ %s (%d KB) — schéma valide", out_path.name, size_kb)
         downloaded.append(out_path)
 
     return downloaded
