@@ -1,0 +1,6 @@
+outs:
+- md5: 48fda640804d0a278b5b9803508c701f.dir
+  size: 11080825
+  nfiles: 4
+  hash: md5
+  path: cumul_2021_2022
