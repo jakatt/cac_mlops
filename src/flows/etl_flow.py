@@ -106,11 +106,19 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
             log.warning("git clone failed : %s", r.stderr.strip())
             return
 
+        # DVC refuse d'ajouter des fichiers à l'intérieur d'un dossier symlinké
+        # ("Cannot add files inside symlinked directories to DVC") — un lien
+        # symbolique vers /app/data/... (constaté en conditions réelles) ne
+        # fonctionne donc pas. On copie les données réelles dans le clone
+        # (coût disque temporaire, nettoyé avec le TemporaryDirectory).
         target = clone_dir / path
-        target.parent.mkdir(parents=True, exist_ok=True)
         if target.is_symlink() or target.exists():
             shutil.rmtree(target) if target.is_dir() and not target.is_symlink() else target.unlink()
-        target.symlink_to(real_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if real_path.is_dir():
+            shutil.copytree(real_path, target)
+        else:
+            shutil.copy2(real_path, target)
 
         env = {
             **os.environ,
