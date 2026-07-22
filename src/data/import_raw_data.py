@@ -5,9 +5,10 @@ URLs are resolved dynamically via the data.gouv.fr API — no hardcoded filename
 The 4 mandatory files (caracteristiques, lieux, usagers, vehicules) are matched
 by keyword against resource titles for the requested year.
 """
+import difflib
 import logging
+import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 import requests
 
@@ -224,12 +225,26 @@ def resolve_year_urls(year: int, resources: list[dict] | None = None) -> dict[st
     return matched
 
 
+# Seuil de similarité pour le fallback fuzzy de discover_raw_files (0-1, cf. difflib)
+_FUZZY_MATCH_THRESHOLD = 0.75
+
+
+def _strip_year_suffix(stem: str) -> str:
+    """'carcteristiques-2021' → 'carcteristiques' (retire le suffixe année)."""
+    return re.sub(r"[\s_-]*\d+$", "", stem.lower())
+
+
 def discover_raw_files(year: int, raw_dir: Path | None = None) -> dict[str, Path]:
     """
     Discover the 4 ONISR CSV files for *year* in raw_dir by keyword matching.
 
     Returns {category: Path} for all 4 categories.
     Raises FileNotFoundError if directory doesn't exist, RuntimeError if < 4 matched.
+
+    Fallback fuzzy : si le matching strict par mot-clé échoue pour une catégorie
+    (ex. faute de frappe dans le fichier source ONISR — cf. 'carcteristiques'),
+    tente un match par similarité de chaîne (seuil _FUZZY_MATCH_THRESHOLD) avant
+    d'abandonner. Un WARNING est loggué à chaque fois que ce fallback est utilisé.
     """
     d = raw_dir or _dest_dir(year)
     if not d.exists():
@@ -243,8 +258,29 @@ def discover_raw_files(year: int, raw_dir: Path | None = None) -> dict[str, Path
                 result[category] = csv
                 break
 
-    if len(result) < 4:
-        missing = set(CATEGORY_KEYWORDS) - set(result)
+    missing = set(CATEGORY_KEYWORDS) - set(result)
+    if missing:
+        remaining = [c for c in csvs if c not in result.values()]
+        for category in list(missing):
+            best_match, best_ratio = None, 0.0
+            for csv in remaining:
+                ratio = difflib.SequenceMatcher(
+                    None, category, _strip_year_suffix(csv.stem)
+                ).ratio()
+                if ratio > best_ratio:
+                    best_match, best_ratio = csv, ratio
+            if best_match is not None and best_ratio >= _FUZZY_MATCH_THRESHOLD:
+                logger.warning(
+                    "event=alert severity=warning topic=filename_fuzzy_match "
+                    "year=%d category=%s file=%s similarity=%.2f — "
+                    "nom de fichier source ONISR non standard, vérifier",
+                    year, category, best_match.name, best_ratio,
+                )
+                result[category] = best_match
+                remaining.remove(best_match)
+                missing.discard(category)
+
+    if missing:
         raise RuntimeError(
             f"Cannot identify all 4 ONISR files for year {year} in {d}. "
             f"Missing: {missing}. Files found: {[f.name for f in csvs]}"
@@ -289,15 +325,17 @@ def download_year(
 
     downloaded: list[Path] = []
     for category, url in urls.items():
-        filename = Path(urlparse(url).path).name or f"{category}_{year}.csv"
-        out_path = dest / filename
+        # Nom canonique imposé (indépendant du nom réel côté serveur ONISR) —
+        # élimine par construction toute variation/faute de frappe du nom source
+        # (cf. incident 'carcteristiques' 2021/2022, jamais rattrapé après coup).
+        out_path = dest / f"{category}-{year}.csv"
 
         if not overwrite and out_path.exists():
-            logger.info("  %s — already present, skipping", filename)
+            logger.info("  %s — already present, skipping", out_path.name)
             downloaded.append(out_path)
             continue
 
-        logger.info("  downloading %s (%s)…", category, filename)
+        logger.info("  downloading %s (%s)…", category, out_path.name)
         try:
             resp = requests.get(url, timeout=120, stream=True)
             resp.raise_for_status()
@@ -322,7 +360,7 @@ def download_year(
                 f"Source URL: {url}"
             ) from exc
 
-        logger.info("  ✓ %s (%d KB) — schéma valide", filename, size_kb)
+        logger.info("  ✓ %s (%d KB) — schéma valide", out_path.name, size_kb)
         downloaded.append(out_path)
 
     return downloaded
