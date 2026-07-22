@@ -1,14 +1,13 @@
 ---
 name: project-cicd-state
-description: "État CI/CD au 2026-07-07 — PRs #35→#102 mergées, #103 en attente, tableaux fiabilité /ci-docs/ nginx"
+description: "État CI/CD au 2026-07-22 — PRs #35→#186 mergées, chaîne ETL renforcée (auto-correction + DVC self-suffisant), 54 tests"
 metadata:
   node_type: memory
   type: project
   originSessionId: 41f58ab8-21aa-499a-a541-842e0caf8cbf
 ---
 
-**PRs mergées :** #35→#102 sur `main` au 2026-07-07.
-**PRs en attente de merge :** #103 (intégration rollback/interruption dans descriptions gates VPS + Kapsule).
+**PRs mergées :** #35→#186 sur `main` au 2026-07-22.
 
 **Branches :** `mlops` (Jacques) et `DS` (Noel). CI configuré sur `["mlops", "DS"]`.
 
@@ -78,10 +77,30 @@ Scénario what-if : catr=3 (dept), agg_=1, lum=5 (nuit), hour=23, mois=12, col=6
 
 ## CI — tests unitaires (ci.yml)
 
-36 tests, `pytest tests/unit/ -v --tb=short` :
+54 tests au 2026-07-22, `pytest tests/unit/ -v --tb=short` :
 - `test_predict.py` (11) — endpoint API
-- `test_preprocessing.py` (14) — feature engineering
-- `test_schema_validator.py` (11) — validation Pandera
+- `test_preprocessing.py` (15) — feature engineering
+- `test_schema_validator.py` (16) — validation Pandera + AUTO_CORRECTED + load_and_validate_year
+- `test_import_raw_data.py` (7) — discover_raw_files (matching strict + fallback fuzzy)
+- `test_known_fixes.py` (5) — registre centralisé de correctifs
+
+**Attention** : la tuile "Catalogue des tests" du cockpit (`services/gradio/app.py` ~ligne 1659) a encore le compte hardcodé "36 tests" — pas corrigé, cf. [[project_doc_ui_todo]].
+
+---
+
+## Session 2026-07-22 — renforcement ETL + mécanisme DVC/git self-suffisant
+
+**Contexte :** le user a demandé un audit des mécanismes de détection/auto-correction d'erreurs ONISR, suite à un incident réel (`carcteristiques-2021/2022.csv`, faute de frappe source ONISR jamais rattrapée dans DVC). Plan en 3 phases (A, 0, B+D) + une PR docs, sur branche `DS` :
+
+- **PR #178** — Phase A : `import_raw_data.download_year()` écrit un nom de fichier CANONIQUE (`{catégorie}-{year}.csv`), indépendant du nom serveur — élimine la classe de bug à la racine. `discover_raw_files()` gagne un fallback fuzzy (difflib) si le matching strict échoue. Fix rétroactif : `data/raw/2021.dvc`/`2022.dvc` recommittés avec noms corrigés. Ajout `scripts/ds_session_start.sh` (routine début de session DS : sync + dvc pull + preprocessing si absent).
+- **PR #179** — Phase 0 : `etl_flow.py` versionne désormais aussi le dataset **préprocessé** (clean) dans DVC après chaque cycle, pas seulement le raw — `dvc_push_preprocessed_task`/`dvc_git_commit_preprocessed_task` (fusionnées en PR #185, voir plus bas).
+- **PR #180** — Phase B+D fusionnées : `src/data/known_fixes.py` (registre centralisé renommages ONISR + nettoyage `\xa0`, utilisé par validation ET preprocessing — fin de la duplication). `schema.py` : `coerce=True` sur les 4 schémas Pandera (capturé, nouveau niveau de rapport `AUTO_CORRECTED`). Nouvelle fonction pivot `schema_validator.load_and_validate_year()` : `make_dataset._load_year()` ne relit plus le CSV lui-même, délègue entièrement — **effet de bord voulu : chaque cycle ETL revalide automatiquement TOUTES les années du cumul**, pas seulement la nouvelle (ça aurait détecté le typo 2021/2022 dès l'écriture de la règle). Phase C (garde-fou CI séparé) abandonnée — jugée redondante avec cet effet de bord.
+- **PR #181/#182** — Docs : catalogue des tests à jour, nouvelle sous-section "Auto-correction — au-delà de la détection" dans `guide_administrateur.html`, schéma HTML détaillé du flux ETL↔DVC (2 artefacts distincts : raw jamais corrigé sur disque vs preprocessed = seul endroit où les corrections sont persistées).
+- **PR #183** — `.claude/memory/project_doc_ui_todo.md` : 3 TODOs déposés (compteur tuile tests, accordéons fermés par défaut docs+cockpit) — pas traités, juste tracés.
+- **PR #184 (révoquée) → #185** — Incident réel découvert lors du premier full-retrain post-Phase 0 : `dvc_push_task`/`dvc_push_preprocessed_task` échouaient silencieusement sur les 4 années (`GH_PAT non défini` + `/app n'est pas un dépôt git`, prefect-worker). PR #184 (env var `GH_PAT` + montage `.git` dans docker-compose.yml) jugée bancale par le user — dépendait du pipeline de déploiement pour recréer `prefect-worker`, qui **ne peut structurellement jamais se recréer lui-même** (la tâche qui le ferait tourne dans le conteneur qu'elle recréerait, tuant le flow en cours — cf. commentaire explicite dans `deploy_vps_flow.py::compose_up_task`). PR #185 : mécanisme auto-suffisant à la place — `_fetch_gh_pat()` lit le PAT depuis S3 (`s3://cac-mlops-data/secrets/gh_pat`, via SCW creds déjà présents), `_dvc_push_and_git_commit()` fait un `git clone --depth 1` jetable à chaque exécution (symlink vers les vraies données) au lieu de dépendre d'un `.git` dans `/app` (jamais présent — Dockerfile ne fait que des `COPY` sélectifs). Indépendant du cycle de vie du conteneur ET du pipeline de déploiement.
+- **PR #186** — `.claude/memory/project_infra_secrets_todo.md` : 3 secrets identifiés avec le même risque latent que GH_PAT (`TAILSCALE_AUTHKEY`, `CADDY_S3_*`, `GRAFANA_PASSWORD` — tous dans `kapsule_up_flow.py`) — fonctionnent aujourd'hui, pas de fix préventif, juste tracé.
+
+**État en fin de session** : full reset + full-retrain (2021→2024, 4 cycles) lancé par le user pour obtenir une base DVC 100% clean (raw + les 4 combinaisons preprocessées, jamais versionnées avant PR #185 à cause du bug). **Résultat non encore vérifié** — à faire en priorité à la prochaine session : confirmer que `data/raw/{year}.dvc` et `data/preprocessed/{cumul_...}.dvc` sont bien commités sur `main` pour les 4 années/combinaisons, et que le nouveau modèle est correctement promu.
 
 ---
 
