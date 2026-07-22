@@ -10,22 +10,26 @@
   --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
   --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
   --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
 }
 @media (prefers-color-scheme: dark) {
   .ci-doc {
     --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
     --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
     --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+    --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
   }
 }
 :root[data-theme="dark"] .ci-doc {
   --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
   --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
   --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
 }
 :root[data-theme="light"] .ci-doc {
   --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
   --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
   --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -71,6 +75,43 @@
 .ci-doc .toc { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;margin:12px 0; }
 .ci-doc .toc-item { background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.79rem;color:var(--muted); }
 .ci-doc .toc-item a { color:var(--accent);text-decoration:none;font-weight:600; }
+
+/* ── Schéma ETL ↔ DVC ── */
+.ci-doc .efd { display:flex; flex-direction:column; align-items:center; margin:14px 0 4px; }
+.ci-doc .efd-step { width:100%; max-width:560px; }
+.ci-doc .efd-box {
+  border:1px solid var(--border); border-left:4px solid var(--accent);
+  background:var(--surface); border-radius:8px; padding:10px 14px;
+  display:flex; flex-direction:column; gap:3px;
+}
+.ci-doc .efd-label { font-size:.80rem; font-weight:700; color:var(--accent); font-family:monospace; }
+.ci-doc .efd-detail { font-size:.73rem; color:var(--muted); line-height:1.45; }
+.ci-doc .efd-arrow { font-size:.95rem; color:var(--muted); padding:5px 0; text-align:center; line-height:1.3; }
+.ci-doc .efd-arrow.ok { color:var(--accent); font-weight:600; font-size:.71rem; }
+.ci-doc .efd-stop {
+  font-size:.71rem; font-weight:700; color:var(--stop-num);
+  background:var(--stop-bg); border:1px dashed var(--stop-bd);
+  border-radius:6px; padding:5px 12px; margin:2px 0 4px;
+}
+.ci-doc .efd-pill {
+  font-size:.71rem; font-weight:600; color:var(--muted); background:var(--code-bg);
+  border-radius:20px; padding:7px 16px; text-align:center; max-width:520px; line-height:1.55; margin:4px 0;
+}
+.ci-doc .efd-row { display:flex; align-items:center; gap:10px; width:100%; max-width:720px; }
+.ci-doc .efd-row .efd-step { flex:1; max-width:none; }
+.ci-doc .efd-side-arrow { font-size:1.2rem; color:var(--muted); flex-shrink:0; }
+.ci-doc .efd-dvc-box {
+  flex-shrink:0; width:220px; border:2px solid var(--accent); border-radius:8px;
+  padding:10px 12px; background:var(--accent-lt); display:flex; flex-direction:column; gap:3px;
+}
+.ci-doc .efd-dvc-title { font-size:.68rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--accent); }
+.ci-doc .efd-dvc-detail { font-size:.71rem; color:var(--text); line-height:1.4; }
+.ci-doc .efd-note { font-size:.71rem; color:var(--muted); font-style:italic; text-align:center; padding:6px 12px 2px; max-width:600px; }
+@media (max-width:640px) {
+  .ci-doc .efd-row { flex-direction:column; align-items:stretch; }
+  .ci-doc .efd-side-arrow { transform:rotate(90deg); text-align:center; }
+  .ci-doc .efd-dvc-box { width:100%; }
+}
 </style>
 </head>
 <body>
@@ -219,6 +260,99 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
             <li>Train/Test split : 70/30, <code>random_state=42</code></li>
             <li>Imputation NaN sur 4 colonnes par mode(X_train)</li>
           </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Schéma détaillé — flux ETL ↔ DVC</summary>
+        <div class="body">
+          <p>Deux artefacts distincts sont versionnés dans DVC, à deux moments différents du pipeline — le schéma ci-dessous montre lequel, et surtout ce qui est réellement corrigé à chaque étape.</p>
+
+          <div class="efd">
+            <div class="efd-step">
+              <div class="efd-box">
+                <span class="efd-label">download_task</span>
+                <span class="efd-detail"><code>import_raw_data.download_year()</code> → <code>data/raw/{year}/{catégorie}-{year}.csv</code> — nom canonique imposé, indépendant du nom serveur</span>
+              </div>
+            </div>
+            <div class="efd-arrow">↓</div>
+
+            <div class="efd-step">
+              <div class="efd-box">
+                <span class="efd-label">validate_task</span>
+                <span class="efd-detail"><code>load_and_validate_year(year)</code> — N1 Format · N2 Schéma + auto-correction <em>(known_fixes + Pandera coerce, en mémoire)</em> · N3 Qualité</span>
+              </div>
+            </div>
+            <div class="efd-stop">❌ CRITICAL → STOP · rien versionné dans DVC</div>
+            <div class="efd-arrow ok">✅ OK / ⚠️ WARNING / 🔧 AUTO_CORRECTED — toujours en mémoire à ce stade</div>
+
+            <div class="efd-row">
+              <div class="efd-step">
+                <div class="efd-box">
+                  <span class="efd-label">dvc_push_task</span>
+                  <span class="efd-detail">dvc add + push <code>data/raw/{year}</code></span>
+                </div>
+              </div>
+              <span class="efd-side-arrow">→</span>
+              <div class="efd-dvc-box">
+                <span class="efd-dvc-title">DVC #1 — Raw</span>
+                <span class="efd-dvc-detail">CSV tel que téléchargé, intact. Les corrections restent en mémoire — <strong>jamais réécrites sur disque.</strong></span>
+              </div>
+            </div>
+            <div class="efd-arrow">↓</div>
+
+            <div class="efd-step">
+              <div class="efd-box">
+                <span class="efd-label">dvc_git_commit_task</span>
+                <span class="efd-detail">commit <code>data/raw/{year}.dvc</code> → <code>origin/main</code> <code>[skip ci]</code></span>
+              </div>
+            </div>
+            <div class="efd-arrow">↓</div>
+
+            <div class="efd-pill"><code>years</code> = toutes les années disponibles (cas standard, <code>cumul=true</code>) — pas seulement la nouvelle</div>
+            <div class="efd-arrow">↓</div>
+
+            <div class="efd-step">
+              <div class="efd-box">
+                <span class="efd-label">preprocess_task</span>
+                <span class="efd-detail"><code>make_dataset.process_years(years)</code> — pour <strong>chaque</strong> année du cumul : <code>load_and_validate_year</code> rejoué (y compris les années déjà en prod) + feature engineering</span>
+              </div>
+            </div>
+            <div class="efd-stop">❌ CRITICAL sur une seule année du cumul → tout le preprocessing s'arrête</div>
+            <div class="efd-arrow">↓ features finales, corrections désormais persistées</div>
+
+            <div class="efd-row">
+              <div class="efd-step">
+                <div class="efd-box">
+                  <span class="efd-label">dvc_push_preprocessed_task</span>
+                  <span class="efd-detail">dvc add + push <code>data/preprocessed/cumul_{years}</code></span>
+                </div>
+              </div>
+              <span class="efd-side-arrow">→</span>
+              <div class="efd-dvc-box">
+                <span class="efd-dvc-title">DVC #2 — Preprocessed</span>
+                <span class="efd-dvc-detail"><code>X_train/X_test/y_*.csv</code> — seul endroit où renommages et coercion sont réellement <strong>persistés</strong>.</span>
+              </div>
+            </div>
+            <div class="efd-arrow">↓</div>
+
+            <div class="efd-step">
+              <div class="efd-box">
+                <span class="efd-label">dvc_git_commit_preprocessed_task</span>
+                <span class="efd-detail">commit <code>data/preprocessed/cumul_{years}.dvc</code> → <code>origin/main</code> <code>[skip ci]</code></span>
+              </div>
+            </div>
+          </div>
+
+          <p class="efd-note">Le raw versionné dans DVC reste une archive fidèle de ce qu'ONISR a publié (nom de fichier mis à part) — jamais « nettoyé ». Toute correction de contenu ne devient visible que dans l'artefact preprocessé : DVC #1 = source brute immuable, DVC #2 = dérivé recalculable.</p>
+
+          <div class="tbl"><table>
+            <thead><tr><th>Stade</th><th>Versionné (.dvc + S3)</th><th>Contenu réel</th></tr></thead>
+            <tbody>
+              <tr><td>Après <code>validate</code> (N1/N2/N3 OK)</td><td><code>data/raw/{year}.dvc</code></td><td>CSV brut, nom canonique — contenu jamais corrigé sur disque</td></tr>
+              <tr><td>Après <code>preprocess</code></td><td><code>data/preprocessed/cumul_{years}.dvc</code></td><td><code>X_train/X_test/y_*.csv</code> — seules données réellement corrigées et persistées</td></tr>
+            </tbody>
+          </table></div>
         </div>
       </details>
     </div>
