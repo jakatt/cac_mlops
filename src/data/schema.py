@@ -3,6 +3,11 @@ Pandera schemas for the 4 ONISR CSV files (format stable 2021-2024).
 
 strict=False  → unknown columns trigger WARNING, not CRITICAL
 strict=True   → would raise SchemaError on any unknown column
+coerce=True   → tente de convertir vers le type déclaré (ex. colonne 'int'
+                lue comme string à cause d'un artefact de formatage) ; lève
+                une SchemaErrors explicite si la conversion est impossible
+                (jamais de NaN silencieux) — cf. schema_validator._validate_level2
+                qui capture le DataFrame coercé et logue ce qui a été corrigé.
 """
 import pandera.pandas as pa
 
@@ -24,7 +29,7 @@ CARACTERISTIQUES_SCHEMA = pa.DataFrameSchema(
         "long":    pa.Column(object, nullable=True),
     },
     strict=False,       # extra columns (adr, an…) → WARNING, not CRITICAL
-    coerce=False,
+    coerce=True,
 )
 
 # ── lieux ─────────────────────────────────────────────────────────────────────
@@ -38,7 +43,7 @@ LIEUX_SCHEMA = pa.DataFrameSchema(
         "vma":     pa.Column(int, nullable=True),
     },
     strict=False,
-    coerce=False,
+    coerce=True,
 )
 
 # ── usagers ───────────────────────────────────────────────────────────────────
@@ -55,7 +60,7 @@ USAGERS_SCHEMA = pa.DataFrameSchema(
         "secu1":        pa.Column(float, nullable=True),
     },
     strict=False,
-    coerce=False,
+    coerce=True,
 )
 
 # ── vehicules ─────────────────────────────────────────────────────────────────
@@ -69,7 +74,7 @@ VEHICULES_SCHEMA = pa.DataFrameSchema(
         "motor":        pa.Column(int, nullable=True),
     },
     strict=False,
-    coerce=False,
+    coerce=True,
 )
 
 # ── mapping table → schema ────────────────────────────────────────────────────
