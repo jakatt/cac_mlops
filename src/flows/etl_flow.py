@@ -120,6 +120,21 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
         else:
             shutil.copy2(real_path, target)
 
+        # .dvc/config (versionné, git clone) déclare access_key_id/secret_access_key
+        # via ${VAR} — mais DVC n'interpole PAS ces variables d'environnement
+        # (constaté en conditions réelles : le header Authorization envoyé à S3
+        # contient littéralement la chaîne "${SCW_ACCESS_KEY_ID}", jamais
+        # substituée → 403 Forbidden systématique). Le seul mécanisme qui
+        # fonctionne réellement est .dvc/config.local (valeurs littérales,
+        # gitignored) — présent sur les machines DS et l'hôte VPS, mais jamais
+        # dans ce clone jetable. On l'écrit nous-mêmes à partir des mêmes
+        # variables d'environnement, déjà présentes dans le conteneur.
+        (clone_dir / ".dvc" / "config.local").write_text(
+            '[remote "scaleway"]\n'
+            f'    access_key_id = {os.environ["SCW_ACCESS_KEY_ID"]}\n'
+            f'    secret_access_key = {os.environ["SCW_SECRET_ACCESS_KEY"]}\n'
+        )
+
         env = {
             **os.environ,
             "GIT_AUTHOR_NAME": "prefect-worker",
