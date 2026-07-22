@@ -182,6 +182,11 @@ services:
       # Deploy VPS flow — authentification ghcr.io pour docker compose pull
       GHCR_TOKEN:             ${GHCR_TOKEN:-}
       GHCR_USER:              ${GHCR_USER:-jakatt}
+      # dvc_git_commit_task / dvc_git_commit_preprocessed_task (etl_flow) —
+      # PAT GitHub scope "Contents" (read & write), permet de commiter les
+      # .dvc après chaque nouveau millésime ONISR. Sans ce token : le commit
+      # est silencieusement skippé (WARNING loggué, pipeline non bloqué).
+      GH_PAT:                 ${GH_PAT:-}
       # Rollback Docker T2 — chemin projet sur le host pour docker compose up -d
       COMPOSE_PROJECT_DIR:    ${COMPOSE_PROJECT_DIR:-/home/deploy/cac_mlops}
       # Kapsule-up — silence Grafana temporaire pendant le bootstrap (API Alertmanager)
@@ -201,6 +206,7 @@ services:
       - ./reports:/app/reports
       - ./state:/app/state
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./.git:/app/.git                                               # dvc add / git commit .dvc (etl_flow) — l'image ne COPY jamais .git
       - ./docker-compose.yml:/app/docker-compose.yml:ro               # rollback Docker T2 (docker compose up -d)
       # `docker compose` exécuté DEPUIS ce conteneur (compose_up_task,
       # docker_rollback_task) tourne avec --project-directory pointant sur
