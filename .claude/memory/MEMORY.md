@@ -16,3 +16,4 @@
 - [Docker prune caution](feedback_image_prune.md) — jamais `docker image prune -af`, autre app sur le VPS
 - [Prefect logs API](feedback_prefect_logs_api.md) — wrapper "logs" obligatoire, limit max 200, print() vs get_run_logger()
 - [DataFrame None check](feedback_dataframe_none_check.md) — jamais `df or []`, toujours `df is not None` explicite
+- [Doc/UI TODOs](project_doc_ui_todo.md) — compteur tuile tests + accordéons fermés par défaut (docs + cockpit)
