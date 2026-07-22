@@ -1,13 +1,15 @@
 ---
 name: project-state-vps
-description: "État du VPS et de la stack au 2026-07-06 — 16 conteneurs, lgbm@Production, 27 features, KPI recalibrés"
+description: "État du VPS et de la stack au 2026-07-22 — 16 conteneurs, mécanisme DVC/git self-suffisant (S3), full-retrain post-fix en cours"
 metadata:
   node_type: memory
   type: project
   originSessionId: 41f58ab8-21aa-499a-a541-842e0caf8cbf
 ---
 
-**VPS sur branche `main`** (PRs #35→#97 mergées au 2026-07-06 — #98 et #99 en attente de merge).
+**VPS sur branche `main`** (PRs #35→#186 mergées au 2026-07-22). Voir [[project_cicd_state]] pour le détail de la session 2026-07-22 (renforcement ETL + fix DVC/git).
+
+**VPS a été arrêté ("archived" Scaleway) puis redémarré manuellement en 2026-07-22 (`scw instance server start`)** — la stack Docker redémarre automatiquement (`restart: unless-stopped`).
 
 ---
 
@@ -44,14 +46,28 @@ Conteneurs permanents (15) :
 
 ---
 
-**Modèle en production : lgbm_accidents@Production** (full-retrain 2026-06-29)
+**Modèle en production : lgbm_accidents@Production**
 - LightGBM, champion benchmark RF/XGB/LGBM
-- Données : cumul 2021+2022+2023 (train) · 2024 = drift/test (split temporel)
-- **Métriques réelles (split temporel)** : acc=0.783 · f1=0.664 · auc=0.839 · recall=0.631
-- DVC tag : data-v3
+- Données : cumul 2021+2022+2023+2024 (2024 intégré depuis le full-retrain du 2026-07-21)
+- **Métriques (avant le run du 2026-07-22, à reconfirmer)** : acc=0.778 · f1=0.660 · auc=0.835 · recall=0.632
 - **27 features** (year_acc supprimé — variable intermédiaire de split uniquement)
 - Alias MLflow : lgbm_accidents @ Production
 - Expériences : accidents_severity_prod (officiel) · accidents_severity_dev (explore DS)
+- **Full-retrain lancé le 2026-07-22 après full reset, en cours à la fin de session — à vérifier à la prochaine reprise** (métriques + versioning DVC raw/preprocessed, cf. [[project_cicd_state]])
+
+---
+
+## DVC — mécanisme de versioning (refonte 2026-07-22)
+
+**Deux artefacts distincts, versionnés à deux stades différents :**
+1. `data/raw/{year}.dvc` — après `validate_task`, CSV **tel que téléchargé**, jamais corrigé sur disque (renommages/coercion Pandera restent en mémoire à ce stade)
+2. `data/preprocessed/{cumul_...}.dvc` — après `preprocess_task`, **seul endroit** où les corrections sont réellement persistées (X_train/X_test/y_*.csv)
+
+**Mécanisme (`src/flows/etl_flow.py`, PR #185)** — auto-suffisant, indépendant du cycle de vie du conteneur `prefect-worker` :
+- `_fetch_gh_pat()` : lit le PAT GitHub depuis **S3** (`s3://cac-mlops-data/secrets/gh_pat`, via `SCW_ACCESS_KEY_ID/SECRET`) — PAS une variable d'environnement (rotation = un nouvel upload S3, jamais de redémarrage de conteneur nécessaire)
+- `_dvc_push_and_git_commit()` : `git clone --depth 1` **jetable**, créé/détruit à chaque exécution, avec un symlink vers les vraies données (`/app/data/...`) — élimine la dépendance à un `.git` dans `/app` (jamais présent : le Dockerfile de l'image api ne fait que des `COPY` sélectifs, jamais `.git`)
+
+**Pourquoi cette conception** : `prefect-worker` ne peut structurellement jamais se recréer lui-même en sécurité (self-référence — la tâche qui ferait `docker compose up -d prefect-worker` tourne *dans* ce même conteneur, tuant le flow en cours). Toute solution basée sur une variable d'env ou un montage docker-compose.yml serait fragile car dépendante d'un redémarrage de conteneur que le pipeline de déploiement ne déclenche pas de manière fiable pour ce service précis. Voir [[project_infra_secrets_todo]] pour 3 autres secrets (`TAILSCALE_AUTHKEY`, `CADDY_S3_*`, `GRAFANA_PASSWORD`) qui partagent ce même risque latent (pas de bug actif aujourd'hui).
 
 **Seuils KPI (recalibrés 2026-07-06 pour split temporel, marge ~8%) :**
 - f1 ≥ 0.60 · auc ≥ 0.77 · accuracy ≥ 0.72 · recall ≥ 0.58

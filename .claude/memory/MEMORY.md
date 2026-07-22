@@ -1,8 +1,8 @@
 - [Project setup](project_setup.md) — fork de DataScientest, venv `my_env`, notes de récupération historique
 - [MLOps architecture](project_mlops_architecture.md) — stack (FastAPI, MLflow, DVC, Prefect, Scaleway)
 - [VPS access](user_vps_access.md) — SSH user=`deploy`, IP=51.159.187.132, fail2ban, Tailscale
-- [VPS & stack state](project_state_vps.md) — 16 conteneurs, cockpit 11 onglets, thème #156082, lgbm@Production 27 features, _YEAR_RANGE dynamique
-- [CI/CD state](project_cicd_state.md) — PRs #35→#95, 36 tests CI, what-if vma=90vs50, catalogue tests
+- [VPS & stack state](project_state_vps.md) — 16 conteneurs, mécanisme DVC/git self-suffisant (S3), full-retrain post-fix en cours (à vérifier)
+- [CI/CD state](project_cicd_state.md) — PRs #35→#186, 54 tests CI, ETL renforcée (auto-correction + DVC self-suffisant)
 - [KPI thresholds](project_kpi_thresholds.md) — f1≥0.60 · auc≥0.77 · acc≥0.72 · recall≥0.58 (split temporel, ~8% marge)
 - [Soutenance schemas](project_soutenance_schemas.md) — 3 triggers CI/CD, blueprint mécanisme, slide sécurité + archi à updater
 - [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
@@ -18,3 +18,5 @@
 - [DataFrame None check](feedback_dataframe_none_check.md) — jamais `df or []`, toujours `df is not None` explicite
 - [Doc/UI TODOs](project_doc_ui_todo.md) — compteur tuile tests + accordéons fermés par défaut (docs + cockpit)
 - [Infra secrets TODO](project_infra_secrets_todo.md) — prefect-worker ne peut pas se recréer, secrets latents à risque (TAILSCALE_AUTHKEY, CADDY_S3, GRAFANA_PASSWORD)
+- [Tool output visibility](feedback_tool_output_visibility.md) — le user ne voit jamais le stdout Bash, écrire schémas/tableaux directement en texte de réponse
+- [Verify before asserting](feedback_verify_before_asserting.md) — vérifier empiriquement (SSH, logs, git history) avant d'affirmer une root cause ou un design
