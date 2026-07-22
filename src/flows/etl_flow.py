@@ -1,8 +1,10 @@
 """
-ETL flow — download raw ONISR data, validate, push to DVC, preprocess.
+ETL flow — download raw ONISR data, validate, push to DVC, preprocess,
+push the preprocessed (clean) dataset to DVC.
 
 Triggered manually, from check-new-data-flow (with pre-resolved URLs),
-or as the first step of full_retrain_flow.
+or as the first step of full_retrain_flow (once per cycle — each cycle's
+year-combination gets its own versioned clean dataset).
 """
 import subprocess
 from pathlib import Path
@@ -41,50 +43,47 @@ def validate_task(year: int) -> None:
     log.info("Validation level=%s year=%d", level, year)
 
 
-@task(name="dvc-push", retries=1, retry_delay_seconds=30)
-def dvc_push_task(year: int) -> None:
-    """Track raw data with DVC and push to Scaleway S3 (source de vérité partagée)."""
-    log = get_run_logger()
-    raw_path = f"data/raw/{year}"
-    dvc_file = Path(f"data/raw/{year}.dvc")
+def _dvc_track_and_push(path: str, log) -> bool:
+    """dvc add --no-commit + dvc push pour *path*. Retourne True si le push a réussi."""
+    dvc_file = Path(f"{path}.dvc")
 
     r = subprocess.run(
-        ["dvc", "add", "--no-commit", raw_path],
+        ["dvc", "add", "--no-commit", path],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        log.warning("dvc add failed: %s", r.stderr.strip())
-        return
+        log.warning("dvc add failed (%s): %s", path, r.stderr.strip())
+        return False
 
-    push_target = str(dvc_file) if dvc_file.exists() else raw_path
+    push_target = str(dvc_file) if dvc_file.exists() else path
     r = subprocess.run(
         ["dvc", "push", push_target],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        log.warning("dvc push failed: %s", r.stderr.strip())
-    else:
-        log.info("dvc push OK — data/raw/%d → Scaleway S3", year)
+        log.warning("dvc push failed (%s): %s", path, r.stderr.strip())
+        return False
+
+    log.info("dvc push OK — %s → Scaleway S3", path)
+    return True
 
 
-@task(name="dvc-git-commit", retries=1, retry_delay_seconds=10)
-def dvc_git_commit_task(year: int) -> None:
-    """Commite data/raw/{year}.dvc dans git et push vers origin/main.
+def _git_commit_dvc_file(path: str, commit_message: str, log) -> None:
+    """Commite {path}.dvc dans git et push vers origin/main.
 
     Requiert GH_PAT dans l'env : token GitHub avec scope 'repo' (contents write).
     Le commit utilise [skip ci] — deploy.yml a aussi un paths-ignore data/**
     pour qu'un commit .dvc ne déclenche jamais le CD (Trigger 1 = Prefect only).
     """
     import os
-    log = get_run_logger()
 
-    dvc_file = f"data/raw/{year}.dvc"
+    dvc_file = f"{path}.dvc"
     pat = os.getenv("GH_PAT", "")
     if not pat:
         log.warning(
             "GH_PAT non défini — %s non commité dans git. "
-            "Le DS ne pourra pas dvc pull année %d.",
-            dvc_file, year,
+            "Le DS ne pourra pas dvc pull cette donnée.",
+            dvc_file,
         )
         return
 
@@ -114,10 +113,7 @@ def dvc_git_commit_task(year: int) -> None:
         log.info("%s déjà tracké dans git — rien à commiter", dvc_file)
         return
 
-    subprocess.run(
-        ["git", "commit", "-m", f"data: DVC track {year} raw ONISR data [skip ci]"],
-        capture_output=True, env=env,
-    )
+    subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, env=env)
     r = subprocess.run(
         ["git", "push", auth_remote, "HEAD:main"],
         capture_output=True, text=True, env=env,
@@ -125,7 +121,33 @@ def dvc_git_commit_task(year: int) -> None:
     if r.returncode != 0:
         log.warning("git push failed: %s", r.stderr.strip())
     else:
-        log.info("git push OK — data/raw/%d.dvc → origin/main", year)
+        log.info("git push OK — %s → origin/main", dvc_file)
+
+
+def _preprocessed_path(years: list[int]) -> str:
+    """Chemin data/preprocessed/ correspondant à *years* — miroir de
+    src.data.make_dataset._preprocessed_dir (mais en chemin relatif str,
+    pratique pour les commandes dvc/git de ce module)."""
+    label = "_".join(str(y) for y in sorted(years))
+    subdir = label if len(years) == 1 else f"cumul_{label}"
+    return f"data/preprocessed/{subdir}"
+
+
+@task(name="dvc-push", retries=1, retry_delay_seconds=30)
+def dvc_push_task(year: int) -> None:
+    """Track raw data with DVC and push to Scaleway S3 (source de vérité partagée)."""
+    log = get_run_logger()
+    _dvc_track_and_push(f"data/raw/{year}", log)
+
+
+@task(name="dvc-git-commit", retries=1, retry_delay_seconds=10)
+def dvc_git_commit_task(year: int) -> None:
+    log = get_run_logger()
+    _git_commit_dvc_file(
+        f"data/raw/{year}",
+        f"data: DVC track {year} raw ONISR data [skip ci]",
+        log,
+    )
 
 
 @task(name="preprocess-data")
@@ -135,6 +157,27 @@ def preprocess_task(years: list[int]) -> None:
     log.info("Preprocessing years: %s", years)
     process_years(years)
     log.info("Preprocessing complete — %d years", len(years))
+
+
+@task(name="dvc-push-preprocessed", retries=1, retry_delay_seconds=30)
+def dvc_push_preprocessed_task(years: list[int]) -> None:
+    """Track le dataset préprocessé (clean) avec DVC et push sur Scaleway S3 —
+    permet à tout consommateur (DS local, VPS) de `dvc pull` le résultat exact
+    de ce cycle ETL sans avoir à rejouer make_dataset localement."""
+    log = get_run_logger()
+    _dvc_track_and_push(_preprocessed_path(years), log)
+
+
+@task(name="dvc-git-commit-preprocessed", retries=1, retry_delay_seconds=10)
+def dvc_git_commit_preprocessed_task(years: list[int]) -> None:
+    log = get_run_logger()
+    path = _preprocessed_path(years)
+    label = path.rsplit("/", maxsplit=1)[-1]
+    _git_commit_dvc_file(
+        path,
+        f"data: DVC track preprocessed {label} [skip ci]",
+        log,
+    )
 
 
 @flow(name="etl-flow", flow_run_name="etl-year{year}", log_prints=True)
@@ -165,3 +208,5 @@ def etl_flow(
     else:
         years = [year]
     preprocess_task(years)
+    dvc_push_preprocessed_task(years)
+    dvc_git_commit_preprocessed_task(years)
