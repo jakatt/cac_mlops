@@ -64,7 +64,11 @@ if [[ -f ".env" ]]; then
   export SCW_ACCESS_KEY_ID SCW_SECRET_ACCESS_KEY
 fi
 
-dvc pull
+dvc pull --force
+# --force : data/raw et data/preprocessed sont gérés par le pipeline, jamais
+# édités à la main — écraser sans confirmation une copie locale divergente
+# (ex. générée manuellement avant que ce dataset soit versionné) est le
+# comportement voulu ici, pas un contournement.
 info "Données DVC à jour"
 
 # ── 3. Dataset preprocessé (clean) — dvc pull si versionné, sinon génération ──
@@ -90,7 +94,7 @@ DVC_FILE="${PREPROCESSED_DIR}.dvc"
 
 if git cat-file -e "HEAD:${DVC_FILE}" 2>/dev/null; then
   info "Dataset versionné par l'ETL trouvé — dvc pull : $DVC_FILE"
-  dvc pull "$DVC_FILE"
+  dvc pull --force "$DVC_FILE"
 elif [[ -f "$PREPROCESSED_DIR/X_train.csv" ]]; then
   info "Pas de version DVC pour ce dataset — copie locale déjà présente, skip"
 else
