@@ -1346,6 +1346,11 @@ def _render_pipeline_status_banner() -> str:
             "CANCELLED": "⏹ Annulé (STOP)",
             "FAILED": _STATUS_NOK,
             "CRASHED": _STATUS_NOK,
+            # Distingué de "En cours" (incident 2026-07-23) : PAUSED = le flow
+            # attend une action humaine (gate), pas un calcul en cours — sans
+            # ça, impossible de distinguer "toujours en train d'entraîner" de
+            # "arrivé à la gate, attend ton GO/STOP" (même sablier affiché).
+            "PAUSED": "⏸ En attente de ta validation — voir la file d'attente ci-dessous",
         }.get(state_type, "⏳ En cours")
     else:
         flow_icon = "—"
@@ -2110,6 +2115,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
                     )
                     pipeline_banner = gr.HTML(value=_render_pipeline_status_banner())
+                    # Auto-rafraîchissement (incident 2026-07-23) : sans ça, le bandeau
+                    # et la file d'attente restent figés sur l'état constaté au dernier
+                    # chargement de page — aucun moyen de suivre l'avancement d'un flow
+                    # sans cliquer "↻" soi-même. 20s : assez réactif pour la gate, sans
+                    # spammer l'API Prefect/Loki.
+                    pipeline_timer = gr.Timer(20)
                     with gr.Row():
                         retry_btn    = gr.Button("Réessayer le déclenchement", variant="secondary", scale=3)
                         banner_refresh = gr.Button("↻", scale=1)
@@ -2136,6 +2147,15 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     gate_dd.change(fn=_render_gate_card, inputs=gate_dd, outputs=gate_card)
                     gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
                     banner_refresh.click(fn=_render_pipeline_status_banner, outputs=pipeline_banner)
+
+                    def _auto_refresh_banner_and_queue():
+                        table, dd_update, card = refresh_gate_queue()
+                        return _render_pipeline_status_banner(), table, dd_update, card
+
+                    pipeline_timer.tick(
+                        fn=_auto_refresh_banner_and_queue,
+                        outputs=[pipeline_banner, gate_queue, gate_dd, gate_card],
+                    )
 
                     def _gate_go(run_id):
                         msg = resume_run(run_id)

@@ -18,11 +18,12 @@ from pathlib import Path
 from typing import Any
 
 # Couleurs terminal (même convention que scripts/ds_session_start.sh)
-_GREEN = "\033[0;32m"
-_RED   = "\033[0;31m"
-_CYAN  = "\033[0;36m"
-_BOLD  = "\033[1m"
-_NC    = "\033[0m"
+_GREEN  = "\033[0;32m"
+_RED    = "\033[0;31m"
+_YELLOW = "\033[1;33m"
+_CYAN   = "\033[0;36m"
+_BOLD   = "\033[1m"
+_NC     = "\033[0m"
 
 # Silencer les warnings GitPython non bloquants dans les conteneurs sans git
 os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
@@ -111,7 +112,7 @@ def _colored_delta(delta: float | None) -> str:
 
 def compute_comparison(
     exp_metrics: dict[str, float], kpi_gate_passed: bool,
-    client: "mlflow.tracking.MlflowClient",
+    client: "mlflow.tracking.MlflowClient", exp_model_name: str,
 ) -> dict[str, Any]:
     """Calcule la comparaison expérimentation vs @Production — même règle de
     décision que select_champion_task (Trigger 3) : gate KPI + amélioration
@@ -136,7 +137,7 @@ def compute_comparison(
 
     if prod is None:
         return {
-            "prod_model_name": None, "rows": rows, "all_better": None,
+            "exp_model_name": exp_model_name, "prod_model_name": None, "rows": rows, "all_better": None,
             "send_to_prod": True, "reason": "aucun @Production existant — promotion directe possible",
         }
 
@@ -149,17 +150,28 @@ def compute_comparison(
         else f"{PRIMARY_METRIC} {improvement:+.4f} >= seuil +{MIN_IMPROVEMENT:.2f}"
     )
     return {
-        "prod_model_name": prod[0], "rows": rows, "all_better": all_better,
+        "exp_model_name": exp_model_name, "prod_model_name": prod[0], "rows": rows, "all_better": all_better,
         "send_to_prod": send_to_prod, "reason": reason,
     }
 
 
 def _print_comparison_table(
     exp_metrics: dict[str, float], kpi_gate_passed: bool,
-    client: "mlflow.tracking.MlflowClient", run_id: str,
+    client: "mlflow.tracking.MlflowClient", run_id: str, exp_model_name: str,
 ) -> None:
     """Affiche dans le terminal le résultat de compute_comparison()."""
-    comp = compute_comparison(exp_metrics, kpi_gate_passed, client)
+    comp = compute_comparison(exp_metrics, kpi_gate_passed, client, exp_model_name)
+
+    if comp["prod_model_name"] is None:
+        print(f"\n{_BOLD}Modèle proposé :{_NC} {exp_model_name}  (aucun @Production existant)")
+    elif comp["prod_model_name"] == exp_model_name:
+        print(f"\n{_BOLD}Modèle proposé :{_NC} {exp_model_name}  (même famille que l'actuel @Production)")
+    else:
+        print(
+            f"\n{_BOLD}Modèle proposé :{_NC} {exp_model_name}  "
+            f"({_YELLOW}remplacerait {comp['prod_model_name']}, actuellement @Production{_NC})"
+        )
+
     title = "Comparaison vs @Production" + (
         f" ({comp['prod_model_name']})" if comp["prod_model_name"] else " — aucun @Production existant"
     )
@@ -351,7 +363,7 @@ def train(
         run_id = run.info.run_id
         logger.info("MLflow run_id: %s", run_id)
         logger.info("MLflow model_name: %s", model_name)
-        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient(), run_id)
+        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient(), run_id, model_name)
 
         skops_types: dict[str, list[str]] = {
             "xgboost": ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
