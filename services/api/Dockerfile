@@ -41,7 +41,11 @@ COPY src/ src/
 COPY services/api/app/ services/api/app/
 COPY services/monitoring/ services/monitoring/
 COPY services/__init__.py services/__init__.py
-COPY scripts/ scripts/
+# Seul simulate_production.py est importé à l'exécution (full_retrain_flow.py)
+# — les autres scripts/ (ds_session_start.sh, raz_mlops.sh...) sont des outils
+# de confort locaux, jamais exécutés par un conteneur : les copier forcerait
+# un rebuild inutile à chaque changement (cf. incident 2026-07-23).
+COPY scripts/__init__.py scripts/simulate_production.py scripts/
 COPY config/ config/
 COPY prefect.yaml .
 
