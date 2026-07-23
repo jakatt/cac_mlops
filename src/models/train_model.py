@@ -13,8 +13,16 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import warnings
 from pathlib import Path
 from typing import Any
+
+# Couleurs terminal (même convention que scripts/ds_session_start.sh)
+_GREEN = "\033[0;32m"
+_RED   = "\033[0;31m"
+_CYAN  = "\033[0;36m"
+_BOLD  = "\033[1m"
+_NC    = "\033[0m"
 
 # Silencer les warnings GitPython non bloquants dans les conteneurs sans git
 os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
@@ -93,6 +101,13 @@ def _get_production_comparison(client: "mlflow.tracking.MlflowClient") -> tuple[
     return None
 
 
+def _colored_delta(delta: float | None) -> str:
+    if delta is None:
+        return f"{'—':>10}"
+    color = _GREEN if delta > 0 else _RED if delta < 0 else _NC
+    return f"{color}{delta:>+10.4f}{_NC}"
+
+
 def _print_comparison_table(
     exp_metrics: dict[str, float], kpi_gate_passed: bool,
     client: "mlflow.tracking.MlflowClient", run_id: str,
@@ -103,32 +118,40 @@ def _print_comparison_table(
     (aide le DS à décider avant de tagger un run champion) — ne remplace pas
     la vraie comparaison faite après merge par update_model_flow."""
     prod = _get_production_comparison(client)
-    print("\nComparaison vs @Production" + (f" ({prod[0]})" if prod else " — aucun @Production existant"))
+    title = "Comparaison vs @Production" + (f" ({prod[0]})" if prod else " — aucun @Production existant")
 
-    header = f"{'Métrique':<10} {'Prod':>10} {'Expérience':>12} {'Delta':>10}"
-    print(header)
-    print("-" * len(header))
+    col = (10, 10, 12, 10)
+    border = "+" + "+".join("-" * (c + 2) for c in col) + "+"
+    header = (
+        f"| {'Métrique':<{col[0]}} | {'Prod':>{col[1]}} "
+        f"| {'Expérience':>{col[2]}} | {'Delta':>{col[3]}} |"
+    )
+
+    print(f"\n{_BOLD}{_CYAN}{title}{_NC}")
+    print(border)
+    print(f"{_BOLD}{header}{_NC}")
+    print(border)
 
     all_better = True
     for k in KPI_THRESHOLDS:
         exp_v = exp_metrics[k]
-        if prod:
-            prod_v = prod[1].get(k)
-            if prod_v is None:
-                print(f"{k:<10} {'—':>10} {exp_v:>12.4f} {'—':>10}")
-                continue
-            delta = exp_v - prod_v
+        prod_v = prod[1].get(k) if prod else None
+        delta = exp_v - prod_v if prod_v is not None else None
+        if delta is not None:
             all_better = all_better and delta > 0
-            print(f"{k:<10} {prod_v:>10.4f} {exp_v:>12.4f} {delta:>+10.4f}")
-        else:
-            print(f"{k:<10} {'—':>10} {exp_v:>12.4f} {'—':>10}")
+        prod_s = f"{prod_v:>{col[1]}.4f}" if prod_v is not None else f"{'—':>{col[1]}}"
+        print(f"| {k:<{col[0]}} | {prod_s} | {exp_v:>{col[2]}.4f} | {_colored_delta(delta)} |")
+    print(border)
 
     if prod is None:
-        print(f"\nGlobal (4 métriques meilleures) : N/A — aucun @Production existant")
-        print("Send to prod ? OUI (aucun @Production — promotion directe possible)")
+        print(f"\n{_BOLD}Global (4 métriques meilleures) :{_NC} N/A — aucun @Production existant")
+        print(f"{_BOLD}Send to prod ?{_NC} {_GREEN}{_BOLD}OUI{_NC} (aucun @Production — promotion directe possible)")
+        print(f"\n{_BOLD}{_CYAN}Pour promouvoir ce run vers le blueprint prod :{_NC}")
+        print(f"  python -m src.scripts.extract_blueprint {run_id}")
         return
 
-    print(f"\nGlobal (4 métriques meilleures) : {'OUI' if all_better else 'NON'}")
+    global_color = _GREEN if all_better else _RED
+    print(f"\n{_BOLD}Global (4 métriques meilleures) :{_NC} {global_color}{_BOLD}{'OUI' if all_better else 'NON'}{_NC}")
 
     prod_primary = prod[1].get(PRIMARY_METRIC)
     improvement = exp_metrics[PRIMARY_METRIC] - prod_primary if prod_primary is not None else None
@@ -138,9 +161,10 @@ def _print_comparison_table(
         else f"{PRIMARY_METRIC} {improvement:+.4f} < seuil +{MIN_IMPROVEMENT:.2f}" if not send_to_prod
         else f"{PRIMARY_METRIC} {improvement:+.4f} >= seuil +{MIN_IMPROVEMENT:.2f}"
     )
-    print(f"Send to prod ? {'OUI' if send_to_prod else 'NON'}  ({reason})")
+    verdict_color = _GREEN if send_to_prod else _RED
+    print(f"{_BOLD}Send to prod ?{_NC} {verdict_color}{_BOLD}{'OUI' if send_to_prod else 'NON'}{_NC}  ({reason})")
     if send_to_prod:
-        print(f"\nPour promouvoir ce run vers le blueprint prod :")
+        print(f"\n{_BOLD}{_CYAN}Pour promouvoir ce run vers le blueprint prod :{_NC}")
         print(f"  python -m src.scripts.extract_blueprint {run_id}")
 
 
@@ -277,13 +301,27 @@ def train(
         if algorithm in skops_types:
             log_kwargs["skops_trusted_types"] = skops_types[algorithm]
 
-        mlflow.sklearn.log_model(
-            clf,
-            name="model",
-            registered_model_name=model_name if register else None,
-            input_example=X_train.iloc[:3],
-            **log_kwargs,
-        )
+        # Warnings connus et non-actionables : choix pickle/cloudpickle déjà
+        # assumé (skops_trusted_types déclaré ci-dessus quand pertinent — le
+        # warning vient du logger "mlflow.sklearn", pas du module warnings,
+        # d'où le setLevel plutôt qu'un filterwarnings) ; schéma inféré depuis
+        # un échantillon sans valeur manquante est attendu ici (pas d'inférence
+        # en production sur données incomplètes).
+        mlflow_sklearn_logger = logging.getLogger("mlflow.sklearn")
+        prev_level = mlflow_sklearn_logger.level
+        mlflow_sklearn_logger.setLevel(logging.ERROR)
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*Inferred schema contains integer column.*")
+                mlflow.sklearn.log_model(
+                    clf,
+                    name="model",
+                    registered_model_name=model_name if register else None,
+                    input_example=X_train.iloc[:3],
+                    **log_kwargs,
+                )
+        finally:
+            mlflow_sklearn_logger.setLevel(prev_level)
         mlflow.set_tag("algorithm",   algorithm)
         mlflow.set_tag("model_name",  model_name)
         mlflow.set_tag("trained_on",  str(sorted(years)))
