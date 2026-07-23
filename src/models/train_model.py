@@ -70,6 +70,76 @@ KPI_THRESHOLDS = {
     "recall":   0.58,
 }
 
+# Même règle que select_champion_task (src/flows/train_flow.py, Trigger 3) —
+# dupliqué ici plutôt qu'importé pour éviter un import circulaire (train_flow.py
+# importe déjà train_model.py). Si l'une change, mettre à jour l'autre.
+PRIMARY_METRIC  = "f1"
+MIN_IMPROVEMENT = 0.01
+
+
+def _get_production_comparison(client: "mlflow.tracking.MlflowClient") -> tuple[str, dict[str, float]] | None:
+    """Cherche le modèle actuellement @Production (n'importe quelle famille —
+    un seul alias Production existe à la fois, cf. promote() dans train_flow.py)
+    et retourne (model_name, metrics) ou None si aucun @Production n'existe."""
+    for name in MODEL_NAMES.values():
+        try:
+            mv = client.get_model_version_by_alias(name, "Production")
+            run = client.get_run(mv.run_id)
+            metrics = {k: float(v) for k, v in run.data.metrics.items() if k in KPI_THRESHOLDS}
+            if metrics:
+                return name, metrics
+        except Exception:
+            continue
+    return None
+
+
+def _print_comparison_table(
+    exp_metrics: dict[str, float], kpi_gate_passed: bool,
+    client: "mlflow.tracking.MlflowClient",
+) -> None:
+    """Affiche un tableau expérimentation vs @Production dans le terminal —
+    même règle de décision que select_champion_task (Trigger 3) : gate KPI +
+    amélioration de PRIMARY_METRIC >= MIN_IMPROVEMENT. Purement informatif
+    (aide le DS à décider avant de tagger un run champion) — ne remplace pas
+    la vraie comparaison faite après merge par update_model_flow."""
+    prod = _get_production_comparison(client)
+    print("\nComparaison vs @Production" + (f" ({prod[0]})" if prod else " — aucun @Production existant"))
+
+    header = f"{'Métrique':<10} {'Prod':>10} {'Expérience':>12} {'Delta':>10}"
+    print(header)
+    print("-" * len(header))
+
+    all_better = True
+    for k in KPI_THRESHOLDS:
+        exp_v = exp_metrics[k]
+        if prod:
+            prod_v = prod[1].get(k)
+            if prod_v is None:
+                print(f"{k:<10} {'—':>10} {exp_v:>12.4f} {'—':>10}")
+                continue
+            delta = exp_v - prod_v
+            all_better = all_better and delta > 0
+            print(f"{k:<10} {prod_v:>10.4f} {exp_v:>12.4f} {delta:>+10.4f}")
+        else:
+            print(f"{k:<10} {'—':>10} {exp_v:>12.4f} {'—':>10}")
+
+    if prod is None:
+        print(f"\nGlobal (4 métriques meilleures) : N/A — aucun @Production existant")
+        print("Send to prod ? OUI (aucun @Production — promotion directe possible)")
+        return
+
+    print(f"\nGlobal (4 métriques meilleures) : {'OUI' if all_better else 'NON'}")
+
+    prod_primary = prod[1].get(PRIMARY_METRIC)
+    improvement = exp_metrics[PRIMARY_METRIC] - prod_primary if prod_primary is not None else None
+    send_to_prod = kpi_gate_passed and improvement is not None and improvement >= MIN_IMPROVEMENT
+    reason = (
+        "KPI gate FAILED" if not kpi_gate_passed
+        else f"{PRIMARY_METRIC} {improvement:+.4f} < seuil +{MIN_IMPROVEMENT:.2f}" if not send_to_prod
+        else f"{PRIMARY_METRIC} {improvement:+.4f} >= seuil +{MIN_IMPROVEMENT:.2f}"
+    )
+    print(f"Send to prod ? {'OUI' if send_to_prod else 'NON'}  ({reason})")
+
 
 def _preprocessed_dir(years: list[int]) -> Path:
     label = "_".join(str(y) for y in sorted(years))
@@ -190,6 +260,7 @@ def train(
             "Metrics — accuracy=%.3f  f1=%.3f  auc=%.3f  recall=%.3f",
             metrics["accuracy"], metrics["f1"], metrics["auc"], metrics["recall"],
         )
+        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient())
 
         skops_types: dict[str, list[str]] = {
             "xgboost": ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
