@@ -96,6 +96,9 @@ cp .env.example .env</pre>
       <pre>dvc remote modify --local scaleway access_key_id     &lt;ACCESS_KEY&gt;
 dvc remote modify --local scaleway secret_access_key &lt;SECRET_KEY&gt;</pre>
       <p>Ces credentials vont dans <code>.dvc/config.local</code> — <strong>gitignored, ne jamais commiter</strong>.</p>
+      <p><code>.env</code> est chargé automatiquement par toute commande <code>python -m src.xxx</code> (via <code>python-dotenv</code>) — pas besoin d'exporter ses variables à la main dans le shell.</p>
+      <p class="sec-label">Tailscale (accès direct au VPS — MLflow, Prefect...)</p>
+      <p>Installer <a href="https://tailscale.com/download" target="_blank" style="color:var(--accent);">Tailscale</a> et rejoindre le tailnet du projet (demander l'accès au MLOps lead). Une fois connecté, tous les services du VPS sont joignables directement via son IP Tailscale (<code>100.117.99.62</code>) — <strong>aucun tunnel SSH nécessaire</strong>.</p>
     </div>
   </details>
 
@@ -103,6 +106,9 @@ dvc remote modify --local scaleway secret_access_key &lt;SECRET_KEY&gt;</pre>
   <details>
     <summary>2 — Récupérer les données</summary>
     <div class="body">
+      <p><strong>Recommandé — une seule commande</strong> : synchronise la branche <code>DS</code> avec <code>origin/main</code>, puis <code>dvc pull</code> les données brutes et le dataset preprocessé cumulatif (le génère localement en secours si l'ETL ne l'a pas encore versionné) :</p>
+      <pre>./scripts/ds_session_start.sh</pre>
+      <p>Détail de ce que fait le script, si tu préfères le faire à la main ou comprendre les étapes :</p>
       <pre># Données brutes → data/raw/{year}/
 dvc pull data/raw/2023.dvc
 
@@ -115,31 +121,16 @@ python -m src.data.make_dataset --year 2023 --cumul</pre>
   <details>
     <summary>3 — Tracer les expériences dans MLflow</summary>
     <div class="body">
-      <p>Les runs locaux remontent sur le <strong>MLflow partagé du VPS</strong> via un tunnel SSH.</p>
+      <p>Les runs locaux remontent sur le <strong>MLflow partagé du VPS</strong> — directement via Tailscale (<code>MLFLOW_TRACKING_URI=http://100.117.99.62:5001</code> déjà dans <code>.env</code>), <strong>aucun tunnel SSH nécessaire</strong> (cf. section 1). MLflow UI : <code>http://100.117.99.62:5001</code>.</p>
 
       <details open>
-        <summary>Ouvrir le tunnel SSH (une fois par session)</summary>
-        <div class="body">
-          <pre># Via Tailscale (recommandé — plus sécurisé, IP stable)
-ssh -L 5001:localhost:5001 \
-    -L 9000:localhost:9000 \
-    -L 9001:localhost:9001 \
-    deploy@100.117.99.62 -N &amp;
-
-# Alternative : via IP publique (si Tailscale indisponible)
-# ssh -L 5001:localhost:5001 deploy@51.159.187.132 -N &amp;</pre>
-          <p>MLflow UI : <code>http://localhost:5001</code> — le <code>.env</code> est pré-configuré avec <code>MLFLOW_TRACKING_URI=http://localhost:5001</code>.</p>
-        </div>
-      </details>
-
-      <details>
         <summary>Levier 2 — Approche 1 : Override CLI (rapide, 1 run)</summary>
         <div class="body">
           <p><strong>Objectif :</strong> identifier les valeurs optimales à consigner ensuite dans <code>config/model_params.yml</code>.</p>
           <pre># MLFLOW_RUN_MODE=explore (défaut) → runs dans "accidents_severity_dev"
 python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
-  --n-estimators 500 --num-leaves 127 --learning-rate 0.03</pre>
-          <p>Les 4 args CLI (<code>--n-estimators</code>, <code>--max-depth</code>, <code>--num-leaves</code>, <code>--learning-rate</code>) <strong>surchargent temporairement</strong> le blueprint — utile pour tester une idée rapidement. Les autres params viennent du fichier <code>config/model_params.yml</code>.</p>
+  --n-estimators 500 --num-leaves 127 --learning-rate 0.03 --no-register</pre>
+          <p><strong>Tous les hyperparamètres du blueprint</strong> sont overridables en CLI (pas seulement 4) — la liste complète par algo est en section 5. <code>python -m src.models.train_model --help</code> affiche tous les flags disponibles. <code>--no-register</code> évite d'enregistrer le modèle dans le Model Registry pour un run purement exploratoire.</p>
         </div>
       </details>
 
@@ -171,9 +162,19 @@ print(search.best_params_)
       </details>
 
       <details>
-        <summary>Comparer les runs dans MLflow</summary>
+        <summary>Comparer un run à la prod</summary>
         <div class="body">
-          <p>MLflow UI → <strong>Experiments</strong> → <code>accidents_severity_dev</code> → trier par F1 / AUC / Recall.</p>
+          <p>Chaque training affiche automatiquement, dans le terminal, un tableau comparant les 4 métriques (accuracy/f1/auc/recall) à celles du modèle actuellement <code>@Production</code>, avec un verdict <strong>Send to prod ?</strong> (oui/non) — plus besoin d'aller chercher les métriques de la prod ailleurs. Si "OUI", la commande pour promouvoir ce run est directement affichée (cf. section 4).</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Comparer plusieurs runs d'exploration entre eux</summary>
+        <div class="body">
+          <p>MLflow UI → <strong>Experiments</strong> → <code>accidents_severity_dev</code> → trier par F1 / AUC / Recall. Utile pour choisir entre plusieurs de tes propres essais — la comparaison face à la prod, elle, est automatique (ci-dessus).</p>
+          <p>Pour repartir sur une base d'exploration propre (vider tes anciens runs) : <strong>ne jamais supprimer l'expérience elle-même dans l'UI</strong> (bloquerait tout training suivant avec une erreur MLflow tant qu'elle n'est pas restaurée/purgée). Utiliser à la place :</p>
+          <pre>MLFLOW_CLEANUP_EXPERIMENT=accidents_severity_dev MLFLOW_CLEANUP_KEEP=0 \
+  python -m src.scripts.mlflow_cleanup</pre>
         </div>
       </details>
     </div>
@@ -183,14 +184,24 @@ print(search.best_params_)
   <details>
     <summary>4 — Soumettre un blueprint vers la production (trigger 3)</summary>
     <div class="body">
-      <p>Quand tu as identifié un modèle champion dans MLflow explore :</p>
+      <p>Quand le tableau affiché en fin de training indique <strong>"Send to prod ? OUI"</strong> :</p>
 
       <details open>
-        <summary>Étape 1 — Mettre à jour config/model_params.yml et commiter</summary>
+        <summary>Étape 1 — Générer le blueprint depuis le run champion</summary>
         <div class="body">
-          <pre>git checkout -b feature/nouveau-blueprint-lgbm   # ou ta branche habituelle
+          <p>Copier la commande affichée juste en dessous du verdict (le run_id est déjà rempli) :</p>
+          <pre>python -m src.scripts.extract_blueprint &lt;run_id&gt;</pre>
+          <p>Cette commande tague le run <code>export_to_prod=true</code> dans MLflow (traçabilité) <strong>et</strong> écrit directement <code>config/model_params.yml</code> — une seule action, pas besoin de passer par l'UI MLflow ni d'éditer le YAML à la main. Ajouter <code>--dry-run</code> pour prévisualiser sans écrire.</p>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Étape 2 — Commiter et ouvrir une PR</summary>
+        <div class="body">
+          <pre>git checkout DS   # branche de travail DS habituelle
 git add config/model_params.yml
-git push origin feature/nouveau-blueprint-lgbm</pre>
+git commit -m "blueprint: nouveaux hyperparamètres lgbm"
+git push origin DS</pre>
           <p>Ouvre une PR vers <code>main</code>. Le MLOps lead review et merge.</p>
           <div class="band"><strong>⚠️ Important :</strong> ne pas mélanger modification de <code>config/model_params.yml</code> et changements de code source (<code>src/</code>, <code>services/</code>) dans la même PR — le CI bloquera avec un message d'erreur explicite. Si les deux sont nécessaires, ouvrir deux PRs séparées : PR1 code, PR2 blueprint.</div>
         </div>
@@ -291,9 +302,10 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
   <details>
     <summary>8 — Branches et workflow Git</summary>
     <div class="body">
-      <pre>feature/xxx  →  PR vers main  →  review MLOps lead  →  merge  →  CI + deploy auto</pre>
+      <pre>DS  →  PR vers main  →  review MLOps lead  →  merge  →  CI + deploy auto</pre>
       <ul>
-        <li>Travailler sur une branche feature, <strong>jamais directement sur <code>main</code></strong></li>
+        <li>Travailler sur la branche <code>DS</code>, <strong>jamais directement sur <code>main</code></strong></li>
+        <li>Resynchroniser <code>DS</code> sur <code>origin/main</code> avant de commencer une nouvelle série de changements (<code>./scripts/ds_session_start.sh</code> le fait automatiquement, cf. section 2)</li>
         <li>Les pushes sur <code>main</code> déclenchent <code>deploy.yml</code> (build images + deploy VPS)</li>
         <li>Toujours ouvrir une PR — les workflows CI vérifient les tests avant merge</li>
       </ul>
