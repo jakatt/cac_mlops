@@ -291,7 +291,10 @@ def train(
             "Metrics — accuracy=%.3f  f1=%.3f  auc=%.3f  recall=%.3f",
             metrics["accuracy"], metrics["f1"], metrics["auc"], metrics["recall"],
         )
-        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient(), run.info.run_id)
+        run_id = run.info.run_id
+        logger.info("MLflow run_id: %s", run_id)
+        logger.info("MLflow model_name: %s", model_name)
+        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient(), run_id)
 
         skops_types: dict[str, list[str]] = {
             "xgboost": ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],
@@ -305,15 +308,20 @@ def train(
         if algorithm in skops_types:
             log_kwargs["skops_trusted_types"] = skops_types[algorithm]
 
-        # Warnings connus et non-actionables : choix pickle/cloudpickle déjà
-        # assumé (skops_trusted_types déclaré ci-dessus quand pertinent — le
-        # warning vient du logger "mlflow.sklearn", pas du module warnings,
-        # d'où le setLevel plutôt qu'un filterwarnings) ; schéma inféré depuis
-        # un échantillon sans valeur manquante est attendu ici (pas d'inférence
-        # en production sur données incomplètes).
+        # Warnings/logs connus et non-actionables, supprimés le temps du seul
+        # log_model : pickle/cloudpickle déjà assumé (skops_trusted_types
+        # déclaré ci-dessus quand pertinent — ce warning vient du logger
+        # "mlflow.sklearn", pas du module warnings, d'où le setLevel plutôt
+        # qu'un filterwarnings) ; schéma inféré depuis un échantillon sans
+        # valeur manquante attendu ici ; "Found credentials in environment
+        # variables" (botocore, à chaque upload S3 de l'artefact) — bruit
+        # récurrent sans valeur informative pour le DS, noyait le tableau de
+        # comparaison et le run_id/model_name affichés juste avant.
         mlflow_sklearn_logger = logging.getLogger("mlflow.sklearn")
-        prev_level = mlflow_sklearn_logger.level
+        botocore_creds_logger = logging.getLogger("botocore.credentials")
+        prev_levels = (mlflow_sklearn_logger.level, botocore_creds_logger.level)
         mlflow_sklearn_logger.setLevel(logging.ERROR)
+        botocore_creds_logger.setLevel(logging.ERROR)
         try:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", message=".*Inferred schema contains integer column.*")
@@ -325,14 +333,11 @@ def train(
                     **log_kwargs,
                 )
         finally:
-            mlflow_sklearn_logger.setLevel(prev_level)
+            mlflow_sklearn_logger.setLevel(prev_levels[0])
+            botocore_creds_logger.setLevel(prev_levels[1])
         mlflow.set_tag("algorithm",   algorithm)
         mlflow.set_tag("model_name",  model_name)
         mlflow.set_tag("trained_on",  str(sorted(years)))
-
-        run_id = run.info.run_id
-        logger.info("MLflow run_id: %s", run_id)
-        logger.info("MLflow model_name: %s", model_name)
 
         return metrics, run_id
 
