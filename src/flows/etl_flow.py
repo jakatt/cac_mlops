@@ -143,8 +143,15 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
             "GIT_COMMITTER_EMAIL": "ci@cac-mlops.fr",
         }
 
+        # PAS de --no-commit : ce flag DVC saute le peuplement de .dvc/cache
+        # (malgré son nom, il ne concerne QUE le cache, jamais git) — sans lui,
+        # `dvc push` ne trouve rien en local, rien sur le remote, et sort en
+        # succès silencieux ("Everything is up to date", code retour 0) sans
+        # avoir rien transféré. Bug vécu (incident 2026-07-22/23) : tous les
+        # pushes de preprocessed depuis l'introduction de ce clone jetable
+        # étaient des no-op silencieux malgré des logs "dvc push OK".
         r = subprocess.run(
-            ["dvc", "add", "--no-commit", path],
+            ["dvc", "add", path],
             cwd=clone_dir, capture_output=True, text=True, env=env,
         )
         if r.returncode != 0:
