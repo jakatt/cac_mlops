@@ -125,26 +125,24 @@ def _build_classifier(algorithm: str, **user_params: Any):
 def train(
     years: list[int],
     algorithm: str = "rf",
-    n_estimators: int | None = None,
-    max_depth: int | None = None,
-    learning_rate: float | None = None,
-    num_leaves: int | None = None,
+    overrides: dict[str, Any] | None = None,
     register: bool = True,
 ) -> tuple[dict[str, float], str]:
     """
     Entraîne, évalue, logue dans MLflow et optionnellement enregistre le modèle.
     Retourne (metrics, run_id).
-    Hyperparamètres : CLI explicit > blueprint config/model_params.yml > défaut sklearn.
+    Hyperparamètres : overrides (CLI) > blueprint config/model_params.yml > défaut sklearn.
     Tous les params du blueprint sont transmis au classificateur via **kwargs.
+
+    overrides ne peut jamais contenir random_state/n_jobs/verbose : ces params
+    infra vivent dans _INFRA_PARAMS et sont injectés après (cf. _build_classifier),
+    ils gagnent donc toujours sur tout override — reproductibilité garantie.
     """
     bp = _load_algo_params(algorithm)
     if bp:
         logger.info("Blueprint chargé depuis config/model_params.yml (%s) — %d params", algorithm, len(bp))
-    # Overrides CLI (pour expérimentation locale sans modifier le YAML)
-    if n_estimators  is not None: bp["n_estimators"]  = n_estimators
-    if max_depth     is not None: bp["max_depth"]     = max_depth
-    if learning_rate is not None: bp["learning_rate"] = learning_rate
-    if num_leaves    is not None: bp["num_leaves"]    = num_leaves
+    if overrides:
+        bp.update(overrides)
 
     model_name = MODEL_NAMES[algorithm]
     mlflow.set_experiment(EXPERIMENT_NAME)
@@ -223,6 +221,32 @@ def train(
         return metrics, run_id
 
 
+def _max_features_type(value: str) -> int | float | str:
+    """rf max_features accepte un nombre absolu (int), une fraction (float) ou
+    'sqrt'/'log2' (str) — dans cet ordre, sinon '5' deviendrait 5.0 (fraction
+    de 500%, faux sens) au lieu de 5 (nombre absolu de features)."""
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+# Clés overridables en CLI == clés du blueprint config/model_params.yml (hors
+# random_state/n_jobs/verbose, jamais exposés — cf. _INFRA_PARAMS/train()).
+_OVERRIDABLE_PARAMS = [
+    "n_estimators", "max_depth", "learning_rate", "num_leaves",
+    "min_samples_split", "min_samples_leaf", "max_features", "bootstrap",
+    "max_samples", "criterion", "class_weight",
+    "subsample", "colsample_bytree", "min_child_weight", "gamma",
+    "reg_alpha", "reg_lambda", "scale_pos_weight", "subsample_freq",
+    "min_child_samples",
+]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Entraîne un modèle de gravité accidents sur données ONISR"
@@ -231,24 +255,51 @@ def main() -> None:
     parser.add_argument("--cumul",         action="store_true")
     parser.add_argument("--algorithm",     default="rf", choices=["rf", "xgboost", "lgbm"],
                         help="Algorithme : rf (défaut) | xgboost | lgbm")
-    # None → train() lit le blueprint ; valeur explicite → override
-    parser.add_argument("--n-estimators",  type=int,   default=None)
-    parser.add_argument("--max-depth",     type=int,   default=None)
-    parser.add_argument("--learning-rate", type=float, default=None,
-                        help="Learning rate (xgboost / lgbm uniquement)")
-    parser.add_argument("--num-leaves",    type=int,   default=None,
-                        help="Nombre de feuilles (lgbm uniquement)")
+
+    # None → train() lit le blueprint ; valeur explicite → override.
+    # Chaque flag n'a d'effet que sur l'algo concerné (transmis tel quel au
+    # classificateur choisi) ; en passer un hors de propos lève une erreur
+    # claire du constructeur sklearn/xgboost/lgbm (unexpected keyword arg).
+    group = parser.add_argument_group("hyperparamètres (override du blueprint)")
+    group.add_argument("--n-estimators",      type=int,   default=None)
+    group.add_argument("--max-depth",         type=int,   default=None)
+    group.add_argument("--learning-rate",     type=float, default=None,
+                        help="xgboost / lgbm")
+    group.add_argument("--num-leaves",        type=int,   default=None,
+                        help="lgbm")
+    group.add_argument("--min-samples-split", type=int,   default=None, help="rf")
+    group.add_argument("--min-samples-leaf",  type=int,   default=None, help="rf")
+    group.add_argument("--max-features",      type=_max_features_type, default=None,
+                        help="rf — int (nombre absolu), float (fraction) ou 'sqrt'/'log2'")
+    group.add_argument("--bootstrap",         action=argparse.BooleanOptionalAction, default=None,
+                        help="rf")
+    group.add_argument("--max-samples",       type=float, default=None, help="rf")
+    group.add_argument("--criterion",         default=None,
+                        choices=["gini", "entropy", "log_loss"], help="rf")
+    group.add_argument("--class-weight",      default=None,
+                        help="rf ('balanced'/'balanced_subsample') / lgbm ('balanced')")
+    group.add_argument("--subsample",         type=float, default=None, help="xgboost / lgbm")
+    group.add_argument("--colsample-bytree",  type=float, default=None, help="xgboost / lgbm")
+    group.add_argument("--min-child-weight",  type=float, default=None, help="xgboost")
+    group.add_argument("--gamma",             type=float, default=None, help="xgboost")
+    group.add_argument("--reg-alpha",         type=float, default=None, help="xgboost / lgbm")
+    group.add_argument("--reg-lambda",        type=float, default=None, help="xgboost / lgbm")
+    group.add_argument("--scale-pos-weight",  type=float, default=None, help="xgboost")
+    group.add_argument("--subsample-freq",    type=int,   default=None, help="lgbm")
+    group.add_argument("--min-child-samples", type=int,   default=None, help="lgbm")
+
     parser.add_argument("--no-register",   action="store_true")
     args = parser.parse_args()
 
     years = [y for y in discover_available_years() if y <= args.year] if args.cumul else [args.year]
+    overrides = {
+        k: v for k in _OVERRIDABLE_PARAMS
+        if (v := getattr(args, k)) is not None
+    }
     train(
         years=years,
         algorithm=args.algorithm,
-        n_estimators=args.n_estimators,
-        max_depth=args.max_depth,
-        learning_rate=args.learning_rate,
-        num_leaves=args.num_leaves,
+        overrides=overrides,
         register=not args.no_register,
     )
 
