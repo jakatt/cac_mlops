@@ -108,17 +108,60 @@ def _colored_delta(delta: float | None) -> str:
     return f"{color}{delta:>+10.4f}{_NC}"
 
 
+def compute_comparison(
+    exp_metrics: dict[str, float], kpi_gate_passed: bool,
+    client: "mlflow.tracking.MlflowClient",
+) -> dict[str, Any]:
+    """Calcule la comparaison expérimentation vs @Production — même règle de
+    décision que select_champion_task (Trigger 3) : gate KPI + amélioration
+    de PRIMARY_METRIC >= MIN_IMPROVEMENT. Purement informatif (aide le DS à
+    décider avant de tagger un run champion) — ne remplace pas la vraie
+    comparaison faite après merge par update_model_flow.
+
+    Fonction pure (aucun print) — réutilisée par _print_comparison_table
+    (terminal) et extract_blueprint.py (corps de PR Markdown), pour ne jamais
+    dupliquer la logique de décision entre les deux.
+    """
+    prod = _get_production_comparison(client)
+    rows = []
+    all_better = True
+    for k in KPI_THRESHOLDS:
+        exp_v = exp_metrics[k]
+        prod_v = prod[1].get(k) if prod else None
+        delta = exp_v - prod_v if prod_v is not None else None
+        if delta is not None:
+            all_better = all_better and delta > 0
+        rows.append({"metric": k, "prod": prod_v, "exp": exp_v, "delta": delta})
+
+    if prod is None:
+        return {
+            "prod_model_name": None, "rows": rows, "all_better": None,
+            "send_to_prod": True, "reason": "aucun @Production existant — promotion directe possible",
+        }
+
+    prod_primary = prod[1].get(PRIMARY_METRIC)
+    improvement = exp_metrics[PRIMARY_METRIC] - prod_primary if prod_primary is not None else None
+    send_to_prod = kpi_gate_passed and improvement is not None and improvement >= MIN_IMPROVEMENT
+    reason = (
+        "KPI gate FAILED" if not kpi_gate_passed
+        else f"{PRIMARY_METRIC} {improvement:+.4f} < seuil +{MIN_IMPROVEMENT:.2f}" if not send_to_prod
+        else f"{PRIMARY_METRIC} {improvement:+.4f} >= seuil +{MIN_IMPROVEMENT:.2f}"
+    )
+    return {
+        "prod_model_name": prod[0], "rows": rows, "all_better": all_better,
+        "send_to_prod": send_to_prod, "reason": reason,
+    }
+
+
 def _print_comparison_table(
     exp_metrics: dict[str, float], kpi_gate_passed: bool,
     client: "mlflow.tracking.MlflowClient", run_id: str,
 ) -> None:
-    """Affiche un tableau expérimentation vs @Production dans le terminal —
-    même règle de décision que select_champion_task (Trigger 3) : gate KPI +
-    amélioration de PRIMARY_METRIC >= MIN_IMPROVEMENT. Purement informatif
-    (aide le DS à décider avant de tagger un run champion) — ne remplace pas
-    la vraie comparaison faite après merge par update_model_flow."""
-    prod = _get_production_comparison(client)
-    title = "Comparaison vs @Production" + (f" ({prod[0]})" if prod else " — aucun @Production existant")
+    """Affiche dans le terminal le résultat de compute_comparison()."""
+    comp = compute_comparison(exp_metrics, kpi_gate_passed, client)
+    title = "Comparaison vs @Production" + (
+        f" ({comp['prod_model_name']})" if comp["prod_model_name"] else " — aucun @Production existant"
+    )
 
     col = (10, 10, 12, 10)
     border = "+" + "+".join("-" * (c + 2) for c in col) + "+"
@@ -132,20 +175,17 @@ def _print_comparison_table(
     print(f"{_BOLD}{header}{_NC}")
     print(border)
 
-    all_better = True
-    for k in KPI_THRESHOLDS:
-        exp_v = exp_metrics[k]
-        prod_v = prod[1].get(k) if prod else None
-        delta = exp_v - prod_v if prod_v is not None else None
-        if delta is not None:
-            all_better = all_better and delta > 0
+    for row in comp["rows"]:
+        prod_v, exp_v, delta = row["prod"], row["exp"], row["delta"]
         prod_s = f"{prod_v:>{col[1]}.4f}" if prod_v is not None else f"{'—':>{col[1]}}"
-        print(f"| {k:<{col[0]}} | {prod_s} | {exp_v:>{col[2]}.4f} | {_colored_delta(delta)} |")
+        print(f"| {row['metric']:<{col[0]}} | {prod_s} | {exp_v:>{col[2]}.4f} | {_colored_delta(delta)} |")
     print(border)
 
-    if prod is None:
+    all_better, send_to_prod, reason = comp["all_better"], comp["send_to_prod"], comp["reason"]
+
+    if comp["prod_model_name"] is None:
         print(f"\n{_BOLD}Global (4 métriques meilleures) :{_NC} N/A — aucun @Production existant")
-        print(f"{_BOLD}Send to prod ?{_NC} {_GREEN}{_BOLD}OUI{_NC} (aucun @Production — promotion directe possible)")
+        print(f"{_BOLD}Send to prod ?{_NC} {_GREEN}{_BOLD}OUI{_NC} ({reason})")
         print(f"\n{_BOLD}{_CYAN}Pour promouvoir ce run vers le blueprint prod :{_NC}")
         print(f"  python -m src.scripts.extract_blueprint {run_id}")
         return
@@ -153,14 +193,6 @@ def _print_comparison_table(
     global_color = _GREEN if all_better else _RED
     print(f"\n{_BOLD}Global (4 métriques meilleures) :{_NC} {global_color}{_BOLD}{'OUI' if all_better else 'NON'}{_NC}")
 
-    prod_primary = prod[1].get(PRIMARY_METRIC)
-    improvement = exp_metrics[PRIMARY_METRIC] - prod_primary if prod_primary is not None else None
-    send_to_prod = kpi_gate_passed and improvement is not None and improvement >= MIN_IMPROVEMENT
-    reason = (
-        "KPI gate FAILED" if not kpi_gate_passed
-        else f"{PRIMARY_METRIC} {improvement:+.4f} < seuil +{MIN_IMPROVEMENT:.2f}" if not send_to_prod
-        else f"{PRIMARY_METRIC} {improvement:+.4f} >= seuil +{MIN_IMPROVEMENT:.2f}"
-    )
     verdict_color = _GREEN if send_to_prod else _RED
     print(f"{_BOLD}Send to prod ?{_NC} {verdict_color}{_BOLD}{'OUI' if send_to_prod else 'NON'}{_NC}  ({reason})")
 
