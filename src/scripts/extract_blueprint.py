@@ -9,7 +9,12 @@ Convention DS :
     mlflow.set_tag("export_to_prod", "true")
 
 Usage (outil DS local — non appelé par le pipeline de prod) :
-    python src/scripts/extract_blueprint.py [--dry-run]
+    python -m src.scripts.extract_blueprint [--dry-run]
+
+Invocation via -m (pas python src/scripts/extract_blueprint.py) : déclenche
+src/__init__.py (charge .env — MLFLOW_TRACKING_URI y compris). Sans ça, le
+défaut http://mlflow:5000 (hostname interne conteneur, injoignable en local)
+fait planter en silence (hang réseau, pas d'erreur claire).
 """
 from __future__ import annotations
 
@@ -26,12 +31,31 @@ logger = logging.getLogger(__name__)
 
 EXPLORE_EXPERIMENT = "accidents_severity_dev"
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "model_params.yml"
+KNOWN_ALGOS = {"rf", "xgboost", "lgbm"}
 
-ALGO_PARAMS: dict[str, list[str]] = {
-    "rf":      ["n_estimators", "max_depth"],
-    "xgboost": ["n_estimators", "max_depth", "learning_rate"],
-    "lgbm":    ["n_estimators", "max_depth", "learning_rate", "num_leaves"],
-}
+# Params loggés par train() en plus du blueprint (mlflow.log_param direct,
+# pas depuis config/model_params.yml) — à exclure de l'extraction.
+_META_PARAMS = {"algorithm", "years", "n_train", "n_test", "n_features"}
+
+
+def _coerce(value: str) -> object:
+    """Reconvertit une valeur MLflow (toujours stockée en string) vers son
+    type réel — même ordre que _max_features_type côté CLI (train_model.py) :
+    bool/None explicites, puis int avant float (sinon '5' redeviendrait 5.0),
+    sinon string telle quelle ('sqrt', 'gini', 'balanced'...)."""
+    if value in ("True", "False"):
+        return value == "True"
+    if value == "None":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
 
 
 def _find_export_run(client: mlflow.MlflowClient) -> mlflow.entities.Run | None:
@@ -70,19 +94,13 @@ def extract_blueprint(dry_run: bool = False) -> bool:
         return False
 
     algo = run.data.params.get("algorithm")
-    if algo not in ALGO_PARAMS:
+    if algo not in KNOWN_ALGOS:
         logger.warning("Algorithme '%s' inconnu — extraction ignorée", algo)
         return False
 
-    param_keys = ALGO_PARAMS[algo]
-    extracted: dict[str, object] = {}
-    for k in param_keys:
-        val = run.data.params.get(k)
-        if val is not None:
-            try:
-                extracted[k] = int(val) if "." not in str(val) else float(val)
-            except (ValueError, TypeError):
-                extracted[k] = val
+    extracted: dict[str, object] = {
+        k: _coerce(v) for k, v in run.data.params.items() if k not in _META_PARAMS
+    }
 
     logger.info(
         "Blueprint extrait — algo=%s run_id=%s params=%s",
