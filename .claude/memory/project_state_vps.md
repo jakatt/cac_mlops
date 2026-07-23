@@ -1,6 +1,6 @@
 ---
 name: project-state-vps
-description: "État du VPS et de la stack au 2026-07-22 — 16 conteneurs, mécanisme DVC/git self-suffisant (S3), full-retrain post-fix en cours"
+description: "État du VPS et de la stack au 2026-07-22 — 16 conteneurs, mécanisme DVC/git self-suffisant (S3) validé en prod, base DVC 100% clean"
 metadata:
   node_type: memory
   type: project
@@ -46,14 +46,14 @@ Conteneurs permanents (15) :
 
 ---
 
-**Modèle en production : lgbm_accidents@Production**
+**Modèle en production : lgbm_accidents@Production** (v4, confirmé 2026-07-22 après full reset + full-retrain complet — 3ᵉ tentative, la bonne, cf. [[project_cicd_state]])
 - LightGBM, champion benchmark RF/XGB/LGBM
-- Données : cumul 2021+2022+2023+2024 (2024 intégré depuis le full-retrain du 2026-07-21)
-- **Métriques (avant le run du 2026-07-22, à reconfirmer)** : acc=0.778 · f1=0.660 · auc=0.835 · recall=0.632
+- Données : cumul 2021+2022+2023+2024
+- **Métriques (confirmées 2026-07-22)** : acc=0.778 · f1=0.660 · auc=0.835 · recall=0.632 — stable/reproductible sur 3 runs identiques
 - **27 features** (year_acc supprimé — variable intermédiaire de split uniquement)
 - Alias MLflow : lgbm_accidents @ Production
 - Expériences : accidents_severity_prod (officiel) · accidents_severity_dev (explore DS)
-- **Full-retrain lancé le 2026-07-22 après full reset, en cours à la fin de session — à vérifier à la prochaine reprise** (métriques + versioning DVC raw/preprocessed, cf. [[project_cicd_state]])
+- **Base DVC 100% clean et à jour depuis le 2026-07-22** : 4 `data/raw/{year}.dvc` + 4 `data/preprocessed/{...}.dvc` (2021, cumul_2021_2022, cumul_2021_2022_2023, cumul_2021_2022_2023_2024) tous commités sur `main`, chacun via son propre commit `[skip ci]` automatique.
 
 ---
 
@@ -63,9 +63,9 @@ Conteneurs permanents (15) :
 1. `data/raw/{year}.dvc` — après `validate_task`, CSV **tel que téléchargé**, jamais corrigé sur disque (renommages/coercion Pandera restent en mémoire à ce stade)
 2. `data/preprocessed/{cumul_...}.dvc` — après `preprocess_task`, **seul endroit** où les corrections sont réellement persistées (X_train/X_test/y_*.csv)
 
-**Mécanisme (`src/flows/etl_flow.py`, PR #185)** — auto-suffisant, indépendant du cycle de vie du conteneur `prefect-worker` :
+**Mécanisme (`src/flows/etl_flow.py`, PR #185+#188+#189) — validé en conditions réelles le 2026-07-22** (3ᵉ full-retrain, zéro erreur), auto-suffisant, indépendant du cycle de vie du conteneur `prefect-worker` :
 - `_fetch_gh_pat()` : lit le PAT GitHub depuis **S3** (`s3://cac-mlops-data/secrets/gh_pat`, via `SCW_ACCESS_KEY_ID/SECRET`) — PAS une variable d'environnement (rotation = un nouvel upload S3, jamais de redémarrage de conteneur nécessaire)
-- `_dvc_push_and_git_commit()` : `git clone --depth 1` **jetable**, créé/détruit à chaque exécution, avec un symlink vers les vraies données (`/app/data/...`) — élimine la dépendance à un `.git` dans `/app` (jamais présent : le Dockerfile de l'image api ne fait que des `COPY` sélectifs, jamais `.git`)
+- `_dvc_push_and_git_commit()` : `git clone --depth 1` **jetable**, créé/détruit à chaque exécution. Les vraies données (`/app/data/...`) sont **copiées** (pas symlinkées — DVC refuse `dvc add` sur un dossier symlinké, bug PR #188) dans le clone. **`.dvc/config.local` (valeurs SCW littérales) est écrit programmatiquement dans le clone** (PR #189) — DVC n'interpole jamais `${VAR}` dans `.dvc/config` au runtime, seul `config.local` (gitignored) fonctionne réellement, et il n'existe jamais dans `/app` du conteneur.
 
 **Pourquoi cette conception** : `prefect-worker` ne peut structurellement jamais se recréer lui-même en sécurité (self-référence — la tâche qui ferait `docker compose up -d prefect-worker` tourne *dans* ce même conteneur, tuant le flow en cours). Toute solution basée sur une variable d'env ou un montage docker-compose.yml serait fragile car dépendante d'un redémarrage de conteneur que le pipeline de déploiement ne déclenche pas de manière fiable pour ce service précis. Voir [[project_infra_secrets_todo]] pour 3 autres secrets (`TAILSCALE_AUTHKEY`, `CADDY_S3_*`, `GRAFANA_PASSWORD`) qui partagent ce même risque latent (pas de bug actif aujourd'hui).
 
