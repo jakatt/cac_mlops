@@ -163,9 +163,13 @@ def _print_comparison_table(
     )
     verdict_color = _GREEN if send_to_prod else _RED
     print(f"{_BOLD}Send to prod ?{_NC} {verdict_color}{_BOLD}{'OUI' if send_to_prod else 'NON'}{_NC}  ({reason})")
-    if send_to_prod:
-        print(f"\n{_BOLD}{_CYAN}Pour promouvoir ce run vers le blueprint prod :{_NC}")
-        print(f"  python -m src.scripts.extract_blueprint {run_id}")
+
+    # Commande toujours affichée, même en cas de NON — recommandation, pas une
+    # obligation : le DS reste juge (ex. amélioration jugée pertinente malgré
+    # un delta f1 sous le seuil MIN_IMPROVEMENT, ou décision sur d'autres critères).
+    action = "Pour promouvoir ce run" if send_to_prod else "Pour outrepasser la recommandation et promouvoir quand même ce run"
+    print(f"\n{_BOLD}{_CYAN}{action} vers le blueprint prod :{_NC}")
+    print(f"  python -m src.scripts.extract_blueprint {run_id}")
 
 
 def _preprocessed_dir(years: list[int]) -> Path:
