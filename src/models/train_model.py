@@ -95,7 +95,7 @@ def _get_production_comparison(client: "mlflow.tracking.MlflowClient") -> tuple[
 
 def _print_comparison_table(
     exp_metrics: dict[str, float], kpi_gate_passed: bool,
-    client: "mlflow.tracking.MlflowClient",
+    client: "mlflow.tracking.MlflowClient", run_id: str,
 ) -> None:
     """Affiche un tableau expérimentation vs @Production dans le terminal —
     même règle de décision que select_champion_task (Trigger 3) : gate KPI +
@@ -139,6 +139,9 @@ def _print_comparison_table(
         else f"{PRIMARY_METRIC} {improvement:+.4f} >= seuil +{MIN_IMPROVEMENT:.2f}"
     )
     print(f"Send to prod ? {'OUI' if send_to_prod else 'NON'}  ({reason})")
+    if send_to_prod:
+        print(f"\nPour promouvoir ce run vers le blueprint prod :")
+        print(f"  python -m src.scripts.extract_blueprint {run_id}")
 
 
 def _preprocessed_dir(years: list[int]) -> Path:
@@ -260,7 +263,7 @@ def train(
             "Metrics — accuracy=%.3f  f1=%.3f  auc=%.3f  recall=%.3f",
             metrics["accuracy"], metrics["f1"], metrics["auc"], metrics["recall"],
         )
-        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient())
+        _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient(), run.info.run_id)
 
         skops_types: dict[str, list[str]] = {
             "xgboost": ["xgboost.core.Booster", "xgboost.sklearn.XGBClassifier"],

@@ -1,15 +1,21 @@
 """
 Extract blueprint from MLflow explore experiment.
 
-Lit le dernier run tagué export_to_prod=true dans accidents_severity_dev,
-extrait les hyperparamètres et met à jour config/model_params.yml.
+Extrait les hyperparamètres d'un run champion et met à jour config/model_params.yml.
 
-Convention DS :
-  Avant de pusher, tagger le run champion dans MLflow :
-    mlflow.set_tag("export_to_prod", "true")
+Deux usages :
+  1. Avec run_id (recommandé — une seule commande, pas d'aller-retour UI) :
+       python -m src.scripts.extract_blueprint <run_id>
+     Tague ce run export_to_prod=true puis extrait directement. Le run_id
+     s'obtient dans le tableau affiché par train_model.py en fin de training
+     ("Pour promouvoir ce run...") — pas besoin d'aller le chercher dans l'UI.
+
+  2. Sans run_id (ancien flux — tag posé à la main dans l'UI MLflow au préalable) :
+       python -m src.scripts.extract_blueprint
+     Cherche le dernier run tagué export_to_prod=true dans accidents_severity_dev.
 
 Usage (outil DS local — non appelé par le pipeline de prod) :
-    python -m src.scripts.extract_blueprint [--dry-run]
+    python -m src.scripts.extract_blueprint [run_id] [--dry-run]
 
 Invocation via -m (pas python src/scripts/extract_blueprint.py) : déclenche
 src/__init__.py (charge .env — MLFLOW_TRACKING_URI y compris). Sans ça, le
@@ -80,15 +86,26 @@ def _find_export_run(client: mlflow.MlflowClient) -> mlflow.entities.Run | None:
         return None
 
 
-def extract_blueprint(dry_run: bool = False) -> bool:
+def extract_blueprint(run_id: str | None = None, dry_run: bool = False) -> bool:
     """
     Extrait les hyperparamètres du run champion et met à jour config/model_params.yml.
+    Si run_id est fourni : tague ce run export_to_prod=true puis l'utilise directement
+    (une seule commande). Sinon : cherche le dernier run déjà tagué manuellement.
     Retourne True si la mise à jour a été effectuée.
     """
     mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
     client = mlflow.tracking.MlflowClient()
 
-    run = _find_export_run(client)
+    if run_id:
+        try:
+            client.set_tag(run_id, "export_to_prod", "true")
+            run = client.get_run(run_id)
+        except Exception as exc:
+            logger.error("Run '%s' introuvable ou erreur MLflow : %s", run_id, exc)
+            return False
+    else:
+        run = _find_export_run(client)
+
     if run is None:
         logger.info("Aucun blueprint à extraire — config/model_params.yml inchangé")
         return False
@@ -128,7 +145,10 @@ def extract_blueprint(dry_run: bool = False) -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract DS champion blueprint to config/model_params.yml")
+    parser.add_argument("run_id", nargs="?", default=None,
+                        help="Run à promouvoir — tague export_to_prod=true et extrait directement. "
+                             "Omis : cherche le dernier run déjà tagué manuellement dans l'UI.")
     parser.add_argument("--dry-run", action="store_true", help="Affiche sans écrire")
     args = parser.parse_args()
-    success = extract_blueprint(dry_run=args.dry_run)
+    success = extract_blueprint(run_id=args.run_id, dry_run=args.dry_run)
     exit(0 if success else 1)
