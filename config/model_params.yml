@@ -1,62 +1,33 @@
-# Hyperparamètres optimaux par algorithme — Blueprint DS
-#
-# Ces valeurs sont fixées par le DS après expérimentation locale (levier 2 :
-# GridSearch / RandomizedSearch / Optuna), puis commitées ici pour déclencher
-# le réentraînement de production via le Trigger 3 (update-model-flow).
-#
-# Workflow DS :
-#   1. Expérimenter localement (MLflow tracking, grid search)
-#   2. Consigner les meilleurs params ici
-#   3. git commit + PR → main → train.yml les lit automatiquement (T3)
-#
-# Params infra (non modifiables ici) : n_jobs=-1  random_state=42  verbose=-1
-# Tous les params listés ci-dessous sont transmis directement au classificateur.
-
-rf:
-  # ── Complexité des arbres ────────────────────────────────────────────────────
-  n_estimators: 200          # Nombre d'arbres. ↑ = meilleure perf, ↑ temps
-  max_depth: null            # Profondeur max (null = illimité). null conseillé pour RF
-  min_samples_split: 2       # Min échantillons pour splitter un nœud. ↑ = moins de splits
-  min_samples_leaf: 1        # Min échantillons dans une feuille. ↑ = arbres plus lisses
-  max_features: "sqrt"       # Features évaluées par split : "sqrt" | "log2" | float 0-1
-  # ── Échantillonnage ─────────────────────────────────────────────────────────
-  bootstrap: true            # Tirage avec remplacement. false = sans remplacement (pasting)
-  max_samples: null          # Fraction du dataset par arbre (null = 100%). Ex: 0.8
-  # ── Critère & classes ───────────────────────────────────────────────────────
-  criterion: "gini"          # Critère de split : "gini" | "entropy" | "log_loss"
-  class_weight: null         # Pondération classes : null | "balanced" | "balanced_subsample"
-
-xgboost:
-  # ── Complexité ──────────────────────────────────────────────────────────────
-  n_estimators: 300          # Nombre d'arbres (= boosting rounds)
-  max_depth: 5               # Profondeur max par arbre. ↑ = plus complexe, risque surapprentissage
-  # ── Apprentissage ───────────────────────────────────────────────────────────
-  learning_rate: 0.05        # Taux d'apprentissage (eta). ↓ = plus robuste, ↑ n_estimators
-  # ── Sous-échantillonnage (anti-surapprentissage) ────────────────────────────
-  subsample: 1.0             # Fraction des lignes par arbre. Ex: 0.8 → 80% des données
-  colsample_bytree: 1.0      # Fraction des features par arbre. Ex: 0.8 → 80% des features
-  # ── Régularisation ──────────────────────────────────────────────────────────
-  min_child_weight: 1        # Poids min dans une feuille. ↑ = feuilles plus grosses, moins de surfit
-  gamma: 0                   # Gain min pour accepter un split. ↑ = arbre plus conservateur
-  reg_alpha: 0               # Régularisation L1 sur les poids (lasso). ↑ = sparsité
-  reg_lambda: 1              # Régularisation L2 sur les poids (ridge). ↑ = poids plus petits
-  # ── Déséquilibre de classes ─────────────────────────────────────────────────
-  scale_pos_weight: 1        # Ratio négatif/positif. Ex: si 9:1 → scale_pos_weight=9
-
 lgbm:
-  # ── Complexité ──────────────────────────────────────────────────────────────
-  n_estimators: 300          # Nombre d'arbres (= boosting rounds)
-  num_leaves: 63             # Max feuilles par arbre (contrôle principal la complexité LGBM)
-  max_depth: -1              # -1 = illimité (contrôlé par num_leaves)
-  # ── Apprentissage ───────────────────────────────────────────────────────────
-  learning_rate: 0.05        # Taux d'apprentissage. ↓ = plus robuste, ↑ n_estimators
-  # ── Sous-échantillonnage ────────────────────────────────────────────────────
-  subsample: 1.0             # Fraction des lignes par arbre. Ex: 0.8 (nécessite subsample_freq > 0)
-  subsample_freq: 0          # Fréquence du bagging (0 = désactivé). Ex: 5 → tous les 5 arbres
-  colsample_bytree: 1.0      # Fraction des features par arbre. Ex: 0.8
-  # ── Régularisation ──────────────────────────────────────────────────────────
-  min_child_samples: 20      # Min données dans une feuille. ↑ = feuilles moins spécifiques
-  reg_alpha: 0.0             # Régularisation L1 (lasso). ↑ = sparsité
-  reg_lambda: 0.0            # Régularisation L2 (ridge). ↑ = poids plus petits
-  # ── Classes ─────────────────────────────────────────────────────────────────
-  class_weight: null         # null | "balanced"
+  class_weight: null
+  colsample_bytree: 1.0
+  learning_rate: 0.05
+  max_depth: -1
+  min_child_samples: 20
+  n_estimators: 300
+  num_leaves: 63
+  reg_alpha: 0.0
+  reg_lambda: 0.0
+  subsample: 1.0
+  subsample_freq: 0
+rf:
+  bootstrap: true
+  class_weight: balanced
+  criterion: gini
+  max_depth: null
+  max_features: sqrt
+  max_samples: null
+  min_samples_leaf: 5
+  min_samples_split: 2
+  n_estimators: 200
+xgboost:
+  colsample_bytree: 1.0
+  gamma: 0
+  learning_rate: 0.05
+  max_depth: 5
+  min_child_weight: 1
+  n_estimators: 300
+  reg_alpha: 0
+  reg_lambda: 1
+  scale_pos_weight: 1
+  subsample: 1.0
