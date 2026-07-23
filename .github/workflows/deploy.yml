@@ -85,7 +85,13 @@ jobs:
           # grep -rl model_params services/api/ ne retourne rien). Rebuild
           # inutile sinon à chaque blueprint (Trigger 3) — Trigger 2/3+code
           # restent couverts par src/.* indépendamment de ce retrait.
-          echo "$CHANGED_FILES" | grep -qE '^(services/api/Dockerfile|services/api/requirements.*\.txt|services/api/app/.*|services/monitoring/.*|services/__init__\.py|src/.*|scripts/.*|prefect\.yaml|\.dvc/config|requirements.*\.txt|pyproject\.toml|setup\.cfg)$' && BUILD_API=true
+          # scripts/ : seul simulate_production.py (+ __init__.py) est copié
+          # dans l'image (cf. Dockerfile) — les autres scripts (ds_session_start.sh,
+          # raz_mlops.sh, setup_branch_protection.sh...) sont des outils de
+          # confort locaux, jamais exécutés par un conteneur. Ne pas rebuild
+          # dessus (incident 2026-07-23 : rebuild de 9-13 min pour un simple
+          # fix de script DS).
+          echo "$CHANGED_FILES" | grep -qE '^(services/api/Dockerfile|services/api/requirements.*\.txt|services/api/app/.*|services/monitoring/.*|services/__init__\.py|src/.*|scripts/(__init__|simulate_production)\.py|prefect\.yaml|\.dvc/config|requirements.*\.txt|pyproject\.toml|setup\.cfg)$' && BUILD_API=true
 
           echo "$CHANGED_FILES" | grep -qE '^(services/gradio/Dockerfile|services/gradio/requirements.*\.txt|services/gradio/.*\.py|src/.*)$' && BUILD_GRADIO=true
 
