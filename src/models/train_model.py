@@ -28,6 +28,7 @@ _NC    = "\033[0m"
 os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")
 
 import mlflow
+import mlflow.data
 import mlflow.sklearn
 
 mlflow.set_tracking_uri(
@@ -286,6 +287,30 @@ def train(
     with mlflow.start_run(run_name=run_name) as run:
         X_train, X_test, y_train, y_test = _load_splits(years)
         logger.info("Data: %d train / %d test", len(X_train), len(X_test))
+
+        # Dataset Tracking MLflow (colonne "Dataset" de l'UI Runs) — nécessite
+        # un log_input() explicite, distinct des log_param ci-dessous (years/
+        # n_train/n_test donnent déjà l'info en Parameters, mais pas dans la
+        # colonne/filtre dédiés "Dataset" de l'UI). Warning "peut être interprété
+        # de plusieurs façons" non-actionable : source est un chemin fichier
+        # local sans ambiguïté réelle pour notre usage, le choix par défaut
+        # (LocalArtifactDatasetSource) de mlflow est déjà celui voulu.
+        preprocessed_dir = _preprocessed_dir(years)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*can be interpreted in multiple ways.*")
+            warnings.filterwarnings("ignore", message=".*Inferred schema contains integer column.*")
+            mlflow.log_input(
+                mlflow.data.from_pandas(
+                    X_train, source=str(preprocessed_dir / "X_train.csv"), name=preprocessed_dir.name,
+                ),
+                context="training",
+            )
+            mlflow.log_input(
+                mlflow.data.from_pandas(
+                    X_test, source=str(preprocessed_dir / "X_test.csv"), name=preprocessed_dir.name,
+                ),
+                context="eval",
+            )
 
         mlflow.log_param("algorithm",  algorithm)
         mlflow.log_param("years",      sorted(years))
