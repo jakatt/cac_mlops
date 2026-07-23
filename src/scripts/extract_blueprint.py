@@ -114,6 +114,16 @@ def _build_pr_body(algo: str, run_id: str, comp: dict) -> str:
     global_label = "N/A" if comp["all_better"] is None else ("OUI" if comp["all_better"] else "NON")
     verdict = "OUI" if comp["send_to_prod"] else "NON"
 
+    if comp["prod_model_name"] is None:
+        model_line = f"**Modèle proposé :** `{comp['exp_model_name']}` (aucun @Production existant)"
+    elif comp["prod_model_name"] == comp["exp_model_name"]:
+        model_line = f"**Modèle proposé :** `{comp['exp_model_name']}` (même famille que l'actuel @Production)"
+    else:
+        model_line = (
+            f"**Modèle proposé :** `{comp['exp_model_name']}` "
+            f"— ⚠️ remplacerait `{comp['prod_model_name']}` (actuellement @Production)"
+        )
+
     decision_note = (
         f"✅ **Send to prod ? OUI**  ({comp['reason']}) — ce run dépasse le seuil de promotion automatique "
         "(Trigger 3 : gate KPI + f1 ≥ +0.01 vs @Production). Rappel de la règle : `update-model-flow` réentraîne "
@@ -131,6 +141,8 @@ def _build_pr_body(algo: str, run_id: str, comp: dict) -> str:
     return f"""## Résumé
 
 Nouveau blueprint **{algo}** proposé suite à une session d'exploration DS — run MLflow [`{run_id}`](http://{os.getenv("MLFLOW_TRACKING_URI", "").replace("http://", "")}/#/experiments/{EXPLORE_EXPERIMENT}/runs/{run_id}) tagué `export_to_prod=true`.
+
+{model_line}
 
 ## Comparaison vs @Production ({prod_label})
 
@@ -266,7 +278,8 @@ def extract_blueprint(run_id: str | None = None, dry_run: bool = False, no_pr: b
 
     exp_metrics = {k: float(v) for k, v in run.data.metrics.items() if k in KPI_THRESHOLDS}
     kpi_gate_passed = run.data.tags.get("kpi_gate") == "PASSED"
-    comp = compute_comparison(exp_metrics, kpi_gate_passed, client)
+    exp_model_name = run.data.tags.get("model_name", algo)
+    comp = compute_comparison(exp_metrics, kpi_gate_passed, client, exp_model_name)
 
     return _commit_push_create_pr(algo, run.info.run_id, comp)
 
