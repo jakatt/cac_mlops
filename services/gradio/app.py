@@ -1262,11 +1262,34 @@ def cancel_run(run_id: str) -> str:
         # (contrairement au GO, qui reprend l'exécution — loggué dans deploy_vps_flow.py).
         runs = {r2.get("id"): r2 for r2 in _prefect_paused_runs()}
         params = (runs.get(run_id) or {}).get("parameters") or {}
+        sha_tag = params.get("sha_tag") or ""
         logger.warning(
             "event=gate_resolved decision=STOP trigger=%s sha=%s run_id=%s",
-            _trigger_label(params), params.get("sha_tag") or "-", run_id[:8],
+            _trigger_label(params), sha_tag or "-", run_id[:8],
         )
-        return f"STOP envoyé — déploiement {run_id[:8]} annulé, rien n'a été appliqué en prod."
+        msg = f"STOP envoyé — déploiement {run_id[:8]} annulé, rien n'a été appliqué en prod."
+
+        # Un STOP avant promotion laisse config/model_params.yml sur main avec
+        # le blueprint proposé, alors que @Production n'a pas changé — même
+        # désync que revert_blueprint_task (PR204), mais pour le cas "annulation
+        # manuelle avant promotion" que ce dernier ne couvre pas (il ne réagit
+        # qu'à un échec de test-api APRÈS promotion, structurellement inatteignable
+        # ici puisque le flow est annulé avant d'y arriver).
+        if params.get("blueprint_promotion") and sha_tag:
+            from src.utils.blueprint_revert import revert_blueprint_on_main
+            reverted = revert_blueprint_on_main(
+                sha_tag,
+                reason="annulation manuelle (STOP) au gate avant promotion",
+                log=logger,
+            )
+            if reverted:
+                msg += " Blueprint reverté sur main (config/model_params.yml resynchronisé avec @Production)."
+            else:
+                msg += (
+                    " ATTENTION : le revert automatique du blueprint sur main a échoué "
+                    "— intervention manuelle requise sur config/model_params.yml (voir logs)."
+                )
+        return msg
     except Exception as e:
         return f"Erreur Prefect API : {e}"
 

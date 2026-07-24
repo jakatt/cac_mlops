@@ -249,6 +249,10 @@ services:
       GITHUB_REPO:            ${GITHUB_REPO:-jakatt/cac_mlops}
       REPORTS_PATH:           /app/reports/drift
       KAPSULE_STATE:          /app/state/kapsule_ips
+      # PAT GitHub récupéré depuis S3 (pas une var figée) — nécessaire pour le
+      # revert automatique du blueprint sur STOP manuel au gate (cancel_run)
+      SCW_ACCESS_KEY_ID:      ${SCW_ACCESS_KEY_ID}
+      SCW_SECRET_ACCESS_KEY:  ${SCW_SECRET_ACCESS_KEY}
     ports:
       - "${VPS_TAILSCALE_IP:-127.0.0.1}:7860:7860"  # UI → http://[tailscale-ip]:7860
     volumes:
