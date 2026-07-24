@@ -110,3 +110,6 @@ mlruns/
 
 # Modèle binaire local (source de vérité = MLflow Registry @Production)
 src/models/trained_model.joblib
+
+# Claude Code — permissions personnelles (pas partagées avec les autres contributeurs)
+.claude/settings.local.json
