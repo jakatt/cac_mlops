@@ -105,9 +105,10 @@ def check_new_data_flow() -> None:
     If 4/4 files found → auto-trigger full chain: ETL → train → deploy (gate manuelle).
     If < 4/4 → email alerte + stop.
     """
+    from prefect.deployments import run_deployment
+
     from src.flows.etl_flow import etl_flow
     from src.flows.train_flow import train_flow
-    from src.flows.deploy_vps_flow import deploy_vps_flow
     from src.flows.drift_monitoring_flow import drift_monitoring_flow
 
     log = get_run_logger()
@@ -152,12 +153,18 @@ def check_new_data_flow() -> None:
         )
         return
 
-    # Deploy VPS avec gate manuelle + promote après validation + deploy Kapsule
-    deploy_vps_flow(
-        champion=result["champion"],
-        run_ids=result["run_ids"],
-        metrics=result["metrics"],
-        year=new_year,
+    # Deploy VPS avec gate manuelle + promote après validation + deploy Kapsule.
+    # run_deployment (pas un appel Python direct) : nécessaire pour qu'un STOP
+    # au gate (Cockpit) tue réellement le process, cf. update_model_flow.py.
+    run_deployment(
+        name="deploy-vps-flow/deploy-vps",
+        parameters={
+            "champion": result["champion"],
+            "run_ids": result["run_ids"],
+            "metrics": result["metrics"],
+            "year": new_year,
+        },
+        timeout=None,
     )
 
     # Drift de features new_year vs années précédentes — indépendant du modèle,

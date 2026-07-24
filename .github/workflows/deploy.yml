@@ -304,6 +304,35 @@ jobs:
               exit 1
             fi
 
+            # ── Recréer prefect-worker si idle (bind-mounts figés sinon) ──────────
+            # Incident vécu 2026-07-24 : un bind-mount de fichier unique (prefect.yaml)
+            # ne se rafraîchit pas après un `git checkout` qui remplace le fichier —
+            # `prefect deploy --all` ci-dessus lit /app/prefect.yaml DANS le conteneur,
+            # qui restait figé sur l'ancienne version malgré un fix mergé sur main.
+            # Recréer prefect-worker DEPUIS prefect-worker tuerait le process qui
+            # exécute cette étape avant qu'elle finisse (auto-référence dangereuse,
+            # cf. project_infra_secrets_todo.md) — mais ce script tourne sur le HOST
+            # via SSH, jamais depuis l'intérieur du conteneur, donc la contrainte ne
+            # s'applique pas ici. On ne recrée que si aucun flow n'est actif, pour ne
+            # jamais tuer un run en cours (gate en pause y compris).
+            ACTIVE_RUNS=$(curl -s -X POST http://localhost:4200/api/flow_runs/filter \
+              -H 'Content-Type: application/json' \
+              -d '{"flow_runs":{"state":{"type":{"any_":["RUNNING","PENDING","PAUSED"]}}}}' \
+              --max-time 5 | jq 'length' 2>/dev/null || echo "-1")
+
+            if [ "$ACTIVE_RUNS" = "0" ]; then
+              echo "==> Aucun flow actif — recreate prefect-worker (bind-mounts frais)"
+              docker compose up -d --force-recreate prefect-worker
+              for i in $(seq 1 30); do
+                WORKER_STATUS=$(docker compose ps prefect-worker --format '{{.Health}}' 2>/dev/null || true)
+                [ "$WORKER_STATUS" = "healthy" ] && break
+                sleep 2
+              done
+              echo "==> prefect-worker recréé (status: ${WORKER_STATUS:-inconnu})"
+            else
+              echo "==> $ACTIVE_RUNS flow(s) actif(s) (ou vérification impossible) — prefect-worker non recréé"
+            fi
+
             # Détecter si le blueprint DS a changé (trigger 3) — uniquement
             # config/model_params.yml, le seul artefact qui représente une
             # vraie décision DS (hyperparamètres rf/xgboost/lgbm). src/models/
