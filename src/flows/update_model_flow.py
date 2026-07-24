@@ -59,4 +59,5 @@ def update_model_flow(
         sha_tag=sha_tag,
         needs_build=needs_build,
         restart_services=restart_services,
+        blueprint_promotion=True,
     )
