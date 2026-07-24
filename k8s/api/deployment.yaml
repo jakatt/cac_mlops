@@ -109,12 +109,18 @@ spec:
         - name: model-volume
           mountPath: /app/model
         resources:
+          # memory request/limit corrigés 2026-07-24 : mesuré 656-782Mi réel
+          # par pod à CPU quasi nul (chargement des 3 modèles ML rf/xgboost/
+          # lgbm en mémoire au démarrage — coût fixe par pod, pas lié au
+          # trafic). L'ancienne requête (512Mi) était déjà dépassée de 30-50%
+          # à l'idle, ce qui faussait le %util mémoire vu par le HPA (cf.
+          # api-hpa.yaml — mémoire retirée des métriques pour cette raison).
           requests:
             cpu: 200m
-            memory: 512Mi
+            memory: 800Mi
           limits:
             cpu: "1"
-            memory: 1Gi
+            memory: 1536Mi
         readinessProbe:
           httpGet:
             path: /health
