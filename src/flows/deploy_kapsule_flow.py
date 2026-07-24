@@ -47,10 +47,10 @@ def _scw(args: list[str], timeout: int = 60) -> str:
     return r.stdout
 
 
-def _kubectl(kubeconfig: str, args: list[str], check: bool = True) -> str:
+def _kubectl(kubeconfig: str, args: list[str], check: bool = True, timeout: int = 300) -> str:
     r = subprocess.run(
         ["kubectl", f"--kubeconfig={kubeconfig}"] + args,
-        capture_output=True, text=True, timeout=300,
+        capture_output=True, text=True, timeout=timeout,
     )
     if check and r.returncode != 0:
         raise RuntimeError(f"kubectl {' '.join(args[:3])}: {r.stderr.strip()}")
@@ -250,12 +250,18 @@ def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, 
             ])
             touched.append(deploy_name)
             log.info("Attente rollout %s…", deploy_name)
+            # api a 8 réplicas (HPA) contre 2 pour les autres deployments —
+            # 300s a déclenché un rollback pour rien alors que le rollout
+            # avait réellement réussi (juste plus lent à converger), confirmé
+            # après coup par un digest d'image identique VPS/Kapsule (incident
+            # vécu 2026-07-24, cf. 2026-07-11 déjà similaire ci-dessus).
+            rollout_timeout = 600 if deploy_name == "api" else 300
             _kubectl(kubeconfig, [
                 "rollout", "status",
                 f"deployment/{deploy_name}",
                 "-n", K8S_NAMESPACE,
-                "--timeout=300s",
-            ])
+                f"--timeout={rollout_timeout}s",
+            ], timeout=rollout_timeout + 30)
             rebalance_topology_task(
                 kubeconfig, deploy_name,
                 max_attempts=3 if deploy_name == "api" else 1,
