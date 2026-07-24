@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh deploy@51.159.187.132 \"sleep 4 && docker logs cac_mlops-gradio-1 --tail 10\")",
+      "Bash(ssh deploy@51.159.187.132 \"curl -s -X POST http://localhost:4200/api/flow_runs/filter -H 'Content-Type: application/json' -d '{\\\\\"flow_runs\\\\\":{\\\\\"state\\\\\":{\\\\\"type\\\\\":{\\\\\"any_\\\\\":[\\\\\"PAUSED\\\\\",\\\\\"RUNNING\\\\\"]}}},\\\\\"limit\\\\\":5}' | python3 -c \\\\\"import json,sys; runs=json.load\\(sys.stdin\\); [print\\(r['id'][:8], r['name'], r['state_type'], r['state_name']\\) for r in runs]\\\\\"\")",
+      "Bash(gh run *)",
+      "Bash(ssh deploy@51.159.187.132 *)",
+      "Bash(docker compose *)",
+      "Bash(git push origin DS)",
+      "Bash(git push origin DS *)",
+      "Bash(git push origin mlops)",
+      "Bash(git push origin mlops *)",
+      "Bash(gh pr create *)",
+      "Bash(git fetch *)",
+      "Bash(curl *)",
+      "Bash(jq *)",
+      "Bash(git ls-tree *)"
+    ]
+  }
+}
