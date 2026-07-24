@@ -9,7 +9,14 @@ spec:
     kind: Deployment
     name: api
   minReplicas: 2
-  maxReplicas: 8
+  maxReplicas: 4
+  # Mémoire retirée des métriques 2026-07-24 : le coût mémoire de ce pod est
+  # fixe (chargement de 3 modèles ML au démarrage), pas proportionnel au
+  # trafic — scaler dessus ne peut structurellement jamais faire redescendre
+  # le ratio (chaque nouveau pod recharge les mêmes modèles), donc le HPA
+  # restait pinné au max en permanence même à trafic nul (CPU 1%, mémoire
+  # 133-136% de sa cible), causant un vrai incident (rollout bloqué,
+  # scheduling KO sur un cluster à 2 nœuds). Le CPU seul reflète le trafic réel.
   metrics:
   - type: Resource
     resource:
@@ -17,9 +24,3 @@ spec:
       target:
         type: Utilization
         averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80

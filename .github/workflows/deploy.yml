@@ -315,10 +315,14 @@ jobs:
             # via SSH, jamais depuis l'intérieur du conteneur, donc la contrainte ne
             # s'applique pas ici. On ne recrée que si aucun flow n'est actif, pour ne
             # jamais tuer un run en cours (gate en pause y compris).
-            ACTIVE_RUNS=$(curl -s -X POST http://localhost:4200/api/flow_runs/filter \
+            # localhost:4200 n'est pas exposé sur l'hôte (seulement sur le réseau
+            # docker interne) — exec dans prefect-worker pour joindre prefect-server
+            # par son nom de service, avant de potentiellement le recréer lui-même.
+            ACTIVE_RUNS=$(docker compose exec -T prefect-worker curl -s -X POST \
+              http://prefect-server:4200/api/flow_runs/filter \
               -H 'Content-Type: application/json' \
               -d '{"flow_runs":{"state":{"type":{"any_":["RUNNING","PENDING","PAUSED"]}}}}' \
-              --max-time 5 | jq 'length' 2>/dev/null || echo "-1")
+              --max-time 5 2>/dev/null | jq 'length' 2>/dev/null || echo "-1")
 
             if [ "$ACTIVE_RUNS" = "0" ]; then
               echo "==> Aucun flow actif — recreate prefect-worker (bind-mounts frais)"
