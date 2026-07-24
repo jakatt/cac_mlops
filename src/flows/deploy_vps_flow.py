@@ -363,6 +363,109 @@ def rollback_promote_task(previous: dict | None, champion: str) -> None:
         log.warning("Aucun @Production précédent à restaurer")
 
 
+@task(name="revert-blueprint-git")
+def revert_blueprint_task(sha_tag: str) -> None:
+    """Revert le commit de merge <sha_tag> sur main (config/model_params.yml)
+    après un rollback @Production suite à un blueprint (Trigger 3) — sans ça,
+    main reste durablement désynchronisé : il continuerait à référencer un
+    blueprint jamais réellement déployé (incident vécu 2026-07-23, PR #202).
+
+    La règle CI "pas de mélange blueprint+code dans la même PR" garantit que
+    ce commit ne touche que config/model_params.yml — le revert est donc
+    ciblé, jamais une surprise sur d'autres fichiers.
+
+    Limite acceptée (ne pas tenter de combler ici) : ne resynchronise QUE
+    main. La branche DS locale/distante garde l'ancien blueprint jusqu'à la
+    prochaine resync explicite (ds_session_start.sh) — un flow ne doit
+    jamais force-reset une branche de travail potentiellement active.
+
+    Même mécanisme jetable (clone git + PAT depuis S3) que
+    _dvc_push_and_git_commit dans etl_flow.py — réutilisé, pas réinventé.
+    """
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    from src.flows.etl_flow import GITHUB_REPO, _fetch_gh_pat
+
+    log = get_run_logger()
+
+    if not sha_tag:
+        log.warning("Pas de sha_tag — blueprint non reverté automatiquement sur main.")
+        return
+
+    pat = _fetch_gh_pat(log)
+    if not pat:
+        log.warning("GH_PAT indisponible — blueprint non reverté automatiquement sur main.")
+        return
+
+    with tempfile.TemporaryDirectory(prefix="blueprint-revert-") as tmp:
+        clone_dir = Path(tmp) / "repo"
+        repo_url = f"https://oauth2:{pat}@github.com/{GITHUB_REPO}.git"
+
+        # --depth 50 (pas 1) : il faut l'historique du commit à revert, pas
+        # seulement le tip — cette étape tourne quelques minutes après le
+        # merge du blueprint, potentiellement plus si le rollback est retardé.
+        r = subprocess.run(
+            ["git", "clone", "--depth", "50", "--quiet", repo_url, str(clone_dir)],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            log.warning("git clone failed (revert blueprint) : %s", r.stderr.strip())
+            return
+
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "prefect-worker",
+            "GIT_AUTHOR_EMAIL": "ci@cac-mlops.fr",
+            "GIT_COMMITTER_NAME": "prefect-worker",
+            "GIT_COMMITTER_EMAIL": "ci@cac-mlops.fr",
+        }
+
+        # -m 1 : sha_tag est un commit de merge (mainline = main avant le merge).
+        # --no-commit : on écrit nous-mêmes le message (avec [skip ci]) plutôt
+        # que d'accepter celui auto-généré par --no-edit.
+        r = subprocess.run(
+            ["git", "revert", "-m", "1", "--no-commit", sha_tag],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        )
+        if r.returncode != 0:
+            log.warning(
+                "git revert failed (%s) — blueprint NON reverté automatiquement, "
+                "intervention manuelle requise sur config/model_params.yml : %s",
+                sha_tag, r.stderr.strip(),
+            )
+            return
+
+        # [skip ci] : sinon deploy.yml redétecterait ce changement de
+        # config/model_params.yml et redéclencherait update-model-flow en
+        # boucle pour rien — le modèle "reverté vers" est déjà celui qui tourne.
+        commit_msg = (
+            f"revert(blueprint): rollback automatique — test-api KO après promotion, "
+            f"commit {sha_tag[:8]} reverté [skip ci]"
+        )
+        r = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        )
+        if r.returncode != 0:
+            log.warning("git commit failed (revert blueprint) : %s", r.stderr.strip())
+            return
+
+        r = subprocess.run(
+            ["git", "push", "origin", "HEAD:main"],
+            cwd=clone_dir, capture_output=True, text=True, env=env,
+        )
+        if r.returncode != 0:
+            log.warning("git push failed (revert blueprint) : %s", r.stderr.strip())
+            return
+
+        log.warning(
+            "event=rollback kind=blueprint_git sha=%s — config/model_params.yml reverté sur main",
+            sha_tag,
+        )
+
+
 def _try_alias(client, model_name: str) -> bool:
     """Retourne True si le modèle @Production existe dans MLflow."""
     try:
@@ -381,6 +484,7 @@ def deploy_vps_flow(
     sha_tag: str = "",
     needs_build: bool = False,
     restart_services: str = "",
+    blueprint_promotion: bool = False,
 ) -> bool:
     """
     smoke test → gate manuelle → promote @Production + compose up (selon trigger)
@@ -394,6 +498,13 @@ def deploy_vps_flow(
     sha_tag : SHA du commit buildé, passé par GitHub Actions.
     needs_build / restart_services : calculés côté SSH (deploy.yml) à partir du diff git,
     appliqués ici (après la gate) plutôt que dans le script SSH (avant la gate).
+    blueprint_promotion : True uniquement depuis update_model_flow.py (Trigger 3 — un
+    changement de config/model_params.yml a motivé cette promotion). check_new_data_flow.py
+    (Trigger 1) ne le passe jamais — le blueprint n'y change pas, rien à revert en cas
+    de rollback. Si True et que le modèle est rollback après test-api KO, sha_tag (le
+    commit de merge qui a introduit ce blueprint) est reverté sur main automatiquement
+    (cf. revert_blueprint_task) — sinon main resterait durablement désynchronisé de ce
+    qui tourne réellement en @Production.
     """
     log = get_run_logger()
 
@@ -487,6 +598,9 @@ def deploy_vps_flow(
                 rollback_promote_task(previous_production, champion)
                 restart_api_task()
                 rolled_back_model = True
+                if blueprint_promotion:
+                    log.info("Revert du blueprint sur main (config/model_params.yml)...")
+                    revert_blueprint_task(sha_tag)
             if needs_build or restart_services:
                 log.info("Rollback Docker images :rollback (code)...")
                 docker_rollback_task(sha_tag)

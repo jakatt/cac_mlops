@@ -1,8 +1,8 @@
 - [Project setup](project_setup.md) — fork de DataScientest, venv `my_env`, notes de récupération historique
 - [MLOps architecture](project_mlops_architecture.md) — stack (FastAPI, MLflow, DVC, Prefect, Scaleway)
 - [VPS access](user_vps_access.md) — SSH user=`deploy`, IP=51.159.187.132, fail2ban, Tailscale
-- [VPS & stack state](project_state_vps.md) — 16 conteneurs, lgbm@Production v4 confirmé, base DVC 100% clean (raw+preprocessed), VPS arrêté en fin de session 2026-07-22
-- [CI/CD state](project_cicd_state.md) — PRs #35→#189, 54 tests CI, ETL renforcée + DVC self-suffisant validé (base 100% clean) + incident disque résolu
+- [VPS & stack state](project_state_vps.md) — 16 conteneurs, lgbm@Production toujours actif (rf rollback PR#202), blueprint main désync connue, incident disque récurrent
+- [CI/CD state](project_cicd_state.md) — PRs #35→#203, workflow DS exploration→blueprint (extract_blueprint auto PR), fix DVC push no-op, fix test-api trop strict
 - [KPI thresholds](project_kpi_thresholds.md) — f1≥0.60 · auc≥0.77 · acc≥0.72 · recall≥0.58 (split temporel, ~8% marge)
 - [Soutenance schemas](project_soutenance_schemas.md) — 3 triggers CI/CD, blueprint mécanisme, slide sécurité + archi à updater
 - [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
@@ -20,3 +20,5 @@
 - [Infra secrets TODO](project_infra_secrets_todo.md) — prefect-worker ne peut pas se recréer, secrets latents à risque (TAILSCALE_AUTHKEY, CADDY_S3, GRAFANA_PASSWORD)
 - [Tool output visibility](feedback_tool_output_visibility.md) — le user ne voit jamais le stdout Bash, écrire schémas/tableaux directement en texte de réponse
 - [Verify before asserting](feedback_verify_before_asserting.md) — vérifier empiriquement (SSH, logs, git history) avant d'affirmer une root cause ou un design
+- [Blueprint/prod sync gap](project_blueprint_sync_todo.md) — rollback Trigger 3 ne revert pas config/model_params.yml sur main, fix prévu (git revert + [skip ci])
+- [Smoke tests fonctionnels](feedback_smoke_tests_functional_only.md) — test-api post-deploy vérifie que ça répond, ne juge jamais le sens des prédictions

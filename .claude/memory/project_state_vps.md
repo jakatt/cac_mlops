@@ -55,6 +55,10 @@ Conteneurs permanents (15) :
 - Expériences : accidents_severity_prod (officiel) · accidents_severity_dev (explore DS)
 - **Base DVC 100% clean et à jour depuis le 2026-07-22** : 4 `data/raw/{year}.dvc` + 4 `data/preprocessed/{...}.dvc` (2021, cumul_2021_2022, cumul_2021_2022_2023, cumul_2021_2022_2023_2024) tous commités sur `main`, chacun via son propre commit `[skip ci]` automatique.
 
+**MAJ 2026-07-23** : toujours `lgbm_accidents@Production` — une tentative de promotion `rf` (blueprint PR #202, class_weight=balanced) a été rollback automatiquement (incident test-api trop strict, cf. [[project_cicd_state]] session 2026-07-23). `config/model_params.yml` sur `main` référence toujours ce blueprint `rf` non déployé — **désynchronisation connue, fix "revert auto sur main" prévu prochaine session**, pas encore fait. Ne pas supposer que le blueprint `main` == modèle réellement en prod tant que ce fix n'est pas en place — vérifier l'alias MLflow directement en cas de doute.
+
+**Bug DVC push corrigé 2026-07-23** : `--no-commit` sur `dvc add` (dans `_dvc_push_and_git_commit`) faisait un no-op silencieux — tous les datasets preprocessés poussés depuis PR #185 n'avaient en réalité jamais atteint S3 malgré des logs "OK" (vérifié : `head_object` direct sur S3, pas seulement les logs Prefect). Fixé PR #193/#195, base re-validée réellement propre.
+
 ---
 
 ## DVC — mécanisme de versioning (refonte 2026-07-22)
@@ -84,6 +88,10 @@ Conteneurs permanents (15) :
 **Deployments Prefect (14 au total) :**
 etl, train, drift-check, check-new-data, full-retrain, reset, update-model,
 kapsule-up, kapsule-down, test-api, diag, deploy-vps, deploy-kapsule, disk-cleanup
+
+**Attention** : l'UI Prefect (page "Flows") peut afficher jusqu'à 20 entrées — 6 sont des restes orphelins historiques (`create-secret`, `finish-kapsule-up`, `retrain-flow`, `retry-deploy`, `test-rebalance`, `test-silence`, constaté 2026-07-23) sans code/déploiement actuel. Prefect ne les nettoie jamais automatiquement. Les 14 déploiements ci-dessus restent la référence exacte et à jour (vérifié contre `prefect.yaml` + grep `@flow` dans `src/flows/`).
+
+**Incident disque récurrent** : survenu une 2e fois le 2026-07-23 (même cause que 2026-07-22 — accumulation d'images Docker dangling après plusieurs rebuilds rapprochés). `docker image prune -f` reste le fix, mais le pattern se répète à chaque fois que plusieurs PRs touchant `src/`/`services/` sont mergées en peu de temps sans laisser le cron disk-cleanup-flow (2h) suivre le rythme.
 
 ---
 
