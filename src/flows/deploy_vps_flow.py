@@ -32,6 +32,7 @@ from pathlib import Path
 from prefect import flow, task, get_run_logger, pause_flow_run
 
 from src.flows.deploy_kapsule_flow import deploy_kapsule_flow
+from src.flows.disk_cleanup_flow import disk_cleanup_flow
 from src.flows.test_api_flow import test_api_flow
 from src.flows.train_flow import promote_task
 
@@ -556,6 +557,16 @@ def deploy_vps_flow(
             new_images=needs_build,
         )
     finally:
+        # Nettoyage systématique en fin de deploy (succès ou rollback) : chaque
+        # `docker compose up`/rebuild laisse la précédente image en dangling —
+        # incidents récurrents de disque plein (22, 23, 24/07) avant ce fix,
+        # le nettoyage quotidien (02h) n'étant pas assez fréquent pour absorber
+        # plusieurs déploiements le même jour. Best-effort : ne bloque jamais
+        # le flow si le nettoyage lui-même échoue.
+        try:
+            disk_cleanup_flow()
+        except Exception as exc:
+            log.warning("disk_cleanup_flow a échoué après le deploy : %s", exc)
         release_deploy_lock_task(lock_fd)
 
     # Confirmation de succès : visible dans Loki/Grafana (Cockpit, dashboard

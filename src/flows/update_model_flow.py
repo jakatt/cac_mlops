@@ -13,9 +13,9 @@ src/models/ ou src/features/ (fix, logging, refactor) est traité comme un
 déploiement de code normal (Trigger 2), pas comme un nouveau blueprint.
 """
 from prefect import flow, get_run_logger
+from prefect.deployments import run_deployment
 
 from src.data.import_raw_data import discover_available_years
-from src.flows.deploy_vps_flow import deploy_vps_flow
 from src.flows.train_flow import train_flow
 
 
@@ -55,13 +55,25 @@ def update_model_flow(
 
     log.info("Champion identifié : %s", result["champion"])
 
-    return deploy_vps_flow(
-        champion=result["champion"],
-        run_ids=result["run_ids"],
-        metrics=result["metrics"],
-        year=year,
-        sha_tag=sha_tag,
-        needs_build=needs_build,
-        restart_services=restart_services,
-        blueprint_promotion=True,
+    # run_deployment (pas un appel Python direct) : soumet deploy-vps-flow via
+    # le work pool comme un run à part entière, avec son propre process —
+    # nécessaire pour qu'un STOP au gate (Cockpit) puisse réellement tuer le
+    # process bloqué dans pause_flow_run, plutôt que de seulement annuler la
+    # ligne en base pendant que le run continue de tourner indéfiniment dans
+    # le même process que update-model-flow (incident vécu 2026-07-24).
+    # as_subflow=True (défaut) : garde le lien parent/enfant dans l'UI Prefect.
+    flow_run = run_deployment(
+        name="deploy-vps-flow/deploy-vps",
+        parameters={
+            "champion": result["champion"],
+            "run_ids": result["run_ids"],
+            "metrics": result["metrics"],
+            "year": year,
+            "sha_tag": sha_tag,
+            "needs_build": needs_build,
+            "restart_services": restart_services,
+            "blueprint_promotion": True,
+        },
+        timeout=None,
     )
+    return flow_run.state.is_completed()
