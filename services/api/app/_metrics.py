@@ -1,8 +1,11 @@
 """Prometheus metrics registry shared across the API."""
 import json
+import logging
 from pathlib import Path
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
+
+logger = logging.getLogger(__name__)
 
 REGISTRY = CollectorRegistry(auto_describe=True)
 
@@ -86,15 +89,19 @@ def update_model_info() -> None:
 
         client = mlflow.tracking.MlflowClient()
         MODEL_INFO.clear()
+        errors = []
         for model_name in MODEL_NAMES.values():
             try:
                 mv = client.get_model_version_by_alias(model_name, "Production")
                 MODEL_INFO.labels(model=model_name, version=mv.version).set(1)
                 return
-            except Exception:
-                continue
+            except Exception as exc:
+                errors.append(f"{model_name}: {exc}")
+        logger.warning(
+            "update_model_info : aucun alias @Production trouvé — %s", "; ".join(errors)
+        )
     except Exception:
-        pass
+        logger.exception("update_model_info a échoué (MLflow injoignable ou import cassé)")
 
 
 def update_drift_metrics_from_file(reports_path: Path) -> None:

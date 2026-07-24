@@ -15,8 +15,7 @@ from pathlib import Path
 from prefect import flow, task, get_run_logger
 
 from src.data.import_raw_data import download_year, training_years_up_to, get_training_years
-
-GITHUB_REPO = os.getenv("GITHUB_REPO", "jakatt/cac_mlops")
+from src.utils.github import GITHUB_REPO, fetch_gh_pat as _fetch_gh_pat
 
 
 @task(name="download-raw-data", retries=2, retry_delay_seconds=30)
@@ -46,33 +45,6 @@ def validate_task(year: int) -> None:
         log.warning("event=alert severity=warning topic=schema_validation year=%d", year)
 
     log.info("Validation level=%s year=%d", level, year)
-
-
-def _fetch_gh_pat(log) -> str | None:
-    """Récupère le PAT GitHub depuis S3 (secrets/gh_pat) plutôt qu'une variable
-    d'environnement figée à la création du conteneur.
-
-    Pourquoi : /app (image api, utilisée par prefect-worker) ne contient jamais
-    .git — le Dockerfile ne fait que des COPY sélectifs — et prefect-worker ne
-    peut pas se recréer lui-même pour appliquer un changement docker-compose.yml
-    (la tâche qui le ferait tourne dans le conteneur qu'elle recréerait,
-    tuant le flow en cours). Lire le PAT depuis S3 à chaque exécution rend le
-    mécanisme indépendant du cycle de vie du conteneur et du pipeline de
-    déploiement : rotation du PAT = un nouvel upload S3, jamais de redémarrage.
-    """
-    try:
-        import boto3
-        s3 = boto3.client(
-            "s3",
-            endpoint_url="https://s3.fr-par.scw.cloud",
-            aws_access_key_id=os.environ["SCW_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["SCW_SECRET_ACCESS_KEY"],
-        )
-        obj = s3.get_object(Bucket="cac-mlops-data", Key="secrets/gh_pat")
-        return obj["Body"].read().decode().strip()
-    except Exception as exc:
-        log.warning("Impossible de récupérer GH_PAT depuis S3 : %s", exc)
-        return None
 
 
 def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
