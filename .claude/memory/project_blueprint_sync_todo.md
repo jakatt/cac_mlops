@@ -7,7 +7,7 @@ metadata:
   originSessionId: 56ea6708-273e-46b6-af84-9bc9daa74e3c
 ---
 
-Identifié le 2026-07-23 suite à l'incident PR #202 (blueprint rf rollback à tort par un test-api trop strict, cf. [[project_cicd_state]]). Design accepté par le user, **pas encore implémenté** — prévu pour la session suivante.
+Identifié le 2026-07-23 suite à l'incident PR #202 (blueprint rf rollback à tort par un test-api trop strict, cf. [[project_cicd_state]]). **Implémenté 2026-07-24, PR #204** (`revert_blueprint_task` dans `src/flows/deploy_vps_flow.py` + `blueprint_promotion` param). Validé en rejouant le revert sur le vrai commit PR#202 dans un clone jetable local (jamais poussé) — pas encore testé en conditions réelles (vrai rollback Trigger 3 de bout en bout).
 
 **Why:** `rollback_promote_task` (`src/flows/deploy_vps_flow.py`) restaure uniquement l'alias MLflow `@Production` vers la version précédente — aucune interaction avec `config/model_params.yml` ni git. Résultat concret vérifié : après le rollback de PR #202, `main` dit toujours "blueprint = rf" alors que `@Production` est resté `lgbm_accidents`. Invariant souhaité par le user : le blueprint committé sur `main` doit toujours refléter ce qui tourne réellement en `@Production`, sauf pendant la fenêtre d'évaluation d'un nouveau blueprint.
 
