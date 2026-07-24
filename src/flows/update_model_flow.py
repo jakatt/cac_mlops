@@ -14,13 +14,14 @@ déploiement de code normal (Trigger 2), pas comme un nouveau blueprint.
 """
 from prefect import flow, get_run_logger
 
+from src.data.import_raw_data import discover_available_years
 from src.flows.deploy_vps_flow import deploy_vps_flow
 from src.flows.train_flow import train_flow
 
 
 @flow(name="update-model-flow", log_prints=True)
 def update_model_flow(
-    year: int = 2023,
+    year: int | None = None,
     cumul: bool = True,
     sha_tag: str = "",
     needs_build: bool = False,
@@ -34,6 +35,9 @@ def update_model_flow(
     2b. Si pas meilleur : notifier DS (stop)
     """
     log = get_run_logger()
+
+    if year is None:
+        year = discover_available_years()[-1]
 
     result = train_flow(year=year, cumul=cumul, promote=False, require_improvement=True)
 
