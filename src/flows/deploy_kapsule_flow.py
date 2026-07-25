@@ -176,6 +176,39 @@ def cleanup_node_images_task(kubeconfig: str, node_name: str) -> None:
             _kubectl(kubeconfig, ["delete", "-n", "default", line.strip(), "--ignore-not-found"], check=False)
 
 
+@task(name="post-deploy-image-cleanup")
+def cleanup_all_nodes_images_task(kubeconfig: str) -> None:
+    """Purge systématique des images inutilisées sur TOUS les nœuds, en fin de
+    chaque déploiement Kapsule — jamais seulement si déjà en DiskPressure.
+
+    Root cause de l'incident récurrent (2026-07-10, 24/07, 25/07) : chaque
+    rollout tire une nouvelle image sur chaque nœud (l'ancienne devient
+    dangling une fois les pods migrés) — la pression apparaît PENDANT le
+    pull des nouvelles images, pas avant. Un nettoyage seulement en DÉBUT de
+    déploiement (cleanup_before_deploy_task, condition DiskPressure) arrive
+    donc systématiquement trop tard : au moment où on le vérifie, la
+    pression n'existe pas encore, elle est causée par le pull qui suit.
+
+    Symétrique du disk_cleanup_flow() appelé en fin de deploy_vps_flow côté
+    VPS (PR209) — même principe, jamais appliqué côté Kapsule avant ce fix.
+    Toujours en best-effort (jamais d'exception propagée) : le nettoyage ne
+    doit jamais faire échouer un déploiement par ailleurs réussi.
+    """
+    import json
+    log = get_run_logger()
+    raw = _kubectl(kubeconfig, ["get", "nodes", "-o", "json"], check=False)
+    try:
+        nodes = json.loads(raw).get("items", [])
+    except Exception:
+        nodes = []
+    for node in nodes:
+        name = node.get("metadata", {}).get("name", "?")
+        try:
+            cleanup_node_images_task(kubeconfig, name)
+        except Exception as exc:
+            log.warning("Nettoyage post-déploiement échoué sur %s : %s", name, exc)
+
+
 def _pod_node_map(kubeconfig: str, deploy_name: str) -> dict[str, str]:
     out = _kubectl(kubeconfig, [
         "get", "pods", "-n", K8S_NAMESPACE,
@@ -373,66 +406,72 @@ def deploy_kapsule_flow(
 
     kubeconfig = get_kubeconfig_task()
 
-    # Uploads S3 conditionnels — n'uploader que ce qui a réellement changé.
-    # Contexte : ces tasks n'étaient pas appelées au kapsule-up initial (bug
-    # silencieux) — K8s continuait de servir l'ANCIEN modèle/dataset jusqu'au
-    # prochain kapsule-down/up. Réexporter systématiquement quand pertinent est
-    # inoffensif (upload S3 idempotent) mais uploader un modèle/dataset inchangé
-    # sur un déploiement docs-only est inutile (bug vécu : PR #172, docs HTML
-    # uniquement, upload_model_s3 et upload_data_s3 tournaient quand même).
-    if new_model:
-        upload_model_s3()
-    if new_data:
-        upload_data_s3()
+    try:
+        # Uploads S3 conditionnels — n'uploader que ce qui a réellement changé.
+        # Contexte : ces tasks n'étaient pas appelées au kapsule-up initial (bug
+        # silencieux) — K8s continuait de servir l'ANCIEN modèle/dataset jusqu'au
+        # prochain kapsule-down/up. Réexporter systématiquement quand pertinent est
+        # inoffensif (upload S3 idempotent) mais uploader un modèle/dataset inchangé
+        # sur un déploiement docs-only est inutile (bug vécu : PR #172, docs HTML
+        # uniquement, upload_model_s3 et upload_data_s3 tournaient quand même).
+        if new_model:
+            upload_model_s3()
+        if new_data:
+            upload_data_s3()
 
-    # Resynchronise les manifests k8s/ — idempotent, fast, toujours utile :
-    # `rollout restart` seul redémarre les pods avec le spec DÉJÀ enregistré,
-    # tout changement de manifest (env var, ressources, configmap...) depuis le
-    # dernier kapsule-up restait invisible (bug vécu : COCKPIT_ENV ajouté à
-    # k8s/gradio/deployment.yaml, jamais propagé sur plusieurs déploiements
-    # malgré des rollout restart réussis, 2026-07-11). Pour nginx et caddy
-    # (images standard), apply_manifests est le seul vecteur de propagation
-    # d'un changement de spec — pas de rollout restart explicite nécessaire.
-    apply_manifests(kubeconfig)
-    cleanup_before_deploy_task(kubeconfig)
+        # Resynchronise les manifests k8s/ — idempotent, fast, toujours utile :
+        # `rollout restart` seul redémarre les pods avec le spec DÉJÀ enregistré,
+        # tout changement de manifest (env var, ressources, configmap...) depuis le
+        # dernier kapsule-up restait invisible (bug vécu : COCKPIT_ENV ajouté à
+        # k8s/gradio/deployment.yaml, jamais propagé sur plusieurs déploiements
+        # malgré des rollout restart réussis, 2026-07-11). Pour nginx et caddy
+        # (images standard), apply_manifests est le seul vecteur de propagation
+        # d'un changement de spec — pas de rollout restart explicite nécessaire.
+        apply_manifests(kubeconfig)
+        cleanup_before_deploy_task(kubeconfig)
 
-    # Calcul du périmètre de restart :
-    #   api           si new_images (image CI reconstruite) OU new_model
-    #                 (initContainer doit refetch le modèle depuis S3)
-    #   gradio-public si new_images (image gradio CI reconstruite)
-    #   nginx/caddy   jamais explicitement — leurs changements de spec sont
-    #                 propagés par apply_manifests (qui déclenche un rolling
-    #                 update automatique si la spec du Deployment change).
-    to_restart: list[str] = []
-    if new_images:
-        to_restart.extend(["api", "gradio-public"])
-    if new_model and "api" not in to_restart:
-        to_restart.append("api")
+        # Calcul du périmètre de restart :
+        #   api           si new_images (image CI reconstruite) OU new_model
+        #                 (initContainer doit refetch le modèle depuis S3)
+        #   gradio-public si new_images (image gradio CI reconstruite)
+        #   nginx/caddy   jamais explicitement — leurs changements de spec sont
+        #                 propagés par apply_manifests (qui déclenche un rolling
+        #                 update automatique si la spec du Deployment change).
+        to_restart: list[str] = []
+        if new_images:
+            to_restart.extend(["api", "gradio-public"])
+        if new_model and "api" not in to_restart:
+            to_restart.append("api")
 
-    if not to_restart:
-        log.info(
-            "Aucun rollout restart nécessaire (new_model=%s new_images=%s) "
-            "— manifests resynchronisés, skip rolling update",
-            new_model, new_images,
-        )
+        if not to_restart:
+            log.info(
+                "Aucun rollout restart nécessaire (new_model=%s new_images=%s) "
+                "— manifests resynchronisés, skip rolling update",
+                new_model, new_images,
+            )
+            log.info("event=alert severity=info topic=kapsule_success")
+            return True
+
+        log.info("Rollout restart : %s", ", ".join(to_restart))
+        ok, touched = rolling_update_task(kubeconfig, to_restart)
+
+        if not ok:
+            rollback_kapsule_task(kubeconfig, touched)
+            log.error("event=alert severity=critical topic=kapsule_failure")
+            raise RuntimeError(
+                "Deploy Kapsule ÉCHOUÉ — rolling update impossible sur le cluster K8s.\n"
+                "Le rollback vers la version précédente a été effectué automatiquement.\n"
+                "Actions requises :\n"
+                "  1. kubectl get pods -n cac-mlops  (pods en erreur ?)\n"
+                "  2. kubectl describe deployment api -n cac-mlops  (events, image pull error ?)\n"
+                "  3. Vérifier que l'image GHCR est pullable depuis le cluster\n"
+                "  4. Si cluster instable : kapsule-down puis kapsule-up"
+            )
+
         log.info("event=alert severity=info topic=kapsule_success")
         return True
-
-    log.info("Rollout restart : %s", ", ".join(to_restart))
-    ok, touched = rolling_update_task(kubeconfig, to_restart)
-
-    if not ok:
-        rollback_kapsule_task(kubeconfig, touched)
-        log.error("event=alert severity=critical topic=kapsule_failure")
-        raise RuntimeError(
-            "Deploy Kapsule ÉCHOUÉ — rolling update impossible sur le cluster K8s.\n"
-            "Le rollback vers la version précédente a été effectué automatiquement.\n"
-            "Actions requises :\n"
-            "  1. kubectl get pods -n cac-mlops  (pods en erreur ?)\n"
-            "  2. kubectl describe deployment api -n cac-mlops  (events, image pull error ?)\n"
-            "  3. Vérifier que l'image GHCR est pullable depuis le cluster\n"
-            "  4. Si cluster instable : kapsule-down puis kapsule-up"
-        )
-
-    log.info("event=alert severity=info topic=kapsule_success")
-    return True
+    finally:
+        # Nettoyage systématique en FIN de déploiement, succès ou échec — pas
+        # seulement en début si déjà en pression (cf. cleanup_all_nodes_images_task
+        # pour le root cause de pourquoi un nettoyage en début seul ne suffit pas).
+        cleanup_all_nodes_images_task(kubeconfig)
