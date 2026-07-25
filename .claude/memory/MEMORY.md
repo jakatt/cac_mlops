@@ -17,7 +17,7 @@
 - [Prefect logs API](feedback_prefect_logs_api.md) — wrapper "logs" obligatoire, limit max 200, print() vs get_run_logger()
 - [DataFrame None check](feedback_dataframe_none_check.md) — jamais `df or []`, toujours `df is not None` explicite
 - [Doc/UI TODOs](project_doc_ui_todo.md) — compteur tuile tests + accordéons fermés par défaut (docs + cockpit)
-- [Infra secrets TODO](project_infra_secrets_todo.md) — prefect-worker ne peut pas se recréer, secrets latents à risque (TAILSCALE_AUTHKEY, CADDY_S3, GRAFANA_PASSWORD)
+- [Infra secrets TODO](project_infra_secrets_todo.md) — prefect-worker ne peut pas se recréer + DiskPressure récurrent non résolu sur les nœuds Kapsule (depuis 2026-07-10)
 - [Tool output visibility](feedback_tool_output_visibility.md) — le user ne voit jamais le stdout Bash, écrire schémas/tableaux directement en texte de réponse
 - [Verify before asserting](feedback_verify_before_asserting.md) — vérifier empiriquement (SSH, logs, git history) avant d'affirmer une root cause ou un design
 - [Blueprint/prod sync gap](project_blueprint_sync_todo.md) — rollback Trigger 3 ne revert pas config/model_params.yml sur main, fix prévu (git revert + [skip ci])

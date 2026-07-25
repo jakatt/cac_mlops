@@ -24,3 +24,21 @@ TODO identifié le 2026-07-22 en corrigeant le bug GH_PAT (PR #185) — pas trai
 - Ne pas appliquer le pattern S3 préventivement aux 3 secrets ci-dessus tant qu'aucun n'a réellement cassé — sur-ingénierie pour un problème hypothétique.
 - Si l'un d'eux casse un jour (symptôme : `kapsule_up_flow` échoue avec une erreur d'auth alors que la valeur vient d'être changée/tournée à la source) — le réflexe attendu est de reconnaître ce pattern, pas de repartir de zéro.
 - Meilleure solution à terme si on veut vraiment traiter ça : régler la cause racine (rendre `prefect-worker` recréable en sécurité par le pipeline de déploiement en général — ex. vérifier qu'aucun flow n'est en cours avant de recréer) plutôt que patcher secret par secret.
+
+**Update 2026-07-24 — même faille côté Kapsule, pas juste prefect-worker :**
+Incident vécu ce jour : les 2 nœuds Kapsule sont passés en `DiskPressure`
+(taint NoSchedule) pendant un déploiement normal, bloquant temporairement
+le scheduling d'un pod `gradio-public`. Déjà documenté dans le code
+(`deploy_kapsule_flow.py`, commentaire ligne ~103) comme un incident connu
+depuis le **2026-07-10** — mais la seule action prise à l'époque a été
+d'ajouter du **logging** (`event=alert severity=warning topic=kapsule_node_pressure`),
+jamais un vrai nettoyage d'images sur les nœuds. Un des deux nœuds s'est
+résolu tout seul (GC automatique du kubelet), l'autre restait tainté après
+résolution du déploiement — pas bloquant ce jour-là mais non résolu.
+
+**Piste :** même pattern que le fix VPS du 24/07 (disk_cleanup_flow appelé
+en fin de deploy_vps_flow) mais côté nœuds Kapsule — nécessite soit un
+DaemonSet de nettoyage (crictl/image prune sur chaque nœud), soit un ajustement
+des seuils de garbage collection kubelet (`imageGCHighThresholdPercent`),
+soit un nettoyage explicite dans `deploy_kapsule_flow.py` avant/après rollout
+(actuellement seulement du logging informatif, jamais d'action corrective).

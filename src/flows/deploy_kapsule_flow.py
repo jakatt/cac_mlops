@@ -97,10 +97,15 @@ def cleanup_before_deploy_task(kubeconfig: str) -> None:
        encombre `kubectl get pods` et peut laisser des logs/fs de conteneur
        sur le disque du nœud tant que le GC kubelet ne passe pas).
     2. Log les conditions DiskPressure/MemoryPressure/PIDPressure de chaque
-       nœud — informatif seulement (pas de blocage), pour avoir un signal
-       clair dans Grafana/Loki AVANT un éventuel échec de rollout plutôt
-       que de le découvrir seulement après un timeout de 300s (incident
-       vécu : DiskPressure sur les 2 nœuds, 2026-07-10).
+       nœud, et si DiskPressure : purge les images container inutilisées sur
+       CE nœud (cleanup_node_images_task) — jusqu'au 2026-07-24, ce cas était
+       seulement loggué (event=alert), jamais corrigé : incident récurrent
+       depuis le 2026-07-10, revécu le 24/07 (les 2 nœuds taintés
+       NoSchedule pendant un rollout, un pod gradio-public resté Pending
+       plusieurs minutes). Le kubelet a bien sa propre GC automatique
+       d'images, mais elle s'est montrée trop tardive/lente pour éviter le
+       taint — cette purge proactive vient en complément, pas en
+       remplacement.
     """
     import json
     log = get_run_logger()
@@ -131,8 +136,44 @@ def cleanup_before_deploy_task(kubeconfig: str) -> None:
                 "event=alert severity=warning topic=kapsule_node_pressure node=%s pressure=%s",
                 name, pressure,
             )
+            if pressure.get("DiskPressure") == "True":
+                cleanup_node_images_task(kubeconfig, name)
         else:
             log.info("Noeud %s OK (pas de pression ressources)", name)
+
+
+def cleanup_node_images_task(kubeconfig: str, node_name: str) -> None:
+    """Purge les images container inutilisées sur un nœud en DiskPressure.
+
+    `crictl rmi --prune` (pas `-a`) : ne supprime que les images non
+    référencées par un conteneur existant — équivalent `docker image prune`
+    (jamais `-af`), même principe de prudence que côté VPS.
+
+    `kubectl debug node` plutôt qu'un Job/DaemonSet manuel : bind-mount
+    automatique de la racine du nœud sur /host dans un pod éphémère, sans
+    RBAC/hostPath supplémentaire à maintenir dans k8s/. Non testé en
+    conditions réelles (aucun nœud en DiskPressure au moment du fix,
+    2026-07-25) — à surveiller au prochain déclenchement réel.
+    """
+    log = get_run_logger()
+    out = _kubectl(kubeconfig, [
+        "debug", f"node/{node_name}",
+        "--image=alpine",
+        "--", "chroot", "/host", "crictl", "rmi", "--prune",
+    ], check=False, timeout=120)
+    log.warning(
+        "event=cleanup kind=kapsule_node_images node=%s output=%s",
+        node_name, out.strip()[:500],
+    )
+
+    # kubectl debug node ne supprime jamais le pod éphémère qu'il crée
+    # (reste en Completed/Error indéfiniment) — nettoyage manuel nécessaire,
+    # sinon accumulation à chaque déclenchement (même symptôme que les pods
+    # Completed/Failed déjà traités plus haut dans cette même tâche).
+    pods = _kubectl(kubeconfig, ["get", "pods", "-n", "default", "-o", "name"], check=False)
+    for line in pods.splitlines():
+        if f"node-debugger-{node_name}" in line:
+            _kubectl(kubeconfig, ["delete", "-n", "default", line.strip(), "--ignore-not-found"], check=False)
 
 
 def _pod_node_map(kubeconfig: str, deploy_name: str) -> dict[str, str]:
