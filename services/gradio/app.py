@@ -1250,6 +1250,14 @@ def cancel_run(run_id: str) -> str:
     if not run_id:
         return "Sélectionnez un déploiement avant d'interrompre."
     try:
+        # Récupérer les paramètres AVANT le cancel, pas après : _prefect_paused_runs()
+        # filtre sur l'état PAUSED/RUNNING — une fois le set_state CANCELLING envoyé,
+        # le run ne matche plus ce filtre et params revient vide (bug vécu 2026-07-25 :
+        # blueprint_promotion jamais détecté, revert jamais déclenché malgré un run
+        # qui l'avait bien à True).
+        runs = {r2.get("id"): r2 for r2 in _prefect_paused_runs()}
+        params = (runs.get(run_id) or {}).get("parameters") or {}
+
         r = requests.post(
             f"{PREFECT_API}/flow_runs/{run_id}/set_state",
             json={"state": {"type": "CANCELLING", "name": "Cancelling"}, "force": True},
@@ -1260,8 +1268,6 @@ def cancel_run(run_id: str) -> str:
         # Loggué ici (service=gradio), pas côté flow : un cancel termine le
         # process avant qu'il ait une chance de logguer sa propre résolution
         # (contrairement au GO, qui reprend l'exécution — loggué dans deploy_vps_flow.py).
-        runs = {r2.get("id"): r2 for r2 in _prefect_paused_runs()}
-        params = (runs.get(run_id) or {}).get("parameters") or {}
         sha_tag = params.get("sha_tag") or ""
         logger.warning(
             "event=gate_resolved decision=STOP trigger=%s sha=%s run_id=%s",
