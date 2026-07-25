@@ -11,6 +11,7 @@ Si aucun @Production n'existe encore → le meilleur qualifié est promu directe
 """
 import gc
 import os
+import time
 
 import mlflow
 from prefect import flow, task, get_run_logger
@@ -204,6 +205,10 @@ def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     version = mv_list[0].version
 
     client.set_registered_model_alias(model_name, "Production", version)
+    # Horodatage de promotion — permet au Cockpit de reconstituer l'historique
+    # @Production (Prod -1, -2, ...) au-delà de la seule version actuelle,
+    # puisque MLflow ne garde aucun historique natif des changements d'alias.
+    client.set_model_version_tag(model_name, version, "promoted_at", str(time.time()))
     log.info("@Production → %s v%s", model_name, version)
 
     for algo, other_model in MODEL_NAMES.items():
