@@ -565,10 +565,22 @@ def _dvc_tag(year: str, cumul: str) -> str:
     return f"year={year}"
 
 
+_PROD_EXPERIMENT_NAME = "accidents_severity_prod"
+
+
 def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
     try:
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
+
+        # N'afficher que les entraînements officiels (pipeline MLOps), jamais les
+        # explorations DS locales (accidents_severity_dev) — le Registry MLflow
+        # est global et n'est pas filtré par expérience à l'enregistrement, donc
+        # sans ce filtre les runs d'exploration polluent ce tableau (incident
+        # constaté 2026-07-25 : ~15 versions de recherche d'hyperparamètres
+        # visibles ici alors qu'aucune n'a de rapport avec la prod).
+        prod_exp = client.get_experiment_by_name(_PROD_EXPERIMENT_NAME)
+        prod_experiment_id = prod_exp.experiment_id if prod_exp else None
 
         prod_key: str | None = None
         for model_name in ALL_MODEL_NAMES:
@@ -579,12 +591,24 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
             except Exception:
                 continue
 
-        rows, choices = [], []
+        # Reconstitue l'historique @Production (Prod -1, -2, ...) via le tag
+        # promoted_at posé par promote_task à chaque promotion — MLflow ne garde
+        # aucun historique natif des changements d'alias, donc rien à afficher
+        # pour les promotions antérieures à l'ajout de ce tag (2026-07-25).
+        promotions: list[tuple[float, str]] = []
+
+        raw_rows = []
         for model_name in ALL_MODEL_NAMES:
             versions = client.search_model_versions(f"name='{model_name}'")
             for v in sorted(versions, key=lambda x: int(x.version)):
                 try:
                     run  = client.get_run(v.run_id)
+                except Exception:
+                    continue
+                if prod_experiment_id is not None and run.info.experiment_id != prod_experiment_id:
+                    continue
+
+                try:
                     p, m = run.data.params, run.data.metrics
                     years_raw = p.get("years", None)
                     if years_raw:
@@ -600,16 +624,45 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
                     year, cumul, algo, f1, auc = "?", "false", "?", 0.0, 0.0
 
                 choice_key = f"{model_name}:{v.version}"
-                is_prod = (choice_key == prod_key)
-                rows.append({
-                    "Version":    f"{algo}:v{v.version}",
-                    "DVC Data":   _dvc_tag(year, cumul),
-                    "Annee":      year,
-                    "Algo":       algo,
-                    "F1":         f1,
-                    "AUC":        auc,
-                    "Production": "oui" if is_prod else "",
+                stopped = run.data.tags.get("gate_outcome") == "stopped"
+                promoted_at = v.tags.get("promoted_at") if v.tags else None
+                if promoted_at:
+                    promotions.append((float(promoted_at), choice_key))
+
+                raw_rows.append({
+                    "choice_key": choice_key,
+                    "stopped": stopped,
+                    "row": {
+                        "Version":    f"{algo}:v{v.version}",
+                        "DVC Data":   _dvc_tag(year, cumul),
+                        "Annee":      year,
+                        "Algo":       algo,
+                        "F1":         f1,
+                        "AUC":        auc,
+                        "Production": "",  # rempli ci-dessous
+                        "Statut":     "Stoppé (Trigger 3)" if stopped else "",
+                    },
                 })
+
+        # Classement chronologique décroissant des promotions connues (toutes
+        # familles confondues, @Production peut changer d'algorithme) pour
+        # dériver Oui / Prod -1 / Prod -2 / ...
+        promotions.sort(key=lambda t: t[0], reverse=True)
+        prod_rank = {key: i for i, (_, key) in enumerate(promotions)}
+
+        rows, choices = [], []
+        for entry in raw_rows:
+            choice_key = entry["choice_key"]
+            rank = prod_rank.get(choice_key)
+            if choice_key == prod_key:
+                prod_label = "Oui"
+            elif rank is not None and rank > 0:
+                prod_label = f"Prod -{rank}"
+            else:
+                prod_label = "Non"
+            entry["row"]["Production"] = prod_label
+            rows.append(entry["row"])
+            if not entry["stopped"]:
                 choices.append(choice_key)
 
         if not rows:
@@ -633,6 +686,7 @@ def promote_version(choice_key: str) -> str:
         mlflow.set_tracking_uri(MLFLOW_URI)
         client = mlflow.tracking.MlflowClient()
         client.set_registered_model_alias(model_name, "Production", int(version))
+        client.set_model_version_tag(model_name, version, "promoted_at", str(time.time()))
         for other in ALL_MODEL_NAMES:
             if other != model_name:
                 try:
@@ -1295,6 +1349,26 @@ def cancel_run(run_id: str) -> str:
                     " ATTENTION : le revert automatique du blueprint sur main a échoué "
                     "— intervention manuelle requise sur config/model_params.yml (voir logs)."
                 )
+
+        # Tag gate_outcome=stopped sur les runs des 3 algos benchmarkés — train_flow
+        # les enregistre TOUS dans le Model Registry avant même d'atteindre le gate
+        # (promote_task ne fait que poser l'alias @Production ensuite). Sans ce tag,
+        # un STOP laisse dans le Registry des versions indiscernables d'une version
+        # réellement validée, y compris dans le menu de promotion d'urgence du Cockpit
+        # (incident constaté 2026-07-25 : impossible de distinguer "tenté et rejeté"
+        # de "jamais tenté").
+        run_ids = params.get("run_ids") or {}
+        if run_ids:
+            try:
+                mlflow.set_tracking_uri(MLFLOW_URI)
+                mclient = mlflow.tracking.MlflowClient()
+                for algo_run_id in run_ids.values():
+                    try:
+                        mclient.set_tag(algo_run_id, "gate_outcome", "stopped")
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         return msg
     except Exception as e:
         return f"Erreur Prefect API : {e}"
