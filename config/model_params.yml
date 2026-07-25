@@ -1,15 +1,15 @@
 lgbm:
-  class_weight: null
-  colsample_bytree: 1.0
+  class_weight: balanced
+  colsample_bytree: 0.7
   learning_rate: 0.05
   max_depth: -1
-  min_child_samples: 20
-  n_estimators: 300
-  num_leaves: 63
+  min_child_samples: 12
+  n_estimators: 650
+  num_leaves: 100
   reg_alpha: 0.0
   reg_lambda: 0.0
-  subsample: 1.0
-  subsample_freq: 0
+  subsample: 0.8
+  subsample_freq: 5
 rf:
   bootstrap: true
   class_weight: balanced
