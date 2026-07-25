@@ -23,3 +23,4 @@
 - [Blueprint/prod sync gap](project_blueprint_sync_todo.md) — rollback Trigger 3 ne revert pas config/model_params.yml sur main, fix prévu (git revert + [skip ci])
 - [Smoke tests fonctionnels](feedback_smoke_tests_functional_only.md) — test-api post-deploy vérifie que ça répond, ne juge jamais le sens des prédictions
 - [Permission autonomy details](feedback_permission_autonomy.md) — allowlists ssh/docker compose/git push DS+mlops/curl/jq, merge main toujours manuel, gotchas de pattern matching
+- [Cockpit MLflow data périmée — root cause non trouvée](feedback_gradio_stale_mlflow_data.md) — 2 incidents, restart marche mais pourquoi reste inconnu, à investiguer en priorité
