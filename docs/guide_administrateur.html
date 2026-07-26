@@ -124,10 +124,10 @@
   </header>
 
   <!-- 1. CONTEXTE -->
-  <details open>
+  <details>
     <summary>1 — Contexte &amp; Objectif</summary>
     <div class="body">
-      <details open>
+      <details>
         <summary>Problème métier &amp; cible</summary>
         <div class="body">
           <p>Prédire la <strong>gravité d'un accident de la route</strong> à partir de ses caractéristiques au moment de la déclaration : conditions météo, type de voie, heure, caractéristiques de l'usager et du véhicule.</p>
@@ -181,7 +181,7 @@ grav = 0  →  blessé léger ou indemne               (NON PRIORITAIRE)</pre>
         <strong>Source :</strong> ONISR (Observatoire National Interministériel de la Sécurité Routière) — data.gouv.fr · Dataset ID : 53698f4ca3a729239d2036df · Publication annuelle (données N publiées en mai-juin N+1)
       </div>
 
-      <details open>
+      <details>
         <summary>Périmètre retenu : 2021 → 2024</summary>
         <div class="body">
           <p>Schéma ONISR stable depuis 2021 (refonte majeure en 2019). Données 2021→2023 = entraînement cumulatif. Données 2024 = simulation production drift.</p>
@@ -462,7 +462,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
         <strong>Répertoire :</strong> /data/cac_mlops (symlink depuis /home/deploy)
       </div>
 
-      <details open>
+      <details>
         <summary>16 conteneurs Docker (15 permanents + minio-init EXIT)</summary>
         <div class="body">
           <div class="tbl"><table>
@@ -529,7 +529,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
   <details>
     <summary>8 — Sécurité réseau — Tailscale VPN</summary>
     <div class="body">
-      <details open>
+      <details>
         <summary>Modèle d'accès à deux niveaux</summary>
         <div class="body">
           <div class="tbl"><table>
@@ -581,7 +581,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
         <strong>Scaleway Kapsule</strong> — cluster cac-mlops (Kubernetes 1.35.3) · Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB) · Activé à la demande via Prefect flows <code>kapsule-up</code> / <code>kapsule-down</code>
       </div>
 
-      <details open>
+      <details>
         <summary>Deployments (namespace: cac-mlops)</summary>
         <div class="body">
           <div class="tbl"><table>
@@ -644,7 +644,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
   <details>
     <summary>10 — Stack technique détaillée</summary>
     <div class="body">
-      <details open>
+      <details>
         <summary>API — FastAPI</summary>
         <div class="body">
           <div class="tbl"><table>
@@ -805,7 +805,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
         <strong>Branch protection main (activée) :</strong> CI obligatoire avant merge · 1 review requise · force push interdit · suppression interdite
       </div>
 
-      <details open>
+      <details>
         <summary>ci.yml — push mlops/DS / PR→main</summary>
         <div class="body">
           <ul>
@@ -852,7 +852,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
     <div class="body">
       <p>Tous les triggers convergent vers le même nœud <code>deploy-vps-flow</code>, avec gate manuelle <strong>avant toute interruption</strong>.</p>
 
-      <details open>
+      <details>
         <summary>deploy-vps-flow — nœud commun (triggers 1, 2, 3)</summary>
         <div class="body">
           <ul>

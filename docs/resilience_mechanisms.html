@@ -196,9 +196,9 @@
         <!-- Rollbacks (total VPS + K8s) -->
         <tr>
           <td><span class="row-label">Rollbacks<br>&amp; Alerte</span></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">2</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">3</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">4</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">3</span></span></div></td>
         </tr>
         <!-- Interruptions VPS -->
         <tr>
@@ -224,7 +224,7 @@
 
           <!-- T1 -->
           <td>
-            <p class="desc-title">VPS · 4 gates — 1 manuelle — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
+            <p class="desc-title">VPS · 4 gates — 1 manuelle — 1 rollback — 1 interruption<br>K8s · 2 gates — 2 rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -258,12 +258,16 @@
                 <span class="item-label">Gate K8s (si VPS OK)</span>
                 <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production + alerte</span>
               </li>
+              <li class="item-k8s">
+                <span class="item-label">Gate K8s — FTe</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+              </li>
             </ul>
           </td>
 
           <!-- T2 -->
           <td>
-            <p class="desc-title">VPS · 4 gates — 2 manuelles — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
+            <p class="desc-title">VPS · 4 gates — 2 manuelles — 2 rollbacks — 1 interruption<br>K8s · 2 gates — 2 rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -297,12 +301,16 @@
                 <span class="item-label">Gate K8s (si VPS OK)</span>
                 <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → <code>kubectl rollout undo</code> (api / gradio-public / nginx / caddy) + alerte</span>
               </li>
+              <li class="item-k8s">
+                <span class="item-label">Gate K8s — FTe</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte</span>
+              </li>
             </ul>
           </td>
 
           <!-- T3 -->
           <td>
-            <p class="desc-title">VPS · 3 gates — 2 manuelles — 1 rollback — 1 interruption<br>K8s · 1 gate — 1 rollback — 0 interruption</p>
+            <p class="desc-title">VPS · 3 gates — 2 manuelles — 1 rollback — 1 interruption<br>K8s · 2 gates — 2 rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -332,6 +340,10 @@
                 <span class="item-label">Gate K8s (si VPS OK)</span>
                 <span class="item-desc">Readiness probe <code>/health</code> (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production + alerte</span>
               </li>
+              <li class="item-k8s">
+                <span class="item-label">Gate K8s — FTe</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+              </li>
             </ul>
           </td>
         </tr>
@@ -345,13 +357,14 @@
     <div>
       <p class="k8s-banner-title">Mécanismes spécifiques K8s (Kapsule)</p>
       <p class="k8s-banner-text"><strong>Rolling update :</strong> le nouveau pod doit passer la <strong>readiness probe</strong> (<code>/health</code>) avant que l'ancien soit supprimé. Aucune requête n'est perdue — interruptions de service à <strong>0</strong> pour les 3 triggers. Rollback = <code>kubectl rollout undo</code> (vs <code>:rollback</code> Docker côté VPS).</p>
+      <p class="k8s-banner-text"><strong>FTe post-rollout :</strong> le readiness probe valide seulement que le pod démarre, pas le comportement métier réel sur cet environnement (config K8s distincte du VPS). Un test fonctionnel complet (JWT, <code>/predict</code>, what-if) est donc rejoué contre l'endpoint K8s après chaque rollout réussi — même rollback (<code>kubectl rollout undo</code>) si ce test échoue.</p>
       <p class="k8s-banner-text"><strong>Double protection :</strong> Kapsule n'a pas de gate manuelle propre. Le verrou humain est côté VPS (<code>deploy-vps-flow</code> mis en pause). <code>deploy-kapsule-flow</code> ne démarre qu'après GO <em>et</em> <code>test-api</code> VPS réussi — K8s est protégé par deux verrous en série : gate humaine + validation VPS.</p>
     </div>
   </div>
 
   <div class="footnote">
     <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2 Gate 1–2 · T3 Gate 1 uniquement — pas de build, pas de Trivy en T3)</span>
-    <span>Rollback VPS T1/T3 : alias MLflow @Production · Rollback VPS T2 : images Docker <code>:rollback</code> · Rollback K8s (tous triggers) : <code>kubectl rollout undo</code></span>
+    <span>Rollback VPS T1/T3 : alias MLflow @Production · Rollback VPS T2 : images Docker <code>:rollback</code> · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe KO) : <code>kubectl rollout undo</code></span>
   </div>
 </div>
 </div>

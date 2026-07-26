@@ -13,6 +13,7 @@
   --ci-bg:  #eff6ff; --ci-num:  #1d4ed8; --ci-bd:  #93c5fd;
   --cd-bg:  #fffbeb; --cd-num:  #b45309; --cd-bd:  #fcd34d;
   --pf-bg:  #f0fdf4; --pf-num:  #15803d; --pf-bd:  #86efac;
+  --tr-bg:  #f5f3ff; --tr-num:  #6d28d9; --tr-bd:  #c4b5fd;
 }
 @media (prefers-color-scheme: dark) {
   .ci-doc {
@@ -22,6 +23,7 @@
     --ci-bg:  #0a1a38; --ci-num:  #60a5fa; --ci-bd:  #1e3a8a;
     --cd-bg:  #2a1f00; --cd-num:  #fbbf24; --cd-bd:  #78350f;
     --pf-bg:  #052e16; --pf-num:  #4ade80; --pf-bd:  #14532d;
+    --tr-bg:  #1e1b3a; --tr-num:  #a78bfa; --tr-bd:  #4c1d95;
   }
 }
 :root[data-theme="dark"] .ci-doc {
@@ -31,6 +33,7 @@
   --ci-bg:  #0a1a38; --ci-num:  #60a5fa; --ci-bd:  #1e3a8a;
   --cd-bg:  #2a1f00; --cd-num:  #fbbf24; --cd-bd:  #78350f;
   --pf-bg:  #052e16; --pf-num:  #4ade80; --pf-bd:  #14532d;
+  --tr-bg:  #1e1b3a; --tr-num:  #a78bfa; --tr-bd:  #4c1d95;
 }
 :root[data-theme="light"] .ci-doc {
   --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
@@ -39,6 +42,7 @@
   --ci-bg:  #eff6ff; --ci-num:  #1d4ed8; --ci-bd:  #93c5fd;
   --cd-bg:  #fffbeb; --cd-num:  #b45309; --cd-bd:  #fcd34d;
   --pf-bg:  #f0fdf4; --pf-num:  #15803d; --pf-bd:  #86efac;
+  --tr-bg:  #f5f3ff; --tr-num:  #6d28d9; --tr-bd:  #c4b5fd;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
 .ci-doc body, .ci-doc { background: var(--bg); }
@@ -76,6 +80,7 @@
 .ci-doc details.section.ci  { border-color:var(--ci-bd); border-left-color:var(--ci-num); }
 .ci-doc details.section.cd  { border-color:var(--cd-bd); border-left-color:var(--cd-num); }
 .ci-doc details.section.pf  { border-color:var(--pf-bd); border-left-color:var(--pf-num); }
+.ci-doc details.section.tr  { border-color:var(--tr-bd); border-left-color:var(--tr-num); }
 .ci-doc details.section > summary {
   padding:12px 16px;font-size:.90rem;font-weight:700;color:var(--text);
   background:transparent;border-radius:0 7px 7px 0;
@@ -89,6 +94,7 @@
 .ci-doc .section.ci .section-pill { background:var(--ci-bd);color:var(--ci-num); }
 .ci-doc .section.cd .section-pill { background:var(--cd-bd);color:var(--cd-num); }
 .ci-doc .section.pf .section-pill { background:var(--pf-bd);color:var(--pf-num); }
+.ci-doc .section.tr .section-pill { background:var(--tr-bd);color:var(--tr-num); }
 .ci-doc .section-meta { font-size:.76rem;color:var(--muted);padding:8px 16px 12px;font-family:monospace;border-bottom:1px solid var(--border);margin-bottom:4px; }
 
 /* ── Accordions ── */
@@ -140,7 +146,11 @@
     <div class="badge pf"><span class="badge-num">6</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow</span></div>
   </div>
 
-  <div class="section-meta" style="margin:0 0 24px;border:1px solid var(--border);border-radius:8px;padding:14px 16px;">
+  <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
+  <details class="section tr">
+    <summary><span class="section-pill tr">Récap</span> Couverture par trigger</summary>
+    <div class="section-meta">Vue consolidée — checks CI/ETL, mécanismes d'auto-correction et étapes CD réellement exécutés pour chaque trigger</div>
+    <div style="padding:0 16px 16px;">
     <div class="overflow-x">
     <table>
       <tr><th>Trigger</th><th>Checks CI/ETL</th><th>Mécanismes auto-correction</th><th>Étapes CD</th></tr>
@@ -165,14 +175,15 @@
     </table>
     </div>
     <p class="note" style="margin-top:12px;">T1 affiche 0 test CI/CD — ce n'est pas un trou de couverture : sa protection réelle est différente (validation Pandera + auto-correction sur les <strong>vraies</strong> données, exécutées à chaque run, cf. <a href="etl_catalogue.html">Catalogue ETL</a> et <a href="resilience_mechanisms.html">Mécanismes de résilience</a>), plutôt que des tests pytest sur données fabriquées qui n'auraient rien de nouveau à valider tant que le code ETL n'a pas changé.</p>
-  </div>
+    </div>
+  </details><!-- section tr -->
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
-  <details class="section ci" open>
+  <details class="section ci">
     <summary><span class="section-pill ci">CI</span> Tests unitaires — <code>ci.yml</code></summary>
     <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main</div>
 
-    <details open>
+    <details>
       <summary>test_predict.py — Endpoint API <span class="count">11</span></summary>
       <div class="body">
         <div class="overflow-x">

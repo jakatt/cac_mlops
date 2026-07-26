@@ -128,7 +128,7 @@
   </details>
 
   <!-- VPS -->
-  <details open>
+  <details>
     <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · 100 GB STORAGE)</summary>
     <div class="body">
       <div class="band">
@@ -137,10 +137,10 @@
       </div>
 
       <!-- Docker -->
-      <details open>
+      <details>
         <summary>🐳 Docker — 16 conteneurs (15 permanents + minio-init EXIT)</summary>
         <div class="body">
-          <details open>
+          <details>
             <summary>🔵 Notre Solution — 4 conteneurs (3 images buildées en CI/CD)</summary>
             <div class="body">
               <div class="tbl"><table>
@@ -184,7 +184,7 @@
       <details>
         <summary>⚙️ Prefect — 14 flows (prefect-server :4200 · pool: process)</summary>
         <div class="body">
-          <details open>
+          <details>
             <summary>🤖 ML / ETL — 7 flows</summary>
             <div class="body">
               <div class="tbl"><table>
@@ -311,7 +311,7 @@
         Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>). Pas de Cockpit admin sur K8s car dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
       </div>
 
-      <details open>
+      <details>
         <summary>🚀 Deployments (namespace: cac-mlops, 9 Deployments + 2 DaemonSets)</summary>
         <div class="body">
           <div class="tbl"><table>

@@ -80,7 +80,7 @@
   </header>
 
   <!-- 1. SETUP -->
-  <details open>
+  <details>
     <summary>1 — Setup initial (une seule fois)</summary>
     <div class="body">
       <pre>git clone git@github.com:jakatt/cac_mlops.git
@@ -123,7 +123,7 @@ python -m src.data.make_dataset --year 2023 --cumul</pre>
     <div class="body">
       <p>Les runs locaux remontent sur le <strong>MLflow partagé du VPS</strong> — directement via Tailscale (<code>MLFLOW_TRACKING_URI=http://100.117.99.62:5001</code> déjà dans <code>.env</code>), <strong>aucun tunnel SSH nécessaire</strong> (cf. section 1). MLflow UI : <code>http://100.117.99.62:5001</code>.</p>
 
-      <details open>
+      <details>
         <summary>Levier 2 — Approche 1 : Override CLI (rapide, 1 run)</summary>
         <div class="body">
           <p><strong>Objectif :</strong> identifier les valeurs optimales à consigner ensuite dans <code>config/model_params.yml</code>.</p>
@@ -186,7 +186,7 @@ print(search.best_params_)
     <div class="body">
       <p>Quand le tableau affiché en fin de training indique <strong>"Send to prod ? OUI"</strong> :</p>
 
-      <details open>
+      <details>
         <summary>Étape 1 — Générer le blueprint depuis le run champion</summary>
         <div class="body">
           <p>Copier la commande affichée juste en dessous du verdict (le run_id est déjà rempli) :</p>
@@ -195,7 +195,7 @@ print(search.best_params_)
         </div>
       </details>
 
-      <details open>
+      <details>
         <summary>Étape 2 — Commiter et ouvrir une PR</summary>
         <div class="body">
           <pre>git checkout DS   # branche de travail DS habituelle
@@ -225,7 +225,7 @@ git push origin DS</pre>
   <details>
     <summary>5 — Algorithmes et hyperparamètres</summary>
     <div class="body">
-      <details open>
+      <details>
         <summary>Deux leviers distincts</summary>
         <div class="body">
           <div class="tbl"><table>
