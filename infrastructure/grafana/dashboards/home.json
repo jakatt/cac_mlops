@@ -309,7 +309,7 @@
         "query": "",
         "showHeadings": false,
         "showRecentlyViewed": false,
-        "showSearch": false,
+        "showSearch": true,
         "showStarred": false
       }
     },

@@ -1,9 +1,7 @@
-"""GET /health and GET /metrics endpoints."""
+"""GET /health endpoint."""
 from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse
 
 from ..model_loader import get_model_version, is_model_loaded
-from .._metrics import REGISTRY, REQUESTS_TOTAL, PREDICTIONS_TOTAL
 
 router = APIRouter()
 
@@ -18,12 +16,12 @@ def health() -> dict:
         "model_version": get_model_version(),
     }
 
-
-@router.get("/metrics", response_class=PlainTextResponse, tags=["ops"])
-def metrics() -> str:
-    """Prometheus-format metrics endpoint."""
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    return PlainTextResponse(
-        content=generate_latest(REGISTRY).decode("utf-8"),
-        media_type=CONTENT_TYPE_LATEST,
-    )
+# GET /metrics vit dans routes/dashboard.py — c'est la seule version qui
+# rafraîchit mlops_model_info et les métriques de drift avant de servir
+# (update_model_info()/update_drift_metrics_from_file()). Une route /metrics
+# dupliquée existait ici, sans ces appels ; comme health_router est inclus
+# avant dashboard_router dans main.py, elle interceptait TOUJOURS le scrape
+# Prometheus et la vraie route n'était jamais atteinte — mlops_model_info
+# (Gauge labellisé) n'était donc jamais initialisé, d'où "No data" en
+# permanence sur le panneau Grafana "Modèle @Production" (root cause trouvée
+# le 2026-07-26, cf. feedback_grafana_panels_root_cause.md).
