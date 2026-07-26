@@ -140,8 +140,7 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">11</span><span class="badge-label">Tests CI — API<br>test_predict.py</span></div>
-    <div class="badge ci"><span class="badge-num">43</span><span class="badge-label">Tests CI — ETL/Data<br>4 fichiers, données mockées</span></div>
+    <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 43, données mockées</span></div>
     <div class="badge cd"><span class="badge-num">10</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
     <div class="badge pf"><span class="badge-num">6</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow</span></div>
   </div>
@@ -180,8 +179,13 @@
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
   <details class="section ci">
-    <summary><span class="section-pill ci">CI</span> Tests unitaires — <code>ci.yml</code></summary>
-    <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main</div>
+    <summary><span class="section-pill ci">CI</span> Tests unitaires</summary>
+    <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main (T2/T3 uniquement — jamais T1)</div>
+
+    <details>
+      <summary>API <span class="count">11</span> — <code>ci.yml</code></summary>
+      <div class="body">
+      <div style="padding:0;">
 
     <details>
       <summary>test_predict.py — Endpoint API <span class="count">11</span></summary>
@@ -204,6 +208,16 @@
         </div>
       </div>
     </details>
+
+      </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>DATAS <span class="count">43</span> — ETL (<code>etl_flow.py</code>, Trigger 1) · CI (<code>ci.yml</code>, T2/T3)</summary>
+      <div class="body">
+      <div style="padding:0;">
+        <p class="note" style="margin-top:0;">Ces 43 tests couvrent la même logique qui s'exécute pour de vrai sur données réelles côté Trigger 1 (<code>etl_flow.py</code>, aucun lien avec <code>ci.yml</code> qui ne se déclenche jamais sur ce trigger) — détail de cette exécution réelle : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
 
     <details>
       <summary>test_preprocessing.py — Feature engineering <span class="count">15</span></summary>
@@ -306,6 +320,10 @@
         </table>
         </div>
         <p class="note">Détail complet de chaque mécanisme en conditions réelles (pas seulement testé en CI) : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
+      </div>
+    </details>
+
+      </div>
       </div>
     </details>
   </details><!-- section ci -->
