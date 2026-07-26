@@ -568,6 +568,11 @@ def _dvc_tag(year: str, cumul: str) -> str:
 
 
 _PROD_EXPERIMENT_NAME = "accidents_severity_prod"
+# Constante partagée entre _load_models_data() (l'écrit) et
+# _current_production_summary() (la compare) — un précédent bug (2026-07-26)
+# venait d'une comparaison sur un literal dupliqué ("oui" vs "Oui") qui avait
+# dérivé silencieusement ; une seule constante élimine ce risque de dérive.
+_PROD_LABEL = "✅ En Prod"
 
 
 def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
@@ -661,7 +666,7 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
             choice_key = entry["choice_key"]
             rank = prod_rank.get(choice_key)
             if choice_key == prod_key:
-                prod_label = "Oui"
+                prod_label = _PROD_LABEL
             elif rank is not None and rank > 0:
                 prod_label = f"Prod -{rank}"
             else:
@@ -993,10 +998,11 @@ def _current_production_summary() -> dict | None:
     if "Production" not in df.columns:
         return None
     # Bug corrigé 2026-07-26 : comparaison sur "oui" (minuscule) alors que
-    # _load_models_data() pose "Oui" — ne matchait donc jamais, cette fonction
+    # _load_models_data() posait "Oui" — ne matchait donc jamais, cette fonction
     # renvoyait toujours None et la ligne "@Production actuel" de la gate card
-    # ne s'affichait jamais.
-    prod = df[df["Production"] == "Oui"]
+    # ne s'affichait jamais. Utilise désormais _PROD_LABEL (constante partagée)
+    # plutôt qu'un literal dupliqué, pour éliminer ce risque de dérive.
+    prod = df[df["Production"] == _PROD_LABEL]
     if prod.empty:
         return None
     row = prod.iloc[0]
