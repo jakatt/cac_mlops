@@ -253,7 +253,27 @@ jobs:
               done
 
               echo "==> Build détecté — pull nouvelles images GHCR"
-              docker compose pull
+              # --no-parallel + retry : containerd a un bug connu de race
+              # condition sur son garbage collector ("failed to prepare
+              # extraction snapshot... lease does not exist") qui se déclenche
+              # nettement plus souvent quand plusieurs images sont tirées EN
+              # PARALLÈLE (comportement par défaut de `docker compose pull`) —
+              # incident vécu 2026-07-26 : rebuild api+gradio simultané, pull
+              # échoué, tout le déploiement bloqué avant même de déclencher
+              # Prefect, nécessitant un rerun manuel du job GitHub Actions.
+              # --no-parallel réduit la probabilité de la race ; le retry
+              # (même principe que les tasks Prefect ETL, retries=2) absorbe
+              # le cas où elle se produit quand même, sans intervention humaine.
+              PULL_ATTEMPTS=0
+              until docker compose pull --no-parallel; do
+                PULL_ATTEMPTS=$((PULL_ATTEMPTS + 1))
+                if [ "$PULL_ATTEMPTS" -ge 3 ]; then
+                  echo "::error::docker compose pull échoué après 3 tentatives"
+                  exit 1
+                fi
+                echo "::warning::docker compose pull échoué (tentative ${PULL_ATTEMPTS}/3) — retry dans 10s"
+                sleep 10
+              done
             else
               echo "==> Pas de build — images existantes conservées"
             fi
