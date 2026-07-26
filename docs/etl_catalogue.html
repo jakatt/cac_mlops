@@ -134,7 +134,7 @@
   <div class="eyebrow">Trigger 1 — Nouvelles données</div>
   <h1 class="page-title">Catalogue ETL</h1>
   <p class="page-sub">
-    Détail des 5 grandes étapes du flow <code>etl-flow</code> (déclenché par <code>check-new-data-flow</code>,
+    Détail des 4 grandes étapes du flow <code>etl-flow</code> (déclenché par <code>check-new-data-flow</code>,
     ou une fois par cycle dans <code>full_retrain_flow</code>). Contrairement aux tests CI (données fabriquées,
     voir <a href="tests_catalogue.html">Catalogue des tests</a>), tout ce qui suit s'exécute sur les
     <strong>vraies données</strong> ONISR téléchargées le jour même — c'est la protection réelle de Trigger 1,
@@ -221,13 +221,13 @@
     <p class="note">Niveau global du rapport = le pire niveau rencontré (CRITICAL &gt; WARNING &gt; OK). CRITICAL lève une exception et stoppe le flow ; WARNING logue une alerte et laisse le pipeline continuer ; AUTO_CORRECTED est informatif (traité comme OK).</p>
   </details><!-- section va -->
 
-  <!-- ════════════════════ 3. DVC RAW ════════════════════ -->
+  <!-- ════════════════════ 3. DVC ════════════════════ -->
   <details class="section dv">
-    <summary><span class="section-pill dv">3</span> Synchronisation DVC — données brutes — <code>dvc_push_task</code></summary>
-    <div class="section-meta">src/flows/etl_flow.py — _dvc_push_and_git_commit("data/raw/{year}")</div>
+    <summary><span class="section-pill dv">3</span> Synchronisation DVC — <code>dvc_push_task</code> / <code>dvc_push_preprocessed_task</code></summary>
+    <div class="section-meta">src/flows/etl_flow.py — _dvc_push_and_git_commit(), même mécanisme appelé 2 fois dans le flow (avant et après le preprocessing)</div>
 
     <details>
-      <summary>Clone jetable &amp; push <span class="count">4</span></summary>
+      <summary>Données brutes — avant preprocessing <span class="count">4</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -238,6 +238,13 @@
           <tr><td>Commit + push git <code>[skip ci]</code></td><td>Le <code>.dvc</code> mis à jour est commité et poussé sur <code>origin/main</code> — source de vérité partagée pour tout <code>dvc pull</code> ultérieur ; no-op silencieux si déjà à jour</td></tr>
         </table>
         </div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Données préprocessées — après preprocessing <span class="count">4</span></summary>
+      <div class="body">
+        <p class="note" style="margin-top:0;">Même mécanisme que ci-dessus (clone jetable, <code>dvc add/push</code>, commit git <code>[skip ci]</code>), appliqué cette fois au dataset propre final (<code>cumul_2021_2022_...</code>) une fois l'étape 4 terminée — permet à tout consommateur (poste DS, VPS) de <code>dvc pull</code> le résultat exact de ce cycle sans rejouer tout le preprocessing.</p>
       </div>
     </details>
   </details><!-- section dv -->
@@ -290,15 +297,6 @@
       </div>
     </details>
   </details><!-- section pp -->
-
-  <!-- ════════════════════ 5. DVC PREPROCESSED ════════════════════ -->
-  <details class="section dv">
-    <summary><span class="section-pill dv">5</span> Synchronisation DVC — données préprocessées — <code>dvc_push_preprocessed_task</code></summary>
-    <div class="section-meta">src/flows/etl_flow.py — _dvc_push_and_git_commit("data/preprocessed/{...}")</div>
-    <div style="padding:0 16px 16px;">
-      <p class="note">Même mécanisme que l'étape 3 (clone jetable, <code>dvc add/push</code>, commit git <code>[skip ci]</code>), appliqué cette fois au dataset propre final (<code>cumul_2021_2022_...</code>) — permet à tout consommateur (poste DS, VPS) de <code>dvc pull</code> le résultat exact de ce cycle sans rejouer tout le preprocessing.</p>
-    </div>
-  </details><!-- section dv -->
 
 </div><!-- .wrapper -->
 </div><!-- .ci-doc -->
