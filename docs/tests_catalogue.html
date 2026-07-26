@@ -147,7 +147,7 @@
   </div>
 
   <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
-  <details class="section tr" open>
+  <details class="section tr">
     <summary><span class="section-pill tr">Récap</span> Couverture par trigger</summary>
     <div class="section-meta">Vue consolidée — checks CI/ETL, mécanismes d'auto-correction et étapes CD réellement exécutés pour chaque trigger</div>
     <div style="padding:0 16px 16px;">
@@ -179,11 +179,11 @@
   </details><!-- section tr -->
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
-  <details class="section ci" open>
+  <details class="section ci">
     <summary><span class="section-pill ci">CI</span> Tests unitaires — <code>ci.yml</code></summary>
     <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main</div>
 
-    <details open>
+    <details>
       <summary>test_predict.py — Endpoint API <span class="count">11</span></summary>
       <div class="body">
         <div class="overflow-x">

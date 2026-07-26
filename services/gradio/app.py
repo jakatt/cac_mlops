@@ -2273,7 +2273,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         # ── Onglet Cockpit : gate + orchestration + healthcheck + liens ──────
         with gr.Tab("Cockpit"):
             if not IS_KAPSULE:
-                with gr.Accordion("⏸  Validation des déploiements en attente", open=True):
+                with gr.Accordion("⏸  Validation des déploiements en attente", open=False):
                     gr.Markdown(
                         "### Cockpit — validation des déploiements en attente\n"
                         "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
