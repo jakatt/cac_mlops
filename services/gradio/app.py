@@ -66,10 +66,12 @@ GITHUB_REPO      = os.getenv("GITHUB_REPO",          "jakatt/cac_mlops")
 GITHUB_TOKEN     = os.getenv("GITHUB_TOKEN",         "")
 KAPSULE_STATE    = Path(os.getenv("KAPSULE_STATE",   "/app/state/kapsule_ips"))
 
-NAVY  = "#156082"
-SLATE = "#374151"
-MUTED = "#6B7280"
-BLUE2 = "#4a9fc4"
+NAVY    = "#156082"
+SLATE   = "#374151"
+MUTED   = "#6B7280"
+BLUE2   = "#4a9fc4"
+SUCCESS = "#1a7f37"
+DANGER  = "#cf222e"
 
 
 def _onisr_year_range() -> str:
@@ -618,10 +620,12 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
                     else:
                         year, cumul = "?", "false"
                     algo = p.get("algorithm", model_name.split("_")[0])
-                    f1   = round(m.get("f1_score", m.get("f1",  0)), 4)
-                    auc  = round(m.get("roc_auc",  m.get("auc", 0)), 4)
+                    f1       = round(m.get("f1_score",  m.get("f1",       0)), 4)
+                    auc      = round(m.get("roc_auc",   m.get("auc",      0)), 4)
+                    accuracy = round(m.get("accuracy",  0), 4)
+                    recall   = round(m.get("recall",    0), 4)
                 except Exception:
-                    year, cumul, algo, f1, auc = "?", "false", "?", 0.0, 0.0
+                    year, cumul, algo, f1, auc, accuracy, recall = "?", "false", "?", 0.0, 0.0, 0.0, 0.0
 
                 choice_key = f"{model_name}:{v.version}"
                 stopped = run.data.tags.get("gate_outcome") == "stopped"
@@ -639,6 +643,8 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
                         "Algo":       algo,
                         "F1":         f1,
                         "AUC":        auc,
+                        "Accuracy":   accuracy,
+                        "Recall":     recall,
                         "Production": "",  # rempli ci-dessous
                         "Statut":     "Stoppé (Trigger 3)" if stopped else "",
                     },
@@ -967,6 +973,9 @@ def refresh_recent_runs() -> pd.DataFrame:
 # Seuils requis pour la promotion d'un champion — dupliqués depuis
 # src/models/validate_model.py::KPI_THRESHOLDS (service Gradio séparé, pas d'import possible).
 _KPI_THRESHOLDS = {"f1": 0.60, "auc": 0.77, "accuracy": 0.72, "recall": 0.58}
+# Règle de comparaison vs @Production — dupliquée depuis src/flows/train_flow.py
+# (MIN_IMPROVEMENT, select_champion_task) : même limitation, pas d'import possible.
+_MIN_IMPROVEMENT = 0.01
 
 # Services reconstruits (rebuild) quand needs_build=True — ordre d'affichage
 _BUILD_SERVICES = ["api", "mlflow", "gradio", "gradio-public"]
@@ -983,11 +992,18 @@ def _current_production_summary() -> dict | None:
     df, _ = _load_models_data()
     if "Production" not in df.columns:
         return None
-    prod = df[df["Production"] == "oui"]
+    # Bug corrigé 2026-07-26 : comparaison sur "oui" (minuscule) alors que
+    # _load_models_data() pose "Oui" — ne matchait donc jamais, cette fonction
+    # renvoyait toujours None et la ligne "@Production actuel" de la gate card
+    # ne s'affichait jamais.
+    prod = df[df["Production"] == "Oui"]
     if prod.empty:
         return None
     row = prod.iloc[0]
-    return {"version": row["Version"], "f1": row["F1"], "auc": row["AUC"]}
+    return {
+        "version": row["Version"], "f1": row["F1"], "auc": row["AUC"],
+        "accuracy": row["Accuracy"], "recall": row["Recall"],
+    }
 
 
 _PIPELINE: dict[str, dict] = {
@@ -1214,7 +1230,34 @@ def _render_gate_card(run_id: str) -> str:
         if prod:
             parts.append(
                 f'<p style="font-size:.82rem;color:{SLATE};">@Production actuel : '
-                f'<b>{prod["version"]}</b> — F1={prod["f1"]} · AUC={prod["auc"]}</p>'
+                f'<b>{prod["version"]}</b> — F1={prod["f1"]} · AUC={prod["auc"]} · '
+                f'Accuracy={prod["accuracy"]} · Recall={prod["recall"]}</p>'
+            )
+            # Règle de comparaison réellement appliquée par select_champion_task()
+            # (src/flows/train_flow.py) — affichée ici pour que le verdict GO/STOP
+            # ne dépende pas d'un calcul mental sur les chiffres bruts ci-dessus.
+            champ_metrics = metrics.get(champion, {})
+            if trigger == "T3":
+                delta = champ_metrics.get("f1", 0) - prod["f1"]
+                passed = delta >= _MIN_IMPROVEMENT
+                icon, color = (("✅", SUCCESS) if passed else ("❌", DANGER))
+                parts.append(
+                    f'<p style="font-size:.82rem;color:{color};font-weight:600;">{icon} Règle Trigger 3 : '
+                    f'+{_MIN_IMPROVEMENT} f1 minimum vs @Production — delta = {delta:+.4f}</p>'
+                )
+            else:
+                regressions = [k for k in _KPI_THRESHOLDS if champ_metrics.get(k, 0) < prod.get(k, 0)]
+                passed = len(regressions) < 2
+                icon, color = (("✅", SUCCESS) if passed else ("❌", DANGER))
+                reg_str = ", ".join(regressions) if regressions else "aucune"
+                parts.append(
+                    f'<p style="font-size:.82rem;color:{color};font-weight:600;">{icon} Règle Trigger 1 : '
+                    f'régression tolérée sur ≤1 métrique vs @Production — régression(s) : {reg_str}</p>'
+                )
+        else:
+            parts.append(
+                f'<p style="font-size:.82rem;color:{MUTED};">Pas de @Production existant — '
+                f'promotion directe si les seuils KPI absolus ci-dessus sont respectés.</p>'
             )
 
     if sha_tag:
