@@ -235,6 +235,10 @@
                 <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</span>
               </li>
               <li>
+                <span class="item-label" style="opacity:.7;">Auto-correction<br><span style="font-weight:400;font-size:.9em;">(non bloquant)</span></span>
+                <span class="item-desc">Pandera ne fait pas que bloquer ou passer : 4 mécanismes corrigent silencieusement des anomalies connues (renommage colonne, espaces insécables, coercion de type, fuzzy matching de nom de fichier) sans interrompre le flow — détail complet dans le <a href="tests_catalogue.html">Catalogue des tests</a> et le <a href="etl_catalogue.html">Catalogue ETL</a>.</span>
+              </li>
+              <li>
                 <span class="item-label">Gate 3</span>
                 <span class="item-desc">KPI gate failed : aucun champion RF/XGB/LGBM → @Production inchangé + alerte</span>
               </li>

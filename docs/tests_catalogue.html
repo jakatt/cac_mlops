@@ -134,9 +134,37 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests unitaires CI<br>pytest · 0 ignoré</span></div>
+    <div class="badge ci"><span class="badge-num">11</span><span class="badge-label">Tests CI — API<br>test_predict.py</span></div>
+    <div class="badge ci"><span class="badge-num">43</span><span class="badge-label">Tests CI — ETL/Data<br>4 fichiers, données mockées</span></div>
     <div class="badge cd"><span class="badge-num">10</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
     <div class="badge pf"><span class="badge-num">6</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow</span></div>
+  </div>
+
+  <div class="section-meta" style="margin:0 0 24px;border:1px solid var(--border);border-radius:8px;padding:14px 16px;">
+    <div class="overflow-x">
+    <table>
+      <tr><th>Trigger</th><th>Checks CI/ETL</th><th>Mécanismes auto-correction</th><th>Étapes CD</th></tr>
+      <tr>
+        <td><strong>T1</strong> — Nouvelles données</td>
+        <td>43 (logique testée en CI, exécutée pour de vrai sur données réelles — voir <a href="etl_catalogue.html">Catalogue ETL</a>)</td>
+        <td>4 (voir plus bas)</td>
+        <td>0 — <code>deploy.yml</code> ne se déclenche jamais (aucun push sur <code>main</code>, flow Prefect pur)</td>
+      </tr>
+      <tr>
+        <td><strong>T2</strong> — Code seul</td>
+        <td>54 (11 API + 43 ETL — suite complète, aucun filtrage par fichier changé)</td>
+        <td>n/a (pas de nouvelles données)</td>
+        <td>jusqu'à 10 — variable selon les services touchés (builds conditionnels)</td>
+      </tr>
+      <tr>
+        <td><strong>T3</strong> — Nouveau blueprint</td>
+        <td>54 (idem T2 — même suite complète)</td>
+        <td>n/a</td>
+        <td>4 étapes réelles (1·6·9·10) + 2 no-op (7·8) + 4 toujours sautées (2-5) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
+      </tr>
+    </table>
+    </div>
+    <p class="note" style="margin-top:12px;">T1 affiche 0 test CI/CD — ce n'est pas un trou de couverture : sa protection réelle est différente (validation Pandera + auto-correction sur les <strong>vraies</strong> données, exécutées à chaque run, cf. <a href="etl_catalogue.html">Catalogue ETL</a> et <a href="resilience_mechanisms.html">Mécanismes de résilience</a>), plutôt que des tests pytest sur données fabriquées qui n'auraient rien de nouveau à valider tant que le code ETL n'a pas changé.</p>
   </div>
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
@@ -252,6 +280,23 @@
         </div>
       </div>
     </details>
+
+    <details>
+      <summary>Mécanismes d'auto-correction couverts <span class="count">4</span></summary>
+      <div class="body">
+        <p class="note" style="margin-top:0;">Sur les 5 tests de <code>test_known_fixes.py</code>, 2 seulement couvrent un mécanisme réel (les 3 autres sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas). Au total, tout module confondu, la chaîne ETL compte <strong>4 mécanismes d'auto-correction</strong> distincts :</p>
+        <div class="overflow-x">
+        <table>
+          <tr><th>#</th><th>Mécanisme</th><th>Module</th><th>Réagit à</th></tr>
+          <tr><td>1</td><td>Renommage <code>Accident_Id</code>→<code>Num_Acc</code></td><td><code>known_fixes.py</code></td><td>Format ONISR 2022+ (colonne renommée par la source)</td></tr>
+          <tr><td>2</td><td>Nettoyage espaces insécables/superflus</td><td><code>known_fixes.py</code></td><td>Artefacts d'encodage sur colonnes texte</td></tr>
+          <tr><td>3</td><td>Coercion de type Pandera</td><td><code>schema_validator.py</code></td><td>Colonne numérique lue en texte (artefact de formatage)</td></tr>
+          <tr><td>4</td><td>Matching fuzzy de nom de fichier</td><td><code>import_raw_data.py</code></td><td>Faute de frappe ONISR sur le nom du fichier</td></tr>
+        </table>
+        </div>
+        <p class="note">Détail complet de chaque mécanisme en conditions réelles (pas seulement testé en CI) : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
+      </div>
+    </details>
   </details><!-- section ci -->
 
   <!-- ════════════════════ 2. CD ════════════════════ -->
@@ -295,13 +340,13 @@
       </tr>
       <tr>
         <td>7</td>
-        <td>docker compose up</td>
-        <td><code>docker compose pull</code> (si build) + <code>docker compose up -d --remove-orphans</code></td>
+        <td><code>docker compose pull</code></td>
+        <td>Pull des nouvelles images (si <code>needs_build=true</code> uniquement) — <strong>pas de <code>docker compose up</code> ici</strong> : le vrai redémarrage est appliqué par <code>deploy-vps-flow</code>/<code>update-model-flow</code> APRÈS la gate manuelle (<code>compose_up_task</code>), pour que la gate protège bien toute interruption de service</td>
       </tr>
       <tr>
         <td>8</td>
-        <td>Restarts ciblés</td>
-        <td>Restart sélectif des conteneurs modifiés uniquement (nginx · gradio · grafana · prometheus · loki · promtail)</td>
+        <td>Calcul <code>RESTART_SERVICES</code></td>
+        <td>Détermine quels conteneurs (nginx · gradio · grafana · prometheus · loki · promtail) devront être redémarrés — passé en paramètre au flow Prefect, qui exécute le restart réel après la gate. Ne redémarre rien lui-même.</td>
       </tr>
       <tr>
         <td>9</td>

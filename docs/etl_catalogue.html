@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Catalogue ETL — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --dl-bg:  #eff6ff; --dl-num:  #1d4ed8; --dl-bd:  #93c5fd;
+  --va-bg:  #fef2f2; --va-num:  #b91c1c; --va-bd:  #fca5a5;
+  --dv-bg:  #fffbeb; --dv-num:  #b45309; --dv-bd:  #fcd34d;
+  --pp-bg:  #f0fdf4; --pp-num:  #15803d; --pp-bd:  #86efac;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+    --dl-bg:  #0a1a38; --dl-num:  #60a5fa; --dl-bd:  #1e3a8a;
+    --va-bg:  #2d0f0f; --va-num:  #f87171; --va-bd:  #7f1d1d;
+    --dv-bg:  #2a1f00; --dv-num:  #fbbf24; --dv-bd:  #78350f;
+    --pp-bg:  #052e16; --pp-num:  #4ade80; --pp-bd:  #14532d;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  --dl-bg:  #0a1a38; --dl-num:  #60a5fa; --dl-bd:  #1e3a8a;
+  --va-bg:  #2d0f0f; --va-num:  #f87171; --va-bd:  #7f1d1d;
+  --dv-bg:  #2a1f00; --dv-num:  #fbbf24; --dv-bd:  #78350f;
+  --pp-bg:  #052e16; --pp-num:  #4ade80; --pp-bd:  #14532d;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --dl-bg:  #eff6ff; --dl-num:  #1d4ed8; --dl-bd:  #93c5fd;
+  --va-bg:  #fef2f2; --va-num:  #b91c1c; --va-bd:  #fca5a5;
+  --dv-bg:  #fffbeb; --dv-num:  #b45309; --dv-bd:  #fcd34d;
+  --pp-bg:  #f0fdf4; --pp-num:  #15803d; --pp-bd:  #86efac;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc body, .ci-doc { background: var(--bg); }
+.ci-doc .wrapper { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:680px;margin-bottom:28px;line-height:1.6; }
+
+.ci-doc .summary-row { display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap; }
+.ci-doc .badge {
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:12px 20px;border-radius:8px;border:1px solid;min-width:110px;
+}
+.ci-doc .badge.dl  { background:var(--dl-bg); border-color:var(--dl-bd); }
+.ci-doc .badge.va  { background:var(--va-bg); border-color:var(--va-bd); }
+.ci-doc .badge.dv  { background:var(--dv-bg); border-color:var(--dv-bd); }
+.ci-doc .badge.pp  { background:var(--pp-bg); border-color:var(--pp-bd); }
+.ci-doc .badge-num { font-size:1.5rem;font-weight:700; }
+.ci-doc .badge.dl  .badge-num { color:var(--dl-num); }
+.ci-doc .badge.va  .badge-num { color:var(--va-num); }
+.ci-doc .badge.dv  .badge-num { color:var(--dv-num); }
+.ci-doc .badge.pp  .badge-num { color:var(--pp-num); }
+.ci-doc .badge-label { font-size:.72rem;font-weight:600;color:var(--muted);text-align:center; }
+
+.ci-doc .section-pill {
+  font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 8px;border-radius:4px;flex-shrink:0;
+}
+
+.ci-doc details.section {
+  border:1px solid var(--border);border-left:3px solid;border-radius:0 8px 8px 0;
+  margin-bottom:20px;background:var(--surface);
+}
+.ci-doc details.section.dl  { border-color:var(--dl-bd); border-left-color:var(--dl-num); }
+.ci-doc details.section.va  { border-color:var(--va-bd); border-left-color:var(--va-num); }
+.ci-doc details.section.dv  { border-color:var(--dv-bd); border-left-color:var(--dv-num); }
+.ci-doc details.section.pp  { border-color:var(--pp-bd); border-left-color:var(--pp-num); }
+.ci-doc details.section > summary {
+  padding:12px 16px;font-size:.90rem;font-weight:700;color:var(--text);
+  background:transparent;border-radius:0 7px 7px 0;
+  list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;
+}
+.ci-doc details.section > summary:hover { background:var(--accent-lt); }
+.ci-doc details.section[open] > summary { border-bottom:1px solid var(--border);border-radius:0 7px 0 0; }
+.ci-doc details.section > summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details.section[open] > summary::after { transform:rotate(90deg); }
+.ci-doc details.section > summary::-webkit-details-marker { display:none; }
+.ci-doc .section.dl .section-pill { background:var(--dl-bd);color:var(--dl-num); }
+.ci-doc .section.va .section-pill { background:var(--va-bd);color:var(--va-num); }
+.ci-doc .section.dv .section-pill { background:var(--dv-bd);color:var(--dv-num); }
+.ci-doc .section.pp .section-pill { background:var(--pp-bd);color:var(--pp-num); }
+.ci-doc .section-meta { font-size:.76rem;color:var(--muted);padding:8px 16px 12px;font-family:monospace;border-bottom:1px solid var(--border);margin-bottom:4px; }
+
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin:0 16px 8px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:10px 14px;cursor:pointer;font-size:.85rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:12px 14px 14px; }
+.ci-doc .count { font-size:.73rem;font-weight:600;margin-left:4px;padding:1px 7px;border-radius:10px;background:var(--accent-lt);color:var(--accent); }
+
+.ci-doc .overflow-x { overflow-x:auto; }
+.ci-doc table { width:100%;border-collapse:collapse;font-size:.80rem; }
+.ci-doc th {
+  text-align:left;padding:7px 12px;background:var(--sum-bg);
+  color:var(--accent);font-weight:600;font-size:.73rem;letter-spacing:.04em;
+  border-bottom:2px solid var(--border);white-space:nowrap;
+}
+.ci-doc td { padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top; }
+.ci-doc tr:last-child td { border-bottom:none; }
+.ci-doc tr:hover td { background:var(--accent-lt); }
+.ci-doc code { font-family:monospace;font-size:.82rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;color:var(--accent); }
+.ci-doc .note { font-size:.77rem;color:var(--muted);font-style:italic;margin-top:10px;padding:8px 12px;border-left:2px solid var(--border); }
+.ci-doc .tag-crit { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#fee2e2;color:#991b1b;font-weight:600; }
+.ci-doc .tag-warn { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#fef9c3;color:#92400e;font-weight:600; }
+.ci-doc .tag-auto { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#dcfce7;color:#166534;font-weight:600; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">Trigger 1 — Nouvelles données</div>
+  <h1 class="page-title">Catalogue ETL</h1>
+  <p class="page-sub">
+    Détail des 5 grandes étapes du flow <code>etl-flow</code> (déclenché par <code>check-new-data-flow</code>,
+    ou une fois par cycle dans <code>full_retrain_flow</code>). Contrairement aux tests CI (données fabriquées,
+    voir <a href="tests_catalogue.html">Catalogue des tests</a>), tout ce qui suit s'exécute sur les
+    <strong>vraies données</strong> ONISR téléchargées le jour même — c'est la protection réelle de Trigger 1,
+    complémentaire aux tests unitaires qui gardent la logique correcte à chaque changement de code.
+  </p>
+
+  <div class="summary-row">
+    <div class="badge dl"><span class="badge-num">6</span><span class="badge-label">Téléchargement<br>découverte + validation fichier</span></div>
+    <div class="badge va"><span class="badge-num">10</span><span class="badge-label">Validation Pandera<br>3 niveaux</span></div>
+    <div class="badge dv"><span class="badge-num">4</span><span class="badge-label">Sync DVC<br>× 2 (brut + préprocessé)</span></div>
+    <div class="badge pp"><span class="badge-num">10</span><span class="badge-label">Preprocessing<br>feature engineering</span></div>
+  </div>
+
+  <!-- ════════════════════ 1. TÉLÉCHARGEMENT ════════════════════ -->
+  <details class="section dl" open>
+    <summary><span class="section-pill dl">1</span> Découverte &amp; téléchargement — <code>download_task</code></summary>
+    <div class="section-meta">src/data/import_raw_data.py — download_year() · resolve_year_urls() · discover_raw_files()</div>
+
+    <details open>
+      <summary>Résolution &amp; téléchargement <span class="count">6</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Sous-étape</th><th>Ce qui se passe</th></tr>
+          <tr><td>Résolution dynamique des URLs</td><td>API <code>data.gouv.fr</code> interrogée à chaque run — aucun nom de fichier ni URL codé en dur, résiste aux changements de nommage côté ONISR</td></tr>
+          <tr><td>Filtrage des ressources</td><td>Format CSV uniquement, taille ≥ 500 Ko, exclusion des titres contenant "enrichi/consolidé/traitement/qualité/bilan/synthèse/analyse/open data/résumé" (datasets dérivés à écarter)</td></tr>
+          <tr><td>Matching par catégorie</td><td>4 fichiers obligatoires (caractéristiques/lieux/usagers/véhicules) matchés par mot-clé sur le titre ; en cas d'ambiguïté, le titre le plus court est préféré (= fichier brut, pas une variante)</td></tr>
+          <tr><td>Téléchargement + nommage canonique</td><td>Sauvegardé sous <code>{catégorie}-{année}.csv</code> — nom imposé, indépendant du nom réel côté serveur ONISR (élimine par construction toute faute de frappe source, cf. incident 'carcteristiques' 2021/2022)</td></tr>
+          <tr><td>Validation immédiate post-téléchargement <span class="tag-crit">CRITICAL</span></td><td><code>_validate_onisr_csv()</code> : taille &gt; 500 Ko, séparateur <code>;</code> présent, colonnes obligatoires de la catégorie présentes — fichier supprimé et pipeline stoppé si un contrôle échoue</td></tr>
+          <tr><td>Idempotence</td><td>Si les 4 CSV sont déjà présents pour l'année, le téléchargement est sauté (pas de re-téléchargement inutile)</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+  </details><!-- section dl -->
+
+  <!-- ════════════════════ 2. VALIDATION ════════════════════ -->
+  <details class="section va" open>
+    <summary><span class="section-pill va">2</span> Validation Pandera — <code>validate_task</code></summary>
+    <div class="section-meta">src/data/schema_validator.py — load_and_validate_year() · 3 niveaux, sur les vraies données</div>
+
+    <details open>
+      <summary>Level 1 — Format <span class="count">2</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Check</th><th>Ce qui est vérifié</th></tr>
+          <tr><td>Découverte fichier <span class="tag-crit">CRITICAL</span></td><td>Les 4 fichiers sont identifiables dans le dossier — fallback fuzzy (difflib, seuil 0.75) si le matching strict par mot-clé échoue, sinon CRITICAL</td></tr>
+          <tr><td>Lisibilité &amp; non-vacuité <span class="tag-crit">CRITICAL</span></td><td>Fichier non vide (taille &gt; 0, ≥ 1 ligne après parsing), lisible avec un des séparateurs/encodages testés (<code>;</code>/<code>,</code>/tab × utf-8/latin-1/utf-8-sig)</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Level 2 — Schéma <span class="count">4</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Check</th><th>Ce qui est vérifié</th></tr>
+          <tr><td>Correctifs connus <span class="tag-auto">AUTO_CORRECTED</span></td><td><code>apply_known_fixes()</code> — renommage <code>Accident_Id→Num_Acc</code> (ONISR 2022+) et nettoyage espaces insécables/superflus, appliqués avant toute validation</td></tr>
+          <tr><td>Colonnes obligatoires <span class="tag-crit">CRITICAL</span></td><td>Toutes les colonnes requises de la catégorie présentes après correctifs, sinon pipeline stoppé</td></tr>
+          <tr><td>Colonnes inconnues <span class="tag-warn">WARNING</span></td><td>Colonnes présentes mais absentes du schéma déclaré — signalées et ignorées, ne bloquent pas</td></tr>
+          <tr><td>Coercion de type Pandera <span class="tag-auto">AUTO_CORRECTED</span> / <span class="tag-warn">WARNING</span></td><td><code>coerce=True</code> — colonne numérique lue en texte (artefact de formatage) reconvertie automatiquement ; si non convertible, WARNING (valeur conservée telle quelle)</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Level 3 — Qualité <span class="count">4</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Check</th><th>Ce qui est vérifié</th></tr>
+          <tr><td>Volumétrie <span class="tag-warn">WARNING</span></td><td>Nombre d'accidents (table caractéristiques) hors des bornes attendues (<code>QUALITY_BOUNDS</code>) — données potentiellement tronquées</td></tr>
+          <tr><td>Taux de NaN <span class="tag-warn">WARNING</span></td><td>Par colonne, toutes tables — signalé si le taux dépasse le seuil configuré</td></tr>
+          <tr><td>Valeurs <code>grav</code> <span class="tag-warn">WARNING</span></td><td>Table usagers — valeurs hors <code>{-1,1,2,3,4}</code> signalées</td></tr>
+          <tr><td>Bornes lat/long <span class="tag-warn">WARNING</span></td><td>Coordonnées hors de la bounding box France métropolitaine signalées (n'empêche pas la suite)</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+    <p class="note">Niveau global du rapport = le pire niveau rencontré (CRITICAL &gt; WARNING &gt; OK). CRITICAL lève une exception et stoppe le flow ; WARNING logue une alerte et laisse le pipeline continuer ; AUTO_CORRECTED est informatif (traité comme OK).</p>
+  </details><!-- section va -->
+
+  <!-- ════════════════════ 3. DVC RAW ════════════════════ -->
+  <details class="section dv">
+    <summary><span class="section-pill dv">3</span> Synchronisation DVC — données brutes — <code>dvc_push_task</code></summary>
+    <div class="section-meta">src/flows/etl_flow.py — _dvc_push_and_git_commit("data/raw/{year}")</div>
+
+    <details>
+      <summary>Clone jetable &amp; push <span class="count">4</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Sous-étape</th><th>Ce qui se passe</th></tr>
+          <tr><td>Clone git jetable</td><td>Clone <code>--depth 1</code> dans un dossier temporaire, détruit en fin d'exécution — aucune dépendance à un <code>.git</code> présent dans le conteneur</td></tr>
+          <tr><td>Copie + <code>dvc add</code></td><td>Les données réelles sont copiées dans le clone (pas de symlink — DVC les refuse), puis trackées</td></tr>
+          <tr><td><code>dvc push</code> → Scaleway S3</td><td>Upload vers le remote S3 — credentials écrites dans <code>.dvc/config.local</code> à partir des variables d'environnement (DVC n'interpole pas <code>${VAR}</code> dans <code>.dvc/config</code> versionné)</td></tr>
+          <tr><td>Commit + push git <code>[skip ci]</code></td><td>Le <code>.dvc</code> mis à jour est commité et poussé sur <code>origin/main</code> — source de vérité partagée pour tout <code>dvc pull</code> ultérieur ; no-op silencieux si déjà à jour</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+  </details><!-- section dv -->
+
+  <!-- ════════════════════ 4. PREPROCESSING ════════════════════ -->
+  <details class="section pp" open>
+    <summary><span class="section-pill pp">4</span> Preprocessing / Feature engineering — <code>preprocess_task</code></summary>
+    <div class="section-meta">src/data/make_dataset.py — process_years() → _load_year() + _engineer()</div>
+
+    <details open>
+      <summary>Colonnes dérivées &amp; recodages <span class="count">6</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Sous-étape</th><th>Ce qui se passe</th></tr>
+          <tr><td>Rechargement validé</td><td><code>_load_year()</code> rappelle <code>load_and_validate_year()</code> (même pipeline que l'étape 2, pas de double lecture/logique) — stoppe si CRITICAL</td></tr>
+          <tr><td>Comptages dérivés</td><td><code>nb_victim</code>, <code>nb_vehicules</code> — agrégés par <code>Num_Acc</code> (crosstab)</td></tr>
+          <tr><td><code>victim_age</code></td><td><code>year_acc − an_nais</code> ; mis à NaN si &gt; 120 ou &lt; 0 (valeur aberrante)</td></tr>
+          <tr><td><code>hour</code> depuis <code>hrmn</code></td><td>Format HHMM → heure entière ; colonnes <code>hrmn</code>/<code>an</code> supprimées ensuite</td></tr>
+          <tr><td>Recodages divers</td><td><code>grav</code> réordonné (1,2,3,4→1,3,4,2), <code>agg→agg_</code>, <code>dep</code>/<code>com</code> Corse (2A/2B→201/202), <code>atm</code> (dictionnaire binaire), <code>catv</code> (table de correspondance ancien→nouveau code)</td></tr>
+          <tr><td>Coordonnées</td><td><code>lat</code>/<code>long</code> — virgule française → point, conversion float</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Fusion &amp; cible <span class="count">2</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Sous-étape</th><th>Ce qui se passe</th></tr>
+          <tr><td>Merges + dédoublonnage</td><td>usagers+véhicules+lieux+caractéristiques fusionnés sur <code>Num_Acc</code> ; en cas de plusieurs usagers par accident, on garde la ligne de gravité la plus élevée (<code>sort_values(grav) + drop_duplicates</code>)</td></tr>
+          <tr><td>Cible binaire</td><td><code>grav</code> : indemne/blessure légère → 0, hospitalisé/tué → 1</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+
+    <details open>
+      <summary>NaN, colonnes &amp; split <span class="count">2</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Sous-étape</th><th>Ce qui se passe</th></tr>
+          <tr><td>Gestion NaN + nettoyage colonnes</td><td>Valeurs sentinelles (-1/0) → NaN sur colonnes ciblées ; ~25 colonnes techniques supprimées (identifiants, doublons de format) ; lignes avec NaN sur colonnes critiques (<code>catv</code>/<code>vma</code>/<code>secu1</code>/<code>obsm</code>/<code>atm</code>) supprimées ; imputation par mode (calculé sur train uniquement) pour le reste</td></tr>
+          <tr><td>Split train/test + sauvegarde</td><td>Split temporel (dernière année = test, évite la fuite temporelle) si plusieurs années cumulées, sinon 70/30 aléatoire (année seule) ; <code>X_train/X_test/y_train/y_test</code> écrits en CSV</td></tr>
+        </table>
+        </div>
+      </div>
+    </details>
+  </details><!-- section pp -->
+
+  <!-- ════════════════════ 5. DVC PREPROCESSED ════════════════════ -->
+  <details class="section dv">
+    <summary><span class="section-pill dv">5</span> Synchronisation DVC — données préprocessées — <code>dvc_push_preprocessed_task</code></summary>
+    <div class="section-meta">src/flows/etl_flow.py — _dvc_push_and_git_commit("data/preprocessed/{...}")</div>
+    <div style="padding:0 16px 16px;">
+      <p class="note">Même mécanisme que l'étape 3 (clone jetable, <code>dvc add/push</code>, commit git <code>[skip ci]</code>), appliqué cette fois au dataset propre final (<code>cumul_2021_2022_...</code>) — permet à tout consommateur (poste DS, VPS) de <code>dvc pull</code> le résultat exact de ce cycle sans rejouer tout le preprocessing.</p>
+    </div>
+  </details><!-- section dv -->
+
+</div><!-- .wrapper -->
+</div><!-- .ci-doc -->
+</body>
+</html>
