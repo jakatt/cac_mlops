@@ -13,10 +13,14 @@ les deux étant appliqués indépendamment si le run cumule modèle + code.
 Kapsule n'est déclenché que si test-api OK.
 
 Modes d'appel :
-  1. Depuis GitHub Actions (changement code seul) : sha_tag + needs_build/restart_services, pas de champion.
+  1. Depuis GitHub Actions (changement code seul) : sha_tag + rebuilt_services/restart_services, pas de champion.
   2. Depuis check-new-data-flow (nouvelle data) : champion + métriques affichés à la gate.
   3. Depuis update-model-flow (nouveau blueprint) : champion + métriques + éventuellement
-     sha_tag/needs_build/restart_services si le merge inclut aussi du code.
+     sha_tag/rebuilt_services/restart_services si le merge inclut aussi du code.
+
+rebuilt_services (CSV, ex: "gradio,gradio-public") remplace un ancien booléen
+needs_build qui marquait à tort TOUS les services comme reconstruits dès qu'un
+seul l'était réellement (incident 2026-07-26, PR221).
 
 Concurrence : rien n'empêche 2 déclencheurs indépendants (ex: cron T1 lundi 8h
 + push code T2) d'avoir chacun leur run en pause à la gate en même temps. Un
@@ -102,7 +106,7 @@ def _trigger_label(champion: str | None, year: int | None, sha_tag: str) -> str:
 def _format_gate_message(
     trigger: str,
     sha_tag: str,
-    needs_build: bool,
+    rebuilt_services: str,
     restart_services: str,
     champion: str | None,
     metrics: dict | None,
@@ -117,7 +121,12 @@ def _format_gate_message(
     SVC_ORDER = ["api", "mlflow", "gradio", "gradio-public",
                  "nginx", "grafana", "prometheus", "loki", "promtail"]
 
-    rebuilt   = set(MANAGED_SERVICES) if needs_build else set()
+    # rebuilt_services : CSV des services dont l'image a RÉELLEMENT été reconstruite
+    # (calculé par service dans deploy.yml::check-changes) — remplace un ancien
+    # booléen global needs_build qui marquait à tort TOUS les MANAGED_SERVICES
+    # comme reconstruits dès qu'un seul l'était (incident constaté 2026-07-26 :
+    # PR221 ne touchait que gradio, mlflow affiché "rebuild" à tort).
+    rebuilt   = {s for s in rebuilt_services.split(",") if s}
     restarted = rebuilt | {s for s in restart_services.split(",") if s}
     impacted  = [s for s in SVC_ORDER if s in restarted]
 
@@ -252,8 +261,9 @@ def get_current_production_task(champion: str) -> dict | None:
 
 
 @task(name="compose-up")
-def compose_up_task(needs_build: bool, restart_services: str) -> None:
-    """Applique l'interruption VPS après la gate : up -d (si nouvelles images) + restarts ciblés.
+def compose_up_task(rebuilt_services: str, restart_services: str) -> None:
+    """Applique l'interruption VPS après la gate : up -d (services réellement
+    reconstruits uniquement) + restarts ciblés.
 
     Les images ont déjà été pull-ées côté SSH (deploy.yml) avant la gate — cette étape
     ne fait qu'appliquer le changement (recréation des conteneurs), donc c'est bien ici
@@ -266,18 +276,19 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
 
     t0 = time.monotonic()
     log.info(
-        "event=interruption_start kind=compose_up needs_build=%s services=%s",
-        needs_build, restart_services or "-",
+        "event=interruption_start kind=compose_up rebuilt_services=%s restart_services=%s",
+        rebuilt_services or "-", restart_services or "-",
     )
 
-    if needs_build:
+    services_to_recreate = [s for s in rebuilt_services.split(",") if s]
+    if services_to_recreate:
         try:
             subprocess.run(
                 ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
-                 "up", "-d", "--remove-orphans", *MANAGED_SERVICES],
+                 "up", "-d", "--remove-orphans", *services_to_recreate],
                 check=True, capture_output=True, text=True,
             )
-            log.info("docker compose up -d --remove-orphans OK (%s)", ", ".join(MANAGED_SERVICES))
+            log.info("docker compose up -d --remove-orphans OK (%s)", ", ".join(services_to_recreate))
         except subprocess.CalledProcessError as e:
             log.warning(
                 "event=interruption_end kind=compose_up status=fail duration_s=%.1f",
@@ -311,14 +322,30 @@ def compose_up_task(needs_build: bool, restart_services: str) -> None:
 
 
 @task(name="docker-rollback")
-def docker_rollback_task(sha_tag: str = "") -> None:
-    """Restaure les images :rollback + recrée les conteneurs (Trigger 2 — code seul)."""
+def docker_rollback_task(sha_tag: str = "", rebuilt_services: str = "") -> None:
+    """Restaure les images :rollback + recrée uniquement les conteneurs des
+    services réellement reconstruits (Trigger 2/3 — code) — un service qui
+    n'a eu droit qu'à un restart de config n'a pas d'image :rollback à restaurer."""
     import subprocess
     log = get_run_logger()
-    log.warning("event=rollback kind=docker_image sha=%s", sha_tag or "N/A")
+
+    services = [s for s in rebuilt_services.split(",") if s]
+    if not services:
+        log.info(
+            "Rollback images ignoré — aucun service reconstruit (restart de "
+            "config seul), rien à restaurer côté image."
+        )
+        return
+
+    log.warning("event=rollback kind=docker_image sha=%s services=%s", sha_tag or "N/A", rebuilt_services)
     ghcr_user = os.getenv("GHCR_USER", "jakatt")
     registry = f"ghcr.io/{ghcr_user}"
-    images = ["cac-mlops-api", "cac-mlops-mlflow", "cac-mlops-gradio"]
+    # gradio et gradio-public partagent la même image ghcr.io/.../cac-mlops-gradio
+    _IMAGE_OF = {
+        "api": "cac-mlops-api", "mlflow": "cac-mlops-mlflow",
+        "gradio": "cac-mlops-gradio", "gradio-public": "cac-mlops-gradio",
+    }
+    images = sorted({_IMAGE_OF[s] for s in services if s in _IMAGE_OF})
     compose_file = "/app/docker-compose.yml"
     project_dir = os.getenv("COMPOSE_PROJECT_DIR", "/home/deploy/cac_mlops")
     for img in images:
@@ -333,7 +360,7 @@ def docker_rollback_task(sha_tag: str = "") -> None:
     try:
         subprocess.run(
             ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
-             "up", "-d", *MANAGED_SERVICES],
+             "up", "-d", *services],
             check=True, capture_output=True, text=True,
         )
         log.info("Docker rollback OK — conteneurs recréés avec :rollback (SHA annulé : %s)", sha_tag or "N/A")
@@ -409,7 +436,7 @@ def deploy_vps_flow(
     metrics: dict | None = None,
     year: int | None = None,
     sha_tag: str = "",
-    needs_build: bool = False,
+    rebuilt_services: str = "",
     restart_services: str = "",
     blueprint_promotion: bool = False,
 ) -> bool:
@@ -423,8 +450,14 @@ def deploy_vps_flow(
 
     champion / run_ids / metrics / year : renseignés par check-new-data-flow / update-model-flow.
     sha_tag : SHA du commit buildé, passé par GitHub Actions.
-    needs_build / restart_services : calculés côté SSH (deploy.yml) à partir du diff git,
-    appliqués ici (après la gate) plutôt que dans le script SSH (avant la gate).
+    rebuilt_services : CSV des services dont l'image a été réellement reconstruite
+    (ex: "gradio,gradio-public"), calculé service par service côté SSH (deploy.yml)
+    à partir du diff git — remplace un ancien booléen global needs_build qui
+    marquait à tort TOUS les MANAGED_SERVICES comme reconstruits dès qu'un seul
+    l'était (incident constaté 2026-07-26, PR221 : gradio seul reconstruit,
+    mlflow/api affichés "rebuild" à tort dans la gate card).
+    restart_services : calculé côté SSH (deploy.yml) à partir du diff git,
+    appliqué ici (après la gate) plutôt que dans le script SSH (avant la gate).
     blueprint_promotion : True uniquement depuis update_model_flow.py (Trigger 3 — un
     changement de config/model_params.yml a motivé cette promotion). check_new_data_flow.py
     (Trigger 1) ne le passe jamais — le blueprint n'y change pas, rien à revert en cas
@@ -455,11 +488,11 @@ def deploy_vps_flow(
     # ── 2. Gate manuelle ──────────────────────────────────────────────────────
     trigger = _trigger_label(champion, year, sha_tag)
     log.info("\n%s", _format_gate_message(
-        trigger, sha_tag, needs_build, restart_services, champion, metrics, year,
+        trigger, sha_tag, rebuilt_services, restart_services, champion, metrics, year,
     ))
     log.info(
-        "event=gate_open trigger=%s sha=%s champion=%s needs_build=%s restart_services=%s",
-        trigger, sha_tag or "-", champion or "-", needs_build, restart_services or "-",
+        "event=gate_open trigger=%s sha=%s champion=%s rebuilt_services=%s restart_services=%s",
+        trigger, sha_tag or "-", champion or "-", rebuilt_services or "-", restart_services or "-",
     )
 
     pause_flow_run(timeout=86400)
@@ -485,15 +518,15 @@ def deploy_vps_flow(
 
         # ── 3bis. Compose up (Triggers 2 & 3 — changement de code) ─────────────
         # Seule étape qui interrompt le VPS pour le code — désormais après la gate.
-        if needs_build or restart_services:
-            compose_up_task(needs_build, restart_services)
+        if rebuilt_services or restart_services:
+            compose_up_task(rebuilt_services, restart_services)
             ok = smoke_test_task()
             if not ok:
                 log.error(
                     "event=alert severity=critical topic=deploy_failure reason=smoke_test_post_compose sha=%s",
                     sha_tag or "N/A",
                 )
-                docker_rollback_task(sha_tag)
+                docker_rollback_task(sha_tag, rebuilt_services)
                 raise RuntimeError(
                     f"Smoke test ÉCHOUÉ après compose up — {NGINX_URL}/health ne répond pas après 90s.\n"
                     f"SHA déployé : {sha_tag or 'N/A'}\n"
@@ -528,9 +561,9 @@ def deploy_vps_flow(
                 if blueprint_promotion:
                     log.info("Revert du blueprint sur main (config/model_params.yml)...")
                     revert_blueprint_task(sha_tag)
-            if needs_build or restart_services:
+            if rebuilt_services or restart_services:
                 log.info("Rollback Docker images :rollback (code)...")
-                docker_rollback_task(sha_tag)
+                docker_rollback_task(sha_tag, rebuilt_services)
                 rolled_back_code = True
             log.error(
                 "event=alert severity=critical topic=deploy_failure reason=test_api sha=%s "
@@ -554,7 +587,7 @@ def deploy_vps_flow(
         deploy_kapsule_flow(
             new_model=bool(champion and run_ids),
             new_data=bool(year),
-            new_images=needs_build,
+            new_images=bool(rebuilt_services),
         )
     finally:
         # Nettoyage systématique en fin de deploy (succès ou rollback) : chaque

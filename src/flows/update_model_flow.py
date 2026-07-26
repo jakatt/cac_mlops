@@ -24,7 +24,7 @@ def update_model_flow(
     year: int | None = None,
     cumul: bool = True,
     sha_tag: str = "",
-    needs_build: bool = False,
+    rebuilt_services: str = "",
     restart_services: str = "",
 ) -> bool:
     """
@@ -70,7 +70,7 @@ def update_model_flow(
             "metrics": result["metrics"],
             "year": year,
             "sha_tag": sha_tag,
-            "needs_build": needs_build,
+            "rebuilt_services": rebuilt_services,
             "restart_services": restart_services,
             "blueprint_promotion": True,
         },

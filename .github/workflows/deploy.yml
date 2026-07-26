@@ -290,8 +290,22 @@ jobs:
             RESTART_SERVICES="${RESTART_SERVICES%,}"
             echo "==> Services à redémarrer après la gate : ${RESTART_SERVICES:-aucun}"
 
+            # ── Services réellement reconstruits (image) — granularité par service ──
+            # check-changes calcule déjà build_api/build_mlflow/build_gradio séparément,
+            # mais seul le OR global (needs_build) était transmis au flow Prefect
+            # jusqu'ici — la gate card et compose_up_task marquaient alors TOUS les
+            # services comme reconstruits dès qu'un seul l'était réellement (incident
+            # constaté 2026-07-26, PR221 : gradio seul reconstruit, mlflow/api affichés
+            # "rebuild" à tort). gradio et gradio-public partagent la même image.
+            REBUILT_SERVICES=""
+            [ "${{ needs.check-changes.outputs.build_api }}" = "true" ]    && REBUILT_SERVICES="${REBUILT_SERVICES}api,"
+            [ "${{ needs.check-changes.outputs.build_mlflow }}" = "true" ] && REBUILT_SERVICES="${REBUILT_SERVICES}mlflow,"
+            [ "${{ needs.check-changes.outputs.build_gradio }}" = "true" ] && REBUILT_SERVICES="${REBUILT_SERVICES}gradio,gradio-public,"
+            REBUILT_SERVICES="${REBUILT_SERVICES%,}"
+            echo "==> Services réellement reconstruits : ${REBUILT_SERVICES:-aucun}"
+
             # Re-synchroniser les schémas de deployments Prefect (paramètres, entrypoints)
-            # Doit tourner avant le trigger pour que Prefect connaisse needs_build/restart_services.
+            # Doit tourner avant le trigger pour que Prefect connaisse rebuilt_services/restart_services.
             # Durci en échec bloquant (2026-07-15) : un schéma périmé peut faire rejeter
             # silencieusement le déclenchement qui suit (--param inconnu ou mal typé) —
             # mieux vaut arrêter ici avec un signal clair que laisser courir vers un
@@ -364,13 +378,13 @@ jobs:
               if docker compose exec -T prefect-worker \
                 prefect deployment run 'update-model-flow/update-model' \
                   --param "sha_tag=\"${SHA_SHORT}\"" \
-                  --param "needs_build=${NEEDS_BUILD}" \
+                  --param "rebuilt_services=${REBUILT_SERVICES}" \
                   --param "restart_services=${RESTART_SERVICES}"; then
                 echo "update-model-flow déclenché ✓"
-                loki_push "prefect_trigger" "ok" "trigger=T3 deployment=update-model-flow/update-model needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+                loki_push "prefect_trigger" "ok" "trigger=T3 deployment=update-model-flow/update-model rebuilt_services=${REBUILT_SERVICES:-none} restart_services=${RESTART_SERVICES:-none}"
               else
                 echo "::error::update-model-flow non déclenché"
-                loki_push "prefect_trigger" "failed" "trigger=T3 deployment=update-model-flow/update-model needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+                loki_push "prefect_trigger" "failed" "trigger=T3 deployment=update-model-flow/update-model rebuilt_services=${REBUILT_SERVICES:-none} restart_services=${RESTART_SERVICES:-none}"
                 exit 1
               fi
             else
@@ -379,13 +393,13 @@ jobs:
                 prefect deployment run \
                   'deploy-vps-flow/deploy-vps' \
                   --param "sha_tag=\"${SHA_SHORT}\"" \
-                  --param "needs_build=${NEEDS_BUILD}" \
+                  --param "rebuilt_services=${REBUILT_SERVICES}" \
                   --param "restart_services=${RESTART_SERVICES}"; then
                 echo "deploy-vps-flow déclenché ✓"
-                loki_push "prefect_trigger" "ok" "trigger=T2 deployment=deploy-vps-flow/deploy-vps needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+                loki_push "prefect_trigger" "ok" "trigger=T2 deployment=deploy-vps-flow/deploy-vps rebuilt_services=${REBUILT_SERVICES:-none} restart_services=${RESTART_SERVICES:-none}"
               else
                 echo "::error::Échec du déclenchement Prefect"
-                loki_push "prefect_trigger" "failed" "trigger=T2 deployment=deploy-vps-flow/deploy-vps needs_build=${NEEDS_BUILD} restart_services=${RESTART_SERVICES:-none}"
+                loki_push "prefect_trigger" "failed" "trigger=T2 deployment=deploy-vps-flow/deploy-vps rebuilt_services=${REBUILT_SERVICES:-none} restart_services=${RESTART_SERVICES:-none}"
                 exit 1
               fi
             fi

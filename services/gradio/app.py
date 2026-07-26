@@ -982,7 +982,9 @@ _KPI_THRESHOLDS = {"f1": 0.60, "auc": 0.77, "accuracy": 0.72, "recall": 0.58}
 # (MIN_IMPROVEMENT, select_champion_task) : même limitation, pas d'import possible.
 _MIN_IMPROVEMENT = 0.01
 
-# Services reconstruits (rebuild) quand needs_build=True — ordre d'affichage
+# Ordre d'affichage canonique des services potentiellement reconstruits — le
+# sous-ensemble RÉELLEMENT reconstruit est déterminé par rebuilt_services
+# (paramètre du flow, CSV), jamais par ce simple booléen global.
 _BUILD_SERVICES = ["api", "mlflow", "gradio", "gradio-public"]
 # Durée d'interruption estimée par service (rebuild ou restart)
 _SVC_INTERRUPTION = {
@@ -1193,7 +1195,13 @@ def _render_gate_card(run_id: str) -> str:
     metrics           = params.get("metrics") or {}
     year              = params.get("year")
     sha_tag           = params.get("sha_tag") or ""
-    needs_build       = params.get("needs_build", False)
+    # CSV des services dont l'image a réellement été reconstruite (calculé par
+    # service dans deploy.yml::check-changes) — remplace un ancien booléen
+    # global needs_build qui marquait à tort TOUS les services comme
+    # reconstruits dès qu'un seul l'était (incident 2026-07-26, PR221 : gradio
+    # seul reconstruit, mlflow/api affichés "rebuild" à tort).
+    rebuilt_services  = params.get("rebuilt_services", "") or ""
+    needs_build       = bool(rebuilt_services)
     restart_services  = params.get("restart_services", "")
 
     trigger = "T3" if (champion and sha_tag) else ("T1" if champion else "T2")
@@ -1289,13 +1297,14 @@ def _render_gate_card(run_id: str) -> str:
             )
         # Calcul précis de l'impact services
         rs_list = [s.strip() for s in restart_services.split(",") if s.strip()] if restart_services else []
-        build_set = set(_BUILD_SERVICES) if needs_build else set()
+        build_set = {s for s in rebuilt_services.split(",") if s}
         restart_only = [s for s in rs_list if s not in build_set]  # restart sans rebuild
 
         impact_lines = []
         if needs_build:
+            rebuilt_order = [s for s in _BUILD_SERVICES if s in build_set]  # ordre d'affichage canonique
             rebuilt = " · ".join(
-                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in _BUILD_SERVICES
+                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in rebuilt_order
             )
             impact_lines.append(f"Rebuild + restart : {rebuilt}")
         if restart_only:
@@ -1533,7 +1542,9 @@ def retry_prefect_trigger() -> str:
 
     deployment = fields.get("deployment", "")
     sha        = fields.get("sha", "")
-    needs_build = fields.get("needs_build", "false") == "true"
+    rebuilt_services = fields.get("rebuilt_services", "")
+    if rebuilt_services == "none":
+        rebuilt_services = ""
     restart_services = fields.get("restart_services", "")
     if restart_services == "none":
         restart_services = ""
@@ -1551,7 +1562,7 @@ def retry_prefect_trigger() -> str:
             f"{PREFECT_API}/deployments/{deployment_id}/create_flow_run",
             json={"parameters": {
                 "sha_tag": sha,
-                "needs_build": needs_build,
+                "rebuilt_services": rebuilt_services,
                 "restart_services": restart_services,
             }},
             timeout=5,
