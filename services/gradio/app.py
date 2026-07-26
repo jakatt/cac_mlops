@@ -2519,6 +2519,15 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
                     models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
                     promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
+                    # _init_df ci-dessus n'est calcule qu'une fois, au demarrage du process
+                    # gradio (definition du layout Blocks) — sans ce hook, toute session/onglet
+                    # qui se connecte tant que le process tourne recoit ce meme instantane fige,
+                    # meme si le registre MLflow a change depuis (promotion, reset, retrain).
+                    # Root cause du bug "donnees MLflow perimees dans Cockpit" (persistant a
+                    # travers rechargement, nouvel onglet, nouveau navigateur — seul un restart
+                    # du process refaisait tourner _load_models_data()). demo.load() refait
+                    # l'appel a chaque connexion, garantissant des donnees a jour.
+                    demo.load(fn=refresh_models, outputs=[models_table, promote_dd])
 
             with gr.Accordion("🔗  Liens", open=False):
                 infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
