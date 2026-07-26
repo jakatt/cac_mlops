@@ -26,17 +26,17 @@ _SAMPLE_PAYLOAD = {
 
 
 @task(name="test-health", retries=2)
-def test_health() -> str:
-    r = http.get(f"{NGINX_URL}/health", timeout=10)
+def test_health(base_url: str = NGINX_URL) -> str:
+    r = http.get(f"{base_url}/health", timeout=10)
     assert r.status_code == 200, f"Health check: HTTP {r.status_code}"
     print(f"✓ /health → {r.json()}")
     return "OK"
 
 
 @task(name="test-token")
-def test_token() -> str:
+def test_token(base_url: str = NGINX_URL) -> str:
     r = http.post(
-        f"{NGINX_URL}/token",
+        f"{base_url}/token",
         data={"username": API_USERNAME, "password": API_PASSWORD},
         timeout=10,
     )
@@ -47,17 +47,17 @@ def test_token() -> str:
 
 
 @task(name="test-401-sans-token")
-def test_no_auth() -> str:
-    r = http.post(f"{NGINX_URL}/predict", json=_SAMPLE_PAYLOAD, timeout=10)
+def test_no_auth(base_url: str = NGINX_URL) -> str:
+    r = http.post(f"{base_url}/predict", json=_SAMPLE_PAYLOAD, timeout=10)
     assert r.status_code == 401, f"Attendu 401, reçu {r.status_code}"
     print("✓ 401 sans token: OK")
     return "OK"
 
 
 @task(name="test-200-avec-token")
-def test_with_auth(token: str) -> str:
+def test_with_auth(token: str, base_url: str = NGINX_URL) -> str:
     r = http.post(
-        f"{NGINX_URL}/predict",
+        f"{base_url}/predict",
         json=_SAMPLE_PAYLOAD,
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
@@ -68,7 +68,7 @@ def test_with_auth(token: str) -> str:
 
 
 @task(name="test-whatif-vitesse-90-vs-50")
-def test_whatif_speed(token: str) -> str:
+def test_whatif_speed(token: str, base_url: str = NGINX_URL) -> str:
     """Fonctionnel uniquement : la fonctionnalité What-If de l'interface doit
     répondre (comme si un utilisateur la sollicitait), rien de plus. Ne juge
     jamais le sens des prédictions du modèle — un modèle statistiquement bon
@@ -87,9 +87,9 @@ def test_whatif_speed(token: str) -> str:
         "col": 6.0,    # collision frontale
         "nb_vehicules": 2,
     }
-    r90 = http.post(f"{NGINX_URL}/predict", json={**route_dept_nuit, "vma": 90.0},
+    r90 = http.post(f"{base_url}/predict", json={**route_dept_nuit, "vma": 90.0},
                     headers=headers, timeout=10)
-    r50 = http.post(f"{NGINX_URL}/predict", json={**route_dept_nuit, "vma": 50.0},
+    r50 = http.post(f"{base_url}/predict", json={**route_dept_nuit, "vma": 50.0},
                     headers=headers, timeout=10)
     assert r90.status_code == 200, f"Predict vma=90: HTTP {r90.status_code}"
     assert r50.status_code == 200, f"Predict vma=50: HTTP {r50.status_code}"
@@ -100,11 +100,11 @@ def test_whatif_speed(token: str) -> str:
 
 
 @task(name="test-429-rate-limit")
-def test_rate_limit(token: str) -> str:
+def test_rate_limit(token: str, base_url: str = NGINX_URL) -> str:
     hit_429 = False
     for i in range(22):
         r = http.post(
-            f"{NGINX_URL}/predict",
+            f"{base_url}/predict",
             json=_SAMPLE_PAYLOAD,
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
@@ -121,6 +121,7 @@ def test_rate_limit(token: str) -> str:
 def test_api_flow(
     skip_rate_limit: bool = False,
     require_model: bool = True,
+    base_url: str = NGINX_URL,
 ) -> dict[str, str]:
     """
     Tests fonctionnels de l'API via nginx.
@@ -129,6 +130,12 @@ def test_api_flow(
     require_model=False en état post-reset (aucun @Production enregistré) :
       seuls /health et /token sont testés, les tests /predict sont ignorés.
     Laisser False pour un test manuel complet (6 tests).
+    base_url : cible à tester — VPS (défaut, réseau Docker interne) ou
+    Kapsule/K8s (DNS *.cac-mlops.svc.cluster.local, joignable depuis le VPS
+    via le subnet-router Tailscale) — appelé une 2e fois avec l'URL K8s
+    depuis deploy_kapsule_flow après un rollout réussi, pour valider le
+    comportement fonctionnel réel (pas seulement le readiness probe K8s,
+    qui ne peut pas détecter une dérive de config entre les 2 environnements).
 
     Toujours exécutés (1-2) :
       1. health check
@@ -142,8 +149,8 @@ def test_api_flow(
     Optionnel (6) :
       6. 429 rate-limit après 22 requêtes (skip si skip_rate_limit=True)
     """
-    health = test_health()
-    token  = test_token()
+    health = test_health(base_url)
+    token  = test_token(base_url)
 
     results: dict[str, str] = {
         "health": health,
@@ -158,9 +165,9 @@ def test_api_flow(
         results["rate_limit"]   = "skipped (no model)"
         return results
 
-    no_auth   = test_no_auth()
-    with_auth = test_with_auth(token)
-    whatif    = test_whatif_speed(token)
+    no_auth   = test_no_auth(base_url)
+    with_auth = test_with_auth(token, base_url)
+    whatif    = test_whatif_speed(token, base_url)
 
     results.update({
         "no_auth":    no_auth,
@@ -170,6 +177,6 @@ def test_api_flow(
     })
 
     if not skip_rate_limit:
-        results["rate_limit"] = test_rate_limit(token)
+        results["rate_limit"] = test_rate_limit(token, base_url)
 
     return results

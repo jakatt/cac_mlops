@@ -29,10 +29,15 @@ from pathlib import Path
 from prefect import flow, task, get_run_logger
 
 from src.flows.kapsule_up_flow import apply_manifests, upload_data_s3, upload_model_s3
+from src.flows.test_api_flow import test_api_flow
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
 K8S_NAMESPACE = "cac-mlops"
+# DNS interne K8s, joignable depuis le VPS via le subnet-router Tailscale
+# (k8s/tailscale/) — même chemin déjà utilisé et validé en direct par le
+# healthcheck Cockpit (services/gradio/app.py::_K8S_SERVICES).
+K8S_NGINX_URL = os.getenv("K8S_NGINX_URL", "http://nginx.cac-mlops.svc.cluster.local:80")
 
 _ALL_KAPSULE_DEPLOYMENTS = ["api", "gradio-public", "nginx", "caddy"]
 
@@ -385,6 +390,7 @@ def deploy_kapsule_flow(
     new_model: bool = False,
     new_data: bool = False,
     new_images: bool = True,
+    require_model: bool = True,
 ) -> bool:
     """
     Rolling update conditionnel sur Kapsule si le cluster est actif.
@@ -393,9 +399,21 @@ def deploy_kapsule_flow(
     new_model  : nouveau @Production promu — upload_model_s3 + restart api
     new_data   : nouveau dataset — upload_data_s3
     new_images : nouvelles images buildées par CI — restart api + gradio-public
+    require_model : transmis à test_api_flow (False en état post-reset, cf.
+    deploy_vps_flow._has_model) — évite de tester /predict sans modèle enregistré.
 
     Si aucun restart n'est nécessaire (new_model=False, new_images=False) :
     apply_manifests + cleanup défensif, aucun rollout restart.
+
+    Après un rollout réussi, un test fonctionnel complet (test_api_flow, le
+    même "FTe" que sur le VPS) est exécuté contre l'endpoint K8s — le
+    readiness probe de kubectl rollout status vérifie seulement que le pod
+    démarre, pas que le comportement métier est correct sur CET
+    environnement (config K8s distincte de la config VPS, risque de dérive
+    déjà vécu : COCKPIT_ENV ajouté à k8s/gradio/deployment.yaml, jamais
+    propagé malgré des rollout restart réussis, 2026-07-11). Rollback
+    kubectl rollout undo si ce test échoue, comme pour un rollout qui
+    timeout.
     """
     log = get_run_logger()
 
@@ -466,6 +484,27 @@ def deploy_kapsule_flow(
                 "  2. kubectl describe deployment api -n cac-mlops  (events, image pull error ?)\n"
                 "  3. Vérifier que l'image GHCR est pullable depuis le cluster\n"
                 "  4. Si cluster instable : kapsule-down puis kapsule-up"
+            )
+
+        # FTe sur K8s — le rollout a réussi (pods Ready) mais un readiness
+        # probe ne valide que le démarrage du process, pas le comportement
+        # métier réel sur CET environnement (config K8s distincte du VPS).
+        try:
+            test_api_flow(skip_rate_limit=True, require_model=require_model, base_url=K8S_NGINX_URL)
+            log.info("test-api Kapsule OK ✓")
+        except Exception as exc:
+            log.error("test-api Kapsule ÉCHOUÉ : %s", exc)
+            rollback_kapsule_task(kubeconfig, touched)
+            log.error("event=alert severity=critical topic=kapsule_failure reason=test_api")
+            raise RuntimeError(
+                "Deploy Kapsule ÉCHOUÉ — le rollout a réussi (pods Ready) mais les tests "
+                f"fonctionnels sur K8s ont échoué : {exc}\n"
+                "Le rollback vers la version précédente a été effectué automatiquement.\n"
+                "Actions requises :\n"
+                "  1. Comparer le comportement VPS vs K8s (config, secrets, ConfigMap)\n"
+                "  2. kubectl logs deployment/api -n cac-mlops --tail=100\n"
+                "  3. Vérifier que le modèle @Production est bien accessible depuis K8s (S3)\n"
+                "  4. Tester manuellement : curl http://nginx.cac-mlops.svc.cluster.local/predict"
             )
 
         log.info("event=alert severity=info topic=kapsule_success")

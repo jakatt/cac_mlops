@@ -588,6 +588,7 @@ def deploy_vps_flow(
             new_model=bool(champion and run_ids),
             new_data=bool(year),
             new_images=bool(rebuilt_services),
+            require_model=_has_model,
         )
     finally:
         # Nettoyage systématique en fin de deploy (succès ou rollback) : chaque
