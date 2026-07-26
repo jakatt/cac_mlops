@@ -1016,7 +1016,7 @@ _PIPELINE: dict[str, dict] = {
         "gate_idx": 5,
     },
     "T3": {
-        "steps": ["Push DS", "PR", "Merge main", "CI", "Retrain", "CD", "⏸ Gate", "VPS", "Test API", "Kapsule"],
+        "steps": ["Push DS", "PR", "Merge main", "CI", "CD", "Retrain", "⏸ Gate", "VPS", "Test API", "Kapsule"],
         "gate_idx": 6,
     },
 }
