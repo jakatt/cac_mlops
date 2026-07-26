@@ -84,6 +84,20 @@ def update_model_info() -> None:
     dans Grafana). No-op silencieux si MLflow est injoignable.
     """
     try:
+        import os as _os
+
+        # Best-effort, best-latency : cette gauge est repeuplée à chaque scrape
+        # /metrics (potentiellement chaque 15-30s par Prometheus) — les défauts
+        # MLflow (120s timeout × 7 retries, cf. mlflow.environment_variables)
+        # peuvent bloquer un scrape plusieurs minutes si MLflow est injoignable
+        # (constaté : régression introduite en supprimant la route /metrics
+        # dupliquée qui masquait cet appel — CI figée ~120s+ sur test_metrics_
+        # endpoint_returns_200, MLFLOW_TRACKING_URI non défini en CI → défaut
+        # http://localhost:5001, injoignable). setdefault pour ne jamais
+        # écraser une config explicite ailleurs dans le process.
+        _os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "3")
+        _os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "1")
+
         import mlflow
         from src.models.train_model import MODEL_NAMES
 
