@@ -528,7 +528,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (endpoint) (rate(api_requests_total{job=\"gradio-public-vps\"}[5m]))",
+          "expr": "sum by (endpoint) (rate(api_requests_total{job=\"gradio-public-vps\",endpoint!~\"/assets/.*|/static/.*\"}[5m]))",
           "legendFormat": "{{endpoint}}",
           "refId": "A"
         }
