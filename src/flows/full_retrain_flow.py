@@ -67,6 +67,7 @@ def restart_api_task() -> None:
         if not containers:
             log.warning("API container not found — skipping restart")
             return
+        log.info("event=planned_interruption kind=api_restart access=fastapi-vps reason=full_retrain")
         containers[0].restart(timeout=30)
         log.info("API container restarted — waiting for healthcheck...")
     except Exception as exc:

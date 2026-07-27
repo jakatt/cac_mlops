@@ -22,6 +22,16 @@ data:
           - targets: ['api:8000']
         metrics_path: /metrics
 
+      # Scrape direct de gradio-public — diagnostic uniquement (process up +
+      # api_requests_total/api_predictions_total), jamais utilisé pour la
+      # "Disponibilité" affichée dans Grafana (cf. blackbox-http-public
+      # ci-dessous : seule source pour probe_success, qui passe par le vrai
+      # chemin public contrairement à ce scrape direct).
+      - job_name: gradio-public-k8s
+        static_configs:
+          - targets: ['gradio-public:7862']
+        metrics_path: /metrics
+
       # Réplicas disponibles par Deployment (api/gradio/gradio-public) au fil
       # du temps — preuve K8s-native du "jamais 0 réplica disponible" pendant
       # un rolling update, indépendante du trafic réel.
@@ -32,13 +42,16 @@ data:
       # Sonde synthétique continue sur l'URL publique (via caddy→nginx) —
       # contrairement au taux d'erreur 5xx (dépend du trafic réel présent
       # pile au moment du rollout), reproductible à la demande pour la
-      # soutenance.
+      # soutenance. /health = fastapi-k8s ; /gradio-public-health = route
+      # dédiée ajoutée à nginx car /health était déjà pris par FastAPI.
       - job_name: blackbox-http-public
         metrics_path: /probe
         params:
           module: [http_2xx]
         static_configs:
-          - targets: ['https://kapsule.jakat-inc.fr/health']
+          - targets:
+              - 'https://kapsule.jakat-inc.fr/health'                # fastapi-k8s
+              - 'https://kapsule.jakat-inc.fr/gradio-public-health'  # gradio-public-k8s
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target

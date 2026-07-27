@@ -24,6 +24,7 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
+from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -265,6 +266,7 @@ def run_predict(place, catu, sexe, secu1, victim_age, catv,
         ]))
         df = pd.DataFrame([row])
         pred, proba = _predict_with_proba(df)
+        PREDICTIONS_TOTAL.labels(result=str(pred)).inc()
         label       = "**PRIORITAIRE** — blessure grave ou décès probable" if pred == 1 else "**Non prioritaire** — blessure légère ou indemne probable"
         emoji       = "🔴" if pred == 1 else "🟢"
         proba_str   = f"  \nProbabilité : **{proba:.1%}**" if proba is not None else ""
@@ -622,12 +624,19 @@ Modele LightGBM — *outil de recherche, non operationnel.*
 
 
 if __name__ == "__main__":
+    import uvicorn
+
     public_url = os.getenv("GRADIO_PUBLIC_URL", "")
-    demo.launch(
+    _port = int(os.getenv("GRADIO_PORT", 7862))
+    _deploy_env = os.getenv("DEPLOY_ENV", "vps")  # même image VPS/K8s — distingue les deux dans Loki/Prometheus
+    _app = mount_instrumentation(
+        demo,
+        access_label=f"gradio-public-{_deploy_env}",
         server_name="0.0.0.0",
-        server_port=int(os.getenv("GRADIO_PORT", 7862)),
+        server_port=_port,
         root_path=public_url,
         show_error=True,
         theme=gr.themes.Base(),
         css=CSS,
     )
+    uvicorn.run(_app, host="0.0.0.0", port=_port)

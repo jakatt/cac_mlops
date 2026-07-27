@@ -105,6 +105,9 @@ spec:
         ports:
         - containerPort: 7862
         env:
+        # Distingue gradio-public-vps/gradio-public-k8s dans Loki/Prometheus (même image que le VPS)
+        - name: DEPLOY_ENV
+          value: "k8s"
         # LOCAL_MODEL_PATH ci-dessous est toujours défini, donc _get_model()
         # (app_public.py) ne passe normalement jamais par la branche MLflow
         # — mais si jamais le fichier local est absent (initContainer

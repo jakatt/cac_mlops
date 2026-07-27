@@ -62,6 +62,13 @@ data:
             proxy_pass http://api_backend;
         }
 
+        # ── Sonde blackbox dédiée gradio-public — /health est déjà pris par
+        # FastAPI ci-dessus, il faut un chemin public distinct pour sonder
+        # gradio-public en bout-en-bout (Caddy → nginx → gradio-public).
+        location = /gradio-public-health {
+            proxy_pass http://gradio_public_backend/health;
+        }
+
         # ── Cockpit public Gradio — tout le reste ────────────────────────────
         location / {
             proxy_pass         http://gradio_public_backend;

@@ -4,6 +4,8 @@ metadata:
   name: cac-mlops-config
   namespace: cac-mlops
 data:
+  # Distingue fastapi-vps/fastapi-k8s dans Loki/Prometheus (même image que le VPS)
+  DEPLOY_ENV: "k8s"
   # mlflow K8s retiré le 2026-07-15 (instance isolée, jamais peuplée) —
   # mais le client HTTP interne de MLflow retente PAR DÉFAUT 7 fois avec
   # backoff exponentiel avant d'abandonner une connexion qui échoue
