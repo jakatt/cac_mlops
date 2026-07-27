@@ -86,6 +86,7 @@ services:
       mlflow:
         condition: service_healthy
     environment:
+      DEPLOY_ENV:             vps  # distingue fastapi-vps/fastapi-k8s dans Loki/Prometheus (même image)
       MLFLOW_TRACKING_URI:    http://mlflow:5000
       MLFLOW_MODEL_STAGE:     Production
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
@@ -275,6 +276,7 @@ services:
       mlflow:
         condition: service_healthy
     environment:
+      DEPLOY_ENV:             vps  # distingue gradio-public-vps/gradio-public-k8s dans Loki/Prometheus (même image)
       MLFLOW_TRACKING_URI:    http://mlflow:5000
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
@@ -316,6 +318,15 @@ services:
       - "127.0.0.1:9113:9113"
     depends_on:
       - nginx
+
+  # ── blackbox-exporter — sonde HTTP bout-en-bout des 5 accès (miroir K8s) ────
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/blackbox_exporter/config.yml'
+    volumes:
+      - ./infrastructure/blackbox-exporter/config.yml:/etc/blackbox_exporter/config.yml:ro
 
   # ── Prometheus — métriques [Phase 4] ────────────────────────────────────────
   prometheus:

@@ -1,0 +1,13 @@
+# Module http_2xx minimal — sonde synthétique continue des 5 accès (VPS),
+# miroir de k8s/blackbox-exporter/configmap.yaml. Preuve de disponibilité
+# reproductible indépendante du trafic réel, contrairement au taux d'erreur
+# 5xx qui ne montre rien si personne n'appelle l'accès pile au moment d'un
+# incident.
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      preferred_ip_protocol: "ip4"

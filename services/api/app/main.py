@@ -7,6 +7,7 @@ Endpoints:
   GET  /metrics   →  Prometheus metrics
 """
 import logging
+import os
 import time
 
 from fastapi import FastAPI, Request, Response
@@ -49,6 +50,11 @@ app.include_router(predict_router)
 app.include_router(health_router)
 app.include_router(dashboard_router)
 
+# Même image VPS/K8s (ghcr.io/jakatt/cac-mlops-api) — DEPLOY_ENV distingue les
+# deux dans Loki/Prometheus, cf. les 5 dashboards Grafana par accès.
+_ACCESS_LABEL = f"fastapi-{os.getenv('DEPLOY_ENV', 'vps')}"
+_access_logger = logging.getLogger("api.access")
+
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next) -> Response:
@@ -62,6 +68,11 @@ async def metrics_middleware(request: Request, call_next) -> Response:
         status=str(response.status_code),
     ).inc()
     REQUEST_DURATION.labels(endpoint=request.url.path).observe(duration)
+
+    _access_logger.info(
+        "event=http_request access=%s method=%s path=%s status=%s duration_ms=%.1f",
+        _ACCESS_LABEL, request.method, request.url.path, response.status_code, duration * 1000,
+    )
 
     return response
 

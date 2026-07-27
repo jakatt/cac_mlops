@@ -16,6 +16,21 @@ scrape_configs:
       - targets: ['api:8000']
     metrics_path: /metrics
 
+  # Scrape direct des 2 cockpits Gradio — diagnostic uniquement (process up +
+  # métriques api_requests_total/api_predictions_total), jamais utilisé pour
+  # la "Disponibilité" affichée dans Grafana (cf. job blackbox-http ci-dessous :
+  # up{job=...} ne passe pas par nginx/Caddy, un vrai utilisateur peut voir une
+  # panne totale pendant que ce scrape reste "up").
+  - job_name: gradio-admin-vps
+    static_configs:
+      - targets: ['gradio:7860']
+    metrics_path: /metrics
+
+  - job_name: gradio-public-vps
+    static_configs:
+      - targets: ['gradio-public:7862']
+    metrics_path: /metrics
+
   - job_name: node-exporter
     static_configs:
       - targets: ['node-exporter:9100']
@@ -23,3 +38,26 @@ scrape_configs:
   - job_name: nginx-exporter
     static_configs:
       - targets: ['nginx-exporter:9113']
+
+  # Sonde synthétique bout-en-bout des 5 accès — seule source utilisée pour les
+  # panneaux "Disponibilité"/"Indisponibilité cumulée"/"Interruptions" des 5
+  # dashboards dédiés (probe_success, pas up{job=...}). fastapi-vps et
+  # gradio-public-vps passent par le vrai chemin public (Caddy → nginx →
+  # service) ; gradio-admin-vps n'a pas de chemin public (bindé sur l'IP
+  # Tailscale uniquement), sondé via le réseau Docker interne.
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - 'https://mlops.jakat-inc.fr/health'                # fastapi-vps
+          - 'https://mlops.jakat-inc.fr/gradio-public-health'  # gradio-public-vps
+          - 'http://gradio:7860/health'                        # gradio-admin-vps (pas de chemin public)
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

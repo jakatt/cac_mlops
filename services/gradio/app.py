@@ -37,6 +37,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
+from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -331,6 +332,7 @@ def run_predict(place, catu, sexe, secu1, victim_age, catv,
         ]))
         df = pd.DataFrame([row])
         pred, proba = _predict_with_proba(df)
+        PREDICTIONS_TOTAL.labels(result=str(pred)).inc()
         label       = "**PRIORITAIRE** — blessure grave ou décès probable" if pred == 1 else "**Non prioritaire** — blessure légère ou indemne probable"
         emoji       = "🔴" if pred == 1 else "🟢"
         proba_str   = f"  \nProbabilité : **{proba:.1%}**" if proba is not None else ""
@@ -2608,10 +2610,16 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
 
 if __name__ == "__main__":
-    demo.launch(
+    import uvicorn
+
+    _port = int(os.getenv("GRADIO_PORT", 7860))
+    _app = mount_instrumentation(
+        demo,
+        access_label="gradio-admin-vps",  # cockpit admin : VPS uniquement, jamais déployé sur K8s
         server_name="0.0.0.0",
-        server_port=int(os.getenv("GRADIO_PORT", 7860)),
+        server_port=_port,
         show_error=True,
         theme=gr.themes.Base(),
         css=CSS,
     )
+    uvicorn.run(_app, host="0.0.0.0", port=_port)
