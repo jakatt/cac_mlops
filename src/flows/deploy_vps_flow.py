@@ -231,9 +231,21 @@ def sync_static_assets_task() -> None:
     `git pull` suffisait à rendre ces 3 catégories visibles en prod — GO ou
     STOP n'y changeait donc rien (incident constaté 2026-07-27, PR227).
 
-    Wipe-and-recopy à chaque GO : gère nativement ajouts/suppressions/
-    renommages, pas besoin de logique de diff.
+    Vide-le-contenu-puis-recopie à chaque GO : gère nativement ajouts/
+    suppressions/renommages, pas besoin de logique de diff.
+
+    NE JAMAIS faire `shutil.rmtree(dst)` sur *dst* lui-même : c'est un point
+    de montage bind (docs_live/reports_live/dashboards_live), et supprimer
+    le répertoire qui EST le point de montage échoue avec "Device or
+    resource busy" depuis l'intérieur du conteneur — `ignore_errors=True`
+    avalait cette erreur silencieusement, laissant `dst` intact mais
+    `shutil.copytree` échouait ENSUITE car la destination existait déjà
+    (sans dirs_exist_ok) — toute la synchro échouait en silence, sans
+    jamais rien copier (incident constaté 2026-07-27 : dashboards_live et
+    docs_live vides après le premier GO de PR228, Grafana "Dashboard not
+    found"). On ne vide donc que le CONTENU de dst, jamais dst lui-même.
     """
+    import os
     import shutil
     log = get_run_logger()
     pairs = [
@@ -243,8 +255,14 @@ def sync_static_assets_task() -> None:
     ]
     for src, dst in pairs:
         try:
-            shutil.rmtree(dst, ignore_errors=True)
-            shutil.copytree(src, dst)
+            os.makedirs(dst, exist_ok=True)
+            for entry in os.listdir(dst):
+                p = os.path.join(dst, entry)
+                if os.path.isdir(p) and not os.path.islink(p):
+                    shutil.rmtree(p)
+                else:
+                    os.remove(p)
+            shutil.copytree(src, dst, dirs_exist_ok=True)
             log.info("Sync assets : %s → %s", src, dst)
         except Exception as exc:
             log.warning("Sync assets échoué pour %s : %s", src, exc)
