@@ -528,7 +528,7 @@
             "type": "prometheus",
             "uid": "prometheus-k8s"
           },
-          "expr": "sum by (endpoint) (rate(api_requests_total{job=\"gradio-public-k8s\"}[5m]))",
+          "expr": "sum by (endpoint) (rate(api_requests_total{job=\"gradio-public-k8s\",endpoint!~\"/assets/.*|/static/.*\"}[5m]))",
           "legendFormat": "{{endpoint}}",
           "refId": "A"
         }

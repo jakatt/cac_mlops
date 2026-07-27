@@ -325,6 +325,25 @@ jobs:
             [ "${{ needs.check-changes.outputs.build_api }}" = "true" ]    && REBUILT_SERVICES="${REBUILT_SERVICES}api,"
             [ "${{ needs.check-changes.outputs.build_mlflow }}" = "true" ] && REBUILT_SERVICES="${REBUILT_SERVICES}mlflow,"
             [ "${{ needs.check-changes.outputs.build_gradio }}" = "true" ] && REBUILT_SERVICES="${REBUILT_SERVICES}gradio,gradio-public,"
+
+            # ── Services tout juste ajoutés à docker-compose.yml (jamais démarrés) ──
+            # `docker compose restart` (RESTART_SERVICES ci-dessus) échoue si le
+            # conteneur n'existe pas encore — un service nouvellement ajouté au
+            # compose file (ex: blackbox-exporter, PR230/2026-07-27) n'était donc
+            # jamais démarré automatiquement, ni par RESTART_SERVICES (échec
+            # silencieux, ignoré) ni par REBUILT_SERVICES (aucune règle ne
+            # l'y ajoutait, ce n'est l'image d'aucun de api/mlflow/gradio).
+            # `docker compose up -d --remove-orphans` (mécanisme déjà utilisé pour
+            # REBUILT_SERVICES) crée le conteneur manquant — on y ajoute donc tout
+            # service défini dans le compose file mais absent des conteneurs actifs.
+            NEW_SERVICES=""
+            RUNNING_SERVICES=$(docker compose ps --services --status running 2>/dev/null || true)
+            for svc in $(docker compose config --services 2>/dev/null || true); do
+              echo "$RUNNING_SERVICES" | grep -qx "$svc" || NEW_SERVICES="${NEW_SERVICES}${svc},"
+            done
+            [ -n "$NEW_SERVICES" ] && echo "==> Nouveaux services jamais démarrés : ${NEW_SERVICES%,}"
+            REBUILT_SERVICES="${REBUILT_SERVICES}${NEW_SERVICES}"
+
             REBUILT_SERVICES="${REBUILT_SERVICES%,}"
             echo "==> Services réellement reconstruits : ${REBUILT_SERVICES:-aucun}"
 
