@@ -101,6 +101,15 @@ volumes/
 reports/drift/*
 !reports/drift/.gitkeep
 
+# Répertoires "servis" (docs/reports/dashboards Grafana) — synchronisés depuis
+# le checkout git par sync_static_assets_task(), strictement post-gate, pour
+# que STOP garantisse vraiment "rien en prod" même pour du contenu statique
+# servi sans redémarrage (nginx, auto-poll Grafana). État runtime VPS, jamais
+# versionné.
+/docs_live/
+/reports_live/
+/dashboards_live/
+
 # Kapsule runtime state (IPs dynamiques — générées par kapsule-up.yml)
 state/*
 !state/.gitkeep
