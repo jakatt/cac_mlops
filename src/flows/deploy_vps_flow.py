@@ -216,6 +216,68 @@ def smoke_test_task(max_wait_s: int = 90) -> bool:
     return False
 
 
+@task(name="sync-static-assets")
+def sync_static_assets_task() -> None:
+    """Synchronise post-gate les assets servis SANS redémarrage (docs HTML,
+    rapports drift, dashboards Grafana) vers leur répertoire "live" séparé.
+
+    Sans cette séparation, ces 3 catégories étaient visibles dès le `git pull`
+    côté SSH (deploy.yml) — AVANT même l'ouverture de la gate — car servies
+    directement depuis le checkout git : nginx lit les octets du fichier à
+    chaque requête (aucun process à redémarrer), et Grafana re-scanne son
+    dossier dashboards toutes les ~10s par défaut (provisioning file-based).
+    Contrairement au code/images (liés à un ID d'image figé, jamais appliqués
+    tant que `docker compose up` n'a pas recréé le conteneur), un simple
+    `git pull` suffisait à rendre ces 3 catégories visibles en prod — GO ou
+    STOP n'y changeait donc rien (incident constaté 2026-07-27, PR227).
+
+    Wipe-and-recopy à chaque GO : gère nativement ajouts/suppressions/
+    renommages, pas besoin de logique de diff.
+    """
+    import shutil
+    log = get_run_logger()
+    pairs = [
+        ("/app/docs", "/app/docs_live"),
+        ("/app/reports", "/app/reports_live"),
+        ("/app/infrastructure/grafana/dashboards", "/app/dashboards_live"),
+    ]
+    for src, dst in pairs:
+        try:
+            shutil.rmtree(dst, ignore_errors=True)
+            shutil.copytree(src, dst)
+            log.info("Sync assets : %s → %s", src, dst)
+        except Exception as exc:
+            log.warning("Sync assets échoué pour %s : %s", src, exc)
+
+
+@task(name="ensure-static-services-config")
+def ensure_static_services_task() -> None:
+    """S'assure que nginx/grafana utilisent bien leur déclaration docker-compose.yml
+    actuelle (mounts _live notamment) — idempotent : `docker compose up -d`
+    ne recrée QUE si la config a réellement changé, sans effet le reste du
+    temps. Appelé systématiquement post-gate, jamais dans le script SSH
+    pré-gate : contrairement à prefect-worker (recréé pré-gate sans risque,
+    orchestrateur pur interne), nginx/grafana sont user-facing — les recréer
+    avant la gate romprait la garantie STOP pour tout changement touchant
+    leur bloc docker-compose.yml (même bug que celui corrigé pour docs/
+    reports/dashboards, cf. sync_static_assets_task). Best-effort : un échec
+    ici ne doit jamais faire échouer tout le déploiement.
+    """
+    import subprocess
+    log = get_run_logger()
+    compose_file = "/app/docker-compose.yml"
+    project_dir = os.getenv("COMPOSE_PROJECT_DIR", "/home/deploy/cac_mlops")
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "--project-directory", project_dir,
+             "up", "-d", "nginx", "grafana"],
+            check=True, capture_output=True, text=True,
+        )
+        log.info("nginx/grafana conformes à docker-compose.yml (recréés si besoin)")
+    except subprocess.CalledProcessError as e:
+        log.warning("up -d nginx/grafana échoué (non bloquant) : %s", e.stderr.strip())
+
+
 @task(name="restart-api")
 def restart_api_task() -> None:
     log = get_run_logger()
@@ -507,6 +569,13 @@ def deploy_vps_flow(
     # qui interrompt réellement le VPS doit être sérialisée.
     lock_fd = acquire_deploy_lock_task()
     try:
+        # ── 2bis. Assets statiques (docs/reports/dashboards) ────────────────────
+        # Toujours exécuté, quel que soit le trigger — un changement docs-only
+        # n'a ni champion ni rebuilt_services/restart_services, mais doit quand
+        # même être synchronisé pour devenir visible.
+        ensure_static_services_task()
+        sync_static_assets_task()
+
         # ── 3. Promote MLflow (Triggers 1 & 3 — nouveau modèle) ─────────────────
         previous_production: dict | None = None
         if champion and run_ids:

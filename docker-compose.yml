@@ -117,8 +117,8 @@ services:
       - "127.0.0.1:8090:80"   # localhost only — Caddy proxy uniquement, pas d'accès HTTP direct depuis internet
     volumes:
       - ./services/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./reports:/srv/reports:ro   # Evidently drift reports (HTML statique)
-      - ./docs:/srv/ci-docs:ro      # Documentation HTML statique (mécanismes de résilience)
+      - ./reports_live:/srv/reports:ro   # copie gatée post-GO (sync_static_assets_task) — jamais le checkout git direct
+      - ./docs_live:/srv/ci-docs:ro      # idem — voir feedback_gate_static_assets.md pour le pourquoi
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/health"]
       interval: 15s
@@ -199,6 +199,10 @@ services:
       - ./infrastructure:/app/infrastructure:ro                        # provisioning grafana pour kapsule-up-flow (idem)
       - ./data:/app/data
       - ./reports:/app/reports
+      - ./docs:/app/docs:ro                                            # source pour sync_static_assets_task (lecture)
+      - ./docs_live:/app/docs_live                                      # cible servie par nginx (écriture, post-gate)
+      - ./reports_live:/app/reports_live                                # cible servie par nginx (écriture, post-gate)
+      - ./dashboards_live:/app/dashboards_live                          # cible servie par Grafana (écriture, post-gate)
       - ./state:/app/state
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/app/docker-compose.yml:ro               # rollback Docker T2 (docker compose up -d)
@@ -383,7 +387,7 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./dashboards_live:/var/lib/grafana/dashboards:ro   # copie gatée post-GO — Grafana re-scanne ce dossier ~10s, sans restart
     depends_on:
       - prometheus
       - loki
