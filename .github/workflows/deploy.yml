@@ -336,10 +336,19 @@ jobs:
             # `docker compose up -d --remove-orphans` (mécanisme déjà utilisé pour
             # REBUILT_SERVICES) crée le conteneur manquant — on y ajoute donc tout
             # service défini dans le compose file mais absent des conteneurs actifs.
+            # minio-init est un conteneur one-shot (restart: "no", mc mb --ignore-existing
+            # puis exit) — sa disparition après exécution est normale et permanente, pas
+            # le signe d'un service "jamais démarré". Sans cette exclusion, il serait
+            # (re)détecté comme nouveau à CHAQUE déploiement (constaté le 2026-07-27,
+            # PR231 : "docker compose up -d --remove-orphans OK (minio-init)" alors
+            # qu'aucun changement ne le concernait), polluant rebuilt_services pour rien
+            # — idempotent donc sans risque, mais trompeur sur la gate card.
+            ONESHOT_SERVICES="minio-init"
             NEW_SERVICES=""
-            RUNNING_SERVICES=$(docker compose ps --services --status running 2>/dev/null || true)
+            EXISTING_SERVICES=$(docker compose ps -a --services 2>/dev/null || true)
             for svc in $(docker compose config --services 2>/dev/null || true); do
-              echo "$RUNNING_SERVICES" | grep -qx "$svc" || NEW_SERVICES="${NEW_SERVICES}${svc},"
+              echo "$ONESHOT_SERVICES" | grep -qw "$svc" && continue
+              echo "$EXISTING_SERVICES" | grep -qx "$svc" || NEW_SERVICES="${NEW_SERVICES}${svc},"
             done
             [ -n "$NEW_SERVICES" ] && echo "==> Nouveaux services jamais démarrés : ${NEW_SERVICES%,}"
             REBUILT_SERVICES="${REBUILT_SERVICES}${NEW_SERVICES}"
