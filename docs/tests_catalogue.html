@@ -336,56 +336,66 @@
     <div style="padding:0 16px 16px;">
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Étape</th><th>Description</th></tr>
+      <tr><th>#</th><th>Étape</th><th>Description</th><th>Scope</th></tr>
       <tr>
         <td>1</td>
         <td><code>check-changes</code></td>
         <td>Détecte si Dockerfiles / <code>requirements.txt</code> / fichiers Python de service ont changé → <code>needs_build=true/false</code>. Calcule aussi <code>RESTART_SERVICES</code> (nginx · gradio · grafana · prometheus · loki · promtail).</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
       <tr>
         <td>2</td>
         <td>Build API</td>
         <td><code>docker build</code> + push <code>cac-mlops-api:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+        <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
         <td>3</td>
         <td>Build MLflow</td>
         <td><code>docker build</code> + push <code>cac-mlops-mlflow:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+        <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
         <td>4</td>
         <td>Build Gradio</td>
         <td><code>docker build</code> + push <code>cac-mlops-gradio:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+        <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
         <td>5</td>
         <td>Scan Trivy</td>
         <td>Scan CVE CRITICAL sur les 4 images — <strong>bloque le deploy</strong> si vulnérabilité non corrigée détectée</td>
+        <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
         <td>6</td>
         <td>SSH VPS → git pull</td>
         <td><code>git pull origin main</code> sur le VPS (+ stash des fichiers locaux bind-mountés)</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
       <tr>
         <td>7</td>
         <td><code>docker compose pull</code></td>
         <td>Pull des nouvelles images (si <code>needs_build=true</code> uniquement) — <strong>pas de <code>docker compose up</code> ici</strong> : le vrai redémarrage est appliqué par <code>deploy-vps-flow</code>/<code>update-model-flow</code> APRÈS la gate manuelle (<code>compose_up_task</code>), pour que la gate protège bien toute interruption de service</td>
+        <td>T2 (cond.) · T3 (à vide)</td>
       </tr>
       <tr>
         <td>8</td>
         <td>Calcul <code>RESTART_SERVICES</code></td>
         <td>Détermine quels conteneurs (nginx · gradio · grafana · prometheus · loki · promtail) devront être redémarrés — passé en paramètre au flow Prefect, qui exécute le restart réel après la gate. Ne redémarre rien lui-même.</td>
+        <td>T2 (cond.) · T3 (à vide)</td>
       </tr>
       <tr>
         <td>9</td>
         <td>prefect deploy --all</td>
         <td>Resynchronisation des schémas de déploiement Prefect — bloque le deploy si schéma périmé</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
       <tr>
         <td>10</td>
         <td>Déclenchement flow</td>
         <td><code>update-model-flow</code> si <code>config/model_params.yml</code> modifié (T3) · <code>deploy-vps-flow</code> sinon (T2). Rollback images <code>:rollback</code> si smoke test pré-gate échoue.</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
     </table>
     </div>
