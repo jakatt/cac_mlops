@@ -248,7 +248,7 @@ _PREDICT_LABELS = {
     "surf":              "Surface (1=normale, 2=mouillée, 5=neige, 7=boue, 9=autre)",
     "situ":              "Situation (1=voie norm., 2=intersection, 3=BAU, 4=trottoir)",
     "vma":               "Vitesse max autorisée (km/h)",
-    "jour":              "Jour semaine (1=lun … 7=dim)",
+    "jour":              "Jour du mois (1-31)",
     "mois":              "Mois (1-12)",
     "lum":               "Éclairage (1=plein jour, 3=nuit sans éclairage, 5=nuit éclairé)",
     "dep":               "Département",
