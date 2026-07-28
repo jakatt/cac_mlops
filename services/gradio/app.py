@@ -1659,6 +1659,14 @@ _VPS_SERVICES: list[dict[str, str]] = [
 #   nœud, pas de nom DNS unique à interroger)
 # - loki-forwarder (K8s) : proxy SOCKS5, pas HTTP
 # - tailscale-subnet-router (K8s) : pas de serveur HTTP
+#
+# Blackbox-exporter (ligne ci-dessous) peut afficher NOK même quand tout va
+# bien : son /metrics dépasse le MTU du tunnel tailscale0 (1280) alors que
+# l'interface Docker de ce conteneur reste à 1500 — les paquets trop gros
+# sont perdus (trou noir MTU, PMTUD cassé à travers le NAT Docker), diagnostiqué
+# le 2026-07-28. Fix : infrastructure/tailscale/fix-mtu-mss.sh (à lancer une
+# fois sur le VPS avec sudo — MSS clamping, corrige aussi les dashboards
+# Grafana K8s qui restaient vides pour la même raison).
 _K8S_SERVICES: list[dict[str, str]] = [
     {"type": "Accès",     "service": "Gradio Public K8s (3/5)",
      "url": "https://kapsule.jakat-inc.fr/gradio-public-health",
