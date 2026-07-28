@@ -8,5 +8,11 @@ numpy>=1.26.0
 joblib>=1.4.0
 requests>=2.31.0
 
+# Client Gradio — appelle réellement la fonction "Predict" exposée par
+# gradio-public (src/flows/test_gradio_public_flow.py), pas juste un ping
+# /health — seule façon de tester fonctionnellement l'accès réellement
+# utilisé par les utilisateurs finaux (cf. observabilité par accès, PR230).
+gradio_client>=1.0.0
+
 # Orchestration
 prefect>=3.0.0

@@ -30,6 +30,7 @@ from prefect import flow, task, get_run_logger
 
 from src.flows.kapsule_up_flow import apply_manifests, upload_data_s3, upload_model_s3
 from src.flows.test_api_flow import test_api_flow
+from src.flows.test_gradio_public_flow import test_gradio_public_flow
 
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
@@ -492,8 +493,15 @@ def deploy_kapsule_flow(
         try:
             test_api_flow(skip_rate_limit=True, require_model=require_model, base_url=K8S_NGINX_URL)
             log.info("test-api Kapsule OK ✓")
+            # gradio-public est le seul vrai point d'accès utilisateur — même
+            # rationale que côté VPS (cf. deploy_vps_flow.py) : un readiness
+            # probe K8s ne vérifie que "la page racine charge", pas que
+            # l'inférence fonctionne réellement sur CET environnement.
+            if require_model:
+                test_gradio_public_flow(base_url=K8S_NGINX_URL)
+                log.info("test-gradio-public Kapsule OK ✓")
         except Exception as exc:
-            log.error("test-api Kapsule ÉCHOUÉ : %s", exc)
+            log.error("test-api/test-gradio-public Kapsule ÉCHOUÉ : %s", exc)
             rollback_kapsule_task(kubeconfig, touched)
             log.error("event=alert severity=critical topic=kapsule_failure reason=test_api")
             raise RuntimeError(

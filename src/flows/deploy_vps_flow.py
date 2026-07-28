@@ -38,6 +38,7 @@ from prefect import flow, task, get_run_logger, pause_flow_run
 from src.flows.deploy_kapsule_flow import deploy_kapsule_flow
 from src.flows.disk_cleanup_flow import disk_cleanup_flow
 from src.flows.test_api_flow import test_api_flow
+from src.flows.test_gradio_public_flow import test_gradio_public_flow
 from src.flows.train_flow import promote_task
 
 NGINX_URL = os.getenv("NGINX_URL", "http://nginx:80")
@@ -200,19 +201,44 @@ def _format_gate_message(
     return "\n".join(lines)
 
 
+# Un seul /health par service — gradio-public a sa propre route dédiée (nginx.conf,
+# /health seul est déjà pris par l'API) ; gradio (admin) n'a pas de chemin public
+# (bindé sur l'IP Tailscale uniquement), vérifié via le réseau Docker interne.
+_HEALTH_URLS = {
+    "api": f"{NGINX_URL}/health",
+    "gradio-public": f"{NGINX_URL}/gradio-public-health",
+    "gradio": "http://gradio:7860/health",
+}
+
+
 @task(name="smoke-test-health")
-def smoke_test_task(max_wait_s: int = 90) -> bool:
+def smoke_test_task(max_wait_s: int = 90, services: tuple[str, ...] = ("api",)) -> bool:
+    """Vérifie /health pour chaque service demandé (attente patiente, boot à froid).
+
+    Avant PR233, ce check ne portait que sur FastAPI quel que soit ce qui avait
+    réellement été redéployé — un déploiement touchant uniquement gradio-public
+    (ou gradio) n'était donc protégé par aucun smoke test. `services` scope le
+    check : pre-gate vérifie toujours les 3 accès VPS (santé globale avant la
+    décision GO/STOP, indépendante de ce qui va changer) ; post-compose ne
+    vérifie que ce qui a réellement été touché par CE déploiement (cf. call site
+    dans deploy_vps_flow, rebuilt_services/restart_services).
+    """
     log = get_run_logger()
     import urllib.request
+    urls = [_HEALTH_URLS[s] for s in services if s in _HEALTH_URLS]
+    if not urls:
+        log.info("Smoke test : aucun service concerné par ce déploiement, rien à vérifier")
+        return True
     for i in range(max_wait_s // 5):
         try:
-            urllib.request.urlopen(f"{NGINX_URL}/health", timeout=5)
-            log.info("Smoke test OK après %ds", (i + 1) * 5)
+            for url in urls:
+                urllib.request.urlopen(url, timeout=5)
+            log.info("Smoke test OK après %ds (%s)", (i + 1) * 5, ", ".join(services))
             return True
         except Exception:
             log.info("  attente smoke test… (%ds)", (i + 1) * 5)
             time.sleep(5)
-    log.error("Smoke test échoué après %ds", max_wait_s)
+    log.error("Smoke test échoué après %ds (%s)", max_wait_s, ", ".join(services))
     return False
 
 
@@ -549,14 +575,17 @@ def deploy_vps_flow(
     log = get_run_logger()
 
     # ── 1. Smoke test ─────────────────────────────────────────────────────────
-    ok = smoke_test_task()
+    # Pre-gate : santé globale des 3 accès VPS, indépendamment de ce que ce
+    # déploiement va toucher (question "la prod est-elle déjà saine ?").
+    ok = smoke_test_task(services=("api", "gradio", "gradio-public"))
     if not ok:
         log.error(
             "event=alert severity=critical topic=deploy_failure reason=smoke_test_pre_gate sha=%s",
             sha_tag or "N/A",
         )
         raise RuntimeError(
-            f"Smoke test ÉCHOUÉ — {NGINX_URL}/health ne répond pas après 90s.\n"
+            f"Smoke test ÉCHOUÉ — un des 3 accès VPS (api/gradio/gradio-public) "
+            f"ne répond pas après 90s.\n"
             f"SHA déployé : {sha_tag or 'N/A'}\n"
             "Actions requises :\n"
             "  1. docker compose logs api nginx --tail=100\n"
@@ -607,7 +636,10 @@ def deploy_vps_flow(
         # Seule étape qui interrompt le VPS pour le code — désormais après la gate.
         if rebuilt_services or restart_services:
             compose_up_task(rebuilt_services, restart_services)
-            ok = smoke_test_task()
+            # Post-compose : ne vérifier que ce qui a réellement été touché par CE
+            # déploiement (pas de check "aveugle" sur des services non concernés).
+            touched = {s for s in f"{rebuilt_services},{restart_services}".split(",") if s}
+            ok = smoke_test_task(services=tuple(touched))
             if not ok:
                 log.error(
                     "event=alert severity=critical topic=deploy_failure reason=smoke_test_post_compose sha=%s",
@@ -615,7 +647,8 @@ def deploy_vps_flow(
                 )
                 docker_rollback_task(sha_tag, rebuilt_services)
                 raise RuntimeError(
-                    f"Smoke test ÉCHOUÉ après compose up — {NGINX_URL}/health ne répond pas après 90s.\n"
+                    f"Smoke test ÉCHOUÉ après compose up — {', '.join(sorted(touched)) or 'aucun accès'} "
+                    f"ne répond(ent) pas après 90s.\n"
                     f"SHA déployé : {sha_tag or 'N/A'}\n"
                     "Rollback Docker :rollback effectué — conteneurs recréés."
                 )
@@ -636,8 +669,15 @@ def deploy_vps_flow(
         try:
             test_api_flow(skip_rate_limit=True, require_model=_has_model)
             log.info("test-api OK ✓")
+            # gradio-public est le seul vrai point d'accès utilisateur du système
+            # (FastAPI n'est appelé aujourd'hui que par des tests automatisés) —
+            # sans ce test, aucune vérification fonctionnelle ne le couvrait,
+            # seulement un ping /health (cf. observabilité par accès, PR230).
+            if _has_model:
+                test_gradio_public_flow()
+                log.info("test-gradio-public OK ✓")
         except Exception as exc:
-            log.error("test-api ÉCHOUÉ : %s", exc)
+            log.error("test-api/test-gradio-public ÉCHOUÉ : %s", exc)
             rolled_back_model = False
             rolled_back_code = False
             if champion and run_ids:
@@ -658,7 +698,7 @@ def deploy_vps_flow(
                 sha_tag or "N/A", rolled_back_model, rolled_back_code,
             )
             raise RuntimeError(
-                f"Test-api ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
+                f"Test-api / test-gradio-public ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
                 f"SHA déployé : {sha_tag or 'N/A'}\n"
                 f"Erreur : {exc}\n"
                 + ("@Production rollback effectué — l'ancienne version est restaurée.\n" if rolled_back_model else "")
