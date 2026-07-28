@@ -2473,11 +2473,6 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         table, dd_update, card = refresh_gate_queue()
                         return _render_pipeline_status_banner(), table, dd_update, card, _recent_deployments_table()
 
-                    pipeline_timer.tick(
-                        fn=_auto_refresh_banner_and_queue,
-                        outputs=[pipeline_banner, gate_queue, gate_dd, gate_card, history_table],
-                    )
-
                     def _gate_go(run_id):
                         msg = resume_run(run_id)
                         table, dd, card = refresh_gate_queue()
@@ -2507,6 +2502,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         )
                         history_refresh = gr.Button("↻", scale=1)
                     history_refresh.click(fn=_recent_deployments_table, outputs=history_table)
+
+                    pipeline_timer.tick(
+                        fn=_auto_refresh_banner_and_queue,
+                        outputs=[pipeline_banner, gate_queue, gate_dd, gate_card, history_table],
+                    )
 
             if not IS_KAPSULE:
                 with gr.Accordion("⚙️  Orchestration — Déclenchement des flows", open=False) as acc_orchestration:
