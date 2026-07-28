@@ -240,15 +240,15 @@ _PREDICT_LABELS = {
     "sexe":              "Sexe (1=masculin, 2=féminin)",
     "secu1":             "Équipement sécu (0=aucun, 1=ceinture, 2=casque, 8=autre)",
     "victim_age":        "Âge victime",
-    "catv":              "Catég. véhicule (1=VL, 2=util., 3=PL/bus, 4=moto, 5=cycle, 6=EDP)",
-    "obsm":              "Obstacle mobile (1=piéton, 2=véhicule, 4=animal)",
+    "catv":              "Catég. véhicule (1=2 roues/EDP/cycle, 2=VL, 3=transport commun, 4=PL/tracteur, 5=utilitaire, 6=quad)",
+    "obsm":              "Obstacle mobile (1=piéton, 2=véhicule, 4=véhicule sur rail, 5=animal)",
     "motor":             "Motorisation (1=thermique, 2=hybride, 3=électrique)",
     "catr":              "Catég. route (1=autoroute, 2=nat., 3=dépt., 4=comm., 6=parking, 7=urbaine)",
     "circ":              "Circulation (1=sens unique, 2=bidirectionnel)",
-    "surf":              "Surface (1=normale, 2=mouillée, 5=neige, 7=boue, 9=autre)",
-    "situ":              "Situation (1=voie norm., 2=intersection, 3=BAU, 4=trottoir)",
+    "surf":              "Surface (1=normale, 2=mouillée, 5=neige, 6=boue, 7=verglacée, 9=autre)",
+    "situ":              "Situation (1=chaussée, 2=BAU, 3=accotement, 4=trottoir)",
     "vma":               "Vitesse max autorisée (km/h)",
-    "jour":              "Jour semaine (1=lun … 7=dim)",
+    "jour":              "Jour du mois (1-31)",
     "mois":              "Mois (1-12)",
     "lum":               "Éclairage (1=plein jour, 3=nuit sans éclairage, 5=nuit éclairé)",
     "dep":               "Département",
@@ -256,7 +256,7 @@ _PREDICT_LABELS = {
     "agg_":              "Localisation (1=hors agglo, 2=agglo)",
     "intersection_type": "Intersection (1=hors carref., 2=carref. X, 3=T, 6=giratoire)",
     "atm":               "Météo (0=normale, 1=perturbée)",
-    "col":               "Collision (1=frontale, 2=arrière, 3=latérale, 6=aucune)",
+    "col":               "Collision (1=frontale, 2=arrière, 3=latérale, 7=aucune)",
     "lat":               "Latitude",
     "long":              "Longitude",
     "hour":              "Heure (0-23)",
@@ -1192,6 +1192,13 @@ _DEPLOY_STATE_LABEL = {
 }
 
 
+_TRIGGER_DESCRIPTIONS = {
+    "Trigger 1 — Nouvelles données": "Nouvelles données ONISR → réentraînement complet",
+    "Trigger 2 — Code":              "Nouveau code mergé → rebuild image + déploiement",
+    "Trigger 3 — Blueprint":         "Blueprint validé → promotion modèle + déploiement",
+}
+
+
 def _recent_deployment_runs(limit: int = 10) -> list[dict]:
     """Historique des derniers déploiements TERMINÉS (états finaux uniquement,
     tous triggers confondus) — complète la file d'attente ci-dessus (runs en
@@ -1220,18 +1227,26 @@ def _recent_deployments_table() -> pd.DataFrame:
     rows = []
     for run in _recent_deployment_runs():
         params = run.get("parameters") or {}
+        trigger = _trigger_label(params)
         sha_tag = params.get("sha_tag") or ""
         pr_label = "—"
         if sha_tag:
             pr = _fetch_github_pr(sha_tag)
             if pr:
-                pr_label = f"#{pr['number']}"
+                pr_url = f"https://github.com/{GITHUB_REPO}/pull/{pr['number']}"
+                pr_label = f"[#{pr['number']}]({pr_url})"
+        run_id = run.get("id", "")
+        run_id_label = "—"
+        if run_id:
+            run_url = f"http://{VPS_TAILSCALE_IP}:4200/flow-runs/flow-run/{run_id}"
+            run_id_label = f"[{run_id[:8]}]({run_url})"
         rows.append({
-            "Trigger":  _trigger_label(params),
-            "PR":       pr_label,
-            "Démarré":  _parse_ts(run.get("start_time") or ""),
-            "Statut":   _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), run.get("state_type") or "?"),
-            "Run ID":   run.get("id", "")[:8],
+            "Trigger":     trigger,
+            "Déploiement": _TRIGGER_DESCRIPTIONS.get(trigger, "—"),
+            "PR":          pr_label,
+            "Démarré":     _parse_ts(run.get("start_time") or ""),
+            "Statut":      _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), run.get("state_type") or "?"),
+            "Run ID":      run_id_label,
         })
     if not rows:
         return pd.DataFrame({"Info": ["Aucun déploiement récent"]})
@@ -2071,9 +2086,9 @@ button[role="tab"][aria-selected="true"] {
     border: none !important;
     box-shadow: none !important;
     color: #6B7280 !important;
-    font-size: 1rem !important;
+    font-size: 1.4rem !important;
     line-height: 1 !important;
-    padding: 4px 8px !important;
+    padding: 4px 10px !important;
     min-width: 0 !important;
 }
 #tab-toolbar button:hover {
@@ -2146,10 +2161,10 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
     with gr.Row(elem_id="tab-toolbar"):
         collapse_all_btn = gr.Button(
-            "⊟", elem_id="collapse-all-btn", scale=0, min_width=32, size="sm", variant="secondary"
+            "⊟", elem_id="collapse-all-btn", scale=0, min_width=40, size="sm", variant="secondary"
         )
         home_btn = gr.Button(
-            "🏠", elem_id="home-btn", scale=0, min_width=32, size="sm", variant="secondary"
+            "⌂", elem_id="home-btn", scale=0, min_width=40, size="sm", variant="secondary"
         )
 
     with gr.Tabs() as main_tabs:
@@ -2503,6 +2518,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     with gr.Row():
                         history_table = gr.Dataframe(
                             value=_recent_deployments_table(), label="Historique", interactive=False, scale=5,
+                            datatype="markdown",
                         )
                         history_refresh = gr.Button("↻", scale=1)
                     history_refresh.click(fn=_recent_deployments_table, outputs=history_table)
@@ -2773,11 +2789,16 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
     # ── Toolbar barre d'onglets : fermer tous les accordéons / retour Accueil ──
     _ALL_ACCORDIONS = [acc_validation, acc_orchestration, acc_healthcheck, acc_drift, acc_modeles, acc_liens]
+    # queue=False : ces 2 boutons ne font qu'un changement d'état local (aucun
+    # appel réseau) — sans ça, ils passent dans la même file que les timers/
+    # polls Prefect de l'onglet Cockpit et peuvent rester en attente derrière
+    # eux, donnant l'impression de ne rien faire.
     collapse_all_btn.click(
-        fn=lambda: [gr.Accordion(open=False)] * len(_ALL_ACCORDIONS),
+        fn=lambda: [gr.Accordion(open=False) for _ in _ALL_ACCORDIONS],
         outputs=_ALL_ACCORDIONS,
+        queue=False,
     )
-    home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs)
+    home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs, queue=False)
 
 
 if __name__ == "__main__":
