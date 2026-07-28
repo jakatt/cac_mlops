@@ -13,7 +13,7 @@ La variable cible **`grav`** (binaire, non incluse dans le dictionnaire) vaut `1
 | Feature | Type | Source | Description | Modalités / plage |
 |---|---|---|---|---|
 | `mois` | int | `caracteristiques` | Mois de l'accident | 1 – 12 |
-| `jour` | int | `caracteristiques` | Jour de la semaine (1 = lundi, 7 = dimanche) | 1 – 7 |
+| `jour` | int | `caracteristiques` | Jour du mois (aucun recodage — valeur brute ONISR, cf. `src/data/schema.py`) | 1 – 31 |
 | `hour` | int | `caracteristiques` | Heure de l'accident, extraite de la colonne `hrmn` (format HHMM) | 0 – 23 |
 
 ---
