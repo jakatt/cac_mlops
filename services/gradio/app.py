@@ -1740,7 +1740,10 @@ def _kapsule_links_html() -> str:
     if not public_url or public_url == "pending":
         return f"<p style='color:{MUTED};'>IPs non disponibles</p>"
 
-    rows = _link_row("Cockpit public K8s", public_url, "Public")
+    rows = (
+        _link_row("Cockpit public K8s", public_url, "Public")
+        + _link_row("FastAPI K8s (production)", f"{public_url}/docs", "Public")
+    )
     return _links_table(rows)
 
 
@@ -1752,7 +1755,10 @@ def _kapsule_self_links_html() -> str:
     K8s dédié au chemin public HA) — cette vue reste toutefois inatteignable
     en pratique, IS_KAPSULE n'étant plus jamais vrai (COCKPIT_ENV=kapsule
     n'est plus défini nulle part, k8s/gradio/ supprimé)."""
-    rows = _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
+    rows = (
+        _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
+        + _link_row("FastAPI K8s (production)", f"{KAPSULE_PUBLIC_URL}/docs", "Public")
+    )
     return _links_table(rows)
 
 
@@ -1773,6 +1779,7 @@ def build_links_html() -> str:
     vps_rows = (
         _link_row("Données ONISR (data.gouv.fr)", onisr_url, "Public")
         + _link_row("Cockpit public",             PUBLIC_URL, "Public")
+        + _link_row("FastAPI VPS (production)",   f"{PUBLIC_URL}/docs", "Public")
         + _link_row("Cockpit admin",               f"http://{VPS_TAILSCALE_IP}:7860", "Tailscale")
         + _link_row("MLflow",                      f"http://{VPS_TAILSCALE_IP}:5001", "Tailscale")
         + _link_row("Grafana",                     f"http://{VPS_TAILSCALE_IP}:3000", "Tailscale")
