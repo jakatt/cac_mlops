@@ -1610,6 +1610,9 @@ _VPS_SERVICES: list[dict[str, str]] = [
     {"type": "Accès",     "service": "FastAPI VPS (2/5)",
      "url": "https://mlops.jakat-inc.fr/health",
      "obs": "Application externe — Caddy → nginx → API"},
+    {"type": "Accès",     "service": "Gradio Admin VPS (5/5)",
+     "url": "http://gradio:7860/health",
+     "obs": "Administrateur — accès direct Tailscale (pas de Caddy/nginx), auto-diagnostic (ce process)"},
     {"type": "Composant", "service": "API",
      "url": "http://api:8000/health",
      "obs": "FastAPI + JWT (/predict, /token) — check direct, réseau Docker"},
@@ -1619,9 +1622,6 @@ _VPS_SERVICES: list[dict[str, str]] = [
     {"type": "Composant", "service": "Gradio public",
      "url": "http://gradio-public:7862/",
      "obs": "Process UI — check direct, réseau Docker"},
-    {"type": "Composant", "service": "Gradio admin",
-     "url": "http://gradio:7860/health",
-     "obs": "Cockpit admin — auto-diagnostic (ce process)"},
     {"type": "Composant", "service": "MLflow",
      "url": "http://mlflow:5000/health",
      "obs": "Registre source de vérité"},
@@ -1686,7 +1686,7 @@ _K8S_SERVICES: list[dict[str, str]] = [
      "obs": "Réplicas disponibles par Deployment (Grafana)"},
 ]
 
-_HEALTH_COLUMN_WIDTHS = ["10%", "20%", "10%", "60%"]
+_HEALTH_COLUMN_WIDTHS = ["20%", "10%", "10%", "60%"]
 
 
 def _check_url(url: str, timeout: int = 5) -> bool:
@@ -1709,7 +1709,7 @@ _STATUS_NOK = "🔴 NOK"
 
 def check_health_vps() -> pd.DataFrame:
     rows = [
-        {"Type": e["type"], "Services VPS": e["service"],
+        {"Services VPS": e["service"], "Type": e["type"],
          "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
         for e in _VPS_SERVICES
     ]
@@ -1729,7 +1729,7 @@ def check_health_k8s() -> pd.DataFrame:
             status, obs = _STATUS_NOK, f"{e['obs']} — Kapsule inactif"
         else:
             status, obs = (_STATUS_OK if _check_url(e["url"]) else _STATUS_NOK), e["obs"]
-        rows.append({"Type": e["type"], "Services K8S": e["service"], "Status": status, "Observations": obs})
+        rows.append({"Services K8S": e["service"], "Type": e["type"], "Status": status, "Observations": obs})
     return pd.DataFrame(rows)
 
 
