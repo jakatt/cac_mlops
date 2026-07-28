@@ -6,9 +6,16 @@ metadata:
 spec:
   # ClusterIP — Caddy (k8s/caddy/) devient le seul point d'entrée public
   # (TLS + HTTP->HTTPS), nginx passe interne (rate-limiting/routing inchangés).
+  #
+  # sessionAffinity: ClientIP — maillon intermédiaire nécessaire pour que
+  # l'affinité de gradio-public (cf. k8s/gradio-public/service.yaml) tienne
+  # jusqu'au vrai navigateur : sans ça, un même pod Caddy verrait ses
+  # requêtes réparties au hasard entre les 2 pods nginx, cassant la chaîne
+  # même si gradio-public est lui-même collant.
   type: ClusterIP
   selector:
     app: nginx
+  sessionAffinity: ClientIP
   ports:
   - name: http
     port: 80

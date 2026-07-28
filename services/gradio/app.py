@@ -1752,7 +1752,7 @@ _LINKS_TH  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};
 _LINKS_TD1 = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
 _LINKS_TD2 = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
 _LINKS_TD3 = f"padding:6px 16px;font-size:0.78rem;color:{MUTED};font-family:Inter,Segoe UI,sans-serif;"
-_LINKS_COLGROUP = '<colgroup><col style="width:28%;"><col style="width:50%;"><col style="width:22%;"></colgroup>'
+_LINKS_COLGROUP = '<colgroup><col style="width:20%;"><col style="width:15%;"><col style="width:65%;"></colgroup>'
 _LINKS_NOTE = (
     f"<p style='margin:6px 0 0;font-size:0.78em;color:{MUTED};'>"
     "Ports admin accessibles via Tailscale VPN uniquement &mdash; API et cockpit public sur HTTPS.</p>"
@@ -1763,19 +1763,19 @@ def _link_row(label: str, url: str, access: str) -> str:
     return (
         f'<tr>'
         f'<td style="{_LINKS_TD1}">{label}</td>'
+        f'<td style="{_LINKS_TD3}">{access}</td>'
         f'<td style="{_LINKS_TD2}"><a href="{url}" target="_blank" '
         f'style="color:{NAVY};text-decoration:none;">{url}</a></td>'
-        f'<td style="{_LINKS_TD3}">{access}</td>'
         f'</tr>'
     )
 
 
-def _links_table(rows: str) -> str:
+def _links_table(rows: str, service_label: str) -> str:
     return (
         f'<table style="border-collapse:collapse;width:100%;table-layout:fixed;'
         f'border:1px solid #E5E7EB;border-radius:4px;font-family:Inter,Segoe UI,sans-serif;">'
         f'{_LINKS_COLGROUP}'
-        f'<tr><th style="{_LINKS_TH}">Service</th><th style="{_LINKS_TH}">URL</th><th style="{_LINKS_TH}">Accès</th></tr>'
+        f'<tr><th style="{_LINKS_TH}">{service_label}</th><th style="{_LINKS_TH}">Accès</th><th style="{_LINKS_TH}">URL</th></tr>'
         f'{rows}'
         f'</table>'
     )
@@ -1809,7 +1809,7 @@ def _kapsule_links_html() -> str:
         _link_row("Cockpit public K8s", public_url, "Public")
         + _link_row("FastAPI K8s (production)", f"{public_url}/docs", "Public")
     )
-    return _links_table(rows)
+    return _links_table(rows, "Service K8S")
 
 
 def _kapsule_self_links_html() -> str:
@@ -1824,7 +1824,7 @@ def _kapsule_self_links_html() -> str:
         _link_row("Cockpit public K8s", KAPSULE_PUBLIC_URL, "Public")
         + _link_row("FastAPI K8s (production)", f"{KAPSULE_PUBLIC_URL}/docs", "Public")
     )
-    return _links_table(rows)
+    return _links_table(rows, "Service K8S")
 
 
 def build_links_html() -> str:
@@ -1832,7 +1832,6 @@ def build_links_html() -> str:
         return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
 
-  <p style="margin:0 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s</p>
   {_kapsule_self_links_html()}
   {_LINKS_NOTE}
 
@@ -1858,11 +1857,10 @@ def build_links_html() -> str:
     return f"""
 <div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
 
-  <p style="margin:0 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Virtual Private Server</p>
-  {_links_table(vps_rows)}
+  {_links_table(vps_rows, "Service VPS")}
   {_LINKS_NOTE}
 
-  <p style="margin:24px 0 8px;font-size:0.82rem;font-weight:600;color:{NAVY};">Kapsule K8s</p>
+  <div style="margin-top:24px;"></div>
   {kapsule_html}
   {_LINKS_NOTE}
 

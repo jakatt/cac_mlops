@@ -8,9 +8,22 @@ metadata:
 spec:
   # ClusterIP — jamais de port public direct, exactement comme sur le VPS.
   # Seul nginx (lui-même seulement reachable via Caddy) y accède.
+  #
+  # sessionAffinity: ClientIP — la queue Gradio (gradio_api/queue/join puis
+  # queue/data) garde son état EN MÉMOIRE dans le pod qui a reçu le join ;
+  # rien n'est partagé entre les 2 réplicas. Sans affinité, kube-proxy
+  # répartit chaque connexion au hasard entre les 2 pods : si le join tape
+  # le pod A mais la requête suivante tape le pod B, la session est inconnue
+  # → CancelledError. Reproduit en direct le 2026-07-28 : 8 prédictions
+  # réelles d'affilée sur kapsule.jakat-inc.fr → 2 OK, 6 échouées (~25%,
+  # cohérent avec "retomber par hasard sur le même pod"). Doit être répliqué
+  # sur k8s/nginx/service.yaml et k8s/caddy/service.yaml pour tenir de bout
+  # en bout jusqu'au vrai navigateur (l'IP vue ici est celle du pod nginx
+  # amont, pas celle du client final, si nginx lui-même n'est pas collant).
   type: ClusterIP
   selector:
     app: gradio-public
+  sessionAffinity: ClientIP
   ports:
   - port: 7862
     targetPort: 7862

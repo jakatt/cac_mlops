@@ -12,6 +12,16 @@ spec:
   type: LoadBalancer
   selector:
     app: caddy
+  # sessionAffinity: ClientIP — premier maillon de la chaîne d'affinité (cf.
+  # k8s/nginx/service.yaml et k8s/gradio-public/service.yaml) : sans lui,
+  # même avec les 2 autres Services collants, un même navigateur pourrait
+  # taper alternativement les 2 pods Caddy et donc 2 chaînes différentes.
+  # externalTrafficPolicy: Local — évite le SNAT qui remplacerait l'IP
+  # réelle du client par une IP de nœud avant que kube-proxy applique
+  # l'affinité (sans ça, ClientIP verrait la mauvaise IP). Sûr ici : les 2
+  # pods Caddy sont répartis sur les 2 nœuds (topologySpreadConstraints).
+  sessionAffinity: ClientIP
+  externalTrafficPolicy: Local
   ports:
   - name: http
     port: 80
