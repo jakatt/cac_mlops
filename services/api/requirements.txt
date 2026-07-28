@@ -22,3 +22,13 @@ evidently>=0.4.0,<0.5.0
 dvc[s3]>=3.0.0
 docker>=7.0.0
 pandera>=0.19.0
+
+# Client Gradio — prefect-worker exécute src/flows/test_gradio_public_flow.py
+# (appel réel de la fonction Predict de gradio-public, pas un ping /health).
+# prefect-worker tourne sur l'image cac-mlops-api (docker-compose.yml —
+# services/prefect/ n'est référencé par aucun build, mort depuis une
+# précédente itération), donc c'est CE fichier qui compte, pas
+# services/prefect/requirements.txt (corrigé après un premier essai raté :
+# ModuleNotFoundError sur le premier déploiement de test_gradio_public_flow,
+# 2026-07-28).
+gradio_client>=1.0.0
