@@ -8,3 +8,13 @@ datasources:
     url: http://prometheus.cac-mlops.svc.cluster.local:9090
     isDefault: false
     editable: false
+    jsonData:
+      # Le pont VPS→Tailscale→K8s (subnet-router) est nettement plus lent que
+      # le réseau interne K8s — une requête query_range mesurée à 30.04s puis
+      # 502 Bad Gateway (timeout par défaut de Grafana), alors que les mêmes
+      # métriques répondent en <100ms en instant query. Constaté en direct le
+      # 2026-07-28 : la plupart des panneaux des dashboards K8s (timeseries,
+      # state-timeline, logs) restaient vides. Root cause réseau non résolue
+      # (cf. TODO séparé) — ce timeout est un traitement du symptôme, pas de
+      # la cause.
+      timeout: 60
