@@ -1184,6 +1184,60 @@ def _paused_runs_table() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+_DEPLOY_STATE_LABEL = {
+    "COMPLETED": "✅ OK",
+    "FAILED":    "❌ Échec",
+    "CRASHED":   "💥 Crash",
+    "CANCELLED": "⏹ STOP",
+}
+
+
+def _recent_deployment_runs(limit: int = 10) -> list[dict]:
+    """Historique des derniers déploiements TERMINÉS (états finaux uniquement,
+    tous triggers confondus) — complète la file d'attente ci-dessus (runs en
+    attente de décision) avec ce qui a déjà été traité. Mêmes flows que
+    _last_deploy_flow_run()."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/flow_runs/filter",
+            json={
+                "flows": {"name": {"any_": ["deploy-vps-flow", "update-model-flow"]}},
+                "flow_runs": {
+                    "state": {"type": {"any_": ["COMPLETED", "FAILED", "CRASHED", "CANCELLED"]}},
+                },
+                "sort": "START_TIME_DESC",
+                "limit": limit,
+            },
+            timeout=5,
+        )
+        runs = r.json()
+        return runs if isinstance(runs, list) else []
+    except Exception:
+        return []
+
+
+def _recent_deployments_table() -> pd.DataFrame:
+    rows = []
+    for run in _recent_deployment_runs():
+        params = run.get("parameters") or {}
+        sha_tag = params.get("sha_tag") or ""
+        pr_label = "—"
+        if sha_tag:
+            pr = _fetch_github_pr(sha_tag)
+            if pr:
+                pr_label = f"#{pr['number']}"
+        rows.append({
+            "Trigger":  _trigger_label(params),
+            "PR":       pr_label,
+            "Démarré":  _parse_ts(run.get("start_time") or ""),
+            "Statut":   _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), run.get("state_type") or "?"),
+            "Run ID":   run.get("id", "")[:8],
+        })
+    if not rows:
+        return pd.DataFrame({"Info": ["Aucun déploiement récent"]})
+    return pd.DataFrame(rows)
+
+
 def _render_gate_card(run_id: str) -> str:
     if not run_id:
         return f"<p style='color:{MUTED};'>Sélectionnez un déploiement en attente.</p>"
@@ -2002,6 +2056,31 @@ button[role="tab"][aria-selected="true"] {
     border-bottom: 2px solid #156082;
 }
 
+/* ─── Toolbar (fermer accordéons / accueil) superposé à la barre d'onglets ───
+   Row placé juste avant gr.Tabs(), aligné à droite, remonté par margin
+   négative pour se superposer visuellement à .tab-nav qui suit juste après.
+   pointer-events:none sur le Row (sauf les boutons eux-mêmes) pour laisser
+   les clics traverser vers les onglets sous la zone vide à gauche du
+   toolbar — évite d'avoir à envelopper tout le contenu des onglets dans un
+   conteneur positionné (risque de ré-indentation massive). */
+#tab-toolbar {
+    justify-content: flex-end !important;
+    gap: 6px !important;
+    margin-bottom: -44px;
+    position: relative;
+    z-index: 30;
+    pointer-events: none;
+}
+#tab-toolbar button {
+    pointer-events: auto;
+    min-width: 40px !important;
+    width: 40px;
+    height: 34px;
+    padding: 0 !important;
+    font-size: 1rem;
+    border-radius: 6px !important;
+}
+
 /* ─── Buttons ─── */
 .gr-button-primary,
 button.primary,
@@ -2065,10 +2144,14 @@ with gr.Blocks(title="Cockpit MLOps — Securite Routiere") as demo:
 Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — donnees ONISR {_YEAR_RANGE}.
 """)
 
-    with gr.Tabs():
+    with gr.Row(elem_id="tab-toolbar"):
+        collapse_all_btn = gr.Button("⊟", elem_id="collapse-all-btn")
+        home_btn = gr.Button("🏠", elem_id="home-btn")
+
+    with gr.Tabs() as main_tabs:
 
         # ── Onglet Accueil ───────────────────────────────────────────────────
-        with gr.Tab("Accueil"):
+        with gr.Tab("Accueil", id="tab_accueil"):
             gr.HTML("""
 <style>
 .accueil-pill {
@@ -2345,7 +2428,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         # ── Onglet Cockpit : gate + orchestration + healthcheck + liens ──────
         with gr.Tab("Cockpit"):
             if not IS_KAPSULE:
-                with gr.Accordion("⏸  Validation des déploiements en attente", open=False):
+                with gr.Accordion("⏸  Validation des déploiements en attente", open=False) as acc_validation:
                     gr.Markdown(
                         "### Cockpit — validation des déploiements en attente\n"
                         "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
@@ -2388,12 +2471,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
                     def _auto_refresh_banner_and_queue():
                         table, dd_update, card = refresh_gate_queue()
-                        return _render_pipeline_status_banner(), table, dd_update, card
-
-                    pipeline_timer.tick(
-                        fn=_auto_refresh_banner_and_queue,
-                        outputs=[pipeline_banner, gate_queue, gate_dd, gate_card],
-                    )
+                        return _render_pipeline_status_banner(), table, dd_update, card, _recent_deployments_table()
 
                     def _gate_go(run_id):
                         msg = resume_run(run_id)
@@ -2417,8 +2495,21 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         outputs=[retry_status, pipeline_banner, gate_queue, gate_dd, gate_card],
                     )
 
+                    gr.Markdown("### Derniers déploiements exécutés")
+                    with gr.Row():
+                        history_table = gr.Dataframe(
+                            value=_recent_deployments_table(), label="Historique", interactive=False, scale=5,
+                        )
+                        history_refresh = gr.Button("↻", scale=1)
+                    history_refresh.click(fn=_recent_deployments_table, outputs=history_table)
+
+                    pipeline_timer.tick(
+                        fn=_auto_refresh_banner_and_queue,
+                        outputs=[pipeline_banner, gate_queue, gate_dd, gate_card, history_table],
+                    )
+
             if not IS_KAPSULE:
-                with gr.Accordion("⚙️  Orchestration — Déclenchement des flows", open=False):
+                with gr.Accordion("⚙️  Orchestration — Déclenchement des flows", open=False) as acc_orchestration:
                     gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
                     _FLOW_CONFIGS = {
@@ -2594,7 +2685,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     clear_btn.click(fn=lambda: "", outputs=action_result)
                     retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
 
-            with gr.Accordion("🏥  Healthcheck — État des services", open=False):
+            with gr.Accordion("🏥  Healthcheck — État des services", open=False) as acc_healthcheck:
                 gr.Markdown("### Etat des services VPS et Kapsule K8s")
                 health_refresh = gr.Button("Verifier maintenant", variant="primary")
                 health_table_vps = gr.Dataframe(
@@ -2613,7 +2704,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 health_refresh.click(fn=check_health_k8s, outputs=health_table_k8s)
 
             if not IS_KAPSULE:
-                with gr.Accordion("📉  Drift — Rapports de dérive", open=False):
+                with gr.Accordion("📉  Drift — Rapports de dérive", open=False) as acc_drift:
                     gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
                     with gr.Row():
                         drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
@@ -2624,7 +2715,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
 
             if not IS_KAPSULE:
-                with gr.Accordion("🧠  Modèles — Versions et promotion", open=False):
+                with gr.Accordion("🧠  Modèles — Versions et promotion", open=False) as acc_modeles:
                     gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
                     with gr.Row():
                         models_refresh = gr.Button("Rafraichir", scale=1)
@@ -2662,7 +2753,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     # l'appel a chaque connexion, garantissant des donnees a jour.
                     demo.load(fn=refresh_models, outputs=[models_table, promote_dd])
 
-            with gr.Accordion("🔗  Liens", open=False):
+            with gr.Accordion("🔗  Liens", open=False) as acc_liens:
                 infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
                 infra_html    = gr.HTML(value=build_links_html())
                 infra_refresh.click(fn=build_links_html, outputs=infra_html)
@@ -2675,6 +2766,14 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 ---
 {_get_production_footer()}
 """)
+
+    # ── Toolbar barre d'onglets : fermer tous les accordéons / retour Accueil ──
+    _ALL_ACCORDIONS = [acc_validation, acc_orchestration, acc_healthcheck, acc_drift, acc_modeles, acc_liens]
+    collapse_all_btn.click(
+        fn=lambda: [gr.Accordion(open=False)] * len(_ALL_ACCORDIONS),
+        outputs=_ALL_ACCORDIONS,
+    )
+    home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs)
 
 
 if __name__ == "__main__":
