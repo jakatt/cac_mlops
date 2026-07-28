@@ -1594,43 +1594,99 @@ def retry_prefect_trigger() -> str:
 # prometheus-k8s. Plus de Cockpit Gradio propre sur K8s depuis le
 # 2026-07-13 (dédié au chemin public HA) : ce tableau, exécuté uniquement
 # depuis le Cockpit du VPS, est donc la seule vue santé K8s.
+#
+# Colonne Type — deux catégories, jamais mélangées dans le libellé :
+#   "Accès"     : chaîne complète (Caddy → nginx → service), correspond à
+#                 l'un des 5 accès mesurés en continu par blackbox-exporter
+#                 (cf. dashboards Grafana dédiés) — répond à "un vrai
+#                 utilisateur/appli externe peut-il l'utiliser maintenant ?"
+#   "Composant" : check direct sur le réseau interne, bypass nginx/Caddy —
+#                 isole la cause si une ligne "Accès" échoue (le composant
+#                 lui-même est-il en cause, ou est-ce nginx/Caddy/réseau ?)
 _VPS_SERVICES: list[dict[str, str]] = [
-    {"service": "API",           "url": "http://api:8000/health",
-     "obs": "FastAPI + JWT (/predict, /token)"},
-    {"service": "MLflow",        "url": "http://mlflow:5000/health",
+    {"type": "Accès",     "service": "Gradio Public VPS (1/5)",
+     "url": "https://mlops.jakat-inc.fr/gradio-public-health",
+     "obs": "Utilisateur final — Caddy → nginx → gradio-public"},
+    {"type": "Accès",     "service": "FastAPI VPS (2/5)",
+     "url": "https://mlops.jakat-inc.fr/health",
+     "obs": "Application externe — Caddy → nginx → API"},
+    {"type": "Composant", "service": "API",
+     "url": "http://api:8000/health",
+     "obs": "FastAPI + JWT (/predict, /token) — check direct, réseau Docker"},
+    {"type": "Composant", "service": "Nginx",
+     "url": "http://nginx:80/health",
+     "obs": "Rate-limit + routing — check direct, réseau Docker"},
+    {"type": "Composant", "service": "Gradio public",
+     "url": "http://gradio-public:7862/",
+     "obs": "Process UI — check direct, réseau Docker"},
+    {"type": "Composant", "service": "Gradio admin",
+     "url": "http://gradio:7860/health",
+     "obs": "Cockpit admin — auto-diagnostic (ce process)"},
+    {"type": "Composant", "service": "MLflow",
+     "url": "http://mlflow:5000/health",
      "obs": "Registre source de vérité"},
-    {"service": "Prefect",       "url": "http://prefect-server:4200/api/health",
+    {"type": "Composant", "service": "Prefect",
+     "url": "http://prefect-server:4200/api/health",
      "obs": "Orchestration des flows"},
-    {"service": "MinIO",         "url": "http://minio:9000/minio/health/live",
+    {"type": "Composant", "service": "MinIO",
+     "url": "http://minio:9000/minio/health/live",
      "obs": "Stockage S3 local (dev)"},
-    {"service": "Prometheus",    "url": "http://prometheus:9090/-/healthy",
+    {"type": "Composant", "service": "Prometheus",
+     "url": "http://prometheus:9090/-/healthy",
      "obs": "Scrape les métriques VPS (api, exporters)"},
-    {"service": "Nginx",         "url": "http://nginx:80/health",
-     "obs": "Rate-limit + routing (localhost)"},
-    {"service": "Grafana",       "url": "http://grafana:3000/api/health",
+    {"type": "Composant", "service": "Grafana",
+     "url": "http://grafana:3000/api/health",
      "obs": "Dashboards + alertes"},
-    {"service": "Loki",          "url": "http://loki:3100/ready",
+    {"type": "Composant", "service": "Loki",
+     "url": "http://loki:3100/ready",
      "obs": "Logs centralisés VPS + K8s"},
-    {"service": "Gradio public", "url": "http://gradio-public:7862/",
-     "obs": "Cockpit utilisateur"},
-    {"service": "Caddy",         "url": "https://mlops.jakat-inc.fr/health",
-     "obs": "Entrée publique — mlops.jakat-inc.fr"},
+    {"type": "Composant", "service": "Node-exporter",
+     "url": "http://node-exporter:9100/metrics",
+     "obs": "Métriques système (RAM/CPU/disque)"},
+    {"type": "Composant", "service": "Nginx-exporter",
+     "url": "http://nginx-exporter:9113/metrics",
+     "obs": "Métriques nginx (requêtes, connexions)"},
+    {"type": "Composant", "service": "Blackbox-exporter",
+     "url": "http://blackbox-exporter:9115/metrics",
+     "obs": "Sonde de disponibilité des 5 accès (Grafana)"},
 ]
 
+# Composants sans mécanisme de check HTTP simple, volontairement absents de
+# ce tableau (nécessiteraient un mécanisme différent de _check_url) :
+# - postgresql (VPS) : pas HTTP, il faudrait une connexion DB
+# - prefect-worker (VPS) : aucun serveur HTTP exposé, pas d'endpoint de santé
+# - node-exporter / promtail (K8s) : DaemonSet sans Service stable (1 IP par
+#   nœud, pas de nom DNS unique à interroger)
+# - loki-forwarder (K8s) : proxy SOCKS5, pas HTTP
+# - tailscale-subnet-router (K8s) : pas de serveur HTTP
 _K8S_SERVICES: list[dict[str, str]] = [
-    {"service": "API",           "url": "http://api.cac-mlops.svc.cluster.local:8000/health",
-     "obs": "Chemin public + healthcheck Tailscale"},
-    {"service": "Nginx",         "url": "http://nginx.cac-mlops.svc.cluster.local:80/health",
-     "obs": "Rate-limit + routing (ClusterIP)"},
-    {"service": "Gradio public", "url": "http://gradio-public.cac-mlops.svc.cluster.local:7862/",
-     "obs": "Cockpit utilisateur K8s"},
-    {"service": "Prometheus",    "url": "http://prometheus.cac-mlops.svc.cluster.local:9090/-/healthy",
+    {"type": "Accès",     "service": "Gradio Public K8s (3/5)",
+     "url": "https://kapsule.jakat-inc.fr/gradio-public-health",
+     "obs": "Utilisateur final — Caddy → nginx → gradio-public"},
+    {"type": "Accès",     "service": "FastAPI K8s (4/5)",
+     "url": "https://kapsule.jakat-inc.fr/health",
+     "obs": "Application externe — Caddy → nginx → API"},
+    {"type": "Composant", "service": "API",
+     "url": "http://api.cac-mlops.svc.cluster.local:8000/health",
+     "obs": "FastAPI + JWT — check direct ClusterIP"},
+    {"type": "Composant", "service": "Nginx",
+     "url": "http://nginx.cac-mlops.svc.cluster.local:80/health",
+     "obs": "Rate-limit + routing — check direct ClusterIP"},
+    {"type": "Composant", "service": "Gradio public",
+     "url": "http://gradio-public.cac-mlops.svc.cluster.local:7862/",
+     "obs": "Process UI — check direct ClusterIP"},
+    {"type": "Composant", "service": "Prometheus",
+     "url": "http://prometheus.cac-mlops.svc.cluster.local:9090/-/healthy",
      "obs": "Scrapé à distance par Grafana VPS"},
-    {"service": "Caddy",         "url": "https://kapsule.jakat-inc.fr/health",
-     "obs": "Entrée publique — kapsule.jakat-inc.fr"},
+    {"type": "Composant", "service": "Blackbox-exporter",
+     "url": "http://blackbox-exporter.cac-mlops.svc.cluster.local:9115/metrics",
+     "obs": "Sonde de disponibilité des 2 accès K8s (Grafana)"},
+    {"type": "Composant", "service": "Kube-state-metrics",
+     "url": "http://kube-state-metrics.cac-mlops.svc.cluster.local:8080/healthz",
+     "obs": "Réplicas disponibles par Deployment (Grafana)"},
 ]
 
-_HEALTH_COLUMN_WIDTHS = ["20%", "12%", "68%"]
+_HEALTH_COLUMN_WIDTHS = ["10%", "20%", "10%", "60%"]
 
 
 def _check_url(url: str, timeout: int = 5) -> bool:
@@ -1653,7 +1709,8 @@ _STATUS_NOK = "🔴 NOK"
 
 def check_health_vps() -> pd.DataFrame:
     rows = [
-        {"Service": e["service"], "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
+        {"Type": e["type"], "Service": e["service"],
+         "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
         for e in _VPS_SERVICES
     ]
     return pd.DataFrame(rows)
@@ -1662,7 +1719,7 @@ def check_health_vps() -> pd.DataFrame:
 def check_health_k8s() -> pd.DataFrame:
     """Si Kapsule est inactif (state/kapsule_ips vide ou absent — cf.
     deploy_kapsule_flow.py::check_kapsule_task), toutes les lignes sont
-    marquées NOK sans lancer les requêtes (évite 6 timeouts réseau
+    marquées NOK sans lancer les requêtes (évite des timeouts réseau
     inutiles) ; l'observation précise "Kapsule inactif" pour ne pas laisser
     croire à un incident (c'est un arrêt volontaire, économie de coûts)."""
     kapsule_active = KAPSULE_STATE.exists() and bool(KAPSULE_STATE.read_text().strip())
@@ -1672,7 +1729,7 @@ def check_health_k8s() -> pd.DataFrame:
             status, obs = _STATUS_NOK, f"{e['obs']} — Kapsule inactif"
         else:
             status, obs = (_STATUS_OK if _check_url(e["url"]) else _STATUS_NOK), e["obs"]
-        rows.append({"Service": e["service"], "Status": status, "Observations": obs})
+        rows.append({"Type": e["type"], "Service": e["service"], "Status": status, "Observations": obs})
     return pd.DataFrame(rows)
 
 
