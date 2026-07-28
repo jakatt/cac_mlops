@@ -37,5 +37,17 @@ data:
     }
 
     kapsule.jakat-inc.fr {
-        reverse_proxy nginx:80
+        # Répond directement, sans passer par nginx/api — sonde readiness/
+        # liveness dédiée (k8s/caddy/deployment.yaml) qui teste UNIQUEMENT que
+        # Caddy sert bien TLS pour ce domaine (cert chargé), indépendamment de
+        # la santé du backend. Coupler la probe à /health (proxié jusqu'à
+        # FastAPI) ferait redémarrer Caddy pour un problème qui ne le concerne
+        # pas — et inversement, tcpSocket:80 (avant) ne détectait PAS un
+        # certificat jamais chargé (incident 2026-07-28, kapsule-up).
+        handle /caddy-health {
+            respond "OK" 200
+        }
+        handle {
+            reverse_proxy nginx:80
+        }
     }

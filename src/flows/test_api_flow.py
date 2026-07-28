@@ -14,7 +14,7 @@ NGINX_URL    = os.getenv("NGINX_URL",    "http://nginx:80")
 API_USERNAME = os.getenv("API_USERNAME", "admin")
 API_PASSWORD = os.getenv("API_PASSWORD", "changeme")
 
-_SAMPLE_PAYLOAD = {
+SAMPLE_PAYLOAD = {
     "place": 1, "catu": 1, "sexe": 1, "secu1": 0.0,
     "victim_age": 35.0, "catv": 7.0, "obsm": 0.0,
     "motor": 0.0, "catr": 3.0, "circ": 2.0, "surf": 1.0, "situ": 1.0,
@@ -48,7 +48,7 @@ def test_token(base_url: str = NGINX_URL) -> str:
 
 @task(name="test-401-sans-token")
 def test_no_auth(base_url: str = NGINX_URL) -> str:
-    r = http.post(f"{base_url}/predict", json=_SAMPLE_PAYLOAD, timeout=10)
+    r = http.post(f"{base_url}/predict", json=SAMPLE_PAYLOAD, timeout=10)
     assert r.status_code == 401, f"Attendu 401, reçu {r.status_code}"
     print("✓ 401 sans token: OK")
     return "OK"
@@ -58,7 +58,7 @@ def test_no_auth(base_url: str = NGINX_URL) -> str:
 def test_with_auth(token: str, base_url: str = NGINX_URL) -> str:
     r = http.post(
         f"{base_url}/predict",
-        json=_SAMPLE_PAYLOAD,
+        json=SAMPLE_PAYLOAD,
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )
@@ -78,7 +78,7 @@ def test_whatif_speed(token: str, base_url: str = NGINX_URL) -> str:
     strict, alors que le modèle passait toutes les métriques KPI)."""
     headers = {"Authorization": f"Bearer {token}"}
     route_dept_nuit = {
-        **_SAMPLE_PAYLOAD,
+        **SAMPLE_PAYLOAD,
         "catr": 3.0,   # route départementale
         "agg_": 1,     # hors agglomération
         "lum": 5,      # nuit sans éclairage public
@@ -105,7 +105,7 @@ def test_rate_limit(token: str, base_url: str = NGINX_URL) -> str:
     for i in range(22):
         r = http.post(
             f"{base_url}/predict",
-            json=_SAMPLE_PAYLOAD,
+            json=SAMPLE_PAYLOAD,
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )

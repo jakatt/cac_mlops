@@ -142,7 +142,7 @@
   <div class="summary-row">
     <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 43, données mockées</span></div>
     <div class="badge cd"><span class="badge-num">10</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
-    <div class="badge pf"><span class="badge-num">6</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow</span></div>
+    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow + test-gradio-public</span></div>
   </div>
 
   <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
@@ -449,6 +449,21 @@
     </table>
     </div>
     <p class="note">Les tests post-deploy s'exécutent à l'intérieur du réseau Docker via <code>http://nginx:80</code> — ils testent l'API en conditions réelles (load balancer, auth, modèle chargé en mémoire) et non via un mock.</p>
+    </div>
+
+    <div class="section-meta" style="margin-top:8px;">Déclenché automatiquement juste après <code>test-api-flow</code> (VPS et K8s) — <code>test-gradio-public</code> · appel réel via <code>gradio_client</code>, pas un ping <code>/health</code></div>
+    <div style="padding:0 16px 16px;">
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
+      <tr>
+        <td>1</td>
+        <td><code>test-gradio-public-predict</code></td>
+        <td>Appel réel de la fonction <code>Predict</code> exposée par le cockpit public (<code>gradio_client</code>, <code>api_name="/predict"</code>) → réponse non vide, sans <code>"Erreur"</code>, contenant bien un verdict de gravité</td>
+      </tr>
+    </table>
+    </div>
+    <p class="note">Seul test fonctionnel qui couvre <strong>gradio-public</strong> — le point d'accès réellement utilisé par les utilisateurs finaux (FastAPI n'est aujourd'hui appelé que par des tests automatisés et la simulation de drift, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>). Échec → même rollback que <code>test-api-flow</code> (images <code>:rollback</code> sur VPS, <code>kubectl rollout undo</code> sur K8s).</p>
     </div>
   </details><!-- section pf -->
 

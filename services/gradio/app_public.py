@@ -555,7 +555,11 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                 _inp_atm, _inp_col, _inp_lat, _inp_long, _inp_hour, _inp_nb_victim, _inp_nb_vehicules,
             ]
 
-            _predict_btn.click(fn=run_predict, inputs=_pred_inputs, outputs=_predict_out)
+            # api_name explicite (au lieu de laisser Gradio l'auto-générer depuis le nom
+            # de fonction) — appelé par gradio_client dans le test fonctionnel Phase 2
+            # (src/flows/test_gradio_public_flow.py), un nom stable évite une rupture
+            # silencieuse si run_predict est renommée.
+            _predict_btn.click(fn=run_predict, inputs=_pred_inputs, outputs=_predict_out, api_name="predict")
 
             for _i, _ex in enumerate(_PREDICT_EXAMPLES):
                 _ex_vals = _ex[1:]

@@ -39,6 +39,42 @@ spec:
         labelSelector:
           matchLabels:
             app: caddy
+      # Attend que CoreDNS résolve le endpoint S3 avant de démarrer Caddy —
+      # sans ça, un kapsule-up (tous les pods du cluster démarrent en même
+      # temps, y compris CoreDNS) peut faire perdre la course à Caddy : son
+      # tout premier chargement de certificat échoue ("dial tcp: lookup
+      # s3.fr-par.scw.cloud ... connection refused"), et Caddy ne retente pas
+      # avant son prochain cycle de renewal — le pod tourne, TCP:80 répond,
+      # mais HTTPS reste cassé indéfiniment (incident vécu, kapsule-up du
+      # 2026-07-28 après un kapsule-down la veille — resté cassé ~30 min avant
+      # correction manuelle). exit 1 en timeout : le kubelet relance l'init
+      # container (pas tout le pod), Caddy ne démarre alors QUE quand le DNS
+      # est vraiment prêt, sans jamais tenter un premier chargement voué à
+      # l'échec.
+      initContainers:
+      - name: wait-for-dns
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          for i in $(seq 1 30); do
+            nslookup s3.fr-par.scw.cloud >/dev/null 2>&1 && { echo "DNS OK (tentative $i/30)"; exit 0; }
+            sleep 2
+          done
+          echo "DNS toujours indisponible après 60s — retry de l'init container"
+          exit 1
+      # Caddy route par SNI — une requête HTTPS locale avec Host/SNI="localhost"
+      # ne correspond à aucun site configuré (seul kapsule.jakat-inc.fr existe)
+      # et échoue au handshake TLS (constaté en direct : "tlsv1 alert internal
+      # error"), ce qui rendrait les probes ci-dessous inutilisables sans
+      # dépendre du DNS public. hostAliases résout kapsule.jakat-inc.fr vers
+      # 127.0.0.1 UNIQUEMENT dans ce pod — la probe teste ainsi le vrai
+      # certificat/site, en local, sans egress ni DNS externe.
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+        - "kapsule.jakat-inc.fr"
       containers:
       - name: caddy
         image: ghcr.io/jakatt/cac-mlops-caddy:latest
@@ -76,16 +112,39 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
+        # tcpSocket:80 (avant) ne détectait pas l'incident du 2026-07-28 : le
+        # port TCP répond même quand le certificat TLS n'a jamais pu être
+        # chargé (Caddy écoute, mais toute connexion HTTPS échoue en
+        # ERR_SSL_PROTOCOL_ERROR). On teste maintenant le handshake TLS
+        # lui-même — wget distingue "connexion/TLS établie" (code retour 0 ou
+        # 8, réponse HTTP obtenue même en erreur) de "échec de connexion/TLS"
+        # (tout autre code) : ça permet de repérer un cert cassé sans se
+        # coupler à la santé du backend nginx/api derrière (un 502 backend
+        # temporaire ne doit pas faire échouer cette probe).
         readinessProbe:
-          tcpSocket:
-            port: 80
-          initialDelaySeconds: 5
+          exec:
+            command:
+            - sh
+            - -c
+            - |
+              wget -T 5 -qO /dev/null --no-check-certificate https://kapsule.jakat-inc.fr/caddy-health 2>/dev/null
+              rc=$?
+              [ "$rc" -eq 0 ] || [ "$rc" -eq 8 ]
+          initialDelaySeconds: 10
           periodSeconds: 10
+          failureThreshold: 3
         livenessProbe:
-          tcpSocket:
-            port: 80
-          initialDelaySeconds: 15
-          periodSeconds: 20
+          exec:
+            command:
+            - sh
+            - -c
+            - |
+              wget -T 5 -qO /dev/null --no-check-certificate https://kapsule.jakat-inc.fr/caddy-health 2>/dev/null
+              rc=$?
+              [ "$rc" -eq 0 ] || [ "$rc" -eq 8 ]
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
       volumes:
       - name: caddy-config
         configMap:

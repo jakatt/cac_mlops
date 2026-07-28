@@ -252,7 +252,7 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (6 tâches) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
+                <span class="item-desc">test-api (6 tâches) + test-gradio-public : si fail → rollback alias MLflow @Production + restart API + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
@@ -260,7 +260,7 @@
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s — FTe</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
             </ul>
           </td>
@@ -295,7 +295,7 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (6 tâches) : si fail → rollback Docker <code>:rollback</code> + alerte</span>
+                <span class="item-desc">test-api (6 tâches) + test-gradio-public : si fail → rollback Docker <code>:rollback</code> + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
@@ -303,7 +303,7 @@
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s — FTe</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte</span>
               </li>
             </ul>
           </td>
@@ -334,7 +334,7 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 3 VPS</span>
-                <span class="item-desc">test-api (6 tâches) : si fail → rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">test-api (6 tâches) + test-gradio-public : si fail → rollback alias MLflow @Production + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
@@ -342,7 +342,7 @@
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s — FTe</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
             </ul>
           </td>
@@ -357,7 +357,7 @@
     <div>
       <p class="k8s-banner-title">Mécanismes spécifiques K8s (Kapsule)</p>
       <p class="k8s-banner-text"><strong>Rolling update :</strong> le nouveau pod doit passer la <strong>readiness probe</strong> (<code>/health</code>) avant que l'ancien soit supprimé. Aucune requête n'est perdue — interruptions de service à <strong>0</strong> pour les 3 triggers. Rollback = <code>kubectl rollout undo</code> (vs <code>:rollback</code> Docker côté VPS).</p>
-      <p class="k8s-banner-text"><strong>FTe post-rollout :</strong> le readiness probe valide seulement que le pod démarre, pas le comportement métier réel sur cet environnement (config K8s distincte du VPS). Un test fonctionnel complet (JWT, <code>/predict</code>, what-if) est donc rejoué contre l'endpoint K8s après chaque rollout réussi — même rollback (<code>kubectl rollout undo</code>) si ce test échoue.</p>
+      <p class="k8s-banner-text"><strong>FTe post-rollout :</strong> le readiness probe valide seulement que le pod démarre, pas le comportement métier réel sur cet environnement (config K8s distincte du VPS). Un test fonctionnel complet (JWT, <code>/predict</code>, what-if, prédiction réelle via gradio-public) est donc rejoué contre l'endpoint K8s après chaque rollout réussi — même rollback (<code>kubectl rollout undo</code>) si ce test échoue.</p>
       <p class="k8s-banner-text"><strong>Double protection :</strong> Kapsule n'a pas de gate manuelle propre. Le verrou humain est côté VPS (<code>deploy-vps-flow</code> mis en pause). <code>deploy-kapsule-flow</code> ne démarre qu'après GO <em>et</em> <code>test-api</code> VPS réussi — K8s est protégé par deux verrous en série : gate humaine + validation VPS.</p>
     </div>
   </div>
