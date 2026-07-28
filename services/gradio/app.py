@@ -1709,7 +1709,7 @@ _STATUS_NOK = "🔴 NOK"
 
 def check_health_vps() -> pd.DataFrame:
     rows = [
-        {"Type": e["type"], "Service": e["service"],
+        {"Type": e["type"], "Services VPS": e["service"],
          "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
         for e in _VPS_SERVICES
     ]
@@ -1729,7 +1729,7 @@ def check_health_k8s() -> pd.DataFrame:
             status, obs = _STATUS_NOK, f"{e['obs']} — Kapsule inactif"
         else:
             status, obs = (_STATUS_OK if _check_url(e["url"]) else _STATUS_NOK), e["obs"]
-        rows.append({"Type": e["type"], "Service": e["service"], "Status": status, "Observations": obs})
+        rows.append({"Type": e["type"], "Services K8S": e["service"], "Status": status, "Observations": obs})
     return pd.DataFrame(rows)
 
 
@@ -2591,14 +2591,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
             with gr.Accordion("🏥  Healthcheck — État des services", open=False):
                 gr.Markdown("### Etat des services VPS et Kapsule K8s")
                 health_refresh = gr.Button("Verifier maintenant", variant="primary")
-                gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services VPS</p>")
                 health_table_vps = gr.Dataframe(
                     value=check_health_vps(),
                     show_label=False,
                     column_widths=_HEALTH_COLUMN_WIDTHS,
                     interactive=False,
                 )
-                gr.HTML(f"<p style='font-weight:700;color:{NAVY};margin:16px 0 4px;font-size:1.05rem;'>Services K8S</p>")
                 health_table_k8s = gr.Dataframe(
                     value=check_health_k8s(),
                     show_label=False,
