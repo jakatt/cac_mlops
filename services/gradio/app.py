@@ -2056,29 +2056,29 @@ button[role="tab"][aria-selected="true"] {
     border-bottom: 2px solid #156082;
 }
 
-/* ─── Toolbar (fermer accordéons / accueil) superposé à la barre d'onglets ───
-   Row placé juste avant gr.Tabs(), aligné à droite, remonté par margin
-   négative pour se superposer visuellement à .tab-nav qui suit juste après.
-   pointer-events:none sur le Row (sauf les boutons eux-mêmes) pour laisser
-   les clics traverser vers les onglets sous la zone vide à gauche du
-   toolbar — évite d'avoir à envelopper tout le contenu des onglets dans un
-   conteneur positionné (risque de ré-indentation massive). */
+/* ─── Toolbar (fermer accordéons / accueil), ligne fine juste au-dessus des
+   onglets, alignée à droite. Pas de chevauchement avec .tab-nav (un essai
+   précédent avec margin négative + overlay a fini par recouvrir et bloquer
+   toute la barre d'onglets — abandonné). Icônes seules, sans fond/bordure,
+   même couleur que les onglets non sélectionnés. */
 #tab-toolbar {
     justify-content: flex-end !important;
-    gap: 6px !important;
-    margin-bottom: -44px;
-    position: relative;
-    z-index: 30;
-    pointer-events: none;
+    gap: 2px !important;
+    margin-bottom: 2px !important;
 }
 #tab-toolbar button {
-    pointer-events: auto;
-    min-width: 40px !important;
-    width: 40px;
-    height: 34px;
-    padding: 0 !important;
-    font-size: 1rem;
-    border-radius: 6px !important;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #6B7280 !important;
+    font-size: 1rem !important;
+    line-height: 1 !important;
+    padding: 4px 8px !important;
+    min-width: 0 !important;
+}
+#tab-toolbar button:hover {
+    background: none !important;
+    color: #156082 !important;
 }
 
 /* ─── Buttons ─── */
@@ -2145,8 +2145,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 """)
 
     with gr.Row(elem_id="tab-toolbar"):
-        collapse_all_btn = gr.Button("⊟", elem_id="collapse-all-btn")
-        home_btn = gr.Button("🏠", elem_id="home-btn")
+        collapse_all_btn = gr.Button(
+            "⊟", elem_id="collapse-all-btn", scale=0, min_width=32, size="sm", variant="secondary"
+        )
+        home_btn = gr.Button(
+            "🏠", elem_id="home-btn", scale=0, min_width=32, size="sm", variant="secondary"
+        )
 
     with gr.Tabs() as main_tabs:
 
