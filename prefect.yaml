@@ -133,6 +133,14 @@ deployments:
     work_pool:
       name: default-process-pool
 
+  # ── K8s DaemonSet health — node-exporter/promtail/loki-forwarder/tailscale-
+  # subnet-router (pas de Service stable ni HTTP, checkable uniquement via
+  # kubectl — déclenché à la demande depuis le Healthcheck Cockpit) ──────────
+  - name: k8s-daemonset-health
+    entrypoint: src/flows/k8s_daemonset_health_flow.py:k8s_daemonset_health_flow
+    work_pool:
+      name: default-process-pool
+
   # ── Disk cleanup — nettoyage quotidien Docker (containers, dangling images, builder cache)
   - name: disk-cleanup
     entrypoint: src/flows/disk_cleanup_flow.py:disk_cleanup_flow

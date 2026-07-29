@@ -1745,13 +1745,13 @@ _VPS_SERVICES: list[dict[str, str]] = [
      "obs": "Aucun serveur HTTP exposé — vérifié via le heartbeat worker de l'API Prefect (work-pool default-process-pool)"},
 ]
 
-# Composants toujours absents de ce tableau — DaemonSets K8s sans Service
-# stable (1 IP par nœud, pas de nom DNS unique à interroger) ou sans serveur
-# HTTP, et sans accès kubectl direct depuis ce process (seul prefect-worker
-# a le kubeconfig) :
-# - node-exporter / promtail (K8s) : DaemonSet, pas de Service
-# - loki-forwarder (K8s) : proxy SOCKS5, pas HTTP
-# - tailscale-subnet-router (K8s) : pas de serveur HTTP
+# node-exporter/promtail/loki-forwarder/tailscale-subnet-router : DaemonSets
+# sans Service stable ni serveur HTTP, sans accès kubectl direct depuis ce
+# process (seul prefect-worker a le kubeconfig) — vérifiés via le flow
+# Prefect dédié k8s-daemonset-health (cf. _check_k8s_daemonsets ci-dessous),
+# déclenché à la demande depuis le Healthcheck. Plus lent que les autres
+# lignes (aller-retour Prefect, quelques secondes) — accepté comme
+# compromis explicite pour ces 4 lignes uniquement.
 #
 # Blackbox-exporter (ligne ci-dessous) peut afficher NOK même quand tout va
 # bien : son /metrics dépasse le MTU du tunnel tailscale0 (1280) alors que
@@ -1785,6 +1785,18 @@ _K8S_SERVICES: list[dict[str, str]] = [
     {"type": "Composant", "service": "Kube-state-metrics",
      "url": "http://kube-state-metrics.cac-mlops.svc.cluster.local:8080/healthz",
      "obs": "Réplicas disponibles par Deployment (Grafana)"},
+    {"type": "Composant", "service": "Node-exporter", "kind": "daemonset",
+     "key": "node-exporter", "url": "",
+     "obs": "DaemonSet sans Service — check via flow Prefect k8s-daemonset-health"},
+    {"type": "Composant", "service": "Promtail", "kind": "daemonset",
+     "key": "promtail", "url": "",
+     "obs": "DaemonSet sans Service — check via flow Prefect k8s-daemonset-health"},
+    {"type": "Composant", "service": "Loki-forwarder", "kind": "daemonset",
+     "key": "loki-forwarder", "url": "",
+     "obs": "Proxy SOCKS5, pas HTTP — check via flow Prefect k8s-daemonset-health"},
+    {"type": "Composant", "service": "Tailscale-subnet-router", "kind": "daemonset",
+     "key": "tailscale-subnet-router", "url": "",
+     "obs": "Pas de serveur HTTP — check via flow Prefect k8s-daemonset-health"},
 ]
 
 _HEALTH_COLUMN_WIDTHS = ["20%", "10%", "10%", "60%"]
@@ -1855,6 +1867,22 @@ def check_health_vps() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _check_k8s_daemonsets() -> dict[str, bool]:
+    """Déclenche le flow Prefect k8s-daemonset-health et parse son résultat
+    depuis les logs du run (format "DAEMONSET_STATUS <name>=OK|NOK") — ces 4
+    composants n'ont ni Service stable ni serveur HTTP, seul prefect-worker
+    a le kubeconfig nécessaire pour les interroger via kubectl. Nettement
+    plus lent que les autres lignes du Healthcheck (aller-retour Prefect,
+    quelques secondes) — accepté comme compromis explicite pour ces 4
+    lignes uniquement (cf. rationalisation 2026-07-29)."""
+    result_text = _prefect_trigger("k8s-daemonset-health", wait_s=30)
+    statuses: dict[str, bool] = {}
+    for name in ["node-exporter", "promtail", "loki-forwarder", "tailscale-subnet-router"]:
+        match = re.search(rf"DAEMONSET_STATUS {re.escape(name)}=(OK|NOK)", result_text)
+        statuses[name] = bool(match and match.group(1) == "OK")
+    return statuses
+
+
 def check_health_k8s() -> pd.DataFrame:
     """Si Kapsule est inactif (state/kapsule_ips vide ou absent — cf.
     deploy_kapsule_flow.py::check_kapsule_task), toutes les lignes sont
@@ -1862,10 +1890,14 @@ def check_health_k8s() -> pd.DataFrame:
     inutiles) ; l'observation précise "Kapsule inactif" pour ne pas laisser
     croire à un incident (c'est un arrêt volontaire, économie de coûts)."""
     kapsule_active = KAPSULE_STATE.exists() and bool(KAPSULE_STATE.read_text().strip())
+    daemonset_status = _check_k8s_daemonsets() if kapsule_active else {}
     rows = []
     for e in _K8S_SERVICES:
         if not kapsule_active:
             status, obs = _STATUS_NOK, f"{e['obs']} — Kapsule inactif"
+        elif e.get("kind") == "daemonset":
+            ok = daemonset_status.get(e["key"], False)
+            status, obs = (_STATUS_OK if ok else _STATUS_NOK), e["obs"]
         else:
             status, obs = (_STATUS_OK if _check_url(e["url"]) else _STATUS_NOK), e["obs"]
         rows.append({"Services K8S": e["service"], "Type": e["type"], "Status": status, "Observations": obs})
