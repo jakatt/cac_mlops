@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import socket
 import sys
 import time
 from datetime import datetime
@@ -1736,16 +1737,21 @@ _VPS_SERVICES: list[dict[str, str]] = [
     {"type": "Composant", "service": "Blackbox-exporter",
      "url": "http://blackbox-exporter:9115/metrics",
      "obs": "Sonde de disponibilité des 5 accès (Grafana)"},
+    {"type": "Composant", "service": "PostgreSQL", "kind": "tcp",
+     "url": "postgresql:5432",
+     "obs": "Backend Prefect — pas HTTP, check TCP direct (réseau Docker)"},
+    {"type": "Composant", "service": "Prefect-worker", "kind": "prefect_worker",
+     "url": "",
+     "obs": "Aucun serveur HTTP exposé — vérifié via le heartbeat worker de l'API Prefect (work-pool default-process-pool)"},
 ]
 
-# Composants sans mécanisme de check HTTP simple, volontairement absents de
-# ce tableau (nécessiteraient un mécanisme différent de _check_url) :
-# - postgresql (VPS) : pas HTTP, il faudrait une connexion DB
-# - prefect-worker (VPS) : aucun serveur HTTP exposé, pas d'endpoint de santé
-# - node-exporter / promtail (K8s) : DaemonSet sans Service stable (1 IP par
-#   nœud, pas de nom DNS unique à interroger)
-# - loki-forwarder (K8s) : proxy SOCKS5, pas HTTP
-# - tailscale-subnet-router (K8s) : pas de serveur HTTP
+# node-exporter/promtail/loki-forwarder/tailscale-subnet-router : DaemonSets
+# sans Service stable ni serveur HTTP, sans accès kubectl direct depuis ce
+# process (seul prefect-worker a le kubeconfig) — vérifiés via le flow
+# Prefect dédié k8s-daemonset-health (cf. _check_k8s_daemonsets ci-dessous),
+# déclenché à la demande depuis le Healthcheck. Plus lent que les autres
+# lignes (aller-retour Prefect, quelques secondes) — accepté comme
+# compromis explicite pour ces 4 lignes uniquement.
 #
 # Blackbox-exporter (ligne ci-dessous) peut afficher NOK même quand tout va
 # bien : son /metrics dépasse le MTU du tunnel tailscale0 (1280) alors que
@@ -1779,6 +1785,18 @@ _K8S_SERVICES: list[dict[str, str]] = [
     {"type": "Composant", "service": "Kube-state-metrics",
      "url": "http://kube-state-metrics.cac-mlops.svc.cluster.local:8080/healthz",
      "obs": "Réplicas disponibles par Deployment (Grafana)"},
+    {"type": "Composant", "service": "Node-exporter", "kind": "daemonset",
+     "key": "node-exporter", "url": "",
+     "obs": "DaemonSet sans Service — check via flow Prefect k8s-daemonset-health"},
+    {"type": "Composant", "service": "Promtail", "kind": "daemonset",
+     "key": "promtail", "url": "",
+     "obs": "DaemonSet sans Service — check via flow Prefect k8s-daemonset-health"},
+    {"type": "Composant", "service": "Loki-forwarder", "kind": "daemonset",
+     "key": "loki-forwarder", "url": "",
+     "obs": "Proxy SOCKS5, pas HTTP — check via flow Prefect k8s-daemonset-health"},
+    {"type": "Composant", "service": "Tailscale-subnet-router", "kind": "daemonset",
+     "key": "tailscale-subnet-router", "url": "",
+     "obs": "Pas de serveur HTTP — check via flow Prefect k8s-daemonset-health"},
 ]
 
 _HEALTH_COLUMN_WIDTHS = ["20%", "10%", "10%", "60%"]
@@ -1798,17 +1816,71 @@ def _check_url(url: str, timeout: int = 5) -> bool:
         return False
 
 
+def _check_tcp(host_port: str, timeout: int = 5) -> bool:
+    """Pour les composants sans serveur HTTP (ex: PostgreSQL) — une simple
+    connexion TCP réussie suffit à prouver que le process écoute, sans avoir
+    besoin des credentials DB juste pour un check de vie."""
+    host, _, port_str = host_port.partition(":")
+    try:
+        with socket.create_connection((host, int(port_str)), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _check_prefect_worker() -> bool:
+    """prefect-worker n'expose aucun serveur HTTP (juste `prefect worker
+    start`) — Prefect calcule lui-même un statut ONLINE/OFFLINE par worker
+    à partir de son heartbeat (~30s, cf. heartbeat_interval_seconds retourné
+    par l'API) ; réutilisé tel quel plutôt que de recalculer une fraîcheur
+    de heartbeat nous-mêmes (vérifié en direct sur le VPS, 2026-07-29)."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/work_pools/default-process-pool/workers/filter",
+            json={}, timeout=5,
+        )
+        workers = r.json()
+        return isinstance(workers, list) and any(w.get("status") == "ONLINE" for w in workers)
+    except Exception:
+        return False
+
+
 _STATUS_OK  = "🟢 OK"
 _STATUS_NOK = "🔴 NOK"
+
+
+def _check_entry(e: dict) -> bool:
+    kind = e.get("kind", "http")
+    if kind == "tcp":
+        return _check_tcp(e["url"])
+    if kind == "prefect_worker":
+        return _check_prefect_worker()
+    return _check_url(e["url"])
 
 
 def check_health_vps() -> pd.DataFrame:
     rows = [
         {"Services VPS": e["service"], "Type": e["type"],
-         "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
+         "Status": _STATUS_OK if _check_entry(e) else _STATUS_NOK, "Observations": e["obs"]}
         for e in _VPS_SERVICES
     ]
     return pd.DataFrame(rows)
+
+
+def _check_k8s_daemonsets() -> dict[str, bool]:
+    """Déclenche le flow Prefect k8s-daemonset-health et parse son résultat
+    depuis les logs du run (format "DAEMONSET_STATUS <name>=OK|NOK") — ces 4
+    composants n'ont ni Service stable ni serveur HTTP, seul prefect-worker
+    a le kubeconfig nécessaire pour les interroger via kubectl. Nettement
+    plus lent que les autres lignes du Healthcheck (aller-retour Prefect,
+    quelques secondes) — accepté comme compromis explicite pour ces 4
+    lignes uniquement (cf. rationalisation 2026-07-29)."""
+    result_text = _prefect_trigger("k8s-daemonset-health", wait_s=30)
+    statuses: dict[str, bool] = {}
+    for name in ["node-exporter", "promtail", "loki-forwarder", "tailscale-subnet-router"]:
+        match = re.search(rf"DAEMONSET_STATUS {re.escape(name)}=(OK|NOK)", result_text)
+        statuses[name] = bool(match and match.group(1) == "OK")
+    return statuses
 
 
 def check_health_k8s() -> pd.DataFrame:
@@ -1818,10 +1890,14 @@ def check_health_k8s() -> pd.DataFrame:
     inutiles) ; l'observation précise "Kapsule inactif" pour ne pas laisser
     croire à un incident (c'est un arrêt volontaire, économie de coûts)."""
     kapsule_active = KAPSULE_STATE.exists() and bool(KAPSULE_STATE.read_text().strip())
+    daemonset_status = _check_k8s_daemonsets() if kapsule_active else {}
     rows = []
     for e in _K8S_SERVICES:
         if not kapsule_active:
             status, obs = _STATUS_NOK, f"{e['obs']} — Kapsule inactif"
+        elif e.get("kind") == "daemonset":
+            ok = daemonset_status.get(e["key"], False)
+            status, obs = (_STATUS_OK if ok else _STATUS_NOK), e["obs"]
         else:
             status, obs = (_STATUS_OK if _check_url(e["url"]) else _STATUS_NOK), e["obs"]
         rows.append({"Services K8S": e["service"], "Type": e["type"], "Status": status, "Observations": obs})
@@ -2792,9 +2868,16 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     demo.load(fn=refresh_models, outputs=[models_table, promote_dd])
 
             with gr.Accordion("🔗  Liens", open=False) as acc_liens:
-                infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
-                infra_html    = gr.HTML(value=build_links_html())
-                infra_refresh.click(fn=build_links_html, outputs=infra_html)
+                infra_html = gr.HTML(value=build_links_html())
+                # Bouton "Rafraichir" retiré (2026-07-29) : la seule chose qui
+                # varie réellement ici est l'état actif/inactif de Kapsule
+                # (state/kapsule_ips) — l'URL affichée est une constante
+                # (KAPSULE_DOMAIN, cf. kapsule_up_flow.py), donc un clic
+                # manuel ne changeait quasiment jamais rien à l'écran.
+                # demo.load() couvre le seul cas utile (détecter la
+                # transition actif/inactif) à chaque connexion, même
+                # rationale que le fix MLflow figé (PR220, cf. plus haut).
+                demo.load(fn=build_links_html, outputs=infra_html)
 
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
         with gr.Tab("Docs"):

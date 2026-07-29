@@ -285,8 +285,21 @@ def rebalance_topology_task(kubeconfig: str, deploy_name: str, max_attempts: int
     )
 
 
+def _current_image_digest(kubeconfig: str, deploy_name: str) -> str:
+    """Digest de l'image ACTUELLEMENT en cours d'exécution pour ce deployment
+    (pas la valeur figée dans le manifest, toujours ":latest") — capturé
+    juste avant le rollout, pour permettre un vrai rollback vers cette image
+    précise si le nouveau rollout échoue. cf. rollback_kapsule_task."""
+    out = _kubectl(kubeconfig, [
+        "get", "pods", "-n", K8S_NAMESPACE,
+        "-l", f"app={deploy_name}",
+        "-o", "jsonpath={.items[0].status.containerStatuses[0].imageID}",
+    ], check=False)
+    return out.strip().removeprefix("docker-pullable://")
+
+
 @task(name="kubectl-rolling-update", retries=1, retry_delay_seconds=30)
-def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, list[str]]:
+def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, list[str], dict[str, str]]:
     """
     Rollout restart SÉQUENTIEL (un deployment à la fois : restart puis
     attente avant de passer au suivant). Un rollout parallèle fait
@@ -298,13 +311,18 @@ def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, 
     (incident vécu, 2026-07-11). Le séquentiel réduit le pic de charge
     et échoue/alerte plus vite (sur le premier deployment bloqué).
 
-    Returns (ok, touched) — touched liste les deployments dont le `rollout
-    restart` a réellement démarré (donc les seuls à rollback en cas
-    d'échec). Avec le séquentiel, un échec sur le 1er deployment signifie
-    que les suivants n'ont jamais été touchés — les inclure dans le rollback
-    ferait échouer `kubectl rollout undo` avec "no rollout history found"
-    (aucune révision précédente puisque jamais redémarrés, bug vécu
-    2026-07-12).
+    Returns (ok, touched, previous_images) — touched liste les deployments
+    dont le `rollout restart` a réellement démarré (donc les seuls à
+    rollback en cas d'échec). Avec le séquentiel, un échec sur le 1er
+    deployment signifie que les suivants n'ont jamais été touchés — les
+    inclure dans le rollback ferait échouer `kubectl rollout undo` avec
+    "no rollout history found" (aucune révision précédente puisque jamais
+    redémarrés, bug vécu 2026-07-12).
+
+    previous_images : digest (immuable) de l'image tournant AVANT ce rollout
+    pour chaque deployment touché — capturé avant le `rollout restart`,
+    nécessaire pour un vrai rollback (cf. rollback_kapsule_task : le tag
+    ":latest" seul ne suffit pas à identifier une version précise).
 
     `kubectl set image` avec la même chaîne (":latest") ne produit AUCUN
     diff de spec pour Kubernetes donc AUCUN rollout même si le contenu de
@@ -321,9 +339,13 @@ def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, 
     """
     log = get_run_logger()
     touched: list[str] = []
+    previous_images: dict[str, str] = {}
     try:
         for deploy_name in deployments:
-            log.info("Rolling restart %s", deploy_name)
+            digest = _current_image_digest(kubeconfig, deploy_name)
+            if digest:
+                previous_images[deploy_name] = digest
+            log.info("Rolling restart %s (image précédente : %s)", deploy_name, digest or "inconnue")
             _kubectl(kubeconfig, [
                 "rollout", "restart",
                 f"deployment/{deploy_name}",
@@ -358,7 +380,7 @@ def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, 
             rebalance_topology_task(kubeconfig, "api", max_attempts=3)
 
         log.info("Rolling update Kapsule OK")
-        return True, touched
+        return True, touched, previous_images
 
     except Exception as exc:
         # Exception large et pas seulement RuntimeError : _kubectl utilise
@@ -368,21 +390,53 @@ def rolling_update_task(kubeconfig: str, deployments: list[str]) -> tuple[bool, 
         # appeler rollback_kapsule_task (incident vécu, 2026-07-10 :
         # DiskPressure sur les 2 nœuds, le rollback annoncé n'a jamais eu lieu).
         log.error("Rolling update échoué : %s", exc)
-        return False, touched
+        return False, touched, previous_images
 
 
 @task(name="kubectl-rollback")
-def rollback_kapsule_task(kubeconfig: str, deployments: list[str]) -> None:
+def rollback_kapsule_task(
+    kubeconfig: str, deployments: list[str], previous_images: dict[str, str] | None = None,
+) -> None:
+    """Restaure la version précédente de chaque deployment.
+
+    `kubectl rollout undo` seul ne suffit PAS : api/gradio-public référencent
+    un tag flottant (":latest", imagePullPolicy: Always) — la chaîne d'image
+    est IDENTIQUE entre l'ancienne et la nouvelle révision du ReplicaSet,
+    donc `rollout undo` ne fait que revenir au template précédent (env vars,
+    ressources) mais re-pull EXACTEMENT la même image ":latest" (donc la
+    nouvelle, potentiellement cassée) — pas de vrai rollback (bug
+    diagnostiqué le 2026-07-28, confirmé par un digest d'image identique
+    VPS/Kapsule après un rollback "réussi"). Fix : pointer explicitement
+    vers le digest capturé AVANT le rollout (previous_images, cf.
+    rolling_update_task) via `kubectl set image` — un digest est immuable,
+    contrairement au tag.
+
+    Fallback sur `rollout undo` si aucun digest n'a été capturé pour ce
+    deployment (ex: 1er déploiement, pod jamais vu Running avant)."""
     log = get_run_logger()
+    previous_images = previous_images or {}
     log.warning("event=rollback kind=kapsule targets=%s", ",".join(deployments) or "aucun")
     for deploy_name in deployments:
-        log.info("Rollback %s", deploy_name)
+        digest = previous_images.get(deploy_name, "")
         try:
-            _kubectl(kubeconfig, [
-                "rollout", "undo",
-                f"deployment/{deploy_name}",
-                "-n", K8S_NAMESPACE,
-            ])
+            if digest:
+                log.info("Rollback %s → image précédente %s", deploy_name, digest)
+                _kubectl(kubeconfig, [
+                    "set", "image",
+                    f"deployment/{deploy_name}", f"{deploy_name}={digest}",
+                    "-n", K8S_NAMESPACE,
+                ])
+            else:
+                log.warning(
+                    "Rollback %s : aucun digest précédent capturé — fallback rollout undo "
+                    "(peut re-pull la même image :latest si le tag n'a pas changé depuis)",
+                    deploy_name,
+                )
+                _kubectl(kubeconfig, [
+                    "rollout", "undo",
+                    f"deployment/{deploy_name}",
+                    "-n", K8S_NAMESPACE,
+                ])
         except RuntimeError as exc:
             log.error("Rollback %s échoué : %s", deploy_name, exc)
 
@@ -473,10 +527,10 @@ def deploy_kapsule_flow(
             return True
 
         log.info("Rollout restart : %s", ", ".join(to_restart))
-        ok, touched = rolling_update_task(kubeconfig, to_restart)
+        ok, touched, previous_images = rolling_update_task(kubeconfig, to_restart)
 
         if not ok:
-            rollback_kapsule_task(kubeconfig, touched)
+            rollback_kapsule_task(kubeconfig, touched, previous_images)
             log.error("event=alert severity=critical topic=kapsule_failure")
             raise RuntimeError(
                 "Deploy Kapsule ÉCHOUÉ — rolling update impossible sur le cluster K8s.\n"
@@ -518,7 +572,7 @@ def deploy_kapsule_flow(
                 log.info("test-gradio-public Kapsule externe OK ✓")
         except Exception as exc:
             log.error("%s ÉCHOUÉ : %s", _step, exc)
-            rollback_kapsule_task(kubeconfig, touched)
+            rollback_kapsule_task(kubeconfig, touched, previous_images)
             log.error("event=alert severity=critical topic=kapsule_failure reason=test_api step=%s", _step)
             raise RuntimeError(
                 f"Deploy Kapsule ÉCHOUÉ — le rollout a réussi (pods Ready) mais {_step} "
