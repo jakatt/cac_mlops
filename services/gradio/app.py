@@ -1204,9 +1204,9 @@ def _paused_runs_table() -> pd.DataFrame:
 
 
 _DEPLOY_STATE_LABEL = {
-    "COMPLETED": "✅ OK",
-    "FAILED":    "❌ Échec",
-    "CRASHED":   "💥 Crash",
+    "COMPLETED": "🟢 OK",
+    "FAILED":    "🔴 Échec",
+    "CRASHED":   "🔴 Crash",
     "CANCELLED": "⏹ STOP",
 }
 
