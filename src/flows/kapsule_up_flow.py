@@ -80,6 +80,20 @@ def create_node_pool(node_type: str, node_count: int) -> str:
         f"size={node_count}",
         f"node-type={node_type}",
         "zone=fr-par-1",
+        # Root volume 20GB (défaut Scaleway) → 50GB : incident récurrent de
+        # DiskPressure/eviction pendant les rollouts (2026-07-10, 24/07,
+        # 25/07, 29/07). Diagnostiqué le 29/07 : les mécanismes de nettoyage
+        # (crictl rmi --prune post-deploy, purge pods Failed/Succeeded
+        # pre-deploy) fonctionnent correctement — vérifié en direct, 0 pod
+        # orphelin, 19 images = exactement les workloads réellement
+        # déployés, aucun cruft non collecté. Le vrai problème est la marge
+        # trop fine (6.5GB dispo sur 17GB en régime stable) pour absorber le
+        # pic transitoire d'un rollout (double image temporairement + retry
+        # en cas d'éviction, qui re-pull la même image plusieurs fois).
+        # root-volume-type non précisé : Scaleway applique déjà sbs_5k par
+        # défaut (vérifié via `scw k8s pool list -o json`), seule la taille
+        # posait problème.
+        "root-volume-size=50GB",
     ])
     logger.info("✓ Pool demandé")
     return "created"
