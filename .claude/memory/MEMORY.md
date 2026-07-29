@@ -26,3 +26,4 @@
 - [Cockpit MLflow data périmée — RÉSOLU PR220](feedback_gradio_stale_mlflow_data.md) — value= figé au démarrage du process, fix demo.load()
 - [Toolbar Cockpit — TODO non résolu](project_cockpit_toolbar_todo.md) — bouton "Fermer tous les accordéons" toujours cassé après PR239 (2e fix raté)
 - [Modèle 3 couches de tests](project_test_layers_model.md) — technique (smoke)/fonctionnel interne/fonctionnel externe, structurant pour Healthcheck/rollback/test-api
+- [Race kapsule-down→up](project_kapsule_recreate_race_todo.md) — TODO non résolu : create_node_pool saute la création si l'ancien pool est encore en 'deleting'
