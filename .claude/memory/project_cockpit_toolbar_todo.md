@@ -1,10 +1,42 @@
 ---
 name: project-cockpit-toolbar-todo
-description: "Backend confirmé correct (2026-07-29) — si le bouton 'Fermer tous les accordéons' semble encore cassé, c'est un cache navigateur, pas un bug Python"
+description: "Backend + cache + structure de handler tous disculpés (2026-07-29) — bug non résolu, nécessite un accès DevTools navigateur (console JS) pour continuer"
 metadata:
   node_type: memory
   type: project
   originSessionId: 56ea6708-273e-46b6-af84-9bc9daa74e3c
+---
+
+**MàJ 2026-07-29 (suite) — cache ÉCARTÉ, structure de handler ÉCARTÉE,
+bug non résolu, investigation arrêtée à la demande de l'utilisateur
+("trop de temps perdu").**
+
+- Cache navigateur écarté définitivement : testé sur 2 navigateurs
+  différents (Edge ET Safari), même symptôme sur les deux — donc pas un
+  bundle JS mis en cache par un seul navigateur.
+- Tentative de restructuration : remplacé le seul `.click()` retournant
+  une liste de 6 `gr.Accordion(open=False)` par **6 `.click()` séparés**
+  sur le même bouton (un par accordéon, même schéma que `health_refresh`
+  qui fonctionne pour VPS/K8s ailleurs dans ce fichier) — déployé en
+  direct sur gradio-1 (restart conteneur), **toujours cassé**.
+- Vérifié que le pattern Python utilisé est bien celui documenté par
+  Gradio lui-même (PR gradio-app/gradio#7208, la fonctionnalité
+  "Accordion open reactivity", mergée janvier 2024 — donc bien présente
+  et stable en 6.20.0) : retourner `gr.Accordion(open=...)` en sortie
+  d'un event est la façon officielle et censée fonctionner.
+- Donc : backend correct (payload SSE vérifié précédemment), cache
+  écarté (2 navigateurs), structure de handler écartée (list unique vs
+  6 séparés — aucune différence) — reste uniquement une piste non
+  explorable sans navigateur : **erreur JS dans la console au moment du
+  clic**. Impossible à vérifier depuis cette session (pas d'accès
+  DevTools). Prochaine étape si repris : demander à l'utilisateur
+  d'ouvrir F12 → Console → cliquer le bouton → rapporter toute erreur
+  affichée, ou faire un `Network` tab pour voir si l'appel SSE se
+  termine normalement.
+- **Ne plus retenter de fix Python à l'aveugle sans cette info** — 2
+  approches structurellement différentes ont déjà échoué avec un
+  backend prouvé correct dans les deux cas.
+
 ---
 
 **MàJ 2026-07-29 — root cause isolée, backend disculpé.** `gradio_client`
