@@ -180,6 +180,10 @@ services:
       TAILSCALE_AUTHKEY:      ${TAILSCALE_AUTHKEY:-}
       KAPSULE_STATE:          /app/state/kapsule_ips
       NGINX_URL:              http://nginx:80
+      # Tests fonctionnels externes (test-api/test-gradio-public) — vrai chemin
+      # utilisateur (Caddy → HTTPS), en complément du test interne ci-dessus
+      PUBLIC_URL:             "https://mlops.jakat-inc.fr"
+      KAPSULE_PUBLIC_URL:     "https://kapsule.jakat-inc.fr"
       # Deploy VPS flow — authentification ghcr.io pour docker compose pull
       GHCR_TOKEN:             ${GHCR_TOKEN:-}
       GHCR_USER:              ${GHCR_USER:-jakatt}
