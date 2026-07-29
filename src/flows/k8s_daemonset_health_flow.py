@@ -1,10 +1,17 @@
 """
 K8s DaemonSet health flow — vérifie les 4 composants K8s sans Service stable
-ni serveur HTTP (node-exporter, promtail : DaemonSets, 1 IP par nœud, pas de
-nom DNS unique à interroger ; loki-forwarder : proxy SOCKS5 ; tailscale-
-subnet-router : pas de serveur HTTP). Inatteignables directement depuis le
-Cockpit Gradio (pas de kubeconfig sur ce process — seul prefect-worker en
-dispose), d'où ce flow dédié déclenché à la demande depuis le Healthcheck.
+ni serveur HTTP (node-exporter, promtail : vrais DaemonSets, 1 pod par nœud ;
+loki-forwarder — proxy SOCKS5 — et tailscale-subnet-router — pas de serveur
+HTTP — sont en réalité des Deployments 1 replica, cf. k8s/loki-forwarder/
+deployment.yaml et k8s/tailscale/deployment.yaml). Inatteignables
+directement depuis le Cockpit Gradio (pas de kubeconfig sur ce process —
+seul prefect-worker en dispose), d'où ce flow dédié déclenché à la demande
+depuis le Healthcheck.
+
+Bug corrigé le 2026-07-29 : les 4 étaient interrogés via `kubectl get
+daemonset`, ce qui renvoie NotFound (donc NOK) pour loki-forwarder/
+tailscale-subnet-router puisque ce ne sont pas des DaemonSets — ils
+apparaissaient NOK en permanence, peu importe leur état réel.
 
 Imprime une ligne "DAEMONSET_STATUS <name>=OK|NOK" par composant, parsée
 depuis les logs du run par le Cockpit (services/gradio/app.py::
@@ -15,14 +22,24 @@ from prefect import flow, get_run_logger, task
 
 from src.flows.deploy_kapsule_flow import K8S_NAMESPACE, _kubectl, check_kapsule_task, get_kubeconfig_task
 
-DAEMONSETS = ["node-exporter", "promtail", "loki-forwarder", "tailscale-subnet-router"]
+# (name, kind) — kind détermine la ressource kubectl et le jsonpath à interroger.
+COMPONENTS = [
+    ("node-exporter", "daemonset"),
+    ("promtail", "daemonset"),
+    ("loki-forwarder", "deployment"),
+    ("tailscale-subnet-router", "deployment"),
+]
 
 
 @task(name="check-daemonset-ready")
-def check_daemonset_task(kubeconfig: str, name: str) -> bool:
+def check_daemonset_task(kubeconfig: str, name: str, kind: str) -> bool:
+    if kind == "daemonset":
+        jsonpath = "{.status.numberReady}/{.status.desiredNumberScheduled}"
+    else:
+        jsonpath = "{.status.readyReplicas}/{.spec.replicas}"
     out = _kubectl(kubeconfig, [
-        "get", "daemonset", name, "-n", K8S_NAMESPACE,
-        "-o", "jsonpath={.status.numberReady}/{.status.desiredNumberScheduled}",
+        "get", kind, name, "-n", K8S_NAMESPACE,
+        "-o", f"jsonpath={jsonpath}",
     ], check=False)
     ready, _, desired = out.strip().partition("/")
     return bool(ready) and ready == desired and ready != "0"
@@ -32,15 +49,15 @@ def check_daemonset_task(kubeconfig: str, name: str) -> bool:
 def k8s_daemonset_health_flow() -> dict[str, bool]:
     log = get_run_logger()
     if not check_kapsule_task():
-        log.info("Kapsule inactif — tous les DaemonSets considérés NOK")
-        for name in DAEMONSETS:
+        log.info("Kapsule inactif — tous les composants considérés NOK")
+        for name, _ in COMPONENTS:
             print(f"DAEMONSET_STATUS {name}=NOK")
-        return {name: False for name in DAEMONSETS}
+        return {name: False for name, _ in COMPONENTS}
 
     kubeconfig = get_kubeconfig_task()
     results: dict[str, bool] = {}
-    for name in DAEMONSETS:
-        ok = check_daemonset_task(kubeconfig, name)
+    for name, kind in COMPONENTS:
+        ok = check_daemonset_task(kubeconfig, name, kind)
         results[name] = ok
         print(f"DAEMONSET_STATUS {name}={'OK' if ok else 'NOK'}")
     return results

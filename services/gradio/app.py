@@ -1874,8 +1874,14 @@ def _check_k8s_daemonsets() -> dict[str, bool]:
     a le kubeconfig nécessaire pour les interroger via kubectl. Nettement
     plus lent que les autres lignes du Healthcheck (aller-retour Prefect,
     quelques secondes) — accepté comme compromis explicite pour ces 4
-    lignes uniquement (cf. rationalisation 2026-07-29)."""
-    result_text = _prefect_trigger("k8s-daemonset-health", wait_s=30)
+    lignes uniquement (cf. rationalisation 2026-07-29).
+
+    wait_s=60 (pas 30) : bug vécu le 2026-07-29 où le run n'était pas encore
+    Completed après 30s (pickup worker + démarrage subprocess + 4 kubectl),
+    faisant retourner un texte "En cours…" sans aucune ligne DAEMONSET_STATUS
+    — le regex ne matchait alors pour AUCUN des 4 composants, qui
+    retombaient tous à False (NOK), y compris ceux réellement OK."""
+    result_text = _prefect_trigger("k8s-daemonset-health", wait_s=60)
     statuses: dict[str, bool] = {}
     for name in ["node-exporter", "promtail", "loki-forwarder", "tailscale-subnet-router"]:
         match = re.search(rf"DAEMONSET_STATUS {re.escape(name)}=(OK|NOK)", result_text)
