@@ -8,18 +8,37 @@ metadata:
   annotations:
     # Kapsule provisionne un Scaleway Load Balancer automatiquement
     service.beta.kubernetes.io/scw-loadbalancer-type: "LB-S"
+    # Sticky sessions au niveau du LB Scaleway lui-même — nécessaire en plus
+    # de sessionAffinity/externalTrafficPolicy ci-dessous. Root cause
+    # diagnostiquée le 2026-07-29 : avec 2 pods Caddy sur 2 nœuds différents,
+    # sessionAffinity: ClientIP + externalTrafficPolicy: Local ne suffisent
+    # PAS — Local empêche kube-proxy de router vers un pod distant, mais
+    # c'est le LB Scaleway lui-même qui choisit sur QUEL NœUD atterrit
+    # chaque connexion, et son algorithme par défaut n'est pas sticky par
+    # client (round-robin par connexion). Deux requêtes d'une même session
+    # Gradio (queue/join puis queue/data) pouvaient donc atterrir sur 2 pods
+    # Caddy différents → CancelledError systématique (100% de
+    # reproductibilité en direct, `gradio_client` via kapsule.jakat-inc.fr,
+    # alors que l'accès direct ClusterIP/nginx fonctionnait parfaitement).
+    #
+    # mode "table" (hash par IP source), PAS "cookie" : vérifié en direct
+    # (scw lb backend list) que le backend du port 443 tourne en
+    # FORWARD PROTOCOL=tcp — Caddy termine lui-même le TLS (son propre
+    # cert), donc le LB fait du pur passthrough TCP sans aucune visibilité
+    # HTTP. "cookie" a été essayé en premier et silencieusement ignoré pour
+    # cette raison (aucune erreur, juste aucun effet) — "table" fonctionne
+    # au niveau paquet/IP, compatible TCP passthrough. cf.
+    # https://www.scaleway.com/en/docs/kubernetes/reference-content/using-load-balancer-annotations/
+    service.beta.kubernetes.io/scw-loadbalancer-sticky-sessions: "table"
 spec:
   type: LoadBalancer
   selector:
     app: caddy
-  # sessionAffinity: ClientIP — premier maillon de la chaîne d'affinité (cf.
-  # k8s/nginx/service.yaml et k8s/gradio-public/service.yaml) : sans lui,
-  # même avec les 2 autres Services collants, un même navigateur pourrait
-  # taper alternativement les 2 pods Caddy et donc 2 chaînes différentes.
-  # externalTrafficPolicy: Local — évite le SNAT qui remplacerait l'IP
-  # réelle du client par une IP de nœud avant que kube-proxy applique
-  # l'affinité (sans ça, ClientIP verrait la mauvaise IP). Sûr ici : les 2
-  # pods Caddy sont répartis sur les 2 nœuds (topologySpreadConstraints).
+  # sessionAffinity: ClientIP + externalTrafficPolicy: Local restent utiles
+  # comme second filet (préserve la vraie IP client dans les logs/métriques),
+  # mais ne suffisent pas seuls à eux deux pour la stickiness cross-nœuds —
+  # cf. annotations scw-loadbalancer-sticky-sessions ci-dessus, qui portent
+  # la charge réelle de ce problème.
   sessionAffinity: ClientIP
   externalTrafficPolicy: Local
   ports:
