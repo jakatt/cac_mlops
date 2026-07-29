@@ -398,9 +398,9 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
         <tbody>
           <tr><td><strong>POSTE DEV</strong></td><td>Mac développeur</td><td>git · dvc · pytest · flake8 · kubectl · docker-compose local</td></tr>
           <tr><td rowspan="3"><strong>VPS SCALEWAY</strong><br>51.159.187.132<br>100.117.99.62 (Tailscale)</td><td>16 conteneurs Docker</td><td>Voir §7</td></tr>
-          <tr><td>14 deployments Prefect</td><td>Orchestration ETL, train, deploy, drift, kapsule, diag…</td></tr>
+          <tr><td>16 deployments Prefect</td><td>Orchestration ETL, train, deploy, drift, kapsule, diag, healthcheck K8s…</td></tr>
           <tr><td>PLG Stack + Evidently</td><td>Monitoring + alertes</td></tr>
-          <tr><td><strong>KAPSULE K8s</strong><br>on-demand</td><td>11 Deployments + 2 DaemonSets</td><td>Voir §9 — zéro-downtime rolling updates</td></tr>
+          <tr><td><strong>KAPSULE K8s</strong><br>on-demand</td><td>9 Deployments + 2 DaemonSets</td><td>Voir §9 — zéro-downtime rolling updates</td></tr>
           <tr><td><strong>PARTAGÉ</strong></td><td>GitHub · GHCR · Scaleway Object Storage</td><td>Code · Images · DVC remote · Artefacts K8s</td></tr>
         </tbody>
       </table></div>
@@ -578,7 +578,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
     <summary>9 — Infrastructure Kubernetes — Kapsule</summary>
     <div class="body">
       <div class="band">
-        <strong>Scaleway Kapsule</strong> — cluster cac-mlops (Kubernetes 1.35.3) · Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB) · Activé à la demande via Prefect flows <code>kapsule-up</code> / <code>kapsule-down</code>
+        <strong>Scaleway Kapsule</strong> — cluster cac-mlops (Kubernetes 1.35.3) · Control plane mutualisé gratuit · nodes BASIC3-X2C-8G (2 vCPU, 8 GB, root volume SBS 50GB) · Activé à la demande via Prefect flows <code>kapsule-up</code> / <code>kapsule-down</code>
       </div>
 
       <details>
@@ -587,12 +587,10 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
           <div class="tbl"><table>
             <thead><tr><th>Deployment</th><th>Rôle</th><th>Note</th></tr></thead>
             <tbody>
-              <tr><td><strong>api</strong></td><td>FastAPI inference</td><td>initContainer fetch S3 → /app/model/ · HPA CPU 70%/RAM 80% (min 2→max 8 pods) · maxUnavailable: 0</td></tr>
-              <tr><td><strong>gradio</strong></td><td>Cockpit admin — ClusterIP</td><td>COCKPIT_ENV=kapsule masque onglets VPS-only (Drift/Modèles/Orchestration/Cockpit)</td></tr>
-              <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP</td><td>via nginx→caddy</td></tr>
-              <tr><td><strong>mlflow</strong></td><td>SQLite emptyDir isolé</td><td>PAS le vrai registre VPS</td></tr>
+              <tr><td><strong>api</strong></td><td>FastAPI inference</td><td>initContainer fetch S3 → /app/model/ · HPA CPU 70% uniquement (min 2→max 4 pods) · maxUnavailable: 0</td></tr>
+              <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP</td><td>via nginx→caddy — seul cockpit Gradio sur K8s (pas de "gradio" admin sur ce cluster depuis 2026-07-13, redondant avec celui du VPS)</td></tr>
               <tr><td><strong>nginx</strong></td><td>Rate-limiting + routing — ClusterIP</td><td>—</td></tr>
-              <tr><td><strong>caddy</strong></td><td>SEUL point d'entrée public — LoadBalancer</td><td>TLS Let's Encrypt auto · kapsule.jakat-inc.fr</td></tr>
+              <tr><td><strong>caddy</strong></td><td>SEUL point d'entrée public — LoadBalancer</td><td>TLS Let's Encrypt auto · kapsule.jakat-inc.fr · 2 pods, <code>sessionAffinity: ClientIP</code> + <code>externalTrafficPolicy: Local</code> + sticky-sessions LB Scaleway (mode <code>table</code>, cf. §résilience) — nécessaire aux 3 pour que la session Gradio (queue/join puis queue/data) reste sur le même pod bout en bout</td></tr>
               <tr><td><strong>prometheus</strong></td><td>Scrape api + kube-state-metrics + blackbox + node-exporter</td><td>Interrogé à distance par Grafana VPS</td></tr>
               <tr><td><strong>tailscale-subnet-router</strong></td><td>Pont vers le tailnet du VPS</td><td>—</td></tr>
               <tr><td><strong>loki-forwarder</strong></td><td>Client Tailscale userspace dédié (SOCKS5 :1055)</td><td>Relaie logs Promtail → Loki VPS</td></tr>
@@ -602,6 +600,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
               <tr><td><strong>promtail</strong> (DaemonSet)</td><td>1/nœud — logs pods → Loki VPS</td><td>Label cluster="kapsule"</td></tr>
             </tbody>
           </table></div>
+          <p style="margin-top:10px;"><strong>Healthcheck de node-exporter/promtail (DaemonSets sans Service stable) et loki-forwarder/tailscale-subnet-router (pas de serveur HTTP) :</strong> le Cockpit Gradio n'a pas de kubeconfig (seul prefect-worker en dispose) — un flow Prefect dédié <code>k8s-daemonset-health</code> interroge chaque composant via <code>kubectl</code> et remonte un statut OK/NOK, déclenché à la demande depuis l'onglet Healthcheck du Cockpit (plus lent que les vérifications HTTP directes des autres lignes — compromis accepté pour ces 4 seulement).</p>
         </div>
       </details>
 
@@ -697,7 +696,7 @@ NGINX (nginx:alpine)
       </details>
 
       <details>
-        <summary>Prefect — 14 deployments</summary>
+        <summary>Prefect — 16 deployments</summary>
         <div class="body">
           <div class="tbl"><table>
             <thead><tr><th>Deployment</th><th>Flow</th><th>Trigger</th></tr></thead>
@@ -713,11 +712,14 @@ NGINX (nginx:alpine)
               <tr><td><code>deploy-kapsule</code></td><td>deploy_kapsule_flow.py</td><td>fin de deploy-vps-flow (si test-api OK)</td></tr>
               <tr><td><code>kapsule-up</code></td><td>kapsule_up_flow.py</td><td>manuel</td></tr>
               <tr><td><code>kapsule-down</code></td><td>kapsule_down_flow.py</td><td>manuel</td></tr>
-              <tr><td><code>test-api</code></td><td>test_api_flow.py</td><td>fin de deploy-vps-flow + manuel</td></tr>
+              <tr><td><code>test-api</code></td><td>test_api_flow.py</td><td>fin de deploy-vps/kapsule-flow (interne + externe) + bouton Cockpit "Tester les 4 accès publics"</td></tr>
+              <tr><td><code>test-gradio-public</code></td><td>test_gradio_public_flow.py</td><td>idem test-api — même point d'entrée</td></tr>
               <tr><td><code>diag</code></td><td>diag_flow.py</td><td>manuel</td></tr>
+              <tr><td><code>k8s-daemonset-health</code></td><td>k8s_daemonset_health_flow.py</td><td>manuel (bouton Cockpit Healthcheck) — node-exporter/promtail/loki-forwarder/tailscale-subnet-router uniquement, via kubectl</td></tr>
               <tr><td><code>disk-cleanup</code></td><td>disk_cleanup_flow.py</td><td>cron 2h UTC quotidien</td></tr>
             </tbody>
           </table></div>
+          <p style="margin-top:10px;">Depuis 2026-07-29, <code>test-api</code>/<code>test-gradio-public</code> s'exécutent <strong>deux fois</strong> à chaque déploiement VPS et Kapsule : une fois en interne (réseau Docker/ClusterIP) puis, si l'interne passe, une fois en externe (vrai domaine public <code>mlops.jakat-inc.fr</code>/<code>kapsule.jakat-inc.fr</code>) — le test interne seul ne prouvait pas qu'un utilisateur réel pouvait accéder au service (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</p>
         </div>
       </details>
 
@@ -742,24 +744,32 @@ NGINX (nginx:alpine)
       <details>
         <summary>Cockpit Gradio</summary>
         <div class="body">
-          <p><strong>Cockpit MLOps complet</strong> (gradio — Tailscale uniquement) — <code>http://100.117.99.62:7860</code></p>
+          <p><strong>Cockpit MLOps complet</strong> (gradio — Tailscale uniquement) — <code>http://100.117.99.62:7860</code> · 6 onglets, dont "Cockpit" qui regroupe 6 accordéons.</p>
           <div class="tbl"><table>
             <thead><tr><th>Onglet</th><th>Rôle</th></tr></thead>
             <tbody>
               <tr><td>1. Accueil</td><td>Présentation du projet, liens rapides</td></tr>
               <tr><td>2. Predict</td><td>27 features → prédiction @Production + probabilité · 5 exemples préremplis</td></tr>
-              <tr><td>3. What-If</td><td>Scénarios (météo/nuit/alcool/vitesse), compare % graves avant vs après</td></tr>
+              <tr><td>3. What-if</td><td>Scénarios (météo/nuit/alcool/vitesse), compare % graves avant vs après</td></tr>
               <tr><td>4. Points Noirs</td><td>density_mapbox accidents France, filtres gravité/catr</td></tr>
-              <tr><td>5. Cockpit</td><td>Gate manuelle GO/STOP · accordéon Drift (rapports Evidently) · accordéon Modèles (versions MLflow + promotion)</td></tr>
-              <tr><td>6. Orchestration</td><td>Déclenchement flows Prefect depuis le cockpit · tableau 20 derniers runs</td></tr>
-              <tr><td>7. Healthcheck</td><td>Check HTTP tous services VPS + cluster Kapsule</td></tr>
-              <tr><td>8. Liens</td><td>URLs Tailscale admin + API publique + IPs Kapsule</td></tr>
-              <tr><td>9. Architecture</td><td>Stack interactive architecture.html</td></tr>
-              <tr><td>10. Docs</td><td>Guides DS / MLOps / admin en HTML</td></tr>
+              <tr><td>5. Cockpit</td><td>Barre d'onglets : icônes "⊟" (replier tous les accordéons) et "⌂" (retour Accueil) alignées à droite. 6 accordéons repliés par défaut — voir détail ci-dessous.</td></tr>
+              <tr><td>6. Docs</td><td>Guides DS / MLOps / admin en HTML (dont Architecture — <code>architecture.html</code>, plus un onglet séparé)</td></tr>
             </tbody>
           </table></div>
-          <p><em>Sur Kapsule (COCKPIT_ENV=kapsule) : onglets Cockpit, Orchestration, Drift (accordéon), Modèles (accordéon) masqués — dépendent du Prefect/MLflow du VPS.</em></p>
-          <p><strong>Cockpit public</strong> (gradio-public) — <code>https://mlops.jakat-inc.fr</code> · Script : <code>services/gradio/app_public.py</code> · 3 onglets (Predict + What-If + Points Noirs)</p>
+
+          <div class="tbl"><table>
+            <thead><tr><th>Accordéon (dans l'onglet Cockpit)</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Validation des déploiements en attente</strong></td><td>Gate manuelle GO/STOP · bandeau d'état du pipeline (auto-refresh 20s) · file d'attente des runs en pause · tableau "Derniers déploiements exécutés" (trigger, description courte, PR cliquable, statut, Run ID cliquable vers Prefect UI)</td></tr>
+              <tr><td><strong>Orchestration</strong></td><td>Déclenchement flows Prefect depuis le cockpit. Le bouton "Tester les 4 accès publics (fonctionnel)" (ex-"Tester l'API") teste FastAPI + Gradio Public, VPS et K8s, via le vrai chemin utilisateur (Caddy → HTTPS → domaine public) — rapport détaillé par accès dans le Bloc résultat, pas juste un ping</td></tr>
+              <tr><td><strong>Healthcheck</strong></td><td>Tableaux VPS/K8s — vérification HTTP directe pour la majorité des composants ; TCP direct pour PostgreSQL ; statut ONLINE/OFFLINE de l'API Prefect pour prefect-worker ; flow Prefect dédié <code>k8s-daemonset-health</code> (via kubectl) pour node-exporter/promtail/loki-forwarder/tailscale-subnet-router</td></tr>
+              <tr><td><strong>Drift</strong></td><td>Rapports de dérive Evidently par cycle</td></tr>
+              <tr><td><strong>Modèles</strong></td><td>Versions MLflow enregistrées + promotion manuelle (bypass CI/CD, urgence uniquement)</td></tr>
+              <tr><td><strong>Liens</strong></td><td>URLs Tailscale admin + API publique + IPs Kapsule — rafraîchi automatiquement à chaque connexion (<code>demo.load()</code>), plus de bouton "Rafraîchir" manuel (retiré 2026-07-29, sans effet réel puisque l'URL affichée est une constante)</td></tr>
+            </tbody>
+          </table></div>
+          <p><em>Note historique :</em> <code>COCKPIT_ENV=kapsule</code> masquait certains accordéons sur un cockpit admin K8s — ce déploiement n'existe plus depuis 2026-07-13 (redondant avec celui du VPS), cette variable n'est donc plus jamais positionnée en pratique.</p>
+          <p><strong>Cockpit public</strong> (gradio-public) — <code>https://mlops.jakat-inc.fr</code> (VPS) et <code>https://kapsule.jakat-inc.fr</code> (K8s, même image, <code>DEPLOY_ENV</code> distingue les deux) · Script : <code>services/gradio/app_public.py</code> · 3 onglets (Predict + What-If + Points Noirs)</p>
         </div>
       </details>
     </div>
@@ -860,7 +870,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
             <li><strong>2. ★ GATE MANUELLE</strong> : <code>pause_flow_run(timeout=86400s)</code> — AVANT toute interruption<br>→ Opérateur : Prefect UI "Resume" OU cockpit Gradio onglet Cockpit (GO/STOP)</li>
             <li><strong>3a.</strong> Si champion : sauvegarde @Production → promote MLflow → restart api</li>
             <li><strong>3b.</strong> Si needs_build/restart_services : <code>docker compose up -d --remove-orphans</code> + redémarrages ciblés → 2nd smoke test → si KO : rollback :rollback</li>
-            <li><strong>4.</strong> test-api (6 tests, skip_rate_limit=True) → si KO : rollback promote ET/OU rollback Docker :rollback</li>
+            <li><strong>4.</strong> test-api + test-gradio-public — interne (réseau Docker) PUIS externe (vrai domaine public <code>mlops.jakat-inc.fr</code>), skip_rate_limit=True — externe ne se lance que si l'interne passe → si KO (l'une ou l'autre étape) : rollback promote ET/OU rollback Docker :rollback</li>
             <li><strong>5.</strong> deploy-kapsule-flow (si test-api OK)</li>
           </ul>
         </div>
@@ -918,7 +928,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 ├── data/                  ignoré Git — géré DVC (raw/ + preprocessed/)
 ├── services/
 │   ├── api/               FastAPI (main, auth, model_loader, routes/, schemas/)
-│   ├── gradio/            app.py (10 onglets Tailscale) · app_public.py (3 onglets public)
+│   ├── gradio/            app.py (6 onglets Tailscale, dont Cockpit = 6 accordéons) · app_public.py (3 onglets public)
 │   │                      scenarios.py · Dockerfile
 │   ├── mlflow/            Dockerfile custom (boto3 + psycopg2)
 │   ├── nginx/             nginx.conf (rate-limit + routing + /reports/)
@@ -927,11 +937,11 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 │   ├── data/              import_raw_data · schema · schema_validator · known_fixes
 │   │                      make_dataset
 │   ├── models/            train_model · predict_model · validate_model
-│   ├── flows/             14 flows Prefect
+│   ├── flows/             16 flows Prefect (dont k8s_daemonset_health_flow.py)
 │   └── utils/             email_utils (SMTP silent si non configuré)
-├── k8s/                   Manifests Kubernetes (1 dossier/composant)
+├── k8s/                   Manifests Kubernetes (1 dossier/composant, 9 Deployments + 2 DaemonSets)
 │   ├── api/               deployment (HPA + initContainer) · hpa · service
-│   ├── gradio/ gradio-public/ mlflow/ nginx/ caddy/ prometheus/
+│   ├── gradio-public/ nginx/ caddy/ prometheus/  (pas de "gradio" admin ni "mlflow" sur K8s)
 │   ├── tailscale/         subnet-router
 │   ├── loki-forwarder/    SOCKS5 proxy → Loki VPS
 │   ├── promtail/          DaemonSet + rbac
@@ -953,7 +963,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 ├── scripts/               simulate_production.py · raz_mlops.sh · setup_branch_protection.sh
 │                          ds_session_start.sh (routine début de session DS)
 ├── docker-compose.yml     Stack 16 conteneurs (local + VPS)
-├── prefect.yaml           14 deployments Prefect
+├── prefect.yaml           16 deployments Prefect
 ├── .env.example
 ├── .dvc/config            remote = Scaleway Object Storage S3
 └── requirements.txt</pre>
@@ -975,7 +985,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
           <tr><td>Algorithme</td><td>Benchmark RF / XGBoost / LightGBM à chaque cycle</td><td>Champion = meilleur F1 + gate KPI · Actuel : lgbm_accidents</td></tr>
           <tr><td>API</td><td>FastAPI + Pydantic + JWT HS256</td><td>Performance + validation + sécurité</td></tr>
           <tr><td>Gateway</td><td>NGINX (rate limit 20r/min) + Caddy (TLS)</td><td>Rate-limiting + TLS Let's Encrypt auto</td></tr>
-          <tr><td>Orchestration</td><td>Prefect (14 deployments)</td><td>Plus léger qu'Airflow · gate native pause_flow_run()</td></tr>
+          <tr><td>Orchestration</td><td>Prefect (16 deployments)</td><td>Plus léger qu'Airflow · gate native pause_flow_run()</td></tr>
           <tr><td>Monitoring</td><td>PLG stack + Evidently · K8s consolidé dans VPS</td><td>Cohérence · moins de ressources K8s</td></tr>
           <tr><td>Sécurité réseau</td><td>Tailscale VPN mesh</td><td>Pas d'IP fixes à maintenir · invisible depuis internet</td></tr>
           <tr><td>Infrastructure VPS</td><td>Scaleway DEV1-XL (4 vCPU, 12 GB RAM)</td><td>Coût/performance · block storage séparé</td></tr>

@@ -127,6 +127,18 @@ deployments:
     work_pool:
       name: default-process-pool
 
+  # ── Test gradio-public — vrai /predict via gradio_client (pas un ping) ──────
+  # Manquait jusqu'au 2026-07-29 : appelé en interne par deploy_vps_flow/
+  # deploy_kapsule_flow via import Python direct (pas besoin de déploiement),
+  # mais le bouton Cockpit "Tester les 4 accès publics" le déclenche via
+  # _prefect_trigger("test-gradio-public", ...), qui cherche un déploiement
+  # par NOM via l'API REST — sans cette entrée, 2 des 4 accès (Gradio Public
+  # VPS/K8s) échouaient avec "Deployment introuvable".
+  - name: test-gradio-public
+    entrypoint: src/flows/test_gradio_public_flow.py:test_gradio_public_flow
+    work_pool:
+      name: default-process-pool
+
   # ── Diag — snapshot VPS (docker, disk, ports) ────────────────────────────────
   - name: diag
     entrypoint: src/flows/diag_flow.py:diag_flow
