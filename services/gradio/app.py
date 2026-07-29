@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import socket
 import sys
 import time
 from datetime import datetime
@@ -1736,14 +1737,19 @@ _VPS_SERVICES: list[dict[str, str]] = [
     {"type": "Composant", "service": "Blackbox-exporter",
      "url": "http://blackbox-exporter:9115/metrics",
      "obs": "Sonde de disponibilité des 5 accès (Grafana)"},
+    {"type": "Composant", "service": "PostgreSQL", "kind": "tcp",
+     "url": "postgresql:5432",
+     "obs": "Backend Prefect — pas HTTP, check TCP direct (réseau Docker)"},
+    {"type": "Composant", "service": "Prefect-worker", "kind": "prefect_worker",
+     "url": "",
+     "obs": "Aucun serveur HTTP exposé — vérifié via le heartbeat worker de l'API Prefect (work-pool default-process-pool)"},
 ]
 
-# Composants sans mécanisme de check HTTP simple, volontairement absents de
-# ce tableau (nécessiteraient un mécanisme différent de _check_url) :
-# - postgresql (VPS) : pas HTTP, il faudrait une connexion DB
-# - prefect-worker (VPS) : aucun serveur HTTP exposé, pas d'endpoint de santé
-# - node-exporter / promtail (K8s) : DaemonSet sans Service stable (1 IP par
-#   nœud, pas de nom DNS unique à interroger)
+# Composants toujours absents de ce tableau — DaemonSets K8s sans Service
+# stable (1 IP par nœud, pas de nom DNS unique à interroger) ou sans serveur
+# HTTP, et sans accès kubectl direct depuis ce process (seul prefect-worker
+# a le kubeconfig) :
+# - node-exporter / promtail (K8s) : DaemonSet, pas de Service
 # - loki-forwarder (K8s) : proxy SOCKS5, pas HTTP
 # - tailscale-subnet-router (K8s) : pas de serveur HTTP
 #
@@ -1798,14 +1804,52 @@ def _check_url(url: str, timeout: int = 5) -> bool:
         return False
 
 
+def _check_tcp(host_port: str, timeout: int = 5) -> bool:
+    """Pour les composants sans serveur HTTP (ex: PostgreSQL) — une simple
+    connexion TCP réussie suffit à prouver que le process écoute, sans avoir
+    besoin des credentials DB juste pour un check de vie."""
+    host, _, port_str = host_port.partition(":")
+    try:
+        with socket.create_connection((host, int(port_str)), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+
+def _check_prefect_worker() -> bool:
+    """prefect-worker n'expose aucun serveur HTTP (juste `prefect worker
+    start`) — Prefect calcule lui-même un statut ONLINE/OFFLINE par worker
+    à partir de son heartbeat (~30s, cf. heartbeat_interval_seconds retourné
+    par l'API) ; réutilisé tel quel plutôt que de recalculer une fraîcheur
+    de heartbeat nous-mêmes (vérifié en direct sur le VPS, 2026-07-29)."""
+    try:
+        r = requests.post(
+            f"{PREFECT_API}/work_pools/default-process-pool/workers/filter",
+            json={}, timeout=5,
+        )
+        workers = r.json()
+        return isinstance(workers, list) and any(w.get("status") == "ONLINE" for w in workers)
+    except Exception:
+        return False
+
+
 _STATUS_OK  = "🟢 OK"
 _STATUS_NOK = "🔴 NOK"
+
+
+def _check_entry(e: dict) -> bool:
+    kind = e.get("kind", "http")
+    if kind == "tcp":
+        return _check_tcp(e["url"])
+    if kind == "prefect_worker":
+        return _check_prefect_worker()
+    return _check_url(e["url"])
 
 
 def check_health_vps() -> pd.DataFrame:
     rows = [
         {"Services VPS": e["service"], "Type": e["type"],
-         "Status": _STATUS_OK if _check_url(e["url"]) else _STATUS_NOK, "Observations": e["obs"]}
+         "Status": _STATUS_OK if _check_entry(e) else _STATUS_NOK, "Observations": e["obs"]}
         for e in _VPS_SERVICES
     ]
     return pd.DataFrame(rows)
@@ -2792,9 +2836,16 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     demo.load(fn=refresh_models, outputs=[models_table, promote_dd])
 
             with gr.Accordion("🔗  Liens", open=False) as acc_liens:
-                infra_refresh = gr.Button("Rafraichir les IPs Kapsule")
-                infra_html    = gr.HTML(value=build_links_html())
-                infra_refresh.click(fn=build_links_html, outputs=infra_html)
+                infra_html = gr.HTML(value=build_links_html())
+                # Bouton "Rafraichir" retiré (2026-07-29) : la seule chose qui
+                # varie réellement ici est l'état actif/inactif de Kapsule
+                # (state/kapsule_ips) — l'URL affichée est une constante
+                # (KAPSULE_DOMAIN, cf. kapsule_up_flow.py), donc un clic
+                # manuel ne changeait quasiment jamais rien à l'écran.
+                # demo.load() couvre le seul cas utile (détecter la
+                # transition actif/inactif) à chaque connexion, même
+                # rationale que le fix MLflow figé (PR220, cf. plus haut).
+                demo.load(fn=build_links_html, outputs=infra_html)
 
         # ── Onglet 11 : Docs ─────────────────────────────────────────────────
         with gr.Tab("Docs"):
