@@ -1,11 +1,42 @@
 ---
 name: project-cockpit-toolbar-todo
-description: "TODO non résolu — bouton 'Fermer tous les accordéons' inopérant sur l'onglet Cockpit malgré 2 tentatives de fix"
+description: "Backend confirmé correct (2026-07-29) — si le bouton 'Fermer tous les accordéons' semble encore cassé, c'est un cache navigateur, pas un bug Python"
 metadata:
   node_type: memory
   type: project
   originSessionId: 56ea6708-273e-46b6-af84-9bc9daa74e3c
 ---
+
+**MàJ 2026-07-29 — root cause isolée, backend disculpé.** `gradio_client`
+n'est pas fiable pour tester cet event : ses fonctions `predict()`/`view_api()`
+sont conçues pour des composants "porteurs de valeur" (Number, Textbox…) et
+ne représentent pas correctement les mises à jour `gr.Accordion(open=...)` —
+un test via `gradio_client.predict(api_name=...)` renvoie `()` même quand le
+serveur répond correctement (faux négatif, m'a fait perdre du temps).
+
+Test fiable : requête brute sur le protocole queue de Gradio (celui que le
+navigateur utilise réellement) —
+```python
+requests.post(f"{base}/gradio_api/queue/join", json={
+    "data": [], "event_data": None, "fn_index": <N>, "trigger_id": None,
+    "session_hash": session_hash,
+})
+# puis GET /gradio_api/queue/data?session_hash=... (SSE)
+```
+Résultat obtenu en direct sur le VPS (gradio-1, code à jour, fn_index=31 pour
+`collapse_all_btn`) : `process_completed` avec
+`"data":[{"open":false,"__type__":"update"} ×6]` — **exactement correct**.
+Le backend Python envoie la bonne réponse à chaque fois.
+
+**Conclusion : le bug n'est PAS dans `services/gradio/app.py`.** Si
+l'utilisateur constate encore le problème, c'est très probablement un bundle
+JS Gradio mis en cache par le navigateur (ce toolbar a changé de forme sur
+plusieurs PR consécutives cette semaine — PR237/238/239) — aucune directive
+de cache agressive côté nginx (`services/nginx/nginx.conf`) n'explique un
+cache serveur, donc cache navigateur par défaut. **Premier réflexe avant de
+retoucher le code : hard refresh (Cmd+Shift+R / Ctrl+Shift+R) ou navigation
+privée.** Ne plus retenter de fix Python sur cette base tant que ce test n'a
+pas été fait.
 
 Le bouton toolbar "⊟" (fermer tous les accordéons, `collapse_all_btn` dans
 `services/gradio/app.py`) reste inopérant sur l'onglet Cockpit en prod
