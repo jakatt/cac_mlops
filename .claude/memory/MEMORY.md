@@ -27,4 +27,4 @@
 - [Toolbar Cockpit — TODO non résolu](project_cockpit_toolbar_todo.md) — bouton "Fermer tous les accordéons" toujours cassé après PR239 (2e fix raté)
 - [Modèle 3 couches de tests](project_test_layers_model.md) — technique (smoke)/fonctionnel interne/fonctionnel externe, structurant pour Healthcheck/rollback/test-api
 - [Race kapsule-down→up](project_kapsule_recreate_race_todo.md) — TODO non résolu : create_node_pool saute la création si l'ancien pool est encore en 'deleting'
-- [DaemonSets NOK post-recréation](project_daemonset_nok_todo.md) — 2 bugs distincts : loki-forwarder/tailscale-subnet-router réellement NOK (backend) + affichage Cockpit incorrect (node-exporter/promtail montrés NOK alors qu'OK)
+- [DaemonSets NOK — RÉSOLU PR246/247](project_daemonset_nok_todo.md) — Deployment vs DaemonSet mal détecté + timeout Prefect 30s trop court + icônes ✅/❌ non colorées
