@@ -405,7 +405,7 @@
   <!-- ════════════════════ 3. POST-DEPLOY ════════════════════ -->
   <details class="section pf">
     <summary><span class="section-pill pf">PREFECT</span> Tests post-deploy — <code>test-api-flow</code></summary>
-    <div class="section-meta">Déclenché automatiquement par deploy-vps-flow après chaque déploiement VPS réussi · Exécuté dans le réseau Docker (http://nginx:80)</div>
+    <div class="section-meta">Déclenché automatiquement par deploy-vps-flow/deploy-kapsule-flow après chaque déploiement réussi (VPS <em>et</em> K8s) · Exécuté <strong>deux fois</strong> à chaque déploiement (2026-07-29) : d'abord en interne (réseau Docker <code>http://nginx:80</code> / ClusterIP K8s), puis — si l'interne passe — en externe via le vrai domaine public (<code>mlops.jakat-inc.fr</code> / <code>kapsule.jakat-inc.fr</code>). Le test interne seul ne prouve pas qu'un utilisateur réel peut accéder au service (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>) ; aussi déclenchable manuellement (Cockpit → Orchestration → "Tester les 4 accès publics")</div>
 
     <div style="padding:0 16px 16px;">
     <div class="overflow-x">
@@ -451,7 +451,7 @@
     <p class="note">Les tests post-deploy s'exécutent à l'intérieur du réseau Docker via <code>http://nginx:80</code> — ils testent l'API en conditions réelles (load balancer, auth, modèle chargé en mémoire) et non via un mock.</p>
     </div>
 
-    <div class="section-meta" style="margin-top:8px;">Déclenché automatiquement juste après <code>test-api-flow</code> (VPS et K8s) — <code>test-gradio-public</code> · appel réel via <code>gradio_client</code>, pas un ping <code>/health</code></div>
+    <div class="section-meta" style="margin-top:8px;">Déclenché automatiquement juste après <code>test-api-flow</code> (VPS et K8s), lui aussi interne puis externe — <code>test-gradio-public</code> · appel réel via <code>gradio_client</code>, pas un ping <code>/health</code></div>
     <div style="padding:0 16px 16px;">
     <div class="overflow-x">
     <table>
@@ -463,7 +463,7 @@
       </tr>
     </table>
     </div>
-    <p class="note">Seul test fonctionnel qui couvre <strong>gradio-public</strong> — le point d'accès réellement utilisé par les utilisateurs finaux (FastAPI n'est aujourd'hui appelé que par des tests automatisés et la simulation de drift, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>). Échec → même rollback que <code>test-api-flow</code> (images <code>:rollback</code> sur VPS, <code>kubectl rollout undo</code> sur K8s).</p>
+    <p class="note">Seul test fonctionnel qui couvre <strong>gradio-public</strong> — le point d'accès réellement utilisé par les utilisateurs finaux (FastAPI n'est aujourd'hui appelé que par des tests automatisés et la simulation de drift, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>). Échec → même rollback que <code>test-api-flow</code> : images <code>:rollback</code> sur VPS · sur K8s, rollback vers le digest précis de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout — pas <code>kubectl rollout undo</code>, insuffisant sur un tag flottant <code>:latest</code>, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</p>
     </div>
   </details><!-- section pf -->
 

@@ -252,15 +252,15 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (6 tâches) + test-gradio-public : si fail → rollback alias MLflow @Production + restart API + alerte</span>
+                <span class="item-desc">test-api (6 tâches) + test-gradio-public — interne PUIS externe (vrai domaine public) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout) + rollback alias MLflow @Production + alerte</span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s — FTe</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-label">Gate K8s — FTe (interne + externe)</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — d'abord en interne (ClusterIP), puis en externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe. Le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s, et l'interne seul ne détecte pas un problème propre au chemin public (cf. bannière ci-dessous). Si fail (interne ou externe) → rollback digest + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
             </ul>
           </td>
@@ -295,15 +295,15 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (6 tâches) + test-gradio-public : si fail → rollback Docker <code>:rollback</code> + alerte</span>
+                <span class="item-desc">test-api (6 tâches) + test-gradio-public — interne PUIS externe : si fail → rollback Docker <code>:rollback</code> + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → <code>kubectl rollout undo</code> (api / gradio-public / nginx / caddy) + alerte</span>
+                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, api / gradio-public) + alerte</span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s — FTe</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte</span>
+                <span class="item-label">Gate K8s — FTe (interne + externe)</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — interne (ClusterIP) puis externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe — contre l'endpoint K8s après le rollout. Si fail (interne ou externe) → rollback digest + alerte</span>
               </li>
             </ul>
           </td>
@@ -334,15 +334,15 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 3 VPS</span>
-                <span class="item-desc">test-api (6 tâches) + test-gradio-public : si fail → rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">test-api (6 tâches) + test-gradio-public — interne PUIS externe : si fail → rollback alias MLflow @Production + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → <code>kubectl rollout undo</code> + rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">Readiness probe <code>/health</code> (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>) + rollback alias MLflow @Production + alerte</span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s — FTe</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) contre l'endpoint K8s après le rollout — le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s. Si fail → <code>kubectl rollout undo</code> + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-label">Gate K8s — FTe (interne + externe)</span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — interne puis externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe — contre l'endpoint K8s après le rollout. Si fail (interne ou externe) → rollback digest + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
             </ul>
           </td>
@@ -356,15 +356,18 @@
     <span class="k8s-banner-icon">◎</span>
     <div>
       <p class="k8s-banner-title">Mécanismes spécifiques K8s (Kapsule)</p>
-      <p class="k8s-banner-text"><strong>Rolling update :</strong> le nouveau pod doit passer la <strong>readiness probe</strong> (<code>/health</code>) avant que l'ancien soit supprimé. Aucune requête n'est perdue — interruptions de service à <strong>0</strong> pour les 3 triggers. Rollback = <code>kubectl rollout undo</code> (vs <code>:rollback</code> Docker côté VPS).</p>
-      <p class="k8s-banner-text"><strong>FTe post-rollout :</strong> le readiness probe valide seulement que le pod démarre, pas le comportement métier réel sur cet environnement (config K8s distincte du VPS). Un test fonctionnel complet (JWT, <code>/predict</code>, what-if, prédiction réelle via gradio-public) est donc rejoué contre l'endpoint K8s après chaque rollout réussi — même rollback (<code>kubectl rollout undo</code>) si ce test échoue.</p>
+      <p class="k8s-banner-text"><strong>Rolling update :</strong> le nouveau pod doit passer la <strong>readiness probe</strong> (<code>/health</code>) avant que l'ancien soit supprimé. Aucune requête n'est perdue — interruptions de service à <strong>0</strong> pour les 3 triggers.</p>
+      <p class="k8s-banner-text"><strong>Rollback K8s — digest précis, pas <code>rollout undo</code> (fix 2026-07-29) :</strong> <code>api</code>/<code>gradio-public</code> référencent un tag flottant (<code>:latest</code>, <code>imagePullPolicy: Always</code>) — la chaîne d'image est identique entre l'ancienne et la nouvelle révision du ReplicaSet, donc <code>kubectl rollout undo</code> seul ne fait que revenir au template précédent (env vars/ressources) mais re-pull la <strong>même</strong> image <code>:latest</code> (potentiellement cassée), sans restaurer quoi que ce soit de concret — bug diagnostiqué en conditions réelles (rollback "réussi" mais digest identique VPS/Kapsule). Fix : le digest de l'image tournant juste avant le rollout est capturé, et le rollback pointe dessus explicitement via <code>kubectl set image</code> (digest immuable). Fallback sur <code>rollout undo</code> uniquement si aucun digest n'a été capturé (1er déploiement).</p>
+      <p class="k8s-banner-text"><strong>FTe post-rollout — interne PUIS externe (fix 2026-07-29) :</strong> le readiness probe valide seulement que le pod démarre, pas le comportement métier réel sur cet environnement. Un test fonctionnel complet (JWT, <code>/predict</code>, what-if, prédiction réelle via gradio-public) est rejoué en interne (réseau ClusterIP), puis — si l'interne passe — une seconde fois via le vrai domaine public <code>kapsule.jakat-inc.fr</code> (Caddy → LB Scaleway). Le test interne seul ne suffisait pas : une régression de sticky-sessions (ligne suivante) a été détectée uniquement grâce à ce 2ᵉ passage externe, alors que l'interne passait à 100%. Même rollback digest si l'une ou l'autre étape échoue.</p>
+      <p class="k8s-banner-text"><strong>Sticky-sessions LB Scaleway (fix 2026-07-29) :</strong> Caddy tourne en 2 pods sur 2 nœuds différents ; <code>sessionAffinity: ClientIP</code> + <code>externalTrafficPolicy: Local</code> au niveau K8s ne suffisent pas seuls — c'est le Load Balancer Scaleway lui-même qui choisit sur quel nœud atterrit chaque connexion, et son algorithme par défaut n'est pas sticky par client. Deux requêtes d'une même session Gradio (<code>queue/join</code> puis <code>queue/data</code>) pouvaient atterrir sur 2 pods Caddy différents → <code>CancelledError</code> systématique (100% de reproductibilité constatée). Fix : annotation <code>service.beta.kubernetes.io/scw-loadbalancer-sticky-sessions: "table"</code> (hash par IP source, au niveau du LB) — le mode <code>cookie</code> ne fonctionne pas ici car le backend est en <code>FORWARD PROTOCOL=tcp</code> (Caddy termine son propre TLS, le LB n'a aucune visibilité HTTP).</p>
+      <p class="k8s-banner-text"><strong>DiskPressure / éviction de pods (fix 2026-07-29) :</strong> incident récurrent (2026-07-10, 24/07, 25/07, 29/07) — un rollout tire une nouvelle image pendant que l'ancienne est encore présente, et si le nœud manque d'espace le pod est évincé puis retente (re-pull de la même image, parfois plusieurs fois de suite), ce qui aggrave la pression au lieu de la résoudre. Nettoyage déjà en place (<code>crictl rmi --prune</code> systématique en fin de déploiement, succès ou échec, + purge ciblée en pré-déploiement) mais insuffisant : la marge réelle mesurée n'était que de 6.5GB sur 17GB en régime stable, sans aucun cruft non collecté (vérifié en direct). Root cause = dimensionnement, pas nettoyage → root volume des nœuds porté de 20GB à 50GB.</p>
       <p class="k8s-banner-text"><strong>Double protection :</strong> Kapsule n'a pas de gate manuelle propre. Le verrou humain est côté VPS (<code>deploy-vps-flow</code> mis en pause). <code>deploy-kapsule-flow</code> ne démarre qu'après GO <em>et</em> <code>test-api</code> VPS réussi — K8s est protégé par deux verrous en série : gate humaine + validation VPS.</p>
     </div>
   </div>
 
   <div class="footnote">
     <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2 Gate 1–2 · T3 Gate 1 uniquement — pas de build, pas de Trivy en T3)</span>
-    <span>Rollback VPS T1/T3 : alias MLflow @Production · Rollback VPS T2 : images Docker <code>:rollback</code> · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe KO) : <code>kubectl rollout undo</code></span>
+    <span>Rollback VPS T1/T3 : alias MLflow @Production · Rollback VPS T2 : images Docker <code>:rollback</code> · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe interne/externe KO) : digest précis de l'image précédente via <code>kubectl set image</code> (fallback <code>rollout undo</code> si aucun digest capturé)</span>
   </div>
 </div>
 </div>

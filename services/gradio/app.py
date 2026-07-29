@@ -2890,15 +2890,26 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
     # ── Toolbar barre d'onglets : fermer tous les accordéons / retour Accueil ──
     _ALL_ACCORDIONS = [acc_validation, acc_orchestration, acc_healthcheck, acc_drift, acc_modeles, acc_liens]
-    # queue=False : ces 2 boutons ne font qu'un changement d'état local (aucun
+    # queue=False : ces boutons ne font qu'un changement d'état local (aucun
     # appel réseau) — sans ça, ils passent dans la même file que les timers/
     # polls Prefect de l'onglet Cockpit et peuvent rester en attente derrière
     # eux, donnant l'impression de ne rien faire.
-    collapse_all_btn.click(
-        fn=lambda: [gr.Accordion(open=False) for _ in _ALL_ACCORDIONS],
-        outputs=_ALL_ACCORDIONS,
-        queue=False,
-    )
+    #
+    # Un .click() séparé par accordéon (au lieu d'un seul retournant une liste
+    # de 6 updates) — vérifié le 2026-07-29 que le backend envoie bien les 6
+    # updates open=False corrects (inspection directe du flux SSE brut de
+    # Gradio, hors gradio_client qui ne représente pas fidèlement ce type de
+    # mise à jour), mais le clic restait sans effet visible dans 2 navigateurs
+    # différents (Edge, Safari) — cache et backend tous deux disculpés.
+    # Repli sur le même schéma déjà utilisé ailleurs dans ce fichier pour
+    # health_refresh (plusieurs .click() sur le même bouton, un par sortie),
+    # qui lui fonctionne de manière fiable.
+    for _acc in _ALL_ACCORDIONS:
+        collapse_all_btn.click(
+            fn=lambda _a=_acc: gr.Accordion(open=False),
+            outputs=_acc,
+            queue=False,
+        )
     home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs, queue=False)
 
 
