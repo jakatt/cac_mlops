@@ -100,7 +100,7 @@
   <header>
     <p class="eyebrow">MLOps · Accidents routiers</p>
     <h1 class="page-title">Architecture de la solution</h1>
-    <p class="page-sub">VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 14 flows · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
+    <p class="page-sub">VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 16 flows · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
   </header>
 
   <!-- DEV LOCAL -->
@@ -182,7 +182,7 @@
 
       <!-- Prefect -->
       <details>
-        <summary>⚙️ Prefect — 14 flows (prefect-server :4200 · pool: process)</summary>
+        <summary>⚙️ Prefect — 16 flows (prefect-server :4200 · pool: process)</summary>
         <div class="body">
           <details>
             <summary>🤖 ML / ETL — 7 flows</summary>
@@ -202,17 +202,19 @@
             </div>
           </details>
           <details>
-            <summary>🔧 Infra / Ops — 7 flows</summary>
+            <summary>🔧 Infra / Ops — 9 flows</summary>
             <div class="body">
               <div class="tbl"><table>
                 <thead><tr><th>Flow</th><th>Déclencheur</th><th>Rôle</th></tr></thead>
                 <tbody>
-                  <tr><td><strong>deploy-vps</strong></td><td>flow parent (T1: check-new-data · T2: CD SSH · T3: update-model)</td><td>nœud commun T1, T2 &amp; T3 — smoke test → <strong>gate manuelle</strong> (avant toute interruption VPS) → promote (T1/T3) + compose up (T2 uniquement) → test-api → Kapsule</td></tr>
-                  <tr><td><strong>deploy-kapsule</strong></td><td>post deploy-vps</td><td>rolling update pods K8s (sans gate)</td></tr>
-                  <tr><td><strong>kapsule-up</strong></td><td>manuel</td><td>provision cluster Kapsule + upload modèle S3</td></tr>
+                  <tr><td><strong>deploy-vps</strong></td><td>flow parent (T1: check-new-data · T2: CD SSH · T3: update-model)</td><td>nœud commun T1, T2 &amp; T3 — smoke test → <strong>gate manuelle</strong> (avant toute interruption VPS) → promote (T1/T3) + compose up (T2 uniquement) → test-api/test-gradio-public (interne puis externe) → Kapsule</td></tr>
+                  <tr><td><strong>deploy-kapsule</strong></td><td>post deploy-vps</td><td>rolling update pods K8s (sans gate) → test-api/test-gradio-public (interne puis externe) → rollback vers le digest précis de l'image précédente si échec (pas <code>rollout undo</code>, insuffisant sur un tag flottant <code>:latest</code>)</td></tr>
+                  <tr><td><strong>kapsule-up</strong></td><td>manuel</td><td>provision cluster Kapsule (root volume 50GB) + upload modèle S3</td></tr>
                   <tr><td><strong>kapsule-down</strong></td><td>manuel</td><td>déprovision cluster Kapsule</td></tr>
-                  <tr><td><strong>test-api</strong></td><td>CI/CD + manuel</td><td>6 tests fonctionnels (JWT · /predict · what-if · 429)</td></tr>
+                  <tr><td><strong>test-api</strong></td><td>CI/CD + manuel</td><td>6 tests fonctionnels (JWT · /predict · what-if · 429) — interne (réseau Docker/ClusterIP) puis externe (domaine public) si l'interne passe</td></tr>
+                  <tr><td><strong>test-gradio-public</strong></td><td>CI/CD + manuel</td><td>vrai <code>/predict</code> via <code>gradio_client</code> sur le cockpit public — même logique interne/externe que test-api</td></tr>
                   <tr><td><strong>diag</strong></td><td>manuel</td><td>snapshot VPS : disk, docker ps, ports réseau</td></tr>
+                  <tr><td><strong>k8s-daemonset-health</strong></td><td>manuel (Cockpit Healthcheck)</td><td>node-exporter/promtail/loki-forwarder/tailscale-subnet-router via kubectl — pas de Service stable ni HTTP pour ces 4</td></tr>
                   <tr><td><strong>disk-cleanup</strong></td><td>cron 2h UTC</td><td>nettoyage images Docker + alerte si disk &lt; 15%</td></tr>
                 </tbody>
               </table></div>
@@ -317,11 +319,11 @@
           <div class="tbl"><table>
             <thead><tr><th>Deployment</th><th>Particularité</th></tr></thead>
             <tbody>
-              <tr><td><strong>api</strong></td><td>HPA CPU 70% / RAM 80% → min 2 pods, max 8 · <code>maxUnavailable: 0</code> — pas de <code>replicas:</code> en dur (conflit avec le HPA, cf. incident 2026-07-11)</td></tr>
+              <tr><td><strong>api</strong></td><td>HPA CPU 70% uniquement → min 2 pods, max 4 · <code>maxUnavailable: 0</code> — pas de <code>replicas:</code> en dur (conflit avec le HPA, cf. incident 2026-07-11). Métrique RAM retirée le 2026-07-24 : coût mémoire fixe (3 modèles ML chargés au démarrage, pas proportionnel au trafic) faisait rester le HPA pinné au max en permanence</td></tr>
               <tr><td></td><td>initContainer <code>fetch-model</code> : récupère <code>trained_model.joblib</code> depuis S3 au démarrage</td></tr>
               <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP, atteint uniquement via nginx→caddy</td></tr>
               <tr><td><strong>nginx</strong></td><td>ClusterIP — rate-limiting + routing (<code>/token</code> 5r/min, <code>/predict</code> 20r/min)</td></tr>
-              <tr><td><strong>caddy</strong></td><td><strong>Seul point d'entrée public</strong> — LoadBalancer, TLS Let's Encrypt auto (<code>kapsule.jakat-inc.fr</code>)</td></tr>
+              <tr><td><strong>caddy</strong></td><td><strong>Seul point d'entrée public</strong> — LoadBalancer, TLS Let's Encrypt auto (<code>kapsule.jakat-inc.fr</code>), 2 pods · sticky-sessions LB Scaleway (mode <code>table</code>) — nécessaire en plus du <code>sessionAffinity</code> K8s pour garder une session Gradio sur le même pod bout en bout (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>)</td></tr>
               <tr><td><strong>prometheus</strong></td><td>scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 — interrogé à distance par le Grafana du VPS</td></tr>
               <tr><td><strong>tailscale-subnet-router</strong></td><td>pont vers le tailnet du VPS — advertise PodCIDR + ServiceCIDR</td></tr>
               <tr><td><strong>loki-forwarder</strong></td><td>client Tailscale userspace dédié (SOCKS5, pas de route advertisée) — relaie les push Promtail vers le Loki du VPS</td></tr>
