@@ -910,7 +910,25 @@ def trigger_kapsule_down() -> str:
     return _prefect_trigger("kapsule-down")
 
 def trigger_test_api() -> str:
-    return _prefect_trigger("test-api")
+    """Teste les 4 accès publics (FastAPI + Gradio Public, VPS + K8s) en mode
+    fonctionnel réel (JWT/predict/what-if côté API, vrai /predict via
+    gradio_client côté Gradio) — via le chemin utilisateur complet (Caddy →
+    HTTPS → domaine public), pas le réseau interne. Un test interne seul ne
+    prouve pas que l'utilisateur peut réellement accéder au service (cf.
+    rationalisation 2026-07-29 — [[project_test_layers_model]])."""
+    checks = [
+        ("FastAPI VPS (2/5)",      "test-api",           {"base_url": PUBLIC_URL,        "skip_rate_limit": True}),
+        ("FastAPI K8s (4/5)",      "test-api",           {"base_url": KAPSULE_PUBLIC_URL, "skip_rate_limit": True}),
+        ("Gradio Public VPS (1/5)", "test-gradio-public", {"base_url": PUBLIC_URL}),
+        ("Gradio Public K8s (3/5)", "test-gradio-public", {"base_url": KAPSULE_PUBLIC_URL}),
+    ]
+    sections = []
+    for label, deployment_name, params in checks:
+        result = _prefect_trigger(deployment_name, params)
+        icon = "✅" if result.startswith("✓") else "❌"
+        sections.append(f"■ {icon} {label}\n{result}")
+    separator = "\n" + "─" * 40 + "\n"
+    return separator.join(sections)
 
 def trigger_diag() -> str:
     return _prefect_trigger("diag")
@@ -2533,9 +2551,9 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
                     _FLOW_CONFIGS = {
-                        "Tester l'API (6 vérifications)": {
+                        "Tester les 4 accès publics (fonctionnel)": {
                             "key": "test-api",
-                            "desc": "Lance 6 tests fonctionnels sur l'API : health check, token JWT, 401 sans token, prédiction /predict, what-if vitesse (vma=90 vs 50 — route dept nuit), rate-limit 429.",
+                            "desc": "Teste FastAPI VPS/K8s (health, JWT, 401, /predict, what-if vitesse vma=90 vs 50) et Gradio Public VPS/K8s (vrai /predict via gradio_client) — via le chemin utilisateur réel (Caddy → HTTPS → domaine public), pas le réseau interne. Rapport détaillé par accès ci-dessous.",
                             "opts": None,
                         },
                         "Diagnostiquer le VPS": {

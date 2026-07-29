@@ -41,7 +41,8 @@ from src.flows.test_api_flow import test_api_flow
 from src.flows.test_gradio_public_flow import test_gradio_public_flow
 from src.flows.train_flow import promote_task
 
-NGINX_URL = os.getenv("NGINX_URL", "http://nginx:80")
+NGINX_URL  = os.getenv("NGINX_URL",  "http://nginx:80")
+PUBLIC_URL = os.getenv("PUBLIC_URL", "https://mlops.jakat-inc.fr")
 
 # Verrou local (flock, pas de dépendance externe) sur la section qui interrompt
 # le VPS (promote+restart / compose up). Rien n'empêchait jusqu'ici 2 runs de
@@ -666,18 +667,36 @@ def deploy_vps_flow(
                 "reason=post_reset — aucun modèle @Production. "
                 "Tests /predict ignorés. Lancer full-retrain pour restaurer."
             )
+        _step = "test-api interne"
         try:
             test_api_flow(skip_rate_limit=True, require_model=_has_model)
-            log.info("test-api OK ✓")
+            log.info("test-api interne OK ✓")
+
+            # Test externe — même logique métier que ci-dessus, mais via le
+            # vrai chemin utilisateur (Caddy → HTTPS → domaine public),
+            # jamais validé jusqu'ici (le test interne contourne entièrement
+            # Caddy/DNS/TLS). Ne tourne qu'après succès de l'interne : si
+            # l'appli elle-même est déjà cassée, inutile de taper le chemin
+            # public en plus (cf. rationalisation 2026-07-29, distinction
+            # bug applicatif / souci d'accès externe).
+            _step = "test-api externe"
+            test_api_flow(skip_rate_limit=True, require_model=_has_model, base_url=PUBLIC_URL)
+            log.info("test-api externe OK ✓")
+
             # gradio-public est le seul vrai point d'accès utilisateur du système
             # (FastAPI n'est appelé aujourd'hui que par des tests automatisés) —
             # sans ce test, aucune vérification fonctionnelle ne le couvrait,
             # seulement un ping /health (cf. observabilité par accès, PR230).
             if _has_model:
+                _step = "test-gradio-public interne"
                 test_gradio_public_flow()
-                log.info("test-gradio-public OK ✓")
+                log.info("test-gradio-public interne OK ✓")
+
+                _step = "test-gradio-public externe"
+                test_gradio_public_flow(base_url=PUBLIC_URL)
+                log.info("test-gradio-public externe OK ✓")
         except Exception as exc:
-            log.error("test-api/test-gradio-public ÉCHOUÉ : %s", exc)
+            log.error("%s ÉCHOUÉ : %s", _step, exc)
             rolled_back_model = False
             rolled_back_code = False
             if champion and run_ids:
@@ -693,12 +712,12 @@ def deploy_vps_flow(
                 docker_rollback_task(sha_tag, rebuilt_services)
                 rolled_back_code = True
             log.error(
-                "event=alert severity=critical topic=deploy_failure reason=test_api sha=%s "
+                "event=alert severity=critical topic=deploy_failure reason=test_api step=%s sha=%s "
                 "rolled_back_model=%s rolled_back_code=%s",
-                sha_tag or "N/A", rolled_back_model, rolled_back_code,
+                _step, sha_tag or "N/A", rolled_back_model, rolled_back_code,
             )
             raise RuntimeError(
-                f"Test-api / test-gradio-public ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
+                f"{_step} ÉCHOUÉ — les tests fonctionnels sont KO après le deploy.\n"
                 f"SHA déployé : {sha_tag or 'N/A'}\n"
                 f"Erreur : {exc}\n"
                 + ("@Production rollback effectué — l'ancienne version est restaurée.\n" if rolled_back_model else "")

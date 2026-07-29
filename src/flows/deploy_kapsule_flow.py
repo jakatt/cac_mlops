@@ -38,7 +38,8 @@ K8S_NAMESPACE = "cac-mlops"
 # DNS interne K8s, joignable depuis le VPS via le subnet-router Tailscale
 # (k8s/tailscale/) — même chemin déjà utilisé et validé en direct par le
 # healthcheck Cockpit (services/gradio/app.py::_K8S_SERVICES).
-K8S_NGINX_URL = os.getenv("K8S_NGINX_URL", "http://nginx.cac-mlops.svc.cluster.local:80")
+K8S_NGINX_URL      = os.getenv("K8S_NGINX_URL",      "http://nginx.cac-mlops.svc.cluster.local:80")
+KAPSULE_PUBLIC_URL = os.getenv("KAPSULE_PUBLIC_URL", "https://kapsule.jakat-inc.fr")
 
 _ALL_KAPSULE_DEPLOYMENTS = ["api", "gradio-public", "nginx", "caddy"]
 
@@ -490,23 +491,38 @@ def deploy_kapsule_flow(
         # FTe sur K8s — le rollout a réussi (pods Ready) mais un readiness
         # probe ne valide que le démarrage du process, pas le comportement
         # métier réel sur CET environnement (config K8s distincte du VPS).
+        _step = "test-api Kapsule interne"
         try:
             test_api_flow(skip_rate_limit=True, require_model=require_model, base_url=K8S_NGINX_URL)
-            log.info("test-api Kapsule OK ✓")
+            log.info("test-api Kapsule interne OK ✓")
+
+            # Test externe — même logique métier, mais via le vrai chemin
+            # utilisateur (Caddy → HTTPS → kapsule.jakat-inc.fr), jamais validé
+            # jusqu'ici (l'interne contourne Caddy/DNS/TLS K8s). Ne tourne
+            # qu'après succès de l'interne (cf. rationalisation 2026-07-29).
+            _step = "test-api Kapsule externe"
+            test_api_flow(skip_rate_limit=True, require_model=require_model, base_url=KAPSULE_PUBLIC_URL)
+            log.info("test-api Kapsule externe OK ✓")
+
             # gradio-public est le seul vrai point d'accès utilisateur — même
             # rationale que côté VPS (cf. deploy_vps_flow.py) : un readiness
             # probe K8s ne vérifie que "la page racine charge", pas que
             # l'inférence fonctionne réellement sur CET environnement.
             if require_model:
+                _step = "test-gradio-public Kapsule interne"
                 test_gradio_public_flow(base_url=K8S_NGINX_URL)
-                log.info("test-gradio-public Kapsule OK ✓")
+                log.info("test-gradio-public Kapsule interne OK ✓")
+
+                _step = "test-gradio-public Kapsule externe"
+                test_gradio_public_flow(base_url=KAPSULE_PUBLIC_URL)
+                log.info("test-gradio-public Kapsule externe OK ✓")
         except Exception as exc:
-            log.error("test-api/test-gradio-public Kapsule ÉCHOUÉ : %s", exc)
+            log.error("%s ÉCHOUÉ : %s", _step, exc)
             rollback_kapsule_task(kubeconfig, touched)
-            log.error("event=alert severity=critical topic=kapsule_failure reason=test_api")
+            log.error("event=alert severity=critical topic=kapsule_failure reason=test_api step=%s", _step)
             raise RuntimeError(
-                "Deploy Kapsule ÉCHOUÉ — le rollout a réussi (pods Ready) mais les tests "
-                f"fonctionnels sur K8s ont échoué : {exc}\n"
+                f"Deploy Kapsule ÉCHOUÉ — le rollout a réussi (pods Ready) mais {_step} "
+                f"a échoué : {exc}\n"
                 "Le rollback vers la version précédente a été effectué automatiquement.\n"
                 "Actions requises :\n"
                 "  1. Comparer le comportement VPS vs K8s (config, secrets, ConfigMap)\n"
