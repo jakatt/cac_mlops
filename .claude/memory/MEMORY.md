@@ -17,7 +17,7 @@
 - [Prefect logs API](feedback_prefect_logs_api.md) — wrapper "logs" obligatoire, limit max 200, print() vs get_run_logger()
 - [DataFrame None check](feedback_dataframe_none_check.md) — jamais `df or []`, toujours `df is not None` explicite
 - [Doc/UI TODOs — RÉSOLU PR225](project_doc_ui_todo.md) — compteur tests + accordéons fermés par défaut, tout corrigé
-- [Infra secrets TODO](project_infra_secrets_todo.md) — prefect-worker ne peut pas se recréer (secrets figés si rotés) ; DiskPressure Kapsule RÉSOLU PR243 (root-volume 50GB)
+- [Infra secrets — RÉSOLU PR248](project_infra_secrets_todo.md) — TAILSCALE_AUTHKEY/CADDY_S3_*/GRAFANA_PASSWORD lus depuis S3 (rotables) ; DiskPressure Kapsule RÉSOLU PR243
 - [Tool output visibility](feedback_tool_output_visibility.md) — le user ne voit jamais le stdout Bash, écrire schémas/tableaux directement en texte de réponse
 - [Verify before asserting](feedback_verify_before_asserting.md) — vérifier empiriquement (SSH, logs, git history) avant d'affirmer une root cause ou un design
 - [Blueprint/prod sync gap — RÉSOLU](project_blueprint_sync_todo.md) — rollback Trigger 3 (PR204) ET STOP manuel au gate (cancel_run) resynchronisent tous deux main
@@ -26,5 +26,5 @@
 - [Cockpit MLflow data périmée — RÉSOLU PR220](feedback_gradio_stale_mlflow_data.md) — value= figé au démarrage du process, fix demo.load()
 - [Toolbar Cockpit — TODO non résolu](project_cockpit_toolbar_todo.md) — bouton "Fermer tous les accordéons" toujours cassé après PR239 (2e fix raté)
 - [Modèle 3 couches de tests](project_test_layers_model.md) — technique (smoke)/fonctionnel interne/fonctionnel externe, structurant pour Healthcheck/rollback/test-api
-- [Race kapsule-down→up](project_kapsule_recreate_race_todo.md) — TODO non résolu : create_node_pool saute la création si l'ancien pool est encore en 'deleting'
+- [Race kapsule-down→up — RÉSOLU PR248](project_kapsule_recreate_race_todo.md) — delete_node_pools attend maintenant la suppression réelle avant de retourner
 - [DaemonSets NOK — RÉSOLU PR246/247](project_daemonset_nok_todo.md) — Deployment vs DaemonSet mal détecté + timeout Prefect 30s trop court + icônes ✅/❌ non colorées
