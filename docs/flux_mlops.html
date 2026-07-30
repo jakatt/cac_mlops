@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Flux MLOps — comment le système se protège tout seul</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
+  --rb-bg:   #fffbeb; --rb-num:   #b45309; --rb-bd:   #fcd34d;
+  --alert-bg:#eff6ff; --alert-num:#1d4ed8; --alert-bd:#93c5fd;
+  --int-bg:  #ecfeff; --int-num:  #0e7490; --int-bd:  #67e8f9;
+  --human-bg:#f5f3ff; --human-num:#7c3aed; --human-bd:#c4b5fd;
+  --t1: #156082; --t2: #0e7490; --t3: #0f766e;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
+    --rb-bg:   #2a1f00; --rb-num:   #fbbf24; --rb-bd:   #78350f;
+    --alert-bg:#0a1a38; --alert-num:#60a5fa; --alert-bd:#1e3a8a;
+    --int-bg:  #063540; --int-num:  #22d3ee; --int-bd:  #0e7490;
+    --human-bg:#241b3d; --human-num:#a78bfa; --human-bd:#4c1d95;
+    --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --stop-bg: #2a0f0f; --stop-num: #f87171; --stop-bd: #7f1d1d;
+  --rb-bg:   #2a1f00; --rb-num:   #fbbf24; --rb-bd:   #78350f;
+  --alert-bg:#0a1a38; --alert-num:#60a5fa; --alert-bd:#1e3a8a;
+  --int-bg:  #063540; --int-num:  #22d3ee; --int-bd:  #0e7490;
+  --human-bg:#241b3d; --human-num:#a78bfa; --human-bd:#4c1d95;
+  --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --stop-bg: #fef2f2; --stop-num: #b91c1c; --stop-bd: #fca5a5;
+  --rb-bg:   #fffbeb; --rb-num:   #b45309; --rb-bd:   #fcd34d;
+  --alert-bg:#eff6ff; --alert-num:#1d4ed8; --alert-bd:#93c5fd;
+  --int-bg:  #ecfeff; --int-num:  #0e7490; --int-bd:  #67e8f9;
+  --human-bg:#f5f3ff; --human-num:#7c3aed; --human-bd:#c4b5fd;
+  --t1: #156082; --t2: #0e7490; --t3: #0f766e;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing:border-box;margin:0;padding:0; }
+.ci-doc .wrapper { max-width:900px;margin:0 auto;padding:32px 0 48px;color:var(--text); }
+.ci-doc .page-header { margin-bottom:18px; }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.4rem;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:10px;text-wrap:balance; }
+.ci-doc .page-sub { font-size:.86rem;color:var(--muted);max-width:620px; }
+.ci-doc .page-sub strong { color:var(--text); }
+
+/* Legend */
+.ci-doc .legend { display:flex;flex-wrap:wrap;gap:9px 18px;margin:18px 0 22px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:10px; }
+.ci-doc .legend-item { display:flex;align-items:center;gap:7px;font-size:.75rem;color:var(--muted); }
+.ci-doc .legend-item strong { color:var(--text); }
+.ci-doc .dot { width:10px;height:10px;border-radius:50%;flex-shrink:0; }
+.ci-doc .dot-human { background:var(--human-num); }
+.ci-doc .dot-stop  { background:var(--stop-num); }
+.ci-doc .dot-rb    { background:var(--rb-num); }
+.ci-doc .dot-int   { background:var(--int-num); }
+.ci-doc .dot-alert { background:var(--alert-num); }
+
+/* Rule callout */
+.ci-doc .rule { display:flex;gap:10px;align-items:flex-start;background:var(--alert-bg);border:1px solid var(--alert-bd);border-radius:8px;padding:11px 14px;margin-bottom:22px;font-size:.8rem;color:var(--text); }
+.ci-doc .rule .rule-icon { color:var(--alert-num);font-size:.95rem;line-height:1.3; }
+
+/* Table */
+.ci-doc .tbl-wrap { overflow-x:auto; }
+.ci-doc table { width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.83rem;table-layout:fixed; }
+.ci-doc .trigger-header th { padding:16px 14px 13px;text-align:left;vertical-align:bottom;border-bottom:2px solid var(--border); }
+.ci-doc .trigger-header th:first-child { width:150px;min-width:130px; }
+.ci-doc .th-label { font-size:.62rem;font-weight:600;letter-spacing:.10em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px; }
+.ci-doc .th-name { font-size:.92rem;font-weight:700;display:block;margin-bottom:2px; }
+.ci-doc .th-desc { font-size:.70rem;color:var(--muted);display:block;line-height:1.35; }
+.ci-doc .t1-col .th-name { color:var(--t1); }
+.ci-doc .t2-col .th-name { color:var(--t2); }
+.ci-doc .t3-col .th-name { color:var(--t3); }
+.ci-doc tbody tr { border-bottom:1px solid var(--border); }
+.ci-doc tbody tr:last-child { border-bottom:none; }
+.ci-doc tbody tr:hover { background:var(--accent-lt); }
+.ci-doc td { padding:11px 14px;vertical-align:top; }
+.ci-doc td:first-child { border-right:1px solid var(--border); }
+.ci-doc .row-label { font-size:.72rem;font-weight:700;letter-spacing:.03em;color:var(--text);display:flex;align-items:center;gap:8px; }
+.ci-doc .row-label .dot { flex-shrink:0; }
+
+/* Badges */
+.ci-doc .badge { display:inline-flex;align-items:baseline;padding:5px 12px;border-radius:6px;border:1px solid;width:fit-content;font-variant-numeric:tabular-nums; }
+.ci-doc .badge-num { font-size:1.35rem;font-weight:800;line-height:1; }
+.ci-doc .badge-human { background:var(--human-bg);border-color:var(--human-bd); }
+.ci-doc .badge-human .badge-num { color:var(--human-num); }
+.ci-doc .badge-stop  { background:var(--stop-bg);border-color:var(--stop-bd); }
+.ci-doc .badge-stop .badge-num  { color:var(--stop-num); }
+.ci-doc .badge-rb    { background:var(--rb-bg);border-color:var(--rb-bd); }
+.ci-doc .badge-rb .badge-num    { color:var(--rb-num); }
+.ci-doc .badge-alert { background:var(--alert-bg);border-color:var(--alert-bd); }
+.ci-doc .badge-alert .badge-num { color:var(--alert-num); }
+.ci-doc .badge-int   { background:var(--int-bg);border-color:var(--int-bd); }
+.ci-doc .badge-int .badge-num   { color:var(--int-num); }
+
+/* Detail rows */
+.ci-doc .desc-row td { padding:14px 14px 20px;background:var(--accent-lt);border-top:1px solid var(--border); }
+.ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
+.ci-doc .desc-title { font-size:.68rem;font-weight:700;color:var(--accent);margin-bottom:11px;line-height:1.5; }
+.ci-doc .desc-list { list-style:none;display:flex;flex-direction:column;gap:9px; }
+.ci-doc .desc-list li { font-size:.78rem;color:var(--text);line-height:1.5;padding-left:16px;position:relative; }
+.ci-doc .desc-list li::before { content:"–";position:absolute;left:0;color:var(--muted); }
+.ci-doc .desc-list b.k-human { color:var(--human-num); }
+.ci-doc .desc-list b.k-stop  { color:var(--stop-num); }
+.ci-doc .desc-list b.k-rb    { color:var(--rb-num); }
+.ci-doc .desc-list b.k-alert { color:var(--alert-num); }
+.ci-doc .desc-list b.k-int   { color:var(--int-num); }
+.ci-doc .env-tag { display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.03em;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 5px;font-variant-numeric:tabular-nums; }
+.ci-doc .desc-title .env-flow { font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0;font-size:.72rem; }
+
+/* Closing note */
+.ci-doc .note { display:flex;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-top:22px; }
+.ci-doc .note-icon { font-size:1.05rem;flex-shrink:0;margin-top:1px;color:var(--accent); }
+.ci-doc .note-text { font-size:.8rem;color:var(--muted);line-height:1.5; }
+.ci-doc .note-text strong { color:var(--text); }
+
+.ci-doc .footnote { margin-top:16px;font-size:.72rem;color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+  <header class="page-header">
+    <p class="eyebrow">MLOps · Accidents routiers — comprendre le système sans jargon technique</p>
+    <h1 class="page-title">Flux MLOps — comment le système se protège tout seul</h1>
+    <p class="page-sub">Trois façons pour une nouveauté d'arriver en production (données, code, nouveau modèle optimisé). Dans les trois cas, la même logique s'applique : <strong>des vérifications automatiques, un humain qui garde la main sur la décision finale, et un retour en arrière immédiat si quelque chose tourne mal.</strong> Le déploiement se fait toujours en deux temps : d'abord sur le <span class="env-tag">VPS</span>, puis — seulement si tout est OK — sur <span class="env-tag">K8s</span> (l'infrastructure parallèle, haute disponibilité et capable de monter en charge), jamais les deux à la fois. <strong>Sur K8s une mise à jour se fait sans interruption de service.</strong></p>
+  </header>
+
+  <div class="legend">
+    <span class="legend-item"><span class="dot dot-human"></span><strong>Validation humaine</strong> — une personne doit donner son accord</span>
+    <span class="legend-item"><span class="dot dot-stop"></span><strong>Stop</strong> — le système s'arrête tout seul si un contrôle échoue</span>
+    <span class="legend-item"><span class="dot dot-rb"></span><strong>Rollback</strong> — retour automatique à la version précédente</span>
+    <span class="legend-item"><span class="dot dot-int"></span><strong>Interruption</strong> — coupure de service réellement ressentie par un utilisateur</span>
+    <span class="legend-item"><span class="dot dot-alert"></span><strong>Alerte</strong> — l'équipe est prévenue par email</span>
+  </div>
+
+  <div class="rule">
+    <span class="rule-icon">&#9432;</span>
+    <span>Règle simple à retenir : <strong>chaque Stop et chaque Rollback envoie automatiquement une Alerte</strong> — sauf les tests automatiques du code (Trigger 2 et 3), qui bloquent directement sur GitHub, visibles par l'équipe sans email séparé.</span>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr class="trigger-header">
+          <th></th>
+          <th class="t1-col">
+            <span class="th-label">Trigger 1</span>
+            <span class="th-name">Nouvelles données</span>
+            <span class="th-desc">De nouvelles données officielles arrivent → le modèle se réentraîne tout seul</span>
+          </th>
+          <th class="t2-col">
+            <span class="th-label">Trigger 2</span>
+            <span class="th-name">Nouveau code</span>
+            <span class="th-desc">Une amélioration de l'application est prête à être mise en ligne</span>
+          </th>
+          <th class="t3-col">
+            <span class="th-label">Trigger 3</span>
+            <span class="th-name">Nouveau modèle proposé</span>
+            <span class="th-desc">Un data scientist propose une nouvelle version du modèle de prédiction</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="row-label"><span class="dot dot-human"></span>Validation humaine</span></td>
+          <td><span class="badge badge-human"><span class="badge-num">1</span></span></td>
+          <td><span class="badge badge-human"><span class="badge-num">2</span></span></td>
+          <td><span class="badge badge-human"><span class="badge-num">2</span></span></td>
+        </tr>
+        <tr>
+          <td><span class="row-label"><span class="dot dot-stop"></span>Stop</span></td>
+          <td><span class="badge badge-stop"><span class="badge-num">4</span></span></td>
+          <td><span class="badge badge-stop"><span class="badge-num">3</span></span></td>
+          <td><span class="badge badge-stop"><span class="badge-num">3</span></span></td>
+        </tr>
+        <tr>
+          <td><span class="row-label"><span class="dot dot-rb"></span>Rollback</span></td>
+          <td><span class="badge badge-rb"><span class="badge-num">3</span></span></td>
+          <td><span class="badge badge-rb"><span class="badge-num">4</span></span></td>
+          <td><span class="badge badge-rb"><span class="badge-num">3</span></span></td>
+        </tr>
+        <tr>
+          <td><span class="row-label"><span class="dot dot-int"></span>Interruption</span></td>
+          <td><span class="badge badge-int"><span class="badge-num">1</span></span></td>
+          <td><span class="badge badge-int"><span class="badge-num">1</span></span></td>
+          <td><span class="badge badge-int"><span class="badge-num">1</span></span></td>
+        </tr>
+        <tr>
+          <td><span class="row-label"><span class="dot dot-alert"></span>Alerte</span></td>
+          <td><span class="badge badge-alert"><span class="badge-num">7</span></span></td>
+          <td><span class="badge badge-alert"><span class="badge-num">6</span></span></td>
+          <td><span class="badge badge-alert"><span class="badge-num">5</span></span></td>
+        </tr>
+
+        <tr class="desc-row">
+          <td><span class="row-label">Le déroulé</span></td>
+
+          <!-- T1 -->
+          <td>
+            <p class="desc-title">Ce qui se passe, dans l'ordre — <span class="env-flow"><span class="env-tag">VPS</span> d'abord, <span class="env-tag">K8s</span> ensuite si tout est OK :</span></p>
+            <ul class="desc-list">
+              <li>Si la source de données officielle est injoignable ou le fichier manquant → <b class="k-stop">Stop</b>, une <b class="k-alert">Alerte</b> prévient l'équipe.</li>
+              <li>Avant de bloquer quoi que ce soit, le système essaie d'abord de corriger tout seul les petits problèmes déjà rencontrés par le passé (colonne renommée, espace superflu, format de nombre, nom de fichier légèrement différent...) — en coulisses, sans alerte ni interruption.</li>
+              <li>Si malgré cette correction automatique un problème grave subsiste (colonnes, volumes, format) → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
+              <li>Le modèle se réentraîne. Si aucune des nouvelles versions ne fait mieux que celle déjà en place → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b> : rien ne change, la production continue avec l'ancien modèle.</li>
+              <li>Juste avant de présenter les résultats à un humain, une dernière vérification de bon fonctionnement du serveur a lieu. Si elle échoue → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
+              <li><b class="k-human">Validation humaine</b> : les résultats du nouveau modèle sont présentés dans le Cockpit. Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
+              <li>Le feu vert donné, le nouveau modèle est mis en service <b>d'abord sur le <span class="env-tag">VPS</span></b> : une <b class="k-int">Interruption</b> d'environ 30 secondes a lieu le temps du redémarrage.</li>
+              <li>Si la vérification qui suit sur le <span class="env-tag">VPS</span> échoue → <b class="k-rb">Rollback</b> vers la version précédente + <b class="k-alert">Alerte</b> — et le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
+              <li><b>Seulement si le <span class="env-tag">VPS</span> est OK</b>, la même mise à jour est ensuite déployée sur <span class="env-tag">K8s</span> (infrastructure parallèle, haute disponibilité) — <b>sans aucune interruption de service</b> : l'ancienne version continue de répondre aux utilisateurs tant que la nouvelle n'est pas vérifiée. Deux vérifications indépendantes y sont refaites (le déploiement lui-même, puis son bon fonctionnement) ; si l'une échoue → <b class="k-rb">2 rollbacks</b> possibles (un par vérification) + <b class="k-alert">2 alertes</b>, le <span class="env-tag">VPS</span> reste inchangé.</li>
+            </ul>
+          </td>
+
+          <!-- T2 -->
+          <td>
+            <p class="desc-title">Ce qui se passe, dans l'ordre — <span class="env-flow"><span class="env-tag">VPS</span> d'abord, <span class="env-tag">K8s</span> ensuite si tout est OK :</span></p>
+            <ul class="desc-list">
+              <li>Si les tests automatiques du nouveau code échouent → <b class="k-stop">Stop</b> : la fusion est bloquée directement sur GitHub, visible par l'équipe sans email séparé.</li>
+              <li><b class="k-human">Validation humaine</b> n°1 : un responsable relit et valide le code — avant même que quoi que ce soit ne soit préparé pour la mise en ligne.</li>
+              <li>Si une faille de sécurité grave est détectée dans la nouvelle version → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>, rien n'est touché sur le <span class="env-tag">VPS</span>.</li>
+              <li>Juste avant la mise à jour, une dernière vérification de bon fonctionnement a lieu sur le <span class="env-tag">VPS</span>. Si elle échoue → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
+              <li><b class="k-human">Validation humaine</b> n°2 : le changement est présenté dans le Cockpit. Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
+              <li>Le feu vert donné, la mise à jour est appliquée <b>d'abord sur le <span class="env-tag">VPS</span></b> : une <b class="k-int">Interruption</b> d'environ 30 secondes a lieu le temps de la mise à jour.</li>
+              <li>Juste après, une première vérification a lieu sur le <span class="env-tag">VPS</span>. Si elle échoue → <b class="k-rb">Rollback</b> vers la version précédente + <b class="k-alert">Alerte</b>.</li>
+              <li>Une seconde vérification, plus complète, suit sur le <span class="env-tag">VPS</span>. Si elle échoue → <b class="k-rb">Rollback</b> + <b class="k-alert">Alerte</b> — le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
+              <li><b>Seulement si le <span class="env-tag">VPS</span> est OK</b>, la même mise à jour est ensuite déployée sur <span class="env-tag">K8s</span> (infrastructure parallèle, haute disponibilité) — <b>sans aucune interruption de service</b>. Deux vérifications indépendantes y sont refaites ; si l'une échoue → <b class="k-rb">2 rollbacks</b> possibles + <b class="k-alert">2 alertes</b>, le <span class="env-tag">VPS</span> reste inchangé.</li>
+            </ul>
+          </td>
+
+          <!-- T3 -->
+          <td>
+            <p class="desc-title">Ce qui se passe, dans l'ordre — <span class="env-flow"><span class="env-tag">VPS</span> d'abord, <span class="env-tag">K8s</span> ensuite si tout est OK :</span></p>
+            <ul class="desc-list">
+              <li>Si les tests automatiques échouent → <b class="k-stop">Stop</b> : la proposition n'est pas retenue, bloquée directement sur GitHub, sans email séparé.</li>
+              <li><b class="k-human">Validation humaine</b> n°1 : un responsable relit et valide la proposition — avant même que le réentraînement ne démarre.</li>
+              <li>Le modèle se réentraîne avec les nouveaux réglages. Si aucun des candidats ne fait mieux que le modèle actuel → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b> : rien ne change en production.</li>
+              <li>Juste avant de présenter les résultats, une dernière vérification de bon fonctionnement du serveur a lieu. Si elle échoue → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
+              <li><b class="k-human">Validation humaine</b> n°2 : les résultats sont présentés dans le Cockpit. Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
+              <li>Le feu vert donné, le nouveau modèle est mis en service <b>d'abord sur le <span class="env-tag">VPS</span></b> : une <b class="k-int">Interruption</b> d'environ 30 secondes a lieu le temps de la mise en service.</li>
+              <li>Si une vérification après la mise en service sur le <span class="env-tag">VPS</span> échoue → <b class="k-rb">Rollback</b> vers l'ancienne version + <b class="k-alert">Alerte</b> — le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
+              <li><b>Seulement si le <span class="env-tag">VPS</span> est OK</b>, la même mise à jour est ensuite déployée sur <span class="env-tag">K8s</span> (infrastructure parallèle, haute disponibilité) — <b>sans aucune interruption de service</b>. Deux vérifications indépendantes y sont refaites ; si l'une échoue → <b class="k-rb">2 rollbacks</b> possibles + <b class="k-alert">2 alertes</b>, le <span class="env-tag">VPS</span> reste inchangé.</li>
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="note-icon">&#9737;</span>
+    <p class="note-text"><strong>Pourquoi <span class="env-tag">K8s</span> vient toujours après, jamais en même temps :</strong> tant que le <span class="env-tag">VPS</span> n'a pas prouvé que la nouveauté fonctionne, rien n'est envoyé sur <span class="env-tag">K8s</span> — c'est un deuxième filet de sécurité, pas une simple copie. <strong>Sur K8s, un déploiement ne coupe jamais le service</strong> : la nouvelle version est vérifiée en coulisses pendant que l'ancienne continue de répondre, et ne la remplace qu'une fois prête — c'est ce qui permet à un retour en arrière de s'y produire sans qu'aucun utilisateur ne le remarque.</p>
+  </div>
+
+  <p class="footnote">Version condensée, orientée compréhension générale. Le détail technique complet (composants, commandes, journaux) est disponible dans le document <em>Mécanismes de résilience</em>.</p>
+</div>
+</div>
+</body>
+</html>
