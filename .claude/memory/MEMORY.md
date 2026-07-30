@@ -28,3 +28,4 @@
 - [Modèle 3 couches de tests](project_test_layers_model.md) — technique (smoke)/fonctionnel interne/fonctionnel externe, structurant pour Healthcheck/rollback/test-api
 - [Race kapsule-down→up — RÉSOLU PR248](project_kapsule_recreate_race_todo.md) — delete_node_pools attend maintenant la suppression réelle avant de retourner
 - [DaemonSets NOK — RÉSOLU PR246/247](project_daemonset_nok_todo.md) — Deployment vs DaemonSet mal détecté + timeout Prefect 30s trop court + icônes ✅/❌ non colorées
+- [Procédure démarrage nouvelle machine](feedback_new_machine_startup.md) — séquence à suivre si aucun historique de conversation (git status, ds_session_start.sh, lire MEMORY.md, vérifier SSH)
