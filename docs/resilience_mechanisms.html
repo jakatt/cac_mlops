@@ -15,6 +15,7 @@
   --man-bg:  #f5f3ff; --man-num:  #7c3aed; --man-bd:  #c4b5fd;
   --vps-bg:  #f0f9ff; --vps-num:  #0369a1; --vps-bd:  #bae6fd;
   --k8s-bg:  #f0fdf4; --k8s-num:  #15803d; --k8s-bd:  #86efac;
+  --alt-bg:  #eef2ff; --alt-num:  #4338ca; --alt-bd:  #c7d2fe;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 @media (prefers-color-scheme: dark) {
@@ -27,6 +28,7 @@
     --man-bg:  #241b3d; --man-num:  #a78bfa; --man-bd:  #4c1d95;
     --vps-bg:  #0c1d2e; --vps-num:  #38bdf8; --vps-bd:  #075985;
     --k8s-bg:  #052e16; --k8s-num:  #4ade80; --k8s-bd:  #14532d;
+    --alt-bg:  #1e1b4b; --alt-num:  #818cf8; --alt-bd:  #3730a3;
     --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
   }
 }
@@ -39,6 +41,7 @@
   --man-bg:  #241b3d; --man-num:  #a78bfa; --man-bd:  #4c1d95;
   --vps-bg:  #0c1d2e; --vps-num:  #38bdf8; --vps-bd:  #075985;
   --k8s-bg:  #052e16; --k8s-num:  #4ade80; --k8s-bd:  #14532d;
+  --alt-bg:  #1e1b4b; --alt-num:  #818cf8; --alt-bd:  #3730a3;
   --t1: #4a9fc4; --t2: #22d3ee; --t3: #2dd4bf;
 }
 :root[data-theme="light"] .ci-doc {
@@ -50,6 +53,7 @@
   --man-bg:  #f5f3ff; --man-num:  #7c3aed; --man-bd:  #c4b5fd;
   --vps-bg:  #f0f9ff; --vps-num:  #0369a1; --vps-bd:  #bae6fd;
   --k8s-bg:  #f0fdf4; --k8s-num:  #15803d; --k8s-bd:  #86efac;
+  --alt-bg:  #eef2ff; --alt-num:  #4338ca; --alt-bd:  #c7d2fe;
   --t1: #156082; --t2: #0e7490; --t3: #0f766e;
 }
 .ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing:border-box;margin:0;padding:0; }
@@ -108,6 +112,9 @@
 .ci-doc .badge-k8s  { background:var(--k8s-bg);border-color:var(--k8s-bd); }
 .ci-doc .badge-k8s .badge-num   { color:var(--k8s-num); }
 .ci-doc .badge-k8s .badge-unit  { color:var(--k8s-num);opacity:.75; }
+.ci-doc .badge-alt  { background:var(--alt-bg);border-color:var(--alt-bd); }
+.ci-doc .badge-alt .badge-num   { color:var(--alt-num); }
+.ci-doc .badge-alt .badge-unit  { color:var(--alt-num);opacity:.75; }
 /* Detail rows */
 .ci-doc .desc-row td { padding:12px 14px 18px;background:var(--accent-lt);border-top:1px solid var(--border); }
 .ci-doc .desc-row td:first-child { border-right:1px solid var(--border); }
@@ -179,13 +186,6 @@
         </tr>
       </thead>
       <tbody>
-        <!-- Stops (total VPS + K8s) -->
-        <tr>
-          <td><span class="row-label">Stops &amp; Alertes</span></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">5</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span></span></div></td>
-        </tr>
         <!-- Validation humaine -->
         <tr>
           <td><span class="row-label">Validation<br>humaine</span></td>
@@ -193,12 +193,26 @@
           <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span></span></div></td>
         </tr>
+        <!-- Stops (total VPS + K8s — K8s n'a aucun Stop, seulement des Rollbacks, cf. bannière) -->
+        <tr>
+          <td><span class="row-label">Stops</span></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">4</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-stop"><span class="badge-num">3</span></span></div></td>
+        </tr>
         <!-- Rollbacks (total VPS + K8s) -->
         <tr>
-          <td><span class="row-label">Rollbacks<br>&amp; Alerte</span></td>
+          <td><span class="row-label">Rollbacks</span></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">3</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">4</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">3</span></span></div></td>
+        </tr>
+        <!-- Alertes (= Stops + Rollbacks, moins les Stops CI sans alerte email) -->
+        <tr>
+          <td><span class="row-label">Alertes</span></td>
+          <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">7</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">6</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">5</span></span></div></td>
         </tr>
         <!-- Interruptions VPS -->
         <tr>
@@ -224,7 +238,7 @@
 
           <!-- T1 -->
           <td>
-            <p class="desc-title">VPS · 4 gates — 1 manuelle — 1 rollback — 1 interruption<br>K8s · 2 gates — 2 rollbacks — 0 interruption</p>
+            <p class="desc-title">VPS · 4 Stops — 1 Validation humaine — 1 Interruption — 1 Rollback<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -267,11 +281,11 @@
 
           <!-- T2 -->
           <td>
-            <p class="desc-title">VPS · 4 gates — 2 manuelles — 2 rollbacks — 1 interruption<br>K8s · 2 gates — 2 rollbacks — 0 interruption</p>
+            <p class="desc-title">VPS · 3 Stops — 2 Validations humaines — 1 Interruption — 2 Rollbacks<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail → merge bloqué par branch protection + notification GitHub Actions</span>
+                <span class="item-desc">CI lint/pytest fail → merge bloqué par branch protection + notification GitHub Actions (pas d'alerte Loki/email — ci.yml n'a aucun canal vers le VPS, cf. footnote)</span>
               </li>
               <li class="item-manual">
                 <span class="item-label">Merge PR</span>
@@ -279,7 +293,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS + annotation erreur</span>
+                <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS + annotation erreur + alerte (job <code>notify-pipeline-failure</code>, catch-all SSH→Loki sur tout échec du job "build")</span>
               </li>
               <li>
                 <span class="item-label">Smoke test pré-gate</span>
@@ -310,11 +324,11 @@
 
           <!-- T3 -->
           <td>
-            <p class="desc-title">VPS · 3 gates — 2 manuelles — 1 rollback — 1 interruption<br>K8s · 2 gates — 2 rollbacks — 0 interruption</p>
+            <p class="desc-title">VPS · 3 Stops — 2 Validations humaines — 1 Interruption — 1 Rollback<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail — blueprint pur, pas de build Docker, pas de Trivy</span>
+                <span class="item-desc">CI lint/pytest fail — blueprint pur, pas de build Docker, pas de Trivy (pas d'alerte Loki/email, cf. footnote)</span>
               </li>
               <li class="item-manual">
                 <span class="item-label">Merge PR</span>
@@ -366,7 +380,7 @@
   </div>
 
   <div class="footnote">
-    <span>Alerte = log Loki → alerte Grafana → email SMTP · Exception : notification GitHub Actions pour les gates CI (T2 Gate 1–2 · T3 Gate 1 uniquement — pas de build, pas de Trivy en T3)</span>
+    <span>Alerte = log Loki → alerte Grafana → email SMTP · Seule exception (T2 Gate 1 · T3 Gate 1) : CI lint/pytest tourne dans ci.yml (job PR, aucun canal SSH vers le VPS) → notification GitHub Actions uniquement, pas d'email. Trivy (T2 Gate 2, dans deploy.yml) envoie bien une alerte via le job catch-all <code>notify-pipeline-failure</code>.</span>
     <span>Rollback VPS T1/T3 : alias MLflow @Production · Rollback VPS T2 : images Docker <code>:rollback</code> · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe interne/externe KO) : digest précis de l'image précédente via <code>kubectl set image</code> (fallback <code>rollout undo</code> si aucun digest capturé)</span>
   </div>
 </div>
