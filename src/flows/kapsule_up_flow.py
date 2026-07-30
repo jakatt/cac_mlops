@@ -18,6 +18,8 @@ from botocore.config import Config
 from mlflow.tracking import MlflowClient
 from prefect import flow, task, get_run_logger
 
+from src.utils.secrets import fetch_secret
+
 CLUSTER_ID    = os.getenv("KAPSULE_CLUSTER_ID", "")
 KAPSULE_STATE = Path(os.getenv("KAPSULE_STATE", "/app/state/kapsule_ips"))
 MLFLOW_URI    = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
@@ -219,8 +221,11 @@ def setup_namespace_secrets(kubeconfig: str) -> str:
 
     scw_key       = os.getenv("SCW_ACCESS_KEY_ID", "")
     scw_secret    = os.getenv("SCW_SECRET_ACCESS_KEY", "")
-    caddy_s3_key  = os.getenv("CADDY_S3_ACCESS_KEY_ID", "")
-    caddy_s3_pass = os.getenv("CADDY_S3_SECRET_ACCESS_KEY", "")
+    # Lus depuis S3 d'abord (rotation possible sans redéploiement de
+    # prefect-worker), fallback sur l'env figé si l'objet S3 est absent —
+    # cf. project_infra_secrets_todo / src/utils/secrets.py.
+    caddy_s3_key  = fetch_secret("caddy_s3_access_key_id", logger) or os.getenv("CADDY_S3_ACCESS_KEY_ID", "")
+    caddy_s3_pass = fetch_secret("caddy_s3_secret_access_key", logger) or os.getenv("CADDY_S3_SECRET_ACCESS_KEY", "")
     jwt_secret = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
     api_user   = os.getenv("API_USERNAME", "admin")
     api_pass   = os.getenv("API_PASSWORD", "changeme")
@@ -280,7 +285,10 @@ def setup_tailscale_secret(kubeconfig: str) -> str:
     une seule fois côté console, sans quoi la route doit être ré-approuvée
     manuellement à chaque cycle kapsule-up/down."""
     logger = get_run_logger()
-    authkey = os.getenv("TAILSCALE_AUTHKEY", "")
+    # Lu depuis S3 d'abord (rotation possible sans redéploiement de
+    # prefect-worker), fallback sur l'env figé si l'objet S3 est absent —
+    # cf. project_infra_secrets_todo / src/utils/secrets.py.
+    authkey = fetch_secret("tailscale_authkey", logger) or os.getenv("TAILSCALE_AUTHKEY", "")
     if not authkey:
         logger.warning(
             "TAILSCALE_AUTHKEY absent — subnet-router non fonctionnel : "
@@ -433,7 +441,9 @@ def silence_bootstrap_alerts_task(duration_minutes: int = 15) -> None:
 
     log = get_run_logger()
     grafana_url = os.getenv("GRAFANA_URL", "http://grafana:3000")
-    grafana_password = os.getenv("GRAFANA_PASSWORD", "admin")
+    # Lu depuis S3 d'abord (rotation possible sans redéploiement de
+    # prefect-worker) — cf. project_infra_secrets_todo / src/utils/secrets.py.
+    grafana_password = fetch_secret("grafana_password", log) or os.getenv("GRAFANA_PASSWORD", "admin")
     now = datetime.now(timezone.utc)
     ends = now + timedelta(minutes=duration_minutes)
 
