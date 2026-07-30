@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Flux MLOps — comment le système se protège tout seul</title>
+<title>Mécanismes de résilience du système</title>
 <style>
 .ci-doc {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -132,8 +132,8 @@
 <div class="ci-doc">
 <div class="wrapper">
   <header class="page-header">
-    <p class="eyebrow">MLOps · Accidents routiers — comprendre le système sans jargon technique</p>
-    <h1 class="page-title">Flux MLOps — comment le système se protège tout seul</h1>
+    <p class="eyebrow">MLOps · Accidents routiers — comprendre le flux MLops</p>
+    <h1 class="page-title">Mécanismes de résilience du système</h1>
     <p class="page-sub">Trois façons pour une nouveauté d'arriver en production (données, code, nouveau modèle optimisé). Dans les trois cas, la même logique s'applique : <strong>des vérifications automatiques, un humain qui garde la main sur la décision finale, et un retour en arrière immédiat si quelque chose tourne mal.</strong> Le déploiement se fait toujours en deux temps : d'abord sur le <span class="env-tag">VPS</span>, puis — seulement si tout est OK — sur <span class="env-tag">K8s</span> (l'infrastructure parallèle, haute disponibilité et capable de monter en charge), jamais les deux à la fois. <strong>Sur K8s une mise à jour se fait sans interruption de service.</strong></p>
   </header>
 
