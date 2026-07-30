@@ -36,9 +36,10 @@ jamais un vrai nettoyage d'images sur les nœuds. Un des deux nœuds s'est
 résolu tout seul (GC automatique du kubelet), l'autre restait tainté après
 résolution du déploiement — pas bloquant ce jour-là mais non résolu.
 
-**Piste :** même pattern que le fix VPS du 24/07 (disk_cleanup_flow appelé
-en fin de deploy_vps_flow) mais côté nœuds Kapsule — nécessite soit un
-DaemonSet de nettoyage (crictl/image prune sur chaque nœud), soit un ajustement
-des seuils de garbage collection kubelet (`imageGCHighThresholdPercent`),
-soit un nettoyage explicite dans `deploy_kapsule_flow.py` avant/après rollout
-(actuellement seulement du logging informatif, jamais d'action corrective).
+**RÉSOLU 2026-07-29 (PR243)** — root cause confirmée : nœuds sous-dimensionnés
+(root volume `sbs_5k` 20GB), pas un vrai gap de nettoyage (vérifié 0 image
+orpheline, 0 pod parasite avant le fix). `create_node_pool()`
+(`src/flows/kapsule_up_flow.py`) passe maintenant `root-volume-size=50GB`.
+Validé via recréation complète du cluster le 29/07 : `DiskPressure: False`
+sur les 2 nœuds, 17/17 pods sains. Ne s'applique qu'à la prochaine création
+de pool (pas rétroactif sur un pool déjà vivant).
