@@ -1,28 +1,47 @@
 ---
 name: project-blueprint-sync-todo
-description: "TODO — rollback Trigger 3 ne resynchronise jamais config/model_params.yml sur main, design accepté pas encore implémenté"
+description: "RÉSOLU — rollback Trigger 3 (test-api échoué) ET STOP manuel au gate resynchronisent tous deux config/model_params.yml sur main"
 metadata:
   node_type: memory
   type: project
   originSessionId: 56ea6708-273e-46b6-af84-9bc9daa74e3c
 ---
 
-Identifié le 2026-07-23 suite à l'incident PR #202 (blueprint rf rollback à tort par un test-api trop strict, cf. [[project_cicd_state]]). **Implémenté 2026-07-24, PR #204** (`revert_blueprint_task` dans `src/flows/deploy_vps_flow.py` + `blueprint_promotion` param). Validé en rejouant le revert sur le vrai commit PR#202 dans un clone jetable local (jamais poussé) — pas encore testé en conditions réelles (vrai rollback Trigger 3 de bout en bout).
+Identifié le 2026-07-23 suite à l'incident PR #202 (blueprint rf rollback à
+tort par un test-api trop strict, cf. [[project_cicd_state]]). Deux cas
+distincts, tous deux couverts désormais.
 
-**Why:** `rollback_promote_task` (`src/flows/deploy_vps_flow.py`) restaure uniquement l'alias MLflow `@Production` vers la version précédente — aucune interaction avec `config/model_params.yml` ni git. Résultat concret vérifié : après le rollback de PR #202, `main` dit toujours "blueprint = rf" alors que `@Production` est resté `lgbm_accidents`. Invariant souhaité par le user : le blueprint committé sur `main` doit toujours refléter ce qui tourne réellement en `@Production`, sauf pendant la fenêtre d'évaluation d'un nouveau blueprint.
+**Cas 1 — rollback automatique après échec test-api post-promotion**
+(`deploy_vps_flow.py::revert_blueprint_task`) — implémenté PR #204
+(2026-07-24). Validé à l'origine en rejouant le revert sur le commit PR#202
+dans un clone jetable local (jamais poussé) ; pas de nouvel incident réel
+de ce type depuis pour confirmer en conditions de prod, mais le mécanisme
+est en place et partagé avec le cas 2 (cf. `src/utils/blueprint_revert.py`).
 
-**Design accepté (à implémenter) :**
-1. Nouveau paramètre explicite `blueprint_promotion: bool = False` sur `deploy_vps_flow` — passé à `True` uniquement par `update_model_flow.py` (Trigger 3). `check_new_data_flow.py` (Trigger 1) ne le passe jamais (`False` par défaut) — le blueprint n'y change pas, rien à revert dans ce cas.
-2. Si rollback du modèle (`rolled_back_model`) **et** `blueprint_promotion=True` : nouvelle tâche qui fait `git revert -m 1 <sha_tag> --no-edit` (le `-m 1` est nécessaire car `sha_tag` est un commit de merge — annule proprement le commit qui a introduit ce blueprint ; la règle CI "pas de mélange blueprint+code dans la même PR" garantit que ce commit ne touche que `config/model_params.yml`).
-3. Push direct sur `main` avec `[skip ci]` dans le message de commit — sinon `deploy.yml` redétecterait le changement de `config/model_params.yml` et redéclencherait `update-model-flow` en boucle pour rien (le modèle "reverté vers" est déjà celui qui tourne).
-4. Même mécanisme jetable (clone git + PAT depuis S3) que `_dvc_push_and_git_commit` dans `src/flows/etl_flow.py` — ne pas réinventer, réutiliser le pattern existant.
+**Cas 2 — STOP manuel au gate avant promotion** (`services/gradio/app.py
+::cancel_run`) — **RÉSOLU**, implémenté 2026-07-24 et corrigé le 2026-07-25
+(`cancel_run` récupère désormais les paramètres du run **avant** d'envoyer
+le `set_state CANCELLING`, pas après — sinon le run ne matchait plus le
+filtre PAUSED/RUNNING de `_prefect_paused_runs()` et `blueprint_promotion`
+n'était jamais détecté, cf. commit `5cdc198`). Incident déclencheur : PR#205
+(rf, run `eb3ffa3f`) — STOP cliqué au gate, `config/model_params.yml` resté
+désynchronisé sur `main`, corrigé manuellement ce jour-là faute
+d'automatisation.
 
-**Limite acceptée explicitement par le user, ne pas tenter de combler :**
-La branche `DS` (locale et distante) reste avec l'ancien blueprint jusqu'à la prochaine resync explicite (`ds_session_start.sh` ou `git fetch && git reset --hard origin/main`). Un flow Prefect ne doit **jamais** force-reset une branche de travail — risque réel d'écraser du travail local non poussé si le DS est en session au moment du revert. Resync reste une action pull, initiée par l'utilisateur, jamais un push automatique depuis le serveur vers une branche autre que `main`.
+**Mécanisme partagé** — `src/utils/blueprint_revert.py::revert_blueprint_on_main`
+(clone jetable + PAT GitHub depuis S3, `git revert -m 1 --no-commit
+<sha_tag>`, commit `[skip ci]`, push direct sur `main`) appelé par les deux
+chemins (`revert_blueprint_task` en contexte Prefect, `cancel_run` en
+contexte Cockpit sans flow actif).
 
-**How to apply:** Si une session future doit traiter cet item, commencer par relire `src/flows/deploy_vps_flow.py` (fonctions `get_current_production_task`, `rollback_promote_task`, le flow `deploy_vps_flow` lui-même) et `src/flows/etl_flow.py::_dvc_push_and_git_commit` pour le pattern de clone jetable à réutiliser. Tester en conditions réelles avant de déclarer fonctionnel (cf. [[feedback_verify_before_asserting]]) — un vrai rollback + vérification que `main` est bien reverté.
+**Limite acceptée, ne pas tenter de combler** : la branche `DS` (locale et
+distante) reste avec l'ancien blueprint jusqu'à la prochaine resync
+explicite (`ds_session_start.sh` ou `git fetch && git reset --hard
+origin/main`) — un flow/le Cockpit ne doit jamais force-reset une branche
+de travail (risque d'écraser du travail local non poussé).
 
-**TODO restant 2026-07-24 — cas STOP manuel au gate (non couvert par PR204) :**
-Incident réel rencontré : PR#205 (rf, run `eb3ffa3f`) mergée, Trigger 3 entraîne, arrive au gate `pause_flow_run` — le DS clique **STOP** (annulation volontaire, pas un échec de test-api). Confirmé en lisant le code : `revert_blueprint_task` est structurellement inatteignable dans ce cas — STOP appelle `cancel_run` (`services/gradio/app.py`) qui termine le flow run Prefect *avant* la ligne du `pause_flow_run`, donc rien après (promotion, test-api, le `except` qui appelle `revert_blueprint_task`) ne s'exécute. `@Production` reste correct (rien n'est promu), mais `config/model_params.yml` sur `main`/`DS` garde le blueprint proposé, sans aucun nettoyage automatique. Corrigé manuellement ce jour (`git revert -m 1 --no-commit <sha merge PR205>` direct sur `main`, puis merge dans `DS`) — même mécanisme que PR204 mais déclenché à la main.
-
-**Piste d'implémentation pour automatiser ce cas :** la logique ne peut pas vivre dans `deploy_vps_flow.py` (le flow est déjà annulé quand STOP est cliqué). Elle doit vivre côté Cockpit, dans le handler `cancel_run()` de `services/gradio/app.py` (~ligne 1249) : avant d'appeler `set_state CANCELLING`, récupérer les paramètres du flow run en pause via l'API Prefect (`GET /flow_runs/{id}`) — si `blueprint_promotion=True` parmi ses paramètres, déclencher le même revert que `revert_blueprint_task` (réutilisable tel quel, ou factoriser une fonction commune) avant/après l'annulation. Nécessite que le Cockpit ait accès au PAT GitHub (déjà le cas pour d'autres actions ? à vérifier) ou passe par un flow Prefect dédié à la place d'un appel direct.
+**How to apply** : si un futur STOP au gate ou un rollback Trigger 3 laisse
+`main` désynchronisé malgré tout, relire `cancel_run()`
+(`services/gradio/app.py:1451`) et `revert_blueprint_on_main`
+(`src/utils/blueprint_revert.py`) en premier — le mécanisme existe déjà,
+chercher une régression plutôt qu'un gap de design.

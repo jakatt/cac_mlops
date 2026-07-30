@@ -20,7 +20,7 @@
 - [Infra secrets TODO](project_infra_secrets_todo.md) — prefect-worker ne peut pas se recréer (secrets figés si rotés) ; DiskPressure Kapsule RÉSOLU PR243 (root-volume 50GB)
 - [Tool output visibility](feedback_tool_output_visibility.md) — le user ne voit jamais le stdout Bash, écrire schémas/tableaux directement en texte de réponse
 - [Verify before asserting](feedback_verify_before_asserting.md) — vérifier empiriquement (SSH, logs, git history) avant d'affirmer une root cause ou un design
-- [Blueprint/prod sync gap](project_blueprint_sync_todo.md) — rollback Trigger 3 ne revert pas config/model_params.yml sur main, fix prévu (git revert + [skip ci])
+- [Blueprint/prod sync gap — RÉSOLU](project_blueprint_sync_todo.md) — rollback Trigger 3 (PR204) ET STOP manuel au gate (cancel_run) resynchronisent tous deux main
 - [Smoke tests fonctionnels](feedback_smoke_tests_functional_only.md) — test-api post-deploy vérifie que ça répond, ne juge jamais le sens des prédictions
 - [Permission autonomy details](feedback_permission_autonomy.md) — allowlists ssh/docker compose/git push DS+mlops/curl/jq, merge main toujours manuel, gotchas de pattern matching
 - [Cockpit MLflow data périmée — RÉSOLU PR220](feedback_gradio_stale_mlflow_data.md) — value= figé au démarrage du process, fix demo.load()
