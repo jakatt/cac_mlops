@@ -2550,7 +2550,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         # ── Onglet Cockpit : gate + orchestration + healthcheck + liens ──────
         with gr.Tab("Cockpit"):
             if not IS_KAPSULE:
-                with gr.Accordion("⏸  Validation des déploiements en attente", open=False) as acc_validation:
+                with gr.Accordion(
+                    "⏸  Validation des déploiements en attente",
+                    open=False,
+                    elem_id="acc-validation",
+                ) as acc_validation:
                     gr.Markdown(
                         "### Cockpit — validation des déploiements en attente\n"
                         "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
@@ -2632,7 +2636,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     )
 
             if not IS_KAPSULE:
-                with gr.Accordion("⚙️  Orchestration — Déclenchement des flows", open=False) as acc_orchestration:
+                with gr.Accordion(
+                    "⚙️  Orchestration — Déclenchement des flows",
+                    open=False,
+                    elem_id="acc-orchestration",
+                ) as acc_orchestration:
                     gr.Markdown("### Orchestration Prefect — Déclenchement des flows")
 
                     _FLOW_CONFIGS = {
@@ -2808,7 +2816,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     clear_btn.click(fn=lambda: "", outputs=action_result)
                     retrain_logs_btn.click(fn=show_last_full_retrain_logs, outputs=action_result)
 
-            with gr.Accordion("🏥  Healthcheck — État des services", open=False) as acc_healthcheck:
+            with gr.Accordion(
+                "🏥  Healthcheck — État des services",
+                open=False,
+                elem_id="acc-healthcheck",
+            ) as acc_healthcheck:
                 gr.Markdown("### Etat des services VPS et Kapsule K8s")
                 health_refresh = gr.Button("Verifier maintenant", variant="primary")
                 health_table_vps = gr.Dataframe(
@@ -2827,7 +2839,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 health_refresh.click(fn=check_health_k8s, outputs=health_table_k8s)
 
             if not IS_KAPSULE:
-                with gr.Accordion("📉  Drift — Rapports de dérive", open=False) as acc_drift:
+                with gr.Accordion(
+                    "📉  Drift — Rapports de dérive",
+                    open=False,
+                    elem_id="acc-drift",
+                ) as acc_drift:
                     gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
                     with gr.Row():
                         drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
@@ -2838,7 +2854,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
 
             if not IS_KAPSULE:
-                with gr.Accordion("🧠  Modèles — Versions et promotion", open=False) as acc_modeles:
+                with gr.Accordion(
+                    "🧠  Modèles — Versions et promotion",
+                    open=False,
+                    elem_id="acc-modeles",
+                ) as acc_modeles:
                     gr.Markdown("### Versions enregistrees, metriques et lineage donnees")
                     with gr.Row():
                         models_refresh = gr.Button("Rafraichir", scale=1)
@@ -2876,7 +2896,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     # l'appel a chaque connexion, garantissant des donnees a jour.
                     demo.load(fn=refresh_models, outputs=[models_table, promote_dd])
 
-            with gr.Accordion("🔗  Liens", open=False) as acc_liens:
+            with gr.Accordion(
+                "🔗  Liens",
+                open=False,
+                elem_id="acc-liens",
+            ) as acc_liens:
                 infra_html = gr.HTML(value=build_links_html())
                 # Bouton "Rafraichir" retiré (2026-07-29) : la seule chose qui
                 # varie réellement ici est l'état actif/inactif de Kapsule
@@ -2904,21 +2928,35 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
     # polls Prefect de l'onglet Cockpit et peuvent rester en attente derrière
     # eux, donnant l'impression de ne rien faire.
     #
-    # Un .click() séparé par accordéon (au lieu d'un seul retournant une liste
-    # de 6 updates) — vérifié le 2026-07-29 que le backend envoie bien les 6
-    # updates open=False corrects (inspection directe du flux SSE brut de
-    # Gradio, hors gradio_client qui ne représente pas fidèlement ce type de
-    # mise à jour), mais le clic restait sans effet visible dans 2 navigateurs
-    # différents (Edge, Safari) — cache et backend tous deux disculpés.
-    # Repli sur le même schéma déjà utilisé ailleurs dans ce fichier pour
-    # health_refresh (plusieurs .click() sur le même bouton, un par sortie),
-    # qui lui fonctionne de manière fiable.
-    for _acc in _ALL_ACCORDIONS:
-        collapse_all_btn.click(
-            fn=lambda _a=_acc: gr.Accordion(open=False),
-            outputs=_acc,
-            queue=False,
-        )
+    # Callback unique : renvoie explicitement une update par accordéon, dans le
+    # même ordre que `outputs`. Ce format évite les ambiguïtés d'instances
+    # composants renvoyées en sortie.
+    def _collapse_all_accordions():
+        return [gr.update(open=False) for _ in _ALL_ACCORDIONS]
+
+    _collapse_js = """
+    () => {
+        const ids = ['acc-validation', 'acc-orchestration', 'acc-healthcheck', 'acc-drift', 'acc-modeles', 'acc-liens'];
+        ids.forEach((id) => {
+            const root = document.getElementById(id);
+            if (!root) return;
+            const details = root.querySelector('details') || root.closest('details');
+            if (details) details.open = false;
+            const summary = root.querySelector('summary');
+            if (summary) summary.setAttribute('aria-expanded', 'false');
+            const button = root.querySelector('button');
+            if (button) button.setAttribute('aria-expanded', 'false');
+        });
+        return [];
+    }
+    """
+
+    collapse_all_btn.click(
+        fn=_collapse_all_accordions,
+        outputs=_ALL_ACCORDIONS,
+        queue=False,
+        js=_collapse_js,
+    )
     home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs, queue=False)
 
 
