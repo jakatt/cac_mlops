@@ -7,6 +7,8 @@ metadata:
   originSessionId: 56ea6708-273e-46b6-af84-9bc9daa74e3c
 ---
 
+# Project Cockpit Toolbar TODO
+
 **MàJ 2026-07-29 (suite) — cache ÉCARTÉ, structure de handler ÉCARTÉE,
 bug non résolu, investigation arrêtée à la demande de l'utilisateur
 ("trop de temps perdu").**
@@ -48,6 +50,7 @@ serveur répond correctement (faux négatif, m'a fait perdre du temps).
 
 Test fiable : requête brute sur le protocole queue de Gradio (celui que le
 navigateur utilise réellement) —
+
 ```python
 requests.post(f"{base}/gradio_api/queue/join", json={
     "data": [], "event_data": None, "fn_index": <N>, "trigger_id": None,
@@ -55,6 +58,7 @@ requests.post(f"{base}/gradio_api/queue/join", json={
 })
 # puis GET /gradio_api/queue/data?session_hash=... (SSE)
 ```
+
 Résultat obtenu en direct sur le VPS (gradio-1, code à jour, fn_index=31 pour
 `collapse_all_btn`) : `process_completed` avec
 `"data":[{"open":false,"__type__":"update"} ×6]` — **exactement correct**.
@@ -77,6 +81,7 @@ de PR239** — donc la 2e tentative de fix n'a pas non plus résolu le
 problème.
 
 **Historique des tentatives (toutes deux dans PR239, commit `2b7b08e`)** :
+
 1. Suppression du chevauchement CSS risqué (margin négative + overlay qui
    avait cassé toute la navigation par onglets dans PR237/238).
 2. `[gr.Accordion(open=False)] * len(_ALL_ACCORDIONS)` (objet partagé)
@@ -90,6 +95,7 @@ Aucune de ces 3 corrections n'a résolu le symptôme signalé. Le bouton
 le problème semble spécifique à `collapse_all_btn`/aux accordéons.
 
 **Pistes non encore explorées pour la prochaine session** :
+
 - Vérifier si `_ALL_ACCORDIONS` référence bien les 6 objets `Accordion`
   réellement montés dans le DOM (pas des références obsolètes suite à un
   refactor antérieur — cf. les blocs `if not IS_KAPSULE:` autour de
