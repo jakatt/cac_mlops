@@ -2954,7 +2954,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         fn=_collapse_all_accordions,
         outputs=_ALL_ACCORDIONS,
         queue=False,
-        _js=_collapse_js,
+        js=_collapse_js,
     )
     home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs, queue=False)
 
