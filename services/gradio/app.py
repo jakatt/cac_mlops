@@ -2940,12 +2940,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         ids.forEach((id) => {
             const root = document.getElementById(id);
             if (!root) return;
-            const details = root.querySelector('details') || root.closest('details');
-            if (details) details.open = false;
-            const summary = root.querySelector('summary');
-            if (summary) summary.setAttribute('aria-expanded', 'false');
-            const button = root.querySelector('button');
-            if (button) button.setAttribute('aria-expanded', 'false');
+            const headerBtn = root.querySelector('button[aria-expanded]');
+            if (!headerBtn) return;
+            if (headerBtn.classList.contains('open')) {
+                headerBtn.click();
+            }
         });
         return [];
     }
@@ -2955,7 +2954,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         fn=_collapse_all_accordions,
         outputs=_ALL_ACCORDIONS,
         queue=False,
-        js=_collapse_js,
+        _js=_collapse_js,
     )
     home_btn.click(fn=lambda: gr.Tabs(selected="tab_accueil"), outputs=main_tabs, queue=False)
 
