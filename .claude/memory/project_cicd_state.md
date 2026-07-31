@@ -1,6 +1,6 @@
 ---
 name: project-cicd-state
-description: "État CI/CD au 2026-07-22 — PRs #35→#186 mergées, chaîne ETL renforcée (auto-correction + DVC self-suffisant), 54 tests"
+description: "État CI/CD au 2026-07-31 — PRs #35→#252 mergées, bouton accordéon 3e tentative (non testée), bluepint/prod sync résolu PR204"
 metadata:
   node_type: memory
   type: project

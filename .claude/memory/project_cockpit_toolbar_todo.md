@@ -1,6 +1,6 @@
 ---
 name: project-cockpit-toolbar-todo
-description: "Backend + cache + structure de handler tous disculpés (2026-07-29) — bug non résolu, nécessite un accès DevTools navigateur (console JS) pour continuer"
+description: "Nouvel essai JS via ChatGPT (PR #250/252, button[aria-expanded]) déployé 2026-07-31 — résultat non encore testé"
 metadata:
   node_type: memory
   type: project
@@ -8,6 +8,12 @@ metadata:
 ---
 
 # Project Cockpit Toolbar TODO
+
+**MàJ 2026-07-31 — ChatGPT a tenté une 3e approche (PR #250 via DS, mergée PR #252) :**
+- JS modifié : `button[aria-expanded]` au lieu de `details`/`summary` + click programmatique si `classList.contains('open')`
+- `_js=` introduit par erreur (bug Gradio "unexpected keyword argument") → rollback auto deploy à 13h37 → fix `js=` via SCP immédiat + PR #252
+- PR #252 mergée 2026-07-31 — gradio redéployé, bouton **non encore testé** par l'utilisateur
+- **Prochaine session : tester d'abord si le bouton fonctionne maintenant** avant tout nouveau fix
 
 **MàJ 2026-07-29 (suite) — cache ÉCARTÉ, structure de handler ÉCARTÉE,
 bug non résolu, investigation arrêtée à la demande de l'utilisateur

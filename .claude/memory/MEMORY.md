@@ -1,8 +1,8 @@
 - [Project setup](project_setup.md) — fork de DataScientest, venv `my_env`, notes de récupération historique
 - [MLOps architecture](project_mlops_architecture.md) — stack (FastAPI, MLflow, DVC, Prefect, Scaleway)
 - [VPS access](user_vps_access.md) — SSH user=`deploy`, IP=51.159.187.132, fail2ban, Tailscale
-- [VPS & stack state](project_state_vps.md) — 16 conteneurs, lgbm@Production toujours actif (rf rollback PR#202), blueprint main désync connue, incident disque récurrent
-- [CI/CD state](project_cicd_state.md) — PRs #35→#203, workflow DS exploration→blueprint (extract_blueprint auto PR), fix DVC push no-op, fix test-api trop strict
+- [VPS & stack state](project_state_vps.md) — 16 conteneurs, lgbm@Production v4 actif, blueprint/prod sync résolu, incident disque récurrent
+- [CI/CD state](project_cicd_state.md) — PRs #35→#252, workflow DS exploration→blueprint, fix DVC push no-op, fix test-api trop strict, blueprint/prod sync résolu PR204
 - [KPI thresholds](project_kpi_thresholds.md) — f1≥0.60 · auc≥0.77 · acc≥0.72 · recall≥0.58 (split temporel, ~8% marge)
 - [Soutenance schemas](project_soutenance_schemas.md) — 3 triggers CI/CD, blueprint mécanisme, slide sécurité + archi à updater
 - [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
@@ -24,7 +24,7 @@
 - [Smoke tests fonctionnels](feedback_smoke_tests_functional_only.md) — test-api post-deploy vérifie que ça répond, ne juge jamais le sens des prédictions
 - [Permission autonomy details](feedback_permission_autonomy.md) — allowlists ssh/docker compose/git push DS+mlops/curl/jq, merge main toujours manuel, gotchas de pattern matching
 - [Cockpit MLflow data périmée — RÉSOLU PR220](feedback_gradio_stale_mlflow_data.md) — value= figé au démarrage du process, fix demo.load()
-- [Toolbar Cockpit — TODO non résolu](project_cockpit_toolbar_todo.md) — bouton "Fermer tous les accordéons" toujours cassé après PR239 (2e fix raté)
+- [Toolbar Cockpit — TODO non testé](project_cockpit_toolbar_todo.md) — 3e approche JS (button[aria-expanded]) via ChatGPT PR250/252, déployée 2026-07-31, résultat non encore testé
 - [Modèle 3 couches de tests](project_test_layers_model.md) — technique (smoke)/fonctionnel interne/fonctionnel externe, structurant pour Healthcheck/rollback/test-api
 - [Race kapsule-down→up — RÉSOLU PR248](project_kapsule_recreate_race_todo.md) — delete_node_pools attend maintenant la suppression réelle avant de retourner
 - [DaemonSets NOK — RÉSOLU PR246/247](project_daemonset_nok_todo.md) — Deployment vs DaemonSet mal détecté + timeout Prefect 30s trop court + icônes ✅/❌ non colorées
