@@ -47,6 +47,40 @@ init_logging()  # au niveau module : fixe le niveau INFO que ce fichier soit imp
 logger = logging.getLogger(__name__)
 
 _CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yml"
+_PERFORMANCE_REPORTS_DIR = Path("reports/drift")
+
+
+def _save_classification_report(y_test, y_proba, algorithm: str, run_id: str) -> str | None:
+    """Rapport Evidently ClassificationPreset (confusion matrix, ROC, PR curve,
+    calibration) sur X_test — purement informatif/visuel, généré pour CHAQUE
+    candidat (rf/xgboost/lgbm). N'influence jamais le gate KPI : les métriques
+    sklearn calculées juste avant (accuracy/f1/auc/recall) restent la seule
+    source de vérité pour la décision de promotion — cf. validate_model.py.
+    Sauvegardé dans reports/drift/ (même dossier que les rapports de drift)
+    pour apparaître automatiquement dans le dropdown de l'onglet Drift du
+    Cockpit, sans changement UI supplémentaire.
+    """
+    try:
+        from evidently import ColumnMapping
+        from evidently.metric_preset import ClassificationPreset
+        from evidently.report import Report
+    except ImportError:
+        logger.warning("evidently non installé — rapport de performance ignoré")
+        return None
+    try:
+        df = pd.DataFrame({"target": np.asarray(y_test), "prediction": np.asarray(y_proba)})
+        column_mapping = ColumnMapping(
+            target="target", prediction="prediction", task="classification", pos_label=1,
+        )
+        report = Report(metrics=[ClassificationPreset()])
+        report.run(reference_data=None, current_data=df, column_mapping=column_mapping)
+        _PERFORMANCE_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        html_path = _PERFORMANCE_REPORTS_DIR / f"performance_{algorithm}_{run_id[:8]}.html"
+        report.save_html(str(html_path))
+        return str(html_path)
+    except Exception:
+        logger.warning("Génération du rapport de performance échouée (non bloquant)", exc_info=True)
+        return None
 
 
 def _load_algo_params(algorithm: str) -> dict[str, Any]:
@@ -346,6 +380,11 @@ def train(
         }
         mlflow.log_metrics(metrics)
 
+        run_id = run.info.run_id
+        report_path = _save_classification_report(y_test, y_proba, algorithm, run_id)
+        if report_path:
+            logger.info("Rapport de performance Evidently : %s", report_path)
+
         below_kpi = {k: (v, KPI_THRESHOLDS[k])
                      for k, v in metrics.items() if v < KPI_THRESHOLDS[k]}
         if below_kpi:
@@ -360,7 +399,6 @@ def train(
             "Metrics — accuracy=%.3f  f1=%.3f  auc=%.3f  recall=%.3f",
             metrics["accuracy"], metrics["f1"], metrics["auc"], metrics["recall"],
         )
-        run_id = run.info.run_id
         logger.info("MLflow run_id: %s", run_id)
         logger.info("MLflow model_name: %s", model_name)
         _print_comparison_table(metrics, not below_kpi, mlflow.tracking.MlflowClient(), run_id, model_name)

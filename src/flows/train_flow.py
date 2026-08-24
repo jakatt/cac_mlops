@@ -10,8 +10,11 @@ Si aucun algo ne progresse suffisamment vs @Production → @Production inchangé
 Si aucun @Production n'existe encore → le meilleur qualifié est promu directement.
 """
 import gc
+import json
 import os
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 import mlflow
 from prefect import flow, task, get_run_logger
@@ -25,6 +28,13 @@ mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000"))
 ALGORITHMS     = list(MODEL_NAMES.keys())   # ["rf", "xgboost", "lgbm"]
 PRIMARY_METRIC = "f1"
 MIN_IMPROVEMENT = 0.01  # +1 point absolu minimum sur f1 pour remplacer @Production
+
+# Historique de performance par cycle — champion uniquement (pas chaque
+# candidat, contrairement au rapport Evidently par algo dans train_model.py) :
+# une gauge Prometheus qui flipperait entre 3 candidats à chaque scrape n'aurait
+# aucun sens pour une tendance dans le temps. Même dossier que les résumés de
+# drift (reports/drift/), lu par la même route /metrics — cf. _metrics.py.
+_PERFORMANCE_SUMMARY_PATH = Path("reports/drift/latest_performance_summary.json")
 
 
 def _get_production_metrics(client: mlflow.MlflowClient) -> dict[str, float] | None:
@@ -180,6 +190,30 @@ def select_champion_task(
     return champion
 
 
+@task(name="write-performance-summary")
+def write_performance_summary_task(
+    champion: str, run_id: str, metrics: dict[str, float], year: int,
+) -> None:
+    """Persiste les métriques du champion de ce cycle pour la gauge Prometheus
+    cac_mlops_train_metric (cf. _metrics.py::update_train_metrics_from_file).
+    Écrit dès qu'un champion est identifié — que ce cycle promeuve ou non
+    @Production (promoted=False reste un signal utile : "meilleur candidat
+    de ce cycle", cohérent avec le tableau de comparaison déjà affiché en CLI).
+    """
+    log = get_run_logger()
+    summary = {
+        "algorithm": champion,
+        "run_id": run_id,
+        "year": year,
+        "metrics": metrics,
+        "timestamp": datetime.now(timezone.utc).timestamp(),
+    }
+    _PERFORMANCE_SUMMARY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_PERFORMANCE_SUMMARY_PATH, "w") as f:
+        json.dump(summary, f)
+    log.info("Résumé de performance écrit : %s", summary)
+
+
 @task(name="promote-champion")
 def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     """
@@ -269,6 +303,9 @@ def train_flow(
         require_improvement=require_improvement,
         compare_to_production=compare_to_production,
     )
+
+    if champion is not None:
+        write_performance_summary_task(champion, run_ids[champion], all_metrics[champion], year)
 
     promoted = False
     if champion is not None and promote:

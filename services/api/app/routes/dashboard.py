@@ -9,7 +9,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from ..log_capture import get_lines
 from .._metrics import (
     REGISTRY, update_drift_metrics_from_file, update_model_info,
-    update_prediction_drift_metrics_from_file,
+    update_prediction_drift_metrics_from_file, update_train_metrics_from_file,
 )
 
 _REPORTS_PATH = Path("/app/reports")
@@ -339,5 +339,6 @@ def metrics() -> Response:
     """Prometheus metrics endpoint — scraped by prometheus:9090."""
     update_drift_metrics_from_file(_REPORTS_PATH)
     update_prediction_drift_metrics_from_file(_REPORTS_PATH)
+    update_train_metrics_from_file(_REPORTS_PATH)
     update_model_info()
     return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
