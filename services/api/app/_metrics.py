@@ -88,6 +88,29 @@ DRIFT_TARGET_REFERENCE_RATE = Gauge(
     registry=REGISTRY,
 )
 
+# ── Drift sur trafic réel (table predictions) — indépendant des cycles de
+# retrain, cf. services/monitoring/prediction_drift.py ────────────────────
+PRED_DRIFT_SHARE = Gauge(
+    "cac_mlops_prediction_drift_share",
+    "Fraction de features driftées sur le trafic réel récent (0–1)",
+    registry=REGISTRY,
+)
+PRED_DRIFT_LEVEL = Gauge(
+    "cac_mlops_prediction_drift_level",
+    "Sévérité du drift sur trafic réel : 0=OK 1=WARNING 2=CRITICAL",
+    registry=REGISTRY,
+)
+PRED_DRIFT_ROWS = Gauge(
+    "cac_mlops_prediction_drift_rows",
+    "Nombre de prédictions réelles analysées sur la fenêtre glissante",
+    registry=REGISTRY,
+)
+PRED_DRIFT_STABILITY_SCORE = Gauge(
+    "cac_mlops_prediction_stability_score",
+    "Drift score de la probabilité prédite entre 1re et 2e moitié de la fenêtre",
+    registry=REGISTRY,
+)
+
 # ── Modèle en production (mis à jour paresseusement à chaque scrape /metrics) ─
 MODEL_INFO = Gauge(
     "mlops_model_info",
@@ -161,5 +184,27 @@ def update_drift_metrics_from_file(reports_path: Path) -> None:
             DRIFT_TARGET_DETECTED.set(1 if data.get("target_drift_detected", False) else 0)
             DRIFT_TARGET_CURRENT_RATE.set(data.get("target_current_rate", 0.0))
             DRIFT_TARGET_REFERENCE_RATE.set(data.get("target_reference_rate", 0.0))
+    except Exception:
+        pass
+
+
+def update_prediction_drift_metrics_from_file(reports_path: Path) -> None:
+    """Read latest_prediction_drift_summary.json and update Prometheus Gauges.
+
+    No-op si le fichier est absent OU si level="INSUFFICIENT_DATA" (pas encore
+    assez de trafic réel — cf. services/monitoring/prediction_drift.py::MIN_ROWS) :
+    on ne veut pas publier un share/level basé sur un échantillon trop petit.
+    """
+    summary_path = reports_path / "drift" / "latest_prediction_drift_summary.json"
+    if not summary_path.exists():
+        return
+    try:
+        data = json.loads(summary_path.read_text())
+        if data.get("level") == "INSUFFICIENT_DATA":
+            return
+        PRED_DRIFT_SHARE.set(data.get("drift_share", 0.0))
+        PRED_DRIFT_LEVEL.set(_LEVEL_MAP.get(data.get("level", "OK"), 0))
+        PRED_DRIFT_ROWS.set(data.get("rows", 0))
+        PRED_DRIFT_STABILITY_SCORE.set(data.get("stability_drift_score", 0.0))
     except Exception:
         pass
