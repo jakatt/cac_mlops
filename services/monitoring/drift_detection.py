@@ -32,10 +32,16 @@ REPORTS_DIR = Path("reports/drift")
 
 # lat/long exclus : géographie déjà couverte par dep (Wasserstein 1D sur
 # coordonnées brutes n'est pas géographiquement interprétable)
+# com exclu (2026-08) : ~19 000 valeurs distinctes sur 172 693 lignes de
+# référence, dont >7 000 communes qui n'apparaissent qu'une seule fois —
+# quasi identifiant, pas une vraie catégorie. Le score de drift dérive
+# mécaniquement à chaque cycle sans signal actionnable, et le graphique
+# Evidently (des milliers de barres) devient illisible. dep (~100 valeurs)
+# couvre déjà le signal géographique de façon interprétable.
 FEATURE_COLS = [
     "place", "catu", "sexe", "secu1", "victim_age", "catv",
     "obsm", "motor", "catr", "circ", "surf", "situ", "vma", "jour", "mois",
-    "lum", "dep", "com", "agg_", "intersection_type", "atm", "col",
+    "lum", "dep", "agg_", "intersection_type", "atm", "col",
     "hour", "nb_victim", "nb_vehicules",
 ]
 
@@ -43,13 +49,22 @@ FEATURE_COLS = [
 # → barplots par catégorie, test statistiquement adapté aux codes discrets
 CATEGORICAL_COLS = [
     "place", "catu", "sexe", "secu1", "catv", "obsm", "motor",
-    "catr", "circ", "surf", "situ", "lum", "dep", "com", "agg_",
+    "catr", "circ", "surf", "situ", "lum", "dep", "agg_",
     "intersection_type", "atm", "col",
 ]
 NUMERICAL_COLS = [
     "victim_age", "vma", "jour", "mois",
     "hour", "nb_victim", "nb_vehicules",
 ]
+
+# Cible — suivie séparément du drift de features (cf. run_drift_report) :
+# un rapport Evidently isolé dédié, jamais mélangé à FEATURE_COLS/
+# CATEGORICAL_COLS ci-dessus. Vérifié empiriquement (evidently 0.4.40) :
+# déclarer "grav" via ColumnMapping.target sur LE MÊME rapport que
+# DataDriftPreset le fait compter dans number_of_columns/drift_by_columns,
+# ce qui pollue la part de drift de features utilisée pour l'alerte
+# CRITICAL/WARNING — d'où l'isolation stricte.
+TARGET_COL = "grav"
 
 
 def _preprocessed_dir(years: list[int]) -> Path:
@@ -71,7 +86,7 @@ def run_drift_report(year: int | str) -> dict:
     try:
         from evidently.report import Report
         from evidently.metric_preset import DataDriftPreset
-        from evidently.metrics import DatasetDriftMetric
+        from evidently.metrics import ColumnDriftMetric
         from evidently import ColumnMapping
     except ImportError:
         logger.error("evidently not installed — pip install evidently")
@@ -99,15 +114,20 @@ def run_drift_report(year: int | str) -> dict:
         )
         sys.exit(1)
 
-    reference = pd.read_csv(x_train_path).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
-    current   = pd.read_csv(x_test_path).rename(columns={"int": "intersection_type"})[FEATURE_COLS]
+    reference_raw = pd.read_csv(x_train_path).rename(columns={"int": "intersection_type"})
+    current_raw   = pd.read_csv(x_test_path).rename(columns={"int": "intersection_type"})
+    reference = reference_raw[FEATURE_COLS]
+    current   = current_raw[FEATURE_COLS]
 
     column_mapping = ColumnMapping(
         categorical_features=CATEGORICAL_COLS,
         numerical_features=NUMERICAL_COLS,
     )
 
-    report = Report(metrics=[DataDriftPreset(), DatasetDriftMetric()])
+    # DataDriftPreset() inclut déjà en interne son propre DatasetDriftMetric
+    # (vérifié empiriquement sur evidently 0.4.40) — pas besoin de le
+    # rajouter explicitement, ça ne ferait que dupliquer le calcul.
+    report = Report(metrics=[DataDriftPreset()])
     report.run(reference_data=reference, current_data=current, column_mapping=column_mapping)
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -119,15 +139,27 @@ def run_drift_report(year: int | str) -> dict:
     with open(json_path, "w") as f:
         json.dump(result_dict, f)
 
-    # Extract summary from Evidently result
-    dataset_drift = result_dict["metrics"][1]["result"]
-    drifted = dataset_drift.get("number_of_drifted_columns", 0)
-    total   = dataset_drift.get("number_of_columns", len(FEATURE_COLS))
-    share   = dataset_drift.get("dataset_drift_share", 0.0)
-    detected = dataset_drift.get("dataset_drift", False)
+    # Extraction par nom de métrique, jamais par index positionnel : la
+    # composition interne de DataDriftPreset a changé entre versions patch
+    # d'evidently (toujours dans le pin >=0.4.0,<0.5.0) — une extraction par
+    # index [0]/[1] s'est retrouvée silencieusement décalée en prod, avec
+    # comme conséquence concrète feature_scores={} et drift_share=0.0 dans
+    # latest_summary.json malgré un vrai drift visible dans le rapport HTML
+    # (confirmé sur le VPS avant ce fix, 2026-08-24). La clé "dataset_drift_
+    # share" utilisée auparavant n'a d'ailleurs jamais existé dans cette
+    # version d'evidently (la bonne clé est "share_of_drifted_columns").
+    by_metric: dict[str, list[dict]] = {}
+    for m in result_dict["metrics"]:
+        by_metric.setdefault(m["metric"], []).append(m["result"])
+
+    drift_table = by_metric["DataDriftTable"][0]
+    drifted = drift_table.get("number_of_drifted_columns", 0)
+    total   = drift_table.get("number_of_columns", len(FEATURE_COLS))
+    share   = drift_table.get("share_of_drifted_columns", 0.0)
+    detected = drift_table.get("dataset_drift", False)
 
     # Per-feature drift
-    col_drift = result_dict["metrics"][0]["result"].get("drift_by_columns", {})
+    col_drift = drift_table.get("drift_by_columns", {})
     drifted_features = [
         col for col, info in col_drift.items()
         if info.get("drift_detected", False)
@@ -139,6 +171,26 @@ def run_drift_report(year: int | str) -> dict:
         col: round(info.get("drift_score", 0.0), 4)
         for col, info in col_drift.items()
     }
+
+    # ── Drift de cible (grav) — rapport Evidently isolé, jamais mélangé au
+    # drift de features ci-dessus (cf. commentaire TARGET_COL en tête de
+    # fichier). Ne compte pas dans share/level/l'alerte CRITICAL-WARNING :
+    # une dérive du taux d'accidents graves d'une année sur l'autre est un
+    # signal métier informatif, pas un problème de qualité de features.
+    y_train = pd.read_csv(prep_dir / "y_train.csv")
+    y_test  = pd.read_csv(prep_dir / "y_test.csv")
+    target_reference = pd.DataFrame({TARGET_COL: y_train[TARGET_COL].values})
+    target_current   = pd.DataFrame({TARGET_COL: y_test[TARGET_COL].values})
+    target_mapping = ColumnMapping(categorical_features=[TARGET_COL])
+
+    target_report = Report(metrics=[ColumnDriftMetric(column_name=TARGET_COL)])
+    target_report.run(
+        reference_data=target_reference, current_data=target_current,
+        column_mapping=target_mapping,
+    )
+    target_html_path = REPORTS_DIR / f"drift_{year}_target.html"
+    target_report.save_html(str(target_html_path))
+    target_result = target_report.as_dict()["metrics"][0]["result"]
 
     summary = {
         "year": year,
@@ -153,6 +205,12 @@ def run_drift_report(year: int | str) -> dict:
         "timestamp": datetime.now(timezone.utc).timestamp(),
         "feature_scores": feature_scores,
         "html_report": str(html_path),
+        "target_drift_detected": target_result.get("drift_detected", False),
+        "target_drift_score": round(target_result.get("drift_score", 0.0), 4),
+        "target_stattest": target_result.get("stattest_name", ""),
+        "target_reference_rate": round(float(target_reference[TARGET_COL].mean()), 4),
+        "target_current_rate": round(float(target_current[TARGET_COL].mean()), 4),
+        "target_html_report": str(target_html_path),
     }
 
     latest_path = REPORTS_DIR / "latest_summary.json"
@@ -165,6 +223,11 @@ def run_drift_report(year: int | str) -> dict:
     )
     if drifted_features:
         logger.info("Drifted features: %s", drifted_features)
+    logger.info(
+        "Target drift (%s) — detected=%s score=%.4f taux %.1f%% → %.1f%%",
+        TARGET_COL, summary["target_drift_detected"], summary["target_drift_score"],
+        summary["target_reference_rate"] * 100, summary["target_current_rate"] * 100,
+    )
 
     return summary
 

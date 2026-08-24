@@ -64,6 +64,30 @@ DRIFT_REPORT_TIMESTAMP = Gauge(
     registry=REGISTRY,
 )
 
+# ── Drift de cible (grav) — rapport Evidently isolé, jamais mélangé aux
+# gauges de drift de features ci-dessus (cf. services/monitoring/
+# drift_detection.py::TARGET_COL) ────────────────────────────────────────
+DRIFT_TARGET_SCORE = Gauge(
+    "cac_mlops_drift_target_score",
+    "Drift score (Jensen-Shannon) de la cible grav entre années",
+    registry=REGISTRY,
+)
+DRIFT_TARGET_DETECTED = Gauge(
+    "cac_mlops_drift_target_detected",
+    "Drift détecté sur la cible grav : 0=non 1=oui",
+    registry=REGISTRY,
+)
+DRIFT_TARGET_CURRENT_RATE = Gauge(
+    "cac_mlops_drift_target_current_rate",
+    "Taux d'accidents graves (grav=1) sur l'année analysée",
+    registry=REGISTRY,
+)
+DRIFT_TARGET_REFERENCE_RATE = Gauge(
+    "cac_mlops_drift_target_reference_rate",
+    "Taux d'accidents graves (grav=1) sur les années de référence",
+    registry=REGISTRY,
+)
+
 # ── Modèle en production (mis à jour paresseusement à chaque scrape /metrics) ─
 MODEL_INFO = Gauge(
     "mlops_model_info",
@@ -132,5 +156,10 @@ def update_drift_metrics_from_file(reports_path: Path) -> None:
         DRIFT_REPORT_TIMESTAMP.set(data.get("timestamp", 0.0))
         for feature, score in data.get("feature_scores", {}).items():
             DRIFT_FEATURE_SCORE.labels(feature=feature).set(score)
+        if "target_drift_score" in data:
+            DRIFT_TARGET_SCORE.set(data.get("target_drift_score", 0.0))
+            DRIFT_TARGET_DETECTED.set(1 if data.get("target_drift_detected", False) else 0)
+            DRIFT_TARGET_CURRENT_RATE.set(data.get("target_current_rate", 0.0))
+            DRIFT_TARGET_REFERENCE_RATE.set(data.get("target_reference_rate", 0.0))
     except Exception:
         pass
