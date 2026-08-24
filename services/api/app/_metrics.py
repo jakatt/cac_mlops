@@ -111,6 +111,26 @@ PRED_DRIFT_STABILITY_SCORE = Gauge(
     registry=REGISTRY,
 )
 
+# ── Historique de performance par cycle de retrain — champion uniquement,
+# cf. src/flows/train_flow.py::write_performance_summary_task ────────────
+TRAIN_METRIC = Gauge(
+    "cac_mlops_train_metric",
+    "Métrique KPI du champion au dernier cycle de retrain (accuracy/f1/auc/recall)",
+    ["metric"],
+    registry=REGISTRY,
+)
+TRAIN_INFO = Gauge(
+    "cac_mlops_train_info",
+    "Dernier cycle de retrain : algorithme/année champion (valeur=1, identité via labels)",
+    ["algorithm", "year"],
+    registry=REGISTRY,
+)
+TRAIN_TIMESTAMP = Gauge(
+    "cac_mlops_train_timestamp",
+    "Unix timestamp du dernier cycle de retrain",
+    registry=REGISTRY,
+)
+
 # ── Modèle en production (mis à jour paresseusement à chaque scrape /metrics) ─
 MODEL_INFO = Gauge(
     "mlops_model_info",
@@ -206,5 +226,21 @@ def update_prediction_drift_metrics_from_file(reports_path: Path) -> None:
         PRED_DRIFT_LEVEL.set(_LEVEL_MAP.get(data.get("level", "OK"), 0))
         PRED_DRIFT_ROWS.set(data.get("rows", 0))
         PRED_DRIFT_STABILITY_SCORE.set(data.get("stability_drift_score", 0.0))
+    except Exception:
+        pass
+
+
+def update_train_metrics_from_file(reports_path: Path) -> None:
+    """Read latest_performance_summary.json and update Prometheus Gauges."""
+    summary_path = reports_path / "drift" / "latest_performance_summary.json"
+    if not summary_path.exists():
+        return
+    try:
+        data = json.loads(summary_path.read_text())
+        TRAIN_INFO.clear()
+        TRAIN_INFO.labels(algorithm=data.get("algorithm", "?"), year=str(data.get("year", "?"))).set(1)
+        TRAIN_TIMESTAMP.set(data.get("timestamp", 0.0))
+        for metric, value in data.get("metrics", {}).items():
+            TRAIN_METRIC.labels(metric=metric).set(value)
     except Exception:
         pass
