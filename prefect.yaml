@@ -36,6 +36,18 @@ deployments:
     work_pool:
       name: default-process-pool
 
+  # ── Drift trafic réel — table predictions vs référence d'entraînement,
+  # indépendant des cycles de retrain (cf. services/monitoring/
+  # prediction_drift.py). Manuel (Cockpit) + cron hebdo léger.
+  - name: prediction-drift-check
+    entrypoint: src/flows/prediction_drift_flow.py:prediction_drift_flow
+    work_pool:
+      name: default-process-pool
+    schedules:
+      - cron: "0 9 * * 1"
+        timezone: "Europe/Paris"
+        active: true
+
   # ── Check new data — détection hebdo + chaîne complète si nouvelle année ─────
   # Lundi 8h : poll data.gouv.fr, fuzzy-match 4 URLs (plus de FILENAMES hardcodés).
   # Si 4/4 matchés → ETL (download par URL) → train (champion sans promote)

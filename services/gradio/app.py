@@ -731,6 +731,7 @@ _FLOW_DISPLAY_NAMES = {
     "deploy-vps-flow":        "Déploiement VPS",
     "train-flow":             "Entraînement modèles",
     "drift-monitoring-flow":  "Monitoring drift",
+    "prediction-drift-flow":  "Drift trafic réel",
     "etl-flow":               "Import données",
 }
 
@@ -987,6 +988,9 @@ def trigger_check_new_data() -> str:
 
 def trigger_drift_check() -> str:
     return _prefect_trigger("drift-check")
+
+def trigger_prediction_drift_check() -> str:
+    return _prefect_trigger("prediction-drift-check")
 
 def refresh_recent_runs() -> pd.DataFrame:
     return _prefect_recent_runs()
@@ -2674,6 +2678,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                             "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
                             "opts": None,
                         },
+                        "Analyser le drift trafic réel": {
+                            "key": "prediction-drift-check",
+                            "desc": "Compare les prédictions réelles récentes (table predictions, fenêtre glissante 90 jours) à la référence d'entraînement — indépendant des cycles de retrain. Nécessite au moins 100 lignes réelles sur la fenêtre, sinon rapport ignoré. Génère le rapport Evidently dans l'onglet Drift.",
+                            "opts": None,
+                        },
                         "Réinitialiser la solution": {
                             "key": "reset",
                             "desc": "RAZ par composant, à la carte — coche uniquement ce que tu veux vider. \"RAZ totale\" force tout, pensée pour repartir sur un système propre juste avant un full-retrain.",
@@ -2794,6 +2803,8 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                             return trigger_check_new_data()
                         if key == "drift-check":
                             return trigger_drift_check()
+                        if key == "prediction-drift-check":
+                            return trigger_prediction_drift_check()
                         return f"Flow inconnu : {flow_name}"
 
                     flow_dd.change(
