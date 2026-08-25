@@ -131,6 +131,26 @@ TRAIN_TIMESTAMP = Gauge(
     registry=REGISTRY,
 )
 
+# ── Data Quality ONISR — 2e ligne de défense, jamais bloquante,
+# cf. services/monitoring/data_quality.py ──────────────────────────────────
+DATA_QUALITY_LEVEL = Gauge(
+    "cac_mlops_data_quality_level",
+    "Sévérité data quality du dernier ETL : 0=OK 1=WARNING",
+    registry=REGISTRY,
+)
+DATA_QUALITY_DUPLICATED_ROWS = Gauge(
+    "cac_mlops_data_quality_duplicated_rows",
+    "Lignes dupliquées détectées par table ONISR",
+    ["table"],
+    registry=REGISTRY,
+)
+DATA_QUALITY_MISSING_SHARE = Gauge(
+    "cac_mlops_data_quality_missing_share",
+    "Part de valeurs manquantes par table ONISR (0–1)",
+    ["table"],
+    registry=REGISTRY,
+)
+
 # ── Modèle en production (mis à jour paresseusement à chaque scrape /metrics) ─
 MODEL_INFO = Gauge(
     "mlops_model_info",
@@ -242,5 +262,22 @@ def update_train_metrics_from_file(reports_path: Path) -> None:
         TRAIN_TIMESTAMP.set(data.get("timestamp", 0.0))
         for metric, value in data.get("metrics", {}).items():
             TRAIN_METRIC.labels(metric=metric).set(value)
+    except Exception:
+        pass
+
+
+def update_data_quality_metrics_from_file(reports_path: Path) -> None:
+    """Read latest_dataquality_summary.json and update Prometheus Gauges."""
+    summary_path = reports_path / "drift" / "latest_dataquality_summary.json"
+    if not summary_path.exists():
+        return
+    try:
+        data = json.loads(summary_path.read_text())
+        if data.get("level") == "SKIPPED":
+            return
+        DATA_QUALITY_LEVEL.set(_LEVEL_MAP.get(data.get("level", "OK"), 0))
+        for table, info in data.get("tables", {}).items():
+            DATA_QUALITY_DUPLICATED_ROWS.labels(table=table).set(info.get("duplicated_rows", 0))
+            DATA_QUALITY_MISSING_SHARE.labels(table=table).set(info.get("missing_share", 0.0))
     except Exception:
         pass

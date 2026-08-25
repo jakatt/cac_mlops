@@ -47,6 +47,24 @@ def validate_task(year: int) -> None:
     log.info("Validation level=%s year=%d", level, year)
 
 
+@task(name="data-quality-check")
+def data_quality_task(year: int) -> None:
+    """Evidently DataQualityPreset — 2e ligne de défense, complémentaire à
+    validate_task (Pandera). Jamais bloquant : contrairement à validate_task,
+    ne raise jamais — un problème de data quality (doublons, valeurs
+    manquantes) déclenche une alerte WARNING (Grafana) mais ne stoppe pas le
+    pipeline. Best-effort : une erreur dans ce check lui-même ne doit jamais
+    faire échouer l'ETL (cf. services/monitoring/data_quality.py).
+    """
+    from services.monitoring.data_quality import run_data_quality_report
+    log = get_run_logger()
+    try:
+        summary = run_data_quality_report(year)
+        log.info("Data quality level=%s year=%d", summary.get("level"), year)
+    except Exception:
+        log.warning("data_quality_task a échoué (non bloquant)", exc_info=True)
+
+
 def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
     """dvc add --no-commit + dvc push + commit/push du .dvc — le tout dans un
     clone git jetable, créé et détruit à chaque exécution.
@@ -223,6 +241,7 @@ def etl_flow(
     """
     download_task(year, urls=urls)
     validate_task(year)
+    data_quality_task(year)
     dvc_push_task(year)
     if explicit_years is not None:
         years = explicit_years
