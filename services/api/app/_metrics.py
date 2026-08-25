@@ -151,6 +151,19 @@ DATA_QUALITY_MISSING_SHARE = Gauge(
     registry=REGISTRY,
 )
 
+# ── Model diffing champion vs @Production, golden set figé — jamais
+# bloquant, cf. services/monitoring/model_diff.py ─────────────────────────
+MODEL_DIFF_FLIPPED_SHARE = Gauge(
+    "cac_mlops_model_diff_flipped_share",
+    "Part de prédictions qui changent de classe entre @Production et le candidat (golden set)",
+    registry=REGISTRY,
+)
+MODEL_DIFF_PROBABILITY_DRIFT_SCORE = Gauge(
+    "cac_mlops_model_diff_probability_drift_score",
+    "Drift score entre les distributions de probabilité @Production vs candidat",
+    registry=REGISTRY,
+)
+
 # ── Modèle en production (mis à jour paresseusement à chaque scrape /metrics) ─
 MODEL_INFO = Gauge(
     "mlops_model_info",
@@ -279,5 +292,20 @@ def update_data_quality_metrics_from_file(reports_path: Path) -> None:
         for table, info in data.get("tables", {}).items():
             DATA_QUALITY_DUPLICATED_ROWS.labels(table=table).set(info.get("duplicated_rows", 0))
             DATA_QUALITY_MISSING_SHARE.labels(table=table).set(info.get("missing_share", 0.0))
+    except Exception:
+        pass
+
+
+def update_model_diff_metrics_from_file(reports_path: Path) -> None:
+    """Read latest_model_diff_summary.json and update Prometheus Gauges."""
+    summary_path = reports_path / "drift" / "latest_model_diff_summary.json"
+    if not summary_path.exists():
+        return
+    try:
+        data = json.loads(summary_path.read_text())
+        if data.get("level") == "SKIPPED":
+            return
+        MODEL_DIFF_FLIPPED_SHARE.set(data.get("flipped_share", 0.0))
+        MODEL_DIFF_PROBABILITY_DRIFT_SCORE.set(data.get("probability_drift_score", 0.0))
     except Exception:
         pass

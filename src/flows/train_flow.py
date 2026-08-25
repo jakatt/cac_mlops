@@ -214,6 +214,22 @@ def write_performance_summary_task(
     log.info("Résumé de performance écrit : %s", summary)
 
 
+@task(name="model-diff")
+def model_diff_task(champion: str, run_id: str) -> None:
+    """Model diffing champion vs @Production actuel sur golden set figé —
+    appelée AVANT promote_task pour comparer l'ancien et le nouveau modèle
+    (après promotion, @Production serait déjà le candidat). Best-effort :
+    purement informatif, ne doit jamais faire échouer le cycle de train.
+    """
+    log = get_run_logger()
+    try:
+        from services.monitoring.model_diff import run_model_diff_report
+        summary = run_model_diff_report(run_id, champion)
+        log.info("Model diff : %s", summary)
+    except Exception:
+        log.warning("model_diff_task a échoué (non bloquant)", exc_info=True)
+
+
 @task(name="promote-champion")
 def promote_task(champion: str, run_ids: dict[str, str]) -> bool:
     """
@@ -306,6 +322,7 @@ def train_flow(
 
     if champion is not None:
         write_performance_summary_task(champion, run_ids[champion], all_metrics[champion], year)
+        model_diff_task(champion, run_ids[champion])
 
     promoted = False
     if champion is not None and promote:
