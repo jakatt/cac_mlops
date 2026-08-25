@@ -19,6 +19,17 @@ psycopg2-binary>=2.9.0
 PyYAML>=6.0
 prefect>=3.0
 evidently>=0.4.0,<0.5.0
+# plotly<6.0.0 : plotly.py>=6.0.0 encode les données des graphiques en
+# base64 compact (clés "dtype"/"bdata") au lieu de tableaux JSON classiques
+# ("x": [0, 1, ...]) — le Plotly.js embarqué par evidently 0.4.40 dans le
+# HTML généré (report.save_html()) ne sait pas décoder ce nouveau format :
+# les graphiques interactifs des rapports Evidently se rendent VIDES (axes
+# affichés, aucune barre) alors que les données sont bien présentes dans le
+# JSON. Vérifié empiriquement : même code, seule la version de plotly
+# change, "x": [0, 1] (5.24.1, OK) vs "x": {"dtype":"i1","bdata":"AAE="}
+# (6.9.0, cassé). evidently ne pin pas plotly lui-même (dépendance
+# transitive), d'où la résolution vers 6.x sur un build récent.
+plotly>=5.18.0,<6.0.0
 dvc[s3]>=3.0.0
 docker>=7.0.0
 pandera>=0.19.0

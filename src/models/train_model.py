@@ -50,19 +50,36 @@ _CONFIG_PATH = PROJECT_ROOT / "config" / "model_params.yml"
 _PERFORMANCE_REPORTS_DIR = Path("reports/drift")
 
 
-def _save_classification_report(y_test, y_proba, algorithm: str, run_id: str) -> str | None:
-    """Rapport Evidently ClassificationPreset (confusion matrix, ROC, PR curve,
-    calibration) sur X_test — purement informatif/visuel, généré pour CHAQUE
-    candidat (rf/xgboost/lgbm). N'influence jamais le gate KPI : les métriques
-    sklearn calculées juste avant (accuracy/f1/auc/recall) restent la seule
-    source de vérité pour la décision de promotion — cf. validate_model.py.
+def _save_classification_report(y_test, y_proba, algorithm: str, run_id: str, version: str) -> str | None:
+    """Rapport Evidently sur X_test — purement informatif/visuel, généré pour
+    CHAQUE candidat (rf/xgboost/lgbm). N'influence jamais le gate KPI : les
+    métriques sklearn calculées juste avant (accuracy/f1/auc/recall) restent
+    la seule source de vérité pour la décision de promotion — cf.
+    validate_model.py.
+
+    Sélection ciblée de 4 widgets standards (métriques clés, matrice de
+    confusion, ROC, PR) plutôt que ClassificationPreset() complet : les
+    autres widgets du preset (Class Representation, Class Separation
+    Quality, Quality by Feature Table) se sont révélés peu lisibles pour une
+    classification binaire — juste un bloc de couleur ou des traces sans
+    légende exploitable, confirmé visuellement par l'utilisateur sur un
+    rapport réel (pas seulement le JSON, qui lui était correct) — retenu
+    2026-08-25.
+
+    Nommé par version MLflow (pas run_id, illisible) pour être traçable
+    depuis l'onglet Modèles du Cockpit — v{version} y est l'identifiant déjà
+    affiché.
+
     Sauvegardé dans reports/drift/ (même dossier que les rapports de drift)
     pour apparaître automatiquement dans le dropdown de l'onglet Drift du
     Cockpit, sans changement UI supplémentaire.
     """
     try:
         from evidently import ColumnMapping
-        from evidently.metric_preset import ClassificationPreset
+        from evidently.metrics import (
+            ClassificationConfusionMatrix, ClassificationPRCurve,
+            ClassificationQualityMetric, ClassificationRocCurve,
+        )
         from evidently.report import Report
     except ImportError:
         logger.warning("evidently non installé — rapport de performance ignoré")
@@ -72,10 +89,13 @@ def _save_classification_report(y_test, y_proba, algorithm: str, run_id: str) ->
         column_mapping = ColumnMapping(
             target="target", prediction="prediction", task="classification", pos_label=1,
         )
-        report = Report(metrics=[ClassificationPreset()])
+        report = Report(metrics=[
+            ClassificationQualityMetric(), ClassificationConfusionMatrix(),
+            ClassificationRocCurve(), ClassificationPRCurve(),
+        ])
         report.run(reference_data=None, current_data=df, column_mapping=column_mapping)
         _PERFORMANCE_REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        html_path = _PERFORMANCE_REPORTS_DIR / f"performance_{algorithm}_{run_id[:8]}.html"
+        html_path = _PERFORMANCE_REPORTS_DIR / f"performance_{algorithm}_v{version}.html"
         report.save_html(str(html_path))
         return str(html_path)
     except Exception:
@@ -381,9 +401,6 @@ def train(
         mlflow.log_metrics(metrics)
 
         run_id = run.info.run_id
-        report_path = _save_classification_report(y_test, y_proba, algorithm, run_id)
-        if report_path:
-            logger.info("Rapport de performance Evidently : %s", report_path)
 
         below_kpi = {k: (v, KPI_THRESHOLDS[k])
                      for k, v in metrics.items() if v < KPI_THRESHOLDS[k]}
@@ -442,6 +459,18 @@ def train(
         finally:
             mlflow_sklearn_logger.setLevel(prev_levels[0])
             botocore_creds_logger.setLevel(prev_levels[1])
+
+        # Après log_model (nécessite la version enregistrée pour nommer le
+        # rapport de façon traçable depuis l'onglet Modèles du Cockpit).
+        if register:
+            mv_list = mlflow.tracking.MlflowClient().search_model_versions(f"run_id='{run_id}'")
+            version = mv_list[0].version if mv_list else run_id[:8]
+        else:
+            version = run_id[:8]
+        report_path = _save_classification_report(y_test, y_proba, algorithm, run_id, version)
+        if report_path:
+            logger.info("Rapport de performance Evidently : %s", report_path)
+
         mlflow.set_tag("algorithm",   algorithm)
         mlflow.set_tag("model_name",  model_name)
         mlflow.set_tag("trained_on",  str(sorted(years)))

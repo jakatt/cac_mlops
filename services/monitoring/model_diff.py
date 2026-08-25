@@ -90,6 +90,12 @@ def run_model_diff_report(candidate_run_id: str, candidate_algorithm: str) -> di
     production_model = mlflow.sklearn.load_model(f"models:/{MODEL_NAMES[production_algorithm]}@Production")
     candidate_model = mlflow.sklearn.load_model(f"runs:/{candidate_run_id}/model")
 
+    # Version MLflow du candidat (pas le run_id, illisible) — pour être
+    # traçable depuis l'onglet Modèles du Cockpit, même convention que
+    # train_model.py::_save_classification_report.
+    mv_list = client.search_model_versions(f"run_id='{candidate_run_id}'")
+    candidate_version = mv_list[0].version if mv_list else candidate_run_id[:8]
+
     production_pred = production_model.predict(golden)
     production_proba = production_model.predict_proba(golden)[:, 1]
     candidate_pred = candidate_model.predict(golden)
@@ -105,7 +111,7 @@ def run_model_diff_report(candidate_run_id: str, candidate_algorithm: str) -> di
         column_mapping=mapping,
     )
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    html_path = REPORTS_DIR / f"model_diff_{candidate_algorithm}_{candidate_run_id[:8]}.html"
+    html_path = REPORTS_DIR / f"model_diff_{candidate_algorithm}_v{candidate_version}_vs_{production_algorithm}_v{production_version}.html"
     report.save_html(str(html_path))
     result = report.as_dict()["metrics"][0]["result"]
 
@@ -124,6 +130,7 @@ def run_model_diff_report(candidate_run_id: str, candidate_algorithm: str) -> di
         "rows": len(golden),
         "candidate_algorithm": candidate_algorithm,
         "candidate_run_id": candidate_run_id,
+        "candidate_version": candidate_version,
         "production_algorithm": production_algorithm,
         "production_version": production_version,
         "flipped_share": round(flipped_share, 4),
