@@ -529,7 +529,12 @@ def _list_drift_reports() -> list[str]:
 def load_drift_report(report_name: str) -> str:
     if not report_name:
         return "<p style='color:#6B7280;padding:30px;font-size:0.95em;font-family:Inter,Segoe UI,sans-serif;'>Aucun rapport disponible — lancez au moins 2 cycles de training.</p>"
-    report_url = f"{PUBLIC_URL}/reports/drift/{report_name}"
+    # Servi directement par ce Cockpit (route /file= de Gradio, cf. allowed_paths
+    # au lancement) plutôt que via PUBLIC_URL/reports_live : ce dernier n'est
+    # resynchronisé qu'au GO d'un déploiement (sync_static_assets_task), alors
+    # que ce Cockpit admin lit déjà reports/drift en brut pour lister les
+    # rapports — passer par le gate public créait un 404 entre deux déploiements.
+    report_url = f"/gradio_api/file={REPORTS_PATH / report_name}"
     link = (
         f'<div style="margin-bottom:8px;font-family:Inter,Segoe UI,sans-serif;font-size:0.88em;color:#6B7280;">'
         f'⚠️ Si les graphes interactifs apparaissent vides, '
@@ -2982,5 +2987,6 @@ if __name__ == "__main__":
         show_error=True,
         theme=gr.themes.Base(),
         css=CSS,
+        allowed_paths=[str(REPORTS_PATH)],  # sert les rapports drift via /file=, cf. load_drift_report
     )
     uvicorn.run(_app, host="0.0.0.0", port=_port)
