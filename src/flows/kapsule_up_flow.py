@@ -424,6 +424,37 @@ def write_kapsule_state(kubeconfig: str) -> dict[str, str]:
     return ips
 
 
+@task(name="wait-public-endpoint")
+def wait_public_endpoint(max_minutes: int = 15, interval_s: int = 15) -> str:
+    """Le LoadBalancer Scaleway refuse les connexions tant que ses health
+    checks backend ne sont pas validés (plusieurs minutes après que le
+    service caddy a obtenu son IP), puis le certificat Let's Encrypt doit
+    être émis — sans cette attente le flow finissait alors que l'URL
+    publique répondait encore ERR_CONNECTION_REFUSED (constaté 2026-09-26)."""
+    import time
+    import requests as _req
+
+    logger = get_run_logger()
+    url = f"https://{KAPSULE_DOMAIN}/"
+    deadline = time.monotonic() + max_minutes * 60
+    last_err = ""
+    while time.monotonic() < deadline:
+        try:
+            r = _req.get(url, timeout=10)
+            if r.status_code == 200:
+                logger.info("✓ %s répond 200 — Kapsule accessible publiquement", url)
+                return "ok"
+            last_err = f"HTTP {r.status_code}"
+        except _req.RequestException as exc:
+            last_err = type(exc).__name__
+        logger.info("  %s pas encore accessible (%s), nouvel essai dans %ds", url, last_err, interval_s)
+        time.sleep(interval_s)
+    raise RuntimeError(
+        f"{url} toujours inaccessible après {max_minutes} min ({last_err}) — "
+        "cluster provisionné mais chemin public LB/DNS/TLS KO"
+    )
+
+
 @task(name="silence-bootstrap-alerts")
 def silence_bootstrap_alerts_task(duration_minutes: int = 15) -> None:
     """Kapsule vient de démarrer : Caddy doit obtenir son IP LoadBalancer, la
@@ -495,6 +526,7 @@ def kapsule_up_flow(
       9. Attend que le deployment api soit available
       10. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
           caddy, DNS interne pour gradio — reachable via Tailscale)
+      11. Attend que https://kapsule.jakat-inc.fr réponde 200 (LB + DNS + TLS)
     """
     silence_bootstrap_alerts_task()
     create_node_pool(node_type, node_count)
@@ -507,4 +539,5 @@ def kapsule_up_flow(
     apply_manifests(kubeconfig)
     wait_api_ready(kubeconfig)
     ips = write_kapsule_state(kubeconfig)
+    wait_public_endpoint()
     return ips
