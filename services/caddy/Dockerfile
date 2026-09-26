@@ -10,4 +10,7 @@ RUN xcaddy build \
 
 FROM caddy:2-alpine
 
+LABEL org.opencontainers.image.source="https://github.com/jakatt/cac_mlops" \
+      org.opencontainers.image.description="Caddy (TLS Let's Encrypt) recompilé avec le plugin certmagic-s3 — certificats partagés sur S3 entre répliques Kapsule"
+
 COPY --from=build /usr/bin/caddy /usr/bin/caddy

@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.source="https://github.com/jakatt/cac_mlops" \
+      org.opencontainers.image.description="API FastAPI de prédiction de gravité des accidents (JWT, /predict) — sert aussi d'image au worker Prefect (kubectl, CLI Scaleway, Docker CLI)"
+
 WORKDIR /app
 
 # system deps
