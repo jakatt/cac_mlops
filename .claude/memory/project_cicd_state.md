@@ -12,7 +12,7 @@ metadata:
 **Branches :** `mlops` (Jacques) et `DS` (Noel). CI configuré sur `["mlops", "DS"]`.
 
 **Branch protection main activée.**
-Règles : CI job "test" obligatoire, 1 review requise, force push interdit.
+Règles (vérifié 2026-09-26) : CI job "test" obligatoire, strict=true (branche à jour), AUCUNE review requise.
 **How to apply:** Ne jamais pusher directement sur `main`. Toujours PR depuis `mlops`.
 
 ---

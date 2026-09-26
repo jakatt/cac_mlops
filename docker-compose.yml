@@ -62,9 +62,12 @@ services:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID:      ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY:  ${MINIO_ROOT_PASSWORD:-minioadmin}
+    # Pilote explicite : depuis SQLAlchemy 2.1, postgresql:// utilise psycopg (v3),
+    # absent de l'image (seul psycopg2-binary est installé) — crash-loop MLflow
+    # après le rebuild du 26/09/2026.
     command: >
       mlflow server
-      --backend-store-uri postgresql://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}
+      --backend-store-uri postgresql+psycopg2://${POSTGRES_USER:-mlops}:${POSTGRES_PASSWORD:-mlops}@postgresql:5432/${POSTGRES_DB:-mlops}
       --default-artifact-root s3://mlflow/
       --host 0.0.0.0
       --port 5000
