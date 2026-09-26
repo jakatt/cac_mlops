@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.source="https://github.com/jakatt/cac_mlops" \
+      org.opencontainers.image.description="Serveur MLflow (tracking + model registry) avec pilotes PostgreSQL et S3 (psycopg2, boto3)"
+
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends curl \

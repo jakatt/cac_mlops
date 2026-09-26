@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.source="https://github.com/jakatt/cac_mlops" \
+      org.opencontainers.image.description="Cockpit Gradio — interface admin MLOps (VPS, Tailscale) et interface publique de prédiction / what-if / points noirs"
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
