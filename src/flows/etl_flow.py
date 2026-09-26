@@ -76,7 +76,7 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
     """
     pat = _fetch_gh_pat(log)
     if not pat:
-        log.warning("GH_PAT indisponible — %s non versionné dans DVC/git.", path)
+        log.error("event=alert topic=dvc_versioning_failed step=gh_pat path=%s — GH_PAT indisponible, non versionné dans DVC/git", path)
         return
 
     real_path = Path("/app") / path
@@ -93,7 +93,7 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
             capture_output=True, text=True,
         )
         if r.returncode != 0:
-            log.warning("git clone failed : %s", r.stderr.strip())
+            log.error("event=alert topic=dvc_versioning_failed step=git_clone path=%s — %s", path, r.stderr.strip())
             return
 
         # DVC refuse d'ajouter des fichiers à l'intérieur d'un dossier symlinké
@@ -145,7 +145,7 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
             cwd=clone_dir, capture_output=True, text=True, env=env,
         )
         if r.returncode != 0:
-            log.warning("dvc add failed (%s) : %s", path, r.stderr.strip())
+            log.error("event=alert topic=dvc_versioning_failed step=dvc_add path=%s — %s", path, r.stderr.strip())
             return
 
         dvc_file = f"{path}.dvc"
@@ -154,7 +154,7 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
             cwd=clone_dir, capture_output=True, text=True, env=env,
         )
         if r.returncode != 0:
-            log.warning("dvc push failed (%s) : %s", path, r.stderr.strip())
+            log.error("event=alert topic=dvc_versioning_failed step=dvc_push path=%s — %s", path, r.stderr.strip())
             return
         log.info("dvc push OK — %s → Scaleway S3", path)
 
@@ -173,7 +173,7 @@ def _dvc_push_and_git_commit(path: str, commit_message: str, log) -> None:
             cwd=clone_dir, capture_output=True, text=True, env=env,
         )
         if r.returncode != 0:
-            log.warning("git push failed : %s", r.stderr.strip())
+            log.error("event=alert topic=dvc_versioning_failed step=git_push path=%s — %s", path, r.stderr.strip())
         else:
             log.info("git push OK — %s → origin/main", dvc_file)
 

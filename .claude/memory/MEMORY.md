@@ -4,12 +4,14 @@
 - [VPS & stack state](project_state_vps.md) — 16 conteneurs, lgbm@Production toujours actif (rf rollback PR#202), blueprint main désync connue, incident disque récurrent
 - [CI/CD state](project_cicd_state.md) — PRs #35→#203, workflow DS exploration→blueprint (extract_blueprint auto PR), fix DVC push no-op, fix test-api trop strict
 - [KPI thresholds](project_kpi_thresholds.md) — f1≥0.60 · auc≥0.77 · acc≥0.72 · recall≥0.58 (split temporel, ~8% marge)
+- [Soutenance prep sept. 2026](project_soutenance_prep_2026_09.md) — soutenance 20/10, PR263 ouverte, jetons GitHub exp. 25/12, MinIO retiré Docker Hub, liens slide archi
 - [Soutenance schemas](project_soutenance_schemas.md) — 3 triggers CI/CD, blueprint mécanisme, slide sécurité + archi à updater
 - [Monitoring & alertes](project_monitoring_state.md) — PLG stack (Loki+Promtail) déployée, 7 alertes (4 Prometheus + 3 Loki), SMTP ✓
 - [Train cycles fixes](project_train_cycles_fixes.md) — 4 bugs corrigés train.yml lgbm
 - [Full-retrain historique](project_pending_fullretrain.md) — COMPLETED 2026-06-29, bugs corrigés documentés
 - [iCloud sync gotcha](feedback_icloud_sync.md) — repo dans ~/Documents synchronisé iCloud, fichiers dataless bloquent git status
 - [Branching rules](feedback_branching.md) — toujours sur `mlops`, jamais commiter sur `main` directement
+- [User owns merge & deploy](feedback_user_owns_merge_and_deploy.md) — jamais merger une PR ni relancer un deploy (gh run rerun) : geste de l'utilisateur
 - [PR workflow](feedback_pr_workflow.md) — une PR à la fois, ne jamais ajouter commits sur PR ouverte, attendre merge + resync avant suivante
 - [Deployment rules](feedback_deployment.md) — mounts override image baked, GRADIO_PUBLIC_URL HTTPS, scenarios.py monté gradio-public
 - [Autonomy preference](feedback_autonomy.md) — user délègue totalement, ne jamais interrompre mid-task
