@@ -264,8 +264,16 @@ jobs:
               # --no-parallel réduit la probabilité de la race ; le retry
               # (même principe que les tasks Prefect ETL, retries=2) absorbe
               # le cas où elle se produit quand même, sans intervention humaine.
+              # Seules nos images GHCR sont pull-ées : ce sont les seules que
+              # la CD vient de rebuild. Pull aussi les images tierces (:latest)
+              # changeait silencieusement leur version à chaque déploiement, et
+              # bloquait tout le déploiement dès qu'un éditeur retirait une image
+              # (incident 2026-09-26 : minio/minio et minio/mc supprimés de
+              # Docker Hub — les images en cache sur le VPS restent utilisées).
+              GHCR_SERVICES=$(docker compose config --format json | python3 -c 'import json,sys; print(" ".join(s for s,v in json.load(sys.stdin)["services"].items() if v.get("image","").startswith("ghcr.io/")))')
+              echo "Services GHCR à pull : ${GHCR_SERVICES}"
               PULL_ATTEMPTS=0
-              until docker compose pull --no-parallel; do
+              until docker compose pull --no-parallel $GHCR_SERVICES; do
                 PULL_ATTEMPTS=$((PULL_ATTEMPTS + 1))
                 if [ "$PULL_ATTEMPTS" -ge 3 ]; then
                   echo "::error::docker compose pull échoué après 3 tentatives"
