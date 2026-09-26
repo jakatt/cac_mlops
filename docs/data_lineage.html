@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lignée des données — DVC × Git × MLflow</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --git: #b45309; --git-bg: #fffbeb; --git-bd: #fcd34d;
+  --dvc: #7c3aed; --dvc-bg: #f5f3ff; --dvc-bd: #c4b5fd;
+  --mlf: #0e7490; --mlf-bg: #ecfeff; --mlf-bd: #67e8f9;
+  --ok: #15803d; --ok-bg: #f0fdf4; --ok-bd: #86efac;
+  --prod: #156082;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --git: #fbbf24; --git-bg: #2a1f00; --git-bd: #78350f;
+    --dvc: #a78bfa; --dvc-bg: #241b3d; --dvc-bd: #4c1d95;
+    --mlf: #22d3ee; --mlf-bg: #063540; --mlf-bd: #0e7490;
+    --ok: #4ade80; --ok-bg: #052e16; --ok-bd: #166534;
+    --prod: #4a9fc4;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --git: #fbbf24; --git-bg: #2a1f00; --git-bd: #78350f;
+  --dvc: #a78bfa; --dvc-bg: #241b3d; --dvc-bd: #4c1d95;
+  --mlf: #22d3ee; --mlf-bg: #063540; --mlf-bd: #0e7490;
+  --ok: #4ade80; --ok-bg: #052e16; --ok-bd: #166534;
+  --prod: #4a9fc4;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --git: #b45309; --git-bg: #fffbeb; --git-bd: #fcd34d;
+  --dvc: #7c3aed; --dvc-bg: #f5f3ff; --dvc-bd: #c4b5fd;
+  --mlf: #0e7490; --mlf-bg: #ecfeff; --mlf-bd: #67e8f9;
+  --ok: #15803d; --ok-bg: #f0fdf4; --ok-bd: #86efac;
+  --prod: #156082;
+}
+body { margin:0; }
+.ci-doc { background:var(--bg); min-height:100vh; }
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing:border-box;margin:0;padding:0; }
+.ci-doc .wrapper { max-width:1000px;margin:0 auto;padding:32px 20px 56px;color:var(--text); }
+.ci-doc a { color:var(--accent); text-decoration:none; }
+.ci-doc a:hover { text-decoration:underline; }
+.ci-doc code, .ci-doc .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:.92em; }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.55rem;font-weight:700;line-height:1.25;margin-bottom:10px;text-wrap:balance; }
+.ci-doc .page-sub { font-size:.9rem;color:var(--muted);max-width:720px; }
+.ci-doc .page-sub strong { color:var(--text); }
+.ci-doc h2 { font-size:1.05rem;font-weight:700;margin:38px 0 6px; }
+.ci-doc .h2-sub { font-size:.82rem;color:var(--muted);margin-bottom:14px;max-width:760px; }
+
+/* Tags Git / DVC / MLflow */
+.ci-doc .tag { display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid; }
+.ci-doc .tag-git { color:var(--git);background:var(--git-bg);border-color:var(--git-bd); }
+.ci-doc .tag-dvc { color:var(--dvc);background:var(--dvc-bg);border-color:var(--dvc-bd); }
+.ci-doc .tag-mlf { color:var(--mlf);background:var(--mlf-bg);border-color:var(--mlf-bd); }
+.ci-doc .tag-ok  { color:var(--ok);background:var(--ok-bg);border-color:var(--ok-bd); }
+.ci-doc .tag-prod{ color:#fff;background:var(--prod);border-color:var(--prod); }
+
+/* Chaîne de preuve */
+.ci-doc .chain { display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:22px;align-items:stretch; }
+.ci-doc .link { position:relative;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 14px 12px;margin-right:22px; }
+.ci-doc .link:last-child { margin-right:0;border:2px solid var(--prod); }
+.ci-doc .link:not(:last-child)::after { content:"→";position:absolute;right:-19px;top:50%;transform:translateY(-50%);font-size:1.1rem;color:var(--muted); }
+.ci-doc .link .step { font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center; }
+.ci-doc .link .what { font-size:.9rem;font-weight:700;line-height:1.3;margin-bottom:6px; }
+.ci-doc .link .facts { font-size:.76rem;color:var(--muted);line-height:1.5; }
+.ci-doc .link .facts b { color:var(--text);font-weight:600; }
+.ci-doc .link .go { display:block;margin-top:8px;font-size:.75rem;font-weight:600; }
+
+.ci-doc .proof { display:flex;gap:12px;align-items:flex-start;margin-top:18px;background:var(--ok-bg);border:1px solid var(--ok-bd);border-radius:10px;padding:12px 16px;font-size:.82rem; }
+.ci-doc .proof .ic { color:var(--ok);font-weight:700;font-size:1rem;line-height:1.3; }
+.ci-doc .proof strong { color:var(--text); }
+
+/* Frise des cycles */
+.ci-doc .cycles { display:grid;grid-template-columns:repeat(4,1fr);gap:12px; }
+.ci-doc .cycle { background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column; }
+.ci-doc .cycle.is-prod { border:2px solid var(--prod); }
+.ci-doc .cycle .c-num { font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted); }
+.ci-doc .cycle .c-years { font-size:1rem;font-weight:700;margin:2px 0 8px; }
+.ci-doc .ds { background:var(--dvc-bg);border:1px solid var(--dvc-bd);border-radius:8px;padding:8px 10px;font-size:.74rem;line-height:1.5;margin-bottom:10px; }
+.ci-doc .ds .ds-name { font-weight:700;color:var(--text);font-size:.68rem;font-family:ui-monospace,"SF Mono",Menlo,monospace;overflow-wrap:anywhere; }
+.ci-doc .ds .mono { color:var(--dvc); }
+.ci-doc .ds .split { color:var(--muted); }
+.ci-doc .models { width:100%;border-collapse:collapse;font-size:.72rem;margin-bottom:8px; }
+.ci-doc .models th { text-align:left;font-weight:600;color:var(--muted);padding:3px 2px;border-bottom:1px solid var(--border);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em; }
+.ci-doc .models td { padding:4px 2px;border-bottom:1px solid var(--border); }
+.ci-doc .models tr:last-child td { border-bottom:none; }
+.ci-doc .models tr.champ td { font-weight:700;color:var(--text); }
+.ci-doc .models tr:not(.champ) td { color:var(--muted); }
+.ci-doc .models td.num { text-align:right;font-variant-numeric:tabular-nums; }
+.ci-doc .cycle .c-links { margin-top:auto;font-size:.72rem;display:flex;flex-direction:column;gap:3px;padding-top:6px; }
+
+/* Tables */
+.ci-doc .tbl-wrap { overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px; }
+.ci-doc table.data { width:100%;border-collapse:collapse;font-size:.78rem; }
+.ci-doc table.data th { text-align:left;padding:9px 10px;font-size:.64rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap; }
+.ci-doc table.data td { padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top; }
+.ci-doc table.data tr:last-child td { border-bottom:none; }
+.ci-doc table.data td.num { text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap; }
+.ci-doc .who-auto { color:var(--ok);font-weight:600; }
+.ci-doc .small { font-size:.72rem;color:var(--muted); }
+
+/* Mécanisme */
+.ci-doc .mech { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
+.ci-doc .mcard { background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;font-size:.8rem; }
+.ci-doc .mcard h3 { font-size:.86rem;margin:6px 0 6px; }
+.ci-doc .mcard p { color:var(--muted); }
+.ci-doc pre { background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:.8rem;overflow-x:auto;line-height:1.6; }
+.ci-doc pre .c { color:var(--muted); }
+.ci-doc .note { font-size:.76rem;color:var(--muted);margin-top:10px;max-width:780px; }
+.ci-doc .footer { margin-top:40px;font-size:.72rem;color:var(--muted);border-top:1px solid var(--border);padding-top:12px; }
+
+@media (max-width: 860px) {
+  .ci-doc .chain, .ci-doc .cycles, .ci-doc .mech { grid-template-columns:1fr 1fr; }
+  .ci-doc .link { margin:0 0 12px 0; }
+  .ci-doc .link::after { display:none; }
+}
+@media (max-width: 560px) {
+  .ci-doc .chain, .ci-doc .cycles, .ci-doc .mech { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">Traçabilité · DVC × Git × MLflow</div>
+  <h1 class="page-title">Lignée des données — du fichier ONISR au modèle en production</h1>
+  <p class="page-sub">Pour n'importe quel modèle entraîné par la plateforme, on remonte <strong>à l'octet près</strong> jusqu'aux données qui l'ont produit, et on peut les restaurer à l'identique. DVC versionne les données, Git fige chaque version dans l'historique, MLflow relie chaque modèle au dataset exact utilisé pour l'entraîner.</p>
+
+  <!-- ─── Chaîne de preuve du modèle en production ─── -->
+  <h2>D'où vient le modèle en production ?</h2>
+  <p class="h2-sub">Chaîne complète pour <code>lgbm_accidents</code> v4, alias <b>@Production</b>. Chaque maillon est cliquable.</p>
+
+  <div class="chain">
+    <div class="link">
+      <div class="step">1 · Source <span class="tag tag-dvc">DVC</span></div>
+      <div class="what">Données brutes ONISR 2021 → 2024</div>
+      <div class="facts"><b>16 fichiers CSV</b> (4 par année) · <b>130,6 Mo</b><br>téléchargés tels quels depuis data.gouv.fr, jamais modifiés sur disque</div>
+      <a class="go" href="#raw">Voir les 4 versions ↓</a>
+    </div>
+    <div class="link">
+      <div class="step">2 · Dataset <span class="tag tag-dvc">DVC</span> <span class="tag tag-git">Git</span></div>
+      <div class="what mono">cumul_2021_2022_2023_2024</div>
+      <div class="facts">md5 <b class="mono">7fa0a46b1f3b…</b><br><b>172 693</b> lignes train (2021-23) · <b>64 934</b> test (2024)<br>commit auto <span class="mono">75edf98</span> par l'ETL</div>
+      <a class="go" href="https://github.com/jakatt/cac_mlops/commit/75edf982040bf97bed0c3688bfff8cd27a0e04a7" target="_blank" rel="noopener">Commit DVC sur GitHub ↗</a>
+    </div>
+    <div class="link">
+      <div class="step">3 · Entraînement <span class="tag tag-mlf">MLflow</span></div>
+      <div class="what">Run <span class="mono">1f5f3724</span></div>
+      <div class="facts">dataset <b>training</b> : <span class="mono">cumul_2021_2022_2023_2024</span> (172 693 lignes)<br>dataset <b>eval</b> : idem, 64 934 lignes<br>params : <span class="mono">years=[2021…2024]</span></div>
+      <a class="go" href="http://100.117.99.62:5001/#/experiments/1/runs/1f5f3724fc1b459b878c1776756b1d97" target="_blank" rel="noopener">Run MLflow ↗ <span class="small">(Tailscale)</span></a>
+    </div>
+    <div class="link">
+      <div class="step">4 · Modèle <span class="tag tag-prod">@Production</span></div>
+      <div class="what">lgbm_accidents v4</div>
+      <div class="facts">accuracy <b>0.764</b> · f1 <b>0.689</b><br>auc <b>0.837</b> · recall <b>0.767</b><br>promu le 31/08/2026</div>
+      <a class="go" href="https://mlops.jakat-inc.fr/reports/drift/performance_lgbm_v4.html" target="_blank" rel="noopener">Rapport de performance ↗</a>
+    </div>
+  </div>
+
+  <div class="proof">
+    <span class="ic">✓</span>
+    <div><strong>Vérifié le 26/09/2026, en direct sur le serveur de production.</strong> Les 4 datasets préprocessés et les 16 fichiers bruts présents sur le VPS ont été hachés et comparés aux manifestes DVC stockés sur S3 : <strong>32 fichiers sur 32 identiques</strong>, tous présents sur le remote S3. Le réentraînement complet du 31/08 a reproduit exactement les données versionnées le 22/07 : le preprocessing est <strong>déterministe</strong>, aucune nouvelle version n'a donc été créée.</div>
+  </div>
+
+  <!-- ─── Frise des cycles ─── -->
+  <h2>Quatre cycles, quatre versions du dataset, douze modèles</h2>
+  <p class="h2-sub">À chaque arrivée d'une année de données (Trigger 1), l'ETL produit un nouveau dataset cumulé, le versionne dans DVC, puis entraîne les 3 algorithmes dessus. Le champion (en gras) est comparé au modèle en place avant promotion.</p>
+
+  <div class="cycles">
+    <div class="cycle">
+      <div class="c-num">Cycle 1</div>
+      <div class="c-years">2021</div>
+      <div class="ds">
+        <div class="ds-name">2021</div>
+        md5 <span class="mono">6d09dc531bd0</span> · 5,6 Mo<br>
+        38 289 train · 16 410 test<br>
+        <span class="split">split aléatoire 70/30 (une seule année)</span>
+      </div>
+      <table class="models">
+        <tr><th>Modèle</th><th class="num">f1</th><th class="num">auc</th><th class="num">rec.</th></tr>
+        <tr class="champ"><td>rf v1 ★</td><td class="num">0.701</td><td class="num">0.843</td><td class="num">0.765</td></tr>
+        <tr><td>lgbm v1</td><td class="num">0.700</td><td class="num">0.848</td><td class="num">0.728</td></tr>
+        <tr><td>xgb v1</td><td class="num">0.659</td><td class="num">0.847</td><td class="num">0.606</td></tr>
+      </table>
+      <div class="c-links">
+        <a href="https://github.com/jakatt/cac_mlops/commit/16e7c1a681949475c567ecca9e79266eb92e545c" target="_blank" rel="noopener"><span class="tag tag-git">Git</span> commit 16e7c1a ↗</a>
+        <a href="http://100.117.99.62:5001/#/experiments/1/runs/ed3896c96bae446689c63ffcf74a91ac" target="_blank" rel="noopener"><span class="tag tag-mlf">MLflow</span> run champion ↗</a>
+      </div>
+    </div>
+
+    <div class="cycle">
+      <div class="c-num">Cycle 2</div>
+      <div class="c-years">2021 + 2022</div>
+      <div class="ds">
+        <div class="ds-name">cumul_2021_2022</div>
+        md5 <span class="mono">48fda640804d</span> · 11,1 Mo<br>
+        54 699 train · 53 270 test<br>
+        <span class="split">train 2021 · test 2022</span>
+      </div>
+      <table class="models">
+        <tr><th>Modèle</th><th class="num">f1</th><th class="num">auc</th><th class="num">rec.</th></tr>
+        <tr class="champ"><td>lgbm v2 ★</td><td class="num">0.703</td><td class="num">0.842</td><td class="num">0.757</td></tr>
+        <tr><td>rf v2</td><td class="num">0.700</td><td class="num">0.836</td><td class="num">0.776</td></tr>
+        <tr><td>xgb v2</td><td class="num">0.671</td><td class="num">0.841</td><td class="num">0.633</td></tr>
+      </table>
+      <div class="c-links">
+        <a href="https://github.com/jakatt/cac_mlops/commit/2529b806d5a9d17516625b96f89fb7b0a87abde1" target="_blank" rel="noopener"><span class="tag tag-git">Git</span> commit 2529b80 ↗</a>
+        <a href="http://100.117.99.62:5001/#/experiments/1/runs/baa4a24c8e204f9a95c10d62efb79183" target="_blank" rel="noopener"><span class="tag tag-mlf">MLflow</span> run champion ↗</a>
+        <a href="https://mlops.jakat-inc.fr/reports/drift/model_diff_lgbm_v2_vs_rf_v1.html" target="_blank" rel="noopener">Comparaison lgbm v2 vs rf v1 ↗</a>
+      </div>
+    </div>
+
+    <div class="cycle">
+      <div class="c-num">Cycle 3</div>
+      <div class="c-years">2021 → 2023</div>
+      <div class="ds">
+        <div class="ds-name">cumul_2021_2022_2023</div>
+        md5 <span class="mono">4c29c0c01900</span> · 17,7 Mo<br>
+        107 969 train · 64 724 test<br>
+        <span class="split">train 2021-22 · test 2023</span>
+      </div>
+      <table class="models">
+        <tr><th>Modèle</th><th class="num">f1</th><th class="num">auc</th><th class="num">rec.</th></tr>
+        <tr class="champ"><td>lgbm v3 ★</td><td class="num">0.692</td><td class="num">0.840</td><td class="num">0.756</td></tr>
+        <tr><td>rf v3</td><td class="num">0.684</td><td class="num">0.832</td><td class="num">0.756</td></tr>
+        <tr><td>xgb v3</td><td class="num">0.654</td><td class="num">0.835</td><td class="num">0.611</td></tr>
+      </table>
+      <div class="c-links">
+        <a href="https://github.com/jakatt/cac_mlops/commit/dc021cbd9b9c8ce11f9573e112cda00a526fc37a" target="_blank" rel="noopener"><span class="tag tag-git">Git</span> commit dc021cb ↗</a>
+        <a href="http://100.117.99.62:5001/#/experiments/1/runs/9126a431f7da437bbb47e6a4367c6711" target="_blank" rel="noopener"><span class="tag tag-mlf">MLflow</span> run champion ↗</a>
+        <a href="https://mlops.jakat-inc.fr/reports/drift/model_diff_lgbm_v3_vs_lgbm_v2.html" target="_blank" rel="noopener">Comparaison v3 vs v2 ↗</a>
+      </div>
+    </div>
+
+    <div class="cycle is-prod">
+      <div class="c-num">Cycle 4 · <span class="tag tag-prod">@Production</span></div>
+      <div class="c-years">2021 → 2024</div>
+      <div class="ds">
+        <div class="ds-name">cumul_2021_2022_2023_2024</div>
+        md5 <span class="mono">7fa0a46b1f3b</span> · 24,3 Mo<br>
+        172 693 train · 64 934 test<br>
+        <span class="split">train 2021-23 · test 2024</span>
+      </div>
+      <table class="models">
+        <tr><th>Modèle</th><th class="num">f1</th><th class="num">auc</th><th class="num">rec.</th></tr>
+        <tr class="champ"><td>lgbm v4 ★</td><td class="num">0.689</td><td class="num">0.837</td><td class="num">0.767</td></tr>
+        <tr><td>rf v4</td><td class="num">0.679</td><td class="num">0.828</td><td class="num">0.753</td></tr>
+        <tr><td>xgb v4</td><td class="num">0.645</td><td class="num">0.830</td><td class="num">0.603</td></tr>
+      </table>
+      <div class="c-links">
+        <a href="https://github.com/jakatt/cac_mlops/commit/75edf982040bf97bed0c3688bfff8cd27a0e04a7" target="_blank" rel="noopener"><span class="tag tag-git">Git</span> commit 75edf98 ↗</a>
+        <a href="http://100.117.99.62:5001/#/models/lgbm_accidents/versions/4" target="_blank" rel="noopener"><span class="tag tag-mlf">MLflow</span> modèle v4 ↗</a>
+        <a href="https://mlops.jakat-inc.fr/reports/drift/model_diff_lgbm_v4_vs_lgbm_v3.html" target="_blank" rel="noopener">Comparaison v4 vs v3 ↗</a>
+      </div>
+    </div>
+  </div>
+  <p class="note">Les métriques ne se comparent pas strictement d'un cycle à l'autre : le jeu de test change à chaque fois (c'est la dernière année disponible). La comparaison qui décide d'une promotion se fait entre modèles évalués sur le <em>même</em> jeu de test (rapports « Comparaison »).</p>
+
+  <!-- ─── Données brutes ─── -->
+  <h2 id="raw">Données brutes : ce qui arrive de data.gouv.fr</h2>
+  <p class="h2-sub">Premier des deux artefacts versionnés. Les fichiers ONISR sont stockés <b>tels que téléchargés</b> : les corrections (renommages de colonnes, typage) ne sont appliquées qu'en mémoire puis persistées dans le dataset préprocessé.</p>
+  <div class="tbl-wrap">
+    <table class="data">
+      <tr><th>Année</th><th>md5 DVC</th><th class="num">Taille</th><th class="num">Accidents</th><th class="num">Usagers</th><th class="num">Véhicules</th><th>Versionné par</th></tr>
+      <tr><td><b>2021</b></td><td class="mono">90c3e04bb8fa</td><td class="num">31,1 Mo</td><td class="num">56 519</td><td class="num">129 154</td><td class="num">97 316</td>
+        <td><a href="https://github.com/jakatt/cac_mlops/commit/44b41fa52261c09306220cf88f4c24bbca2cd9ac" target="_blank" rel="noopener">44b41fa</a> 17/06, manuel<br><a href="https://github.com/jakatt/cac_mlops/commit/4f7764ec1cf2a3a9fb2b271314dfeac913c7063a" target="_blank" rel="noopener">4f7764e</a> 22/07 <span class="small">— noms de fichiers normalisés</span></td></tr>
+      <tr><td><b>2022</b></td><td class="mono">d3a780724ead</td><td class="num">31,5 Mo</td><td class="num">55 303</td><td class="num">126 663</td><td class="num">94 494</td>
+        <td><a href="https://github.com/jakatt/cac_mlops/commit/9a31ad0cb3da391f5be5a4c6c0a53e2012140cc6" target="_blank" rel="noopener">9a31ad0</a> 18/06, manuel<br><a href="https://github.com/jakatt/cac_mlops/commit/4f7764ec1cf2a3a9fb2b271314dfeac913c7063a" target="_blank" rel="noopener">4f7764e</a> 22/07 <span class="small">— noms de fichiers normalisés</span></td></tr>
+      <tr><td><b>2023</b></td><td class="mono">74e9377a5a2b</td><td class="num">34,1 Mo</td><td class="num">54 823</td><td class="num">125 790</td><td class="num">93 586</td>
+        <td><a href="https://github.com/jakatt/cac_mlops/commit/ad847d2eb017713c9997ed1ddd45a045d582c032" target="_blank" rel="noopener">ad847d2</a> 18/06, manuel</td></tr>
+      <tr><td><b>2024</b></td><td class="mono">1d4f8c169a17</td><td class="num">33,8 Mo</td><td class="num">54 403</td><td class="num">125 188</td><td class="num">92 678</td>
+        <td><a href="https://github.com/jakatt/cac_mlops/commit/953ee4d14bc04ea7d40f442a4512c1b45d444410" target="_blank" rel="noopener">953ee4d</a> 21/07, <span class="who-auto">automatique (ETL Prefect)</span></td></tr>
+    </table>
+  </div>
+  <p class="note">L'historique raconte l'industrialisation : 2021 à 2023 ont été versionnées à la main pendant la mise en place, 2024 est la première année intégrée de bout en bout par le pipeline, sans intervention humaine. Le 22/07, le renommage canonique des fichiers de 2021 et 2022 (une faute de frappe côté ONISR, <code>carcteristiques</code>) a produit un nouveau md5 à taille identique : DVC trace même un simple changement de nom.</p>
+
+  <!-- ─── Mécanisme ─── -->
+  <h2>Comment ça marche</h2>
+  <p class="h2-sub">Les données ne vont jamais dans Git : Git ne stocke qu'un pointeur de quelques lignes, le contenu est sur S3, adressé par son empreinte.</p>
+  <div class="mech">
+    <div class="mcard">
+      <span class="tag tag-git">Git</span>
+      <h3>Un pointeur de 6 lignes</h3>
+      <p>Chaque dataset est représenté par un fichier <code>.dvc</code> : md5, taille, nombre de fichiers. Versionné, diffable, revu comme du code.</p>
+      <p style="margin-top:8px"><a href="https://github.com/jakatt/cac_mlops/blob/main/data/preprocessed/cumul_2021_2022_2023_2024.dvc" target="_blank" rel="noopener">Voir le fichier .dvc ↗</a></p>
+    </div>
+    <div class="mcard">
+      <span class="tag tag-dvc">DVC</span>
+      <h3>Le contenu sur S3</h3>
+      <p>Le remote Scaleway <code>s3://cac-mlops-data/dvc</code> stocke chaque fichier sous son md5. Une donnée identique n'est jamais stockée deux fois ; une donnée modifiée crée une nouvelle entrée, l'ancienne reste accessible.</p>
+    </div>
+    <div class="mcard">
+      <span class="tag tag-ok">Automatique</span>
+      <h3>Versionné par l'ETL</h3>
+      <p>Après validation Pandera et preprocessing, le flow Prefect fait <code>dvc add</code> + <code>dvc push</code>, puis commite le <code>.dvc</code> sur <code>main</code> avec <code>[skip ci]</code> pour ne pas relancer de déploiement.</p>
+    </div>
+  </div>
+
+  <h2>Restaurer n'importe quelle version</h2>
+  <p class="h2-sub">Exemple : retrouver exactement le dataset sur lequel le modèle en production a été entraîné.</p>
+<pre><span class="c"># 1. revenir au commit qui a versionné ce dataset</span>
+git checkout 75edf98 -- data/preprocessed/cumul_2021_2022_2023_2024.dvc
+
+<span class="c"># 2. télécharger depuis S3 le contenu correspondant à ce md5</span>
+dvc pull data/preprocessed/cumul_2021_2022_2023_2024.dvc
+
+<span class="c"># → data/preprocessed/cumul_2021_2022_2023_2024/ identique à l'octet près</span></pre>
+
+  <div class="footer">Instantané généré le 26/09/2026 à partir de l'historique Git des fichiers <code>.dvc</code>, du registre MLflow et d'une vérification des hachages sur le VPS. Les liens MLflow nécessitent l'accès Tailscale.</div>
+
+</div>
+</div>
+</body>
+</html>
