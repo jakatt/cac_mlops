@@ -636,7 +636,19 @@ def deploy_vps_flow(
         # ── 3bis. Compose up (Triggers 2 & 3 — changement de code) ─────────────
         # Seule étape qui interrompt le VPS pour le code — désormais après la gate.
         if rebuilt_services or restart_services:
-            compose_up_task(rebuilt_services, restart_services)
+            # Sans ce rollback, un échec ici laissait les services recréés-mais-
+            # non-démarrés, puis disk_cleanup_flow (finally) les supprimait :
+            # api/gradio disparus, prod en 502 jusqu'à intervention manuelle
+            # (incident 26/09/2026, mlflow unhealthy au démarrage).
+            try:
+                compose_up_task(rebuilt_services, restart_services)
+            except Exception as exc:
+                log.error(
+                    "event=alert severity=critical topic=deploy_failure reason=compose_up sha=%s — %s",
+                    sha_tag or "N/A", exc,
+                )
+                docker_rollback_task(sha_tag, rebuilt_services)
+                raise
             # Post-compose : ne vérifier que ce qui a réellement été touché par CE
             # déploiement (pas de check "aveugle" sur des services non concernés).
             touched = {s for s in f"{rebuilt_services},{restart_services}".split(",") if s}
