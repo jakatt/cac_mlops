@@ -938,6 +938,39 @@ def trigger_test_api() -> str:
     separator = "\n" + "─" * 40 + "\n"
     return separator.join(sections)
 
+def trigger_test_rate_limit() -> str:
+    """Lance le flow test-rate-limit et résume son verdict en langage simple —
+    les chiffres viennent de la ligne event=rate_limit_result du flow, le
+    détail étape par étape reste consultable dans Prefect."""
+    raw = _prefect_trigger("test-rate-limit")
+    if not raw.startswith("✓"):
+        # Échec, crash ou timeout : on garde le texte brut (message d'assertion
+        # explicite côté flow), précédé d'un verdict lisible.
+        return (
+            "❌ Protection anti-abus : test en échec\n\n"
+            "Au moins un niveau de limite ne bloque pas comme prévu — détail ci-dessous "
+            "(à vérifier dans services/nginx/nginx.conf).\n\n" + raw
+        )
+    line = next((ln for ln in raw.splitlines() if "event=rate_limit_result" in ln), "")
+    f = _parse_logfmt(line)
+    if not f:
+        return raw
+    return (
+        "✅ Protection anti-abus : 2 niveaux actifs\n\n"
+        "1. Limite par client (20/min, rafale 5)\n"
+        f"   Client A : {f['per_client_accepted']} prédictions acceptées, "
+        f"la n°{f['per_client_blocked_at']} refusée (HTTP 429).\n"
+        "   Client B, juste après : accepté — le blocage de A ne le pénalise pas.\n\n"
+        "2. Limite globale du serveur (60/min, rafale 20)\n"
+        f"   {f['global_clients']} clients envoyant chacun ≤ 3 requêtes (sous leur limite) : "
+        f"{f['global_accepted']} acceptées, la n°{f['global_blocked_at']} refusée (HTTP 429).\n"
+        f"   ({f['global_consumed_before']} places du quota global déjà prises par l'étape 1 : "
+        f"20 + 1 − {f['global_consumed_before']} = {21 - int(f['global_consumed_before'])} acceptées au plus.)\n\n"
+        "→ Un client abusif est bloqué seul, et le serveur reste protégé même face\n"
+        "  à beaucoup de clients raisonnables.\n\n"
+        "Détail des 5 étapes : Prefect → flow « test-rate-limit »."
+    )
+
 def trigger_diag() -> str:
     return _prefect_trigger("diag")
 
@@ -2872,6 +2905,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                             "desc": "Teste FastAPI VPS/K8s (health, JWT, 401, /predict, what-if vitesse vma=90 vs 50) et Gradio Public VPS/K8s (vrai /predict via gradio_client) — via le chemin utilisateur réel (Caddy → HTTPS → domaine public), pas le réseau interne. Rapport détaillé par accès ci-dessous.",
                             "opts": None,
                         },
+                        "Tester la protection anti-abus sur l'API": {
+                            "key": "test-rate-limit",
+                            "desc": "Vérifie les 2 niveaux de limite de nginx sur les prédictions FastAPI (POST /predict) : (1) par client — un client qui envoie trop de requêtes est bloqué (HTTP 429) sans pénaliser les autres ; (2) globale — le serveur plafonne la charge totale même si chaque client reste raisonnable. Plusieurs clients sont simulés depuis le réseau interne. Flow Prefect test-rate-limit en 5 étapes, ~5 s. Ne pas lancer pendant un déploiement : le quota global est épuisé ~15 s après le test.",
+                            "opts": None,
+                        },
                         "Diagnostiquer le VPS": {
                             "key": "diag",
                             "desc": "Capture l'état du VPS : conteneurs Docker actifs, images, utilisation disque, ports réseau ouverts. Durée ~15s.",
@@ -3012,6 +3050,8 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                             return trigger_reset(r_pred, r_drift, r_mlf, r_pg_full, r_minio, r_grafana, r_loki, r_full)
                         if key == "test-api":
                             return trigger_test_api()
+                        if key == "test-rate-limit":
+                            return trigger_test_rate_limit()
                         if key == "diag":
                             return trigger_diag()
                         if key == "disk-cleanup":

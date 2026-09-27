@@ -139,6 +139,14 @@ deployments:
     work_pool:
       name: default-process-pool
 
+  # ── Test rate-limit — 2 niveaux anti-abus nginx (par client + global) ──────
+  # Manuel uniquement (Cockpit → Orchestration) : la dernière étape épuise
+  # volontairement le quota global /predict, jamais lancé en CD.
+  - name: test-rate-limit
+    entrypoint: src/flows/test_rate_limit_flow.py:test_rate_limit_flow
+    work_pool:
+      name: default-process-pool
+
   # ── Test gradio-public — vrai /predict via gradio_client (pas un ping) ──────
   # Manquait jusqu'au 2026-07-29 : appelé en interne par deploy_vps_flow/
   # deploy_kapsule_flow via import Python direct (pas besoin de déploiement),
