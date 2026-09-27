@@ -392,10 +392,16 @@ jobs:
             # localhost:4200 n'est pas exposé sur l'hôte (seulement sur le réseau
             # docker interne) — exec dans prefect-worker pour joindre prefect-server
             # par son nom de service, avant de potentiellement le recréer lui-même.
+            # Runs de plus de 48h ignorés : une gate en pause expire au bout de
+            # 24h (pause_flow_run timeout=86400), donc au-delà c'est un run
+            # fantôme (état figé côté serveur) — deux d'entre eux (31/07) ont
+            # bloqué toute recréation pendant 2 mois : docker-compose.yml figé
+            # dans le conteneur, fix MLflow ignoré, prod coupée le 26/09.
+            SINCE=$(date -u -d '48 hours ago' +%Y-%m-%dT%H:%M:%SZ)
             ACTIVE_RUNS=$(docker compose exec -T prefect-worker curl -s -X POST \
               http://prefect-server:4200/api/flow_runs/filter \
               -H 'Content-Type: application/json' \
-              -d '{"flow_runs":{"state":{"type":{"any_":["RUNNING","PENDING","PAUSED"]}}}}' \
+              -d "{\"flow_runs\":{\"state\":{\"type\":{\"any_\":[\"RUNNING\",\"PENDING\",\"PAUSED\"]}},\"expected_start_time\":{\"after_\":\"${SINCE}\"}}}" \
               --max-time 5 2>/dev/null | jq 'length' 2>/dev/null || echo "-1")
 
             if [ "$ACTIVE_RUNS" = "0" ]; then
