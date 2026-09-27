@@ -2905,7 +2905,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                             "desc": "Teste FastAPI VPS/K8s (health, JWT, 401, /predict, what-if vitesse vma=90 vs 50) et Gradio Public VPS/K8s (vrai /predict via gradio_client) — via le chemin utilisateur réel (Caddy → HTTPS → domaine public), pas le réseau interne. Rapport détaillé par accès ci-dessous.",
                             "opts": None,
                         },
-                        "Tester la protection anti-abus (rate-limit)": {
+                        "Tester la protection anti-abus sur l'API": {
                             "key": "test-rate-limit",
                             "desc": "Vérifie les 2 niveaux de limite de nginx sur les prédictions FastAPI (POST /predict) : (1) par client — un client qui envoie trop de requêtes est bloqué (HTTP 429) sans pénaliser les autres ; (2) globale — le serveur plafonne la charge totale même si chaque client reste raisonnable. Plusieurs clients sont simulés depuis le réseau interne. Flow Prefect test-rate-limit en 5 étapes, ~5 s. Ne pas lancer pendant un déploiement : le quota global est épuisé ~15 s après le test.",
                             "opts": None,

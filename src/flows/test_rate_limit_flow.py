@@ -13,7 +13,7 @@ croit cet en-tête que depuis les réseaux privés Docker ; côté Internet, Cad
 l'écrase avec l'IP réelle — impossible à falsifier de l'extérieur.
 
 Déclenché manuellement : Cockpit → Orchestration → « Tester la protection
-anti-abus ». Jamais en CD : la dernière étape épuise volontairement le quota
+anti-abus sur l'API ». Jamais en CD : la dernière étape épuise volontairement le quota
 global (~15 s de 429 possibles pour un vrai client /predict).
 """
 from __future__ import annotations
