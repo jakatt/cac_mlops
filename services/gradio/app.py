@@ -2293,13 +2293,14 @@ def build_docs_html() -> str:
     PUBLIC_BASE  = os.getenv("PUBLIC_URL", "https://mlops.jakat-inc.fr")
     # (url, title, desc, label)
     docs = [
+        (f"{PUBLIC_BASE}/ci-docs/presentation.html",  "Présentation du projet",
+         "Vue d'ensemble, stack, 3 déclencheurs, cycle annuel des données — point d'entrée de la documentation",
+         "presentation.html"),
         (f"{PUBLIC_BASE}/ci-docs/guide_administrateur.html", "Guide administrateur",
          "Infrastructure VPS · Docker Compose · Tailscale · monitoring · Kapsule K8s — référence technique complète",
          "guide_administrateur.html"),
         (f"{PUBLIC_BASE}/ci-docs/architecture.html", "Architecture globale",
          "Stack interactive : VPS · Docker · Prefect · CI/CD · monitoring · Kapsule K8s", "architecture.html"),
-        (f"{PUBLIC_BASE}/ci-docs/execsum.html",       "Résumé exécutif",
-         "Synthèse du projet pour les décideurs",                              "execsum.html"),
         (f"{PUBLIC_BASE}/ci-docs/ds_guide.html",      "Guide Data Scientist",
          "Workflow DS : expérimentation MLflow, blueprint, DVC",               "ds_guide.html"),
         (f"{PUBLIC_BASE}/ci-docs/mlops_eng_guide.html", "Guide MLOps Engineer",
@@ -2328,8 +2329,6 @@ def build_docs_html() -> str:
         (f"{PUBLIC_BASE}/ci-docs/ci_cd_pipeline_runbook.html", "Runbook — échec pipeline CI/CD",
          "Que faire quand le déploiement post-merge échoue avant même de créer le flow run",
          "ci_cd_pipeline_runbook.html"),
-        (f"{PUBLIC_BASE}/ci-docs/readme.html",         "README",
-         "Vue d'ensemble et démarrage rapide du repository",                   "readme.html"),
     ]
     cards = "".join(f"""
   <a href="{url}" target="_blank"

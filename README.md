@@ -3,7 +3,7 @@
 Système MLOps de bout en bout qui prédit si un accident de la route impliquera une victime grave (hospitalisée ou tuée), à partir des données officielles ONISR publiées sur data.gouv.fr (2021 → 2024).
 
 - **Cockpit public** : [mlops.jakat-inc.fr](https://mlops.jakat-inc.fr) (Predict · What-if · Points noirs)
-- **Documentation complète** (15 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/readme.html)
+- **Documentation complète** (14 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/presentation.html)
 
 ## En bref
 
@@ -23,7 +23,7 @@ Système MLOps de bout en bout qui prédit si un accident de la route impliquera
 
 | Document | Pour qui |
 | --- | --- |
-| [Résumé exécutif](https://mlops.jakat-inc.fr/ci-docs/execsum.html) | Décideurs |
+| [Présentation du projet](https://mlops.jakat-inc.fr/ci-docs/presentation.html) | Point d'entrée · décideurs |
 | [Flux MLOps](https://mlops.jakat-inc.fr/ci-docs/flux_mlops.html) | Public non technique |
 | [Architecture](https://mlops.jakat-inc.fr/ci-docs/architecture.html) · [Guide administrateur](https://mlops.jakat-inc.fr/ci-docs/guide_administrateur.html) | Équipe technique |
 | [Mécanismes de résilience](https://mlops.jakat-inc.fr/ci-docs/resilience_mechanisms.html) | Gates, rollbacks, interruptions par déclencheur |

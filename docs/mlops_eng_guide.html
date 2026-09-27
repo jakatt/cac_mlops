@@ -162,32 +162,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
   <details>
     <summary>4 — Les 3 triggers de mise en production</summary>
     <div class="body">
-      <div class="tbl"><table>
-        <thead><tr><th>#</th><th>Trigger</th><th>Déclencheur</th><th>Pipeline</th><th>Gate promotion</th></tr></thead>
-        <tbody>
-          <tr>
-            <td><strong>1</strong></td>
-            <td>Nouvelle data ONISR</td>
-            <td>Prefect cron hebdo (<code>check-new-data</code>, lundi 8h)</td>
-            <td>ETL → validation → train → gate → promote → test-api → Kapsule</td>
-            <td>KPI absolus — promu même en légère régression, tant que ≤1 métrique régresse (≥2 → aucune promotion)</td>
-          </tr>
-          <tr>
-            <td><strong>2</strong></td>
-            <td>Nouveau code MLOps</td>
-            <td>push → PR → merge <code>main</code> (hors modèle)</td>
-            <td>build images (si nécessaire) → VPS prépare (pull code+images, flags) → gate (avant toute interruption) → compose up + smoke test → test-api → Kapsule (si OK)</td>
-            <td>Pas de réentraînement</td>
-          </tr>
-          <tr>
-            <td><strong>3</strong></td>
-            <td>Nouveau blueprint DS</td>
-            <td>push → PR → merge <code>main</code> (<code>config/model_params.yml</code> — guard CI bloque tout mélange code+blueprint)</td>
-            <td>train → si meilleur : gate → promote → test-api → Kapsule ; sinon : email DS</td>
-            <td>KPI absolus + delta F1 &gt; +0.01 vs @Production (même test set)</td>
-          </tr>
-        </tbody>
-      </table></div>
+      <p>Trois déclencheurs convergent vers le même flow <code>deploy-vps-flow</code>, avec une gate manuelle avant toute interruption : <strong>T1</strong> nouvelles données (cron <code>check-new-data</code>), <strong>T2</strong> nouveau code (merge sur main), <strong>T3</strong> nouveau blueprint (<code>config/model_params.yml</code> seul). Gates, rollbacks et règles de promotion détaillés — source unique : <a href="resilience_mechanisms.html">Mécanismes de résilience</a>.</p>
 
       <p class="sec-label">Détecter trigger 2 vs trigger 3 dans deploy.yml</p>
       <pre>BLUEPRINT_CHANGED=$(git diff HEAD~1 --name-only | grep -c '^config/model_params\.yml$')
@@ -201,31 +176,10 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
   <details>
     <summary>5 — Prefect — deployments</summary>
     <div class="body">
-      <p>Tous définis dans <code>prefect.yaml</code>. Pour re-enregistrer après modification :</p>
+      <p>Tous définis dans <code>prefect.yaml</code> et ré-enregistrés automatiquement par le CD (<code>prefect deploy --all</code> à chaque merge). Liste complète, déclencheurs et crons : <a href="guide_administrateur.html">Guide administrateur</a> §10 « Prefect » · vue d'ensemble : <a href="architecture.html">Architecture</a> (section Prefect).</p>
+      <p>Ré-enregistrement manuel (dépannage uniquement) :</p>
       <pre>ssh deploy@51.159.187.132
 docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</pre>
-      <div class="tbl"><table>
-        <thead><tr><th>Deployment</th><th>Flow</th><th>Trigger</th></tr></thead>
-        <tbody>
-          <tr><td><code>check-new-data</code></td><td><code>check_new_data_flow</code></td><td>cron lundi 8h (Europe/Paris)</td></tr>
-          <tr><td><code>etl</code></td><td><code>etl_flow</code></td><td>manuel / chaîné</td></tr>
-          <tr><td><code>train</code></td><td><code>train_flow</code></td><td>manuel / chaîné</td></tr>
-          <tr><td><code>update-model</code></td><td><code>update_model_flow</code></td><td>deploy.yml trigger 3</td></tr>
-          <tr><td><code>deploy-vps</code></td><td><code>deploy_vps_flow</code></td><td>deploy.yml trigger 2 · enfant de T1 (check-new-data) et T3 (update-model)</td></tr>
-          <tr><td><code>deploy-kapsule</code></td><td><code>deploy_kapsule_flow</code></td><td>fin de deploy-vps (si test-api VPS OK)</td></tr>
-          <tr><td><code>drift-check</code></td><td><code>drift_monitoring_flow</code></td><td>manuel / fin de retrain</td></tr>
-          <tr><td><code>prediction-drift-check</code></td><td><code>prediction_drift_flow</code></td><td>cron lundi 9h (Europe/Paris) + manuel — drift du trafic réel</td></tr>
-          <tr><td><code>full-retrain</code></td><td><code>full_retrain_flow</code></td><td>manuel (init complète)</td></tr>
-          <tr><td><code>reset</code></td><td><code>reset_flow</code></td><td>manuel (RAZ)</td></tr>
-          <tr><td><code>kapsule-up/down</code></td><td>flows Kapsule</td><td>manuel</td></tr>
-          <tr><td><code>diag</code></td><td><code>diag_flow</code></td><td>manuel</td></tr>
-          <tr><td><code>disk-cleanup</code></td><td><code>disk_cleanup_flow</code></td><td>cron 2h UTC quotidien + manuel</td></tr>
-          <tr><td><code>test-api</code></td><td><code>test_api_flow</code></td><td>fin de <code>deploy-vps-flow</code> / <code>deploy-kapsule-flow</code> (interne puis externe) + manuel</td></tr>
-          <tr><td><code>test-gradio-public</code></td><td><code>test_gradio_public_flow</code></td><td>idem test-api</td></tr>
-          <tr><td><code>test-rate-limit</code></td><td><code>test_rate_limit_flow</code></td><td>manuel (Cockpit → Orchestration) — jamais en CD</td></tr>
-          <tr><td><code>k8s-daemonset-health</code></td><td><code>k8s_daemonset_health_flow</code></td><td>manuel (Cockpit → Healthcheck)</td></tr>
-        </tbody>
-      </table></div>
     </div>
   </details>
 
@@ -233,16 +187,7 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</pre>
   <details>
     <summary>6 — Images Docker</summary>
     <div class="body">
-      <p>Quatre images buildées par <code>deploy.yml</code> (build conditionnel par service) et pushées sur GHCR :</p>
-      <div class="tbl"><table>
-        <thead><tr><th>Image</th><th>Dockerfile</th><th>Contient</th></tr></thead>
-        <tbody>
-          <tr><td><code>ghcr.io/jakatt/cac-mlops-api:latest</code></td><td><code>services/api/Dockerfile</code></td><td>FastAPI + flows Prefect + scripts + CLI docker/docker-compose (prefect-worker réutilise cette image)</td></tr>
-          <tr><td><code>ghcr.io/jakatt/cac-mlops-mlflow:latest</code></td><td><code>services/mlflow/Dockerfile</code></td><td>MLflow server (custom : boto3 + psycopg2)</td></tr>
-          <tr><td><code>ghcr.io/jakatt/cac-mlops-gradio:latest</code></td><td><code>services/gradio/Dockerfile</code></td><td>Cockpit admin (<code>app.py</code> — Tailscale) ET Cockpit public (<code>app_public.py</code>) — même image, <code>command:</code> overridée dans <code>docker-compose.yml</code></td></tr>
-          <tr><td><code>ghcr.io/jakatt/cac-mlops-caddy:latest</code></td><td><code>services/caddy/Dockerfile</code></td><td>Caddy + plugin de stockage S3 (certificats partagés entre répliques) — Kapsule uniquement</td></tr>
-        </tbody>
-      </table></div>
+      <p>Quatre images GHCR buildées par <code>deploy.yml</code> (build conditionnel par service) : <code>cac-mlops-api</code> (réutilisée par <code>prefect-worker</code>), <code>cac-mlops-mlflow</code>, <code>cac-mlops-gradio</code> (Cockpit admin et public — même image, commande différente) et <code>cac-mlops-caddy</code> (Kapsule uniquement). Détail : <a href="architecture.html">Architecture</a> (section CI/CD).</p>
       <p>Le prefect-worker utilise <code>cac-mlops-api</code> (toutes les dépendances ML sont là).</p>
 
       <p class="sec-label">Build local (debug)</p>
@@ -277,56 +222,12 @@ docker compose up -d api</pre>
         <thead><tr><th>Outil</th><th>URL</th><th>Rôle</th></tr></thead>
         <tbody>
           <tr><td><strong>Prometheus</strong></td><td><code>http://100.117.99.62:9090</code></td><td>Métriques brutes PromQL (API + système + drift)</td></tr>
-          <tr><td><strong>Loki</strong></td><td><code>http://100.117.99.62:3100</code></td><td>Logs centralisés (scrape Promtail Docker SD)</td></tr>
+          <tr><td><strong>Loki</strong></td><td><code>http://100.117.99.62:3100</code></td><td>Logs centralisés (Promtail VPS + push des logs K8s via Tailscale)</td></tr>
           <tr><td><strong>Grafana</strong></td><td><code>http://100.117.99.62:3000</code></td><td>Dashboards + alertes unifiées (email) — datasource K8s distante</td></tr>
         </tbody>
       </table></div>
 
-      <details>
-        <summary>12 alertes Grafana</summary>
-        <div class="body">
-          <p><strong>Prometheus VPS :</strong></p>
-          <ul>
-            <li><code>brute-force-401</code> : &gt; 20 erreurs 401 / 5 min</li>
-            <li><code>ddos-429</code> : &gt; 50 erreurs 429 / 5 min — ⚠️ lit <code>api_requests_total{status="429"}</code> (métrique FastAPI), or les 429 sont émis par nginx et n'atteignent jamais l'API : ne peut pas se déclencher en l'état</li>
-            <li><code>ram-critical</code> : RAM disponible &lt; 10%</li>
-            <li><code>disk-data-critical</code> : /data libre &lt; 15%</li>
-          </ul>
-          <p><strong>Loki :</strong></p>
-          <ul>
-            <li>Erreur de flow Prefect (ERROR / CRITICAL)</li>
-            <li>MLOps critique : <code>event=alert severity=critical</code> (échec de déploiement ou de Kapsule, validation de schéma, drift critique…)</li>
-            <li>MLOps warning : <code>event=alert severity=warning</code> (aucun champion, drift modéré, ONISR partiel…)</li>
-            <li>Pipeline CI/CD <code>deploy.yml</code> en échec (Trivy, schémas Prefect, déclenchement du flow)</li>
-            <li>Gate refusée (STOP)</li>
-            <li>Rollback déclenché</li>
-          </ul>
-          <p><strong>Prometheus K8s (groupe kapsule-monitoring) :</strong></p>
-          <ul>
-            <li>Replicas api sous le minimum HPA (&lt; 2 pendant 2 min)</li>
-            <li>Endpoint public <code>kapsule.jakat-inc.fr</code> down (2 min)</li>
-          </ul>
-        </div>
-      </details>
-
-      <details>
-        <summary>Dashboards Grafana (11)</summary>
-        <div class="body">
-          <div class="tbl"><table>
-            <thead><tr><th>Dashboard</th><th>Contenu</th></tr></thead>
-            <tbody>
-              <tr><td><code>home.json</code></td><td>Vue d'ensemble (modèle en prod, RAM/disque, disponibilité API, liens vers les autres)</td></tr>
-              <tr><td><code>api-performance.json</code></td><td>Latence p50/p95/p99, volume req/h, taux 5xx, distribution prédictions</td></tr>
-              <tr><td><code>resilience.json</code></td><td>Gates (GO/STOP), interruptions, rollbacks, erreurs flow, disponibilité API (Loki)</td></tr>
-              <tr><td><code>model-drift.json</code></td><td>drift_share évolution, features driftées, dernière date de détection</td></tr>
-              <tr><td><code>system-health.json</code></td><td>CPU / RAM / disk en temps réel (node-exporter)</td></tr>
-              <tr><td><code>kapsule-k8s.json</code></td><td>Replicas disponibles par Deployment, sonde publique blackbox, scrape up (Prometheus K8s distant)</td></tr>
-              <tr><td><code>fastapi-vps.json</code> · <code>fastapi-k8s.json</code> · <code>gradio-public-vps.json</code> · <code>gradio-public-k8s.json</code> · <code>gradio-admin-vps.json</code></td><td>Un dashboard par accès : disponibilité et indisponibilité cumulée 7 j, latence p50/p95/p99, erreurs 5xx, prédictions</td></tr>
-            </tbody>
-          </table></div>
-          <p>Dashboards définis dans <code>infrastructure/grafana/dashboards/</code>. Alertes dans <code>infrastructure/grafana/provisioning/alerting/alerting.yaml</code>.</p>
-        </div>
-      </details>
+      <p>Liste des alertes (et limite connue de l'alerte DDoS 429) et des dashboards : <a href="architecture.html">Architecture</a> (section Monitoring) — source unique. Fichiers : <code>infrastructure/grafana/provisioning/alerting/alerting.yaml</code> · <code>infrastructure/grafana/dashboards/</code>.</p>
     </div>
   </details>
 

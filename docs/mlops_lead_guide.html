@@ -102,6 +102,7 @@
   <details>
     <summary>2 — Les 3 scénarios de mise en production</summary>
     <div class="body">
+      <p>Cette section résume <strong>ton rôle</strong> sur chaque déclencheur. Le détail des contrôles, rollbacks et alertes est dans <a href="resilience_mechanisms.html">Mécanismes de résilience</a> (source unique) et, pour un public non technique, dans <a href="flux_mlops.html">Flux MLOps</a>.</p>
       <details>
         <summary>Trigger 1 — Nouvelle data ONISR (automatique, hebdo)</summary>
         <div class="body">
@@ -254,7 +255,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
           <tr><td>Disque /data</td><td>&lt; 15%</td><td>Lancer disk-cleanup manuellement</td></tr>
         </tbody>
       </table></div>
-      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code> pour les 12 règles Grafana : brute-force 401, DDoS 429 (⚠️ inopérante en l'état — lit une métrique FastAPI alors que les 429 viennent de nginx), RAM critique, disque critique, erreurs de flow Prefect, alertes MLOps critiques et warning (échec de déploiement, aucun champion, drift, versioning DVC…), pipeline CI/CD en échec, gate refusée (STOP), rollback, et côté Kapsule : replicas api sous le minimum HPA, endpoint public down.</p>
+      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code>. Liste complète des 12 règles et limite connue de l'alerte DDoS 429 : <a href="architecture.html">Architecture</a> (section Monitoring).</p>
     </div>
   </details>
 
