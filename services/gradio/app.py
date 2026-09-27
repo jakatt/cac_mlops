@@ -1388,6 +1388,74 @@ def _normalize_gate_metrics(metrics, champion: str | None) -> dict[str, dict]:
     return {algo: m for algo, m in metrics.items() if isinstance(m, dict)}
 
 
+# Ordre d'affichage du tableau de comparaison (F1 = métrique primaire).
+_COMPARE_METRICS = [("f1", "F1"), ("recall", "Recall"), ("auc", "AUC"), ("accuracy", "Accuracy")]
+
+
+def _render_prod_comparison(trigger: str, champion: str, champ_metrics: dict, prod: dict) -> str:
+    """Tableau @Production vs candidat + verdict de la règle réellement appliquée.
+
+    Règles dupliquées depuis select_champion_task() (src/flows/train_flow.py) :
+    T3 = F1 ≥ @Production + _MIN_IMPROVEMENT ; T1 = régression sur ≤1 métrique
+    (test sets d'années différentes, comparaison stricte non valide). Un candidat
+    qui échoue n'atteint jamais la gate — le flow s'arrête avant — d'où la
+    phrase explicative : sans elle, la carte laisse croire que la décision de
+    garder l'ancien modèle repose sur l'humain.
+    """
+    th = f"padding:4px 10px;color:{MUTED};font-size:.72rem;text-transform:uppercase;"
+    td = "padding:4px 10px;"
+    rows = ""
+    regressions = []
+    for key, label in _COMPARE_METRICS:
+        p_val = _as_float(prod.get(key))
+        c_val = _as_float(champ_metrics.get(key))
+        if p_val is not None and c_val is not None:
+            delta = c_val - p_val
+            if delta < 0:
+                regressions.append(key)
+            d_color = SUCCESS if delta >= 0 else DANGER
+            d_html = f'<span style="color:{d_color};font-weight:600;">{"🟢" if delta >= 0 else "🔴"} {delta:+.4f}</span>'
+        else:
+            d_html = "—"
+        is_rule = trigger == "T3" and key == "f1"
+        weight = "font-weight:700;" if is_rule else ""
+        rows += (
+            f'<tr><td style="{td}{weight}color:{SLATE};">{label}</td>'
+            f'<td style="{td}">{_fmt_metric(p_val)}</td>'
+            f'<td style="{td}{weight}">{_fmt_metric(c_val)}</td>'
+            f'<td style="{td}">{d_html}</td></tr>'
+        )
+
+    table = (
+        f'<p style="font-weight:700;color:{NAVY};margin:12px 0 4px 0;">Comparaison avec le modèle en production</p>'
+        '<table style="border-collapse:collapse;font-size:.85rem;margin-bottom:8px;">'
+        f'<tr><td style="{th}">Métrique</td>'
+        f'<td style="{th}">@Production <span style="text-transform:none;">({html.escape(str(prod["version"]))})</span></td>'
+        f'<td style="{th}">Candidat <span style="text-transform:none;">({html.escape(str(champion))})</span></td>'
+        f'<td style="{th}">Écart</td></tr>'
+        f'{rows}</table>'
+    )
+
+    if trigger == "T3":
+        delta = (_as_float(champ_metrics.get("f1")) or 0.0) - (_as_float(prod.get("f1")) or 0.0)
+        passed = delta >= _MIN_IMPROVEMENT
+        rule = f"le F1 doit progresser d'au moins +{_MIN_IMPROVEMENT} — écart F1 = {delta:+.4f}"
+        label = "Règle Trigger 3 (nouveau blueprint)"
+    else:
+        passed = len(regressions) < 2
+        reg_str = ", ".join(regressions) if regressions else "aucune"
+        rule = f"au plus 1 métrique en baisse — baisse(s) : {reg_str}"
+        label = "Règle Trigger 1 (nouvelles données)"
+    icon, color = ("✅", SUCCESS) if passed else ("❌", DANGER)
+
+    return (
+        table
+        + f'<p style="font-size:.85rem;color:{color};font-weight:600;margin:2px 0;">{icon} {label} : {rule}</p>'
+        + f'<p style="font-size:.8rem;color:{MUTED};margin:2px 0 0 0;">Un candidat qui ne respecte pas '
+        f'cette règle n\'arrive jamais à cette gate : le pipeline s\'arrête avant et @Production reste inchangé.</p>'
+    )
+
+
 def _render_gate_card(run_id: str) -> str:
     """Carte de décision d'une gate. Ne lève jamais : une exception ici fait
     échouer tout refresh_gate_queue() (file, dropdown et carte), ce qui bloquait
@@ -1464,35 +1532,7 @@ def _render_gate_card_unsafe(run_id: str) -> str:
 
         prod = _current_production_summary()
         if prod:
-            parts.append(
-                f'<p style="font-size:.82rem;color:{SLATE};">@Production actuel : '
-                f'<b>{prod["version"]}</b> — F1={prod["f1"]} · AUC={prod["auc"]} · '
-                f'Accuracy={prod["accuracy"]} · Recall={prod["recall"]}</p>'
-            )
-            # Règle de comparaison réellement appliquée par select_champion_task()
-            # (src/flows/train_flow.py) — affichée ici pour que le verdict GO/STOP
-            # ne dépende pas d'un calcul mental sur les chiffres bruts ci-dessus.
-            champ_metrics = metrics.get(champion, {})
-            if trigger == "T3":
-                delta = (_as_float(champ_metrics.get("f1")) or 0.0) - (_as_float(prod["f1"]) or 0.0)
-                passed = delta >= _MIN_IMPROVEMENT
-                icon, color = (("✅", SUCCESS) if passed else ("❌", DANGER))
-                parts.append(
-                    f'<p style="font-size:.82rem;color:{color};font-weight:600;">{icon} Règle Trigger 3 : '
-                    f'+{_MIN_IMPROVEMENT} f1 minimum vs @Production — delta = {delta:+.4f}</p>'
-                )
-            else:
-                regressions = [
-                    k for k in _KPI_THRESHOLDS
-                    if (_as_float(champ_metrics.get(k)) or 0.0) < (_as_float(prod.get(k)) or 0.0)
-                ]
-                passed = len(regressions) < 2
-                icon, color = (("✅", SUCCESS) if passed else ("❌", DANGER))
-                reg_str = ", ".join(regressions) if regressions else "aucune"
-                parts.append(
-                    f'<p style="font-size:.82rem;color:{color};font-weight:600;">{icon} Règle Trigger 1 : '
-                    f'régression tolérée sur ≤1 métrique vs @Production — régression(s) : {reg_str}</p>'
-                )
+            parts.append(_render_prod_comparison(trigger, champion, metrics.get(champion, {}), prod))
         else:
             parts.append(
                 f'<p style="font-size:.82rem;color:{MUTED};">Pas de @Production existant — '
