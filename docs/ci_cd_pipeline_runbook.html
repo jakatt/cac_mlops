@@ -88,6 +88,20 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Accès GHCR refusé (<code>denied</code> / 401) — jeton expiré <span class="tag tag-nok">bloquant</span></div>
+    <div class="card-body">
+      <div class="row"><span class="row-label">Symptôme</span><span class="row-value">Le job <code>trigger-deploy</code> échoue au <code>docker login ghcr.io</code> ou au <code>docker compose pull</code> (<code>denied</code>, <code>unauthorized</code>, 401). Variante côté flow T1 : échec du commit des pointeurs <code>.dvc</code> (alerte <code>dvc_versioning_failed</code>).</span></div>
+      <div class="row"><span class="row-label">Cause</span><span class="row-value">Jeton GitHub (PAT classic) expiré, sans aucun préavis : <code>GHCR_TOKEN</code> (<code>read:packages</code>, dans <code>/data/cac_mlops/.env</code>) ou jeton de l'ETL (<code>repo</code>, dans <code>s3://cac-mlops-data/secrets/gh_pat</code>). Prochaine expiration des deux : <strong>25/12/2026</strong> (déjà vécu le 26/09/2026).</span></div>
+      <div class="row"><span class="row-label">Résolution</span>
+        <ul class="fix-list">
+          <li>Régénérer le jeton concerné sur GitHub (mêmes scopes), puis le remplacer dans <code>.env</code> (VPS) ou sur S3 — ne jamais le commiter.</li>
+          <li>Relancer le job <code>trigger-deploy</code> depuis GitHub Actions.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title"><code>prefect deploy --all</code> échoué (resync des schémas) <span class="tag tag-nok">bloquant</span></div>
     <div class="card-body">
       <div class="row"><span class="row-label">Symptôme</span><span class="row-value">Job <code>trigger-deploy</code> en échec, annotation <code>::error::prefect deploy --all échoué</code>.</span></div>
@@ -110,7 +124,7 @@
       <div class="row"><span class="row-label">Cause</span><span class="row-value">Le plus souvent un schéma de paramètres périmé, ou un incident transitoire réseau/Prefect au moment du déclenchement.</span></div>
       <div class="row"><span class="row-label">Résolution</span>
         <ul class="fix-list">
-          <li><strong>Le plus rapide</strong> : bouton <strong>« Réessayer le déclenchement »</strong> dans l'onglet Cockpit — rejoue automatiquement <code>prefect deployment run</code> avec exactement les mêmes paramètres (SHA, needs_build, restart_services) que la tentative échouée.</li>
+          <li><strong>Le plus rapide</strong> : bouton <strong>« Réessayer le déclenchement »</strong> dans l'onglet Cockpit — rejoue automatiquement <code>prefect deployment run</code> avec exactement les mêmes paramètres (SHA, rebuilt_services, restart_services) que la tentative échouée.</li>
           <li>Si le bouton indique des informations insuffisantes : relancer le job <code>trigger-deploy</code> depuis GitHub Actions (Re-run failed jobs).</li>
           <li>En dernier recours : SSH sur le VPS et rejouer manuellement la commande <code>prefect deployment run '&lt;flow&gt;/&lt;deployment&gt;' --param ...</code> (voir <code>.github/workflows/deploy.yml</code> pour la syntaxe exacte selon T2/T3).</li>
         </ul>

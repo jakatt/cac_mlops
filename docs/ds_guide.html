@@ -110,10 +110,10 @@ dvc remote modify --local scaleway secret_access_key &lt;SECRET_KEY&gt;</pre>
       <pre>./scripts/ds_session_start.sh</pre>
       <p>Détail de ce que fait le script, si tu préfères le faire à la main ou comprendre les étapes :</p>
       <pre># Données brutes → data/raw/{year}/
-dvc pull data/raw/2023.dvc
+dvc pull data/raw/2024.dvc
 
-# Preprocessing (cumul 2021+2022+2023) → data/preprocessed/cumul_2021_2022_2023/
-python -m src.data.make_dataset --year 2023 --cumul</pre>
+# Preprocessing (cumul 2021→2024, test = 2024) → data/preprocessed/cumul_2021_2022_2023_2024/
+python -m src.data.make_dataset --year 2024 --cumul</pre>
     </div>
   </details>
 
@@ -128,7 +128,7 @@ python -m src.data.make_dataset --year 2023 --cumul</pre>
         <div class="body">
           <p><strong>Objectif :</strong> identifier les valeurs optimales à consigner ensuite dans <code>config/model_params.yml</code>.</p>
           <pre># MLFLOW_RUN_MODE=explore (défaut) → runs dans "accidents_severity_dev"
-python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
+python -m src.models.train_model --year 2024 --cumul --algorithm lgbm \
   --n-estimators 500 --num-leaves 127 --learning-rate 0.03 --no-register</pre>
           <p><strong>Tous les hyperparamètres du blueprint</strong> sont overridables en CLI (pas seulement 4) — la liste complète par algo est en section 5. <code>python -m src.models.train_model --help</code> affiche tous les flags disponibles. <code>--no-register</code> évite d'enregistrer le modèle dans le Model Registry pour un run purement exploratoire.</p>
         </div>
@@ -141,8 +141,8 @@ python -m src.models.train_model --year 2023 --cumul --algorithm lgbm \
 from lightgbm import LGBMClassifier
 import pandas as pd, numpy as np
 
-X_train = pd.read_csv("data/preprocessed/cumul_2021_2022_2023/X_train.csv")
-y_train = np.ravel(pd.read_csv("data/preprocessed/cumul_2021_2022_2023/y_train.csv"))
+X_train = pd.read_csv("data/preprocessed/cumul_2021_2022_2023_2024/X_train.csv")
+y_train = np.ravel(pd.read_csv("data/preprocessed/cumul_2021_2022_2023_2024/y_train.csv"))
 
 param_grid = {
     "n_estimators":      [200, 300, 500],
@@ -213,8 +213,9 @@ git push origin DS</pre>
           <p><code>deploy.yml</code> détecte que <code>config/model_params.yml</code> a changé et déclenche <code>update-model-flow</code> qui :</p>
           <ul>
             <li>Entraîne les 3 algos avec les hyperparamètres de <code>config/model_params.yml</code> sur données prod</li>
-            <li><strong>Meilleur</strong> → gate manuelle (onglet Cockpit ou Prefect UI) + promote @Production + restart API</li>
+            <li><strong>Meilleur</strong> (F1 ≥ @Production + 0.01) → gate manuelle (onglet Cockpit ou Prefect UI, avec tableau de comparaison @Production vs candidat) → après GO : promote @Production + restart API</li>
             <li><strong>Pas meilleur</strong> → email de notification (stop, aucune promotion)</li>
+            <li><strong>STOP à la gate, ou test-api KO après promotion</strong> → @Production inchangé (ou restauré) et <code>config/model_params.yml</code> reverté automatiquement sur main — le blueprint en place reste toujours celui du modèle réellement en production</li>
           </ul>
         </div>
       </details>
@@ -294,7 +295,7 @@ pytest tests/unit/ --cov=src --cov=services --cov-report=term-missing
 
 # Tests d'intégration (Docker Compose requis)
 RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
-      <p>La CI (<code>ci.yml</code>) tourne automatiquement sur chaque push/PR.</p>
+      <p>La CI (<code>ci.yml</code>) tourne automatiquement sur chaque PR vers <code>main</code> (et à chaque nouveau push sur une PR ouverte).</p>
     </div>
   </details>
 
@@ -302,7 +303,7 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
   <details>
     <summary>8 — Branches et workflow Git</summary>
     <div class="body">
-      <pre>DS  →  PR vers main  →  review MLOps lead  →  merge  →  CI + deploy auto</pre>
+      <pre>DS  →  PR vers main  →  CI (tests)  →  relecture + merge par le MLOps lead  →  deploy auto (trigger 3)</pre>
       <ul>
         <li>Travailler sur la branche <code>DS</code>, <strong>jamais directement sur <code>main</code></strong></li>
         <li>Resynchroniser <code>DS</code> sur <code>origin/main</code> avant de commencer une nouvelle série de changements (<code>./scripts/ds_session_start.sh</code> le fait automatiquement, cf. section 2)</li>

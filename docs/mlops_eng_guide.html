@@ -92,10 +92,10 @@
 │  prefect-server :4200   prefect-worker (process pool)                 │
 │  mlflow :5001           minio :9000/:9001  postgresql :5432           │
 │  prometheus :9090       grafana :3000                                 │
-│  node-exporter :9100    nginx-exporter :9113                          │
+│  node-exporter :9100    nginx-exporter :9113    blackbox-exporter     │
 │  loki :3100             promtail (scrape Docker SD)                   │
 │                                                                       │
-│  gradio :7860  (cockpit MLOps 10 onglets — Tailscale)                 │
+│  gradio :7860  (cockpit MLOps 6 onglets — Tailscale)                  │
 └──────────────────────────────────────────────────────────────────────┘</pre>
 
       <p class="sec-label">Bind mounts critiques (prefect-worker)</p>
@@ -110,29 +110,24 @@
           <tr><td><code>/var/run/docker.sock</code></td><td>idem</td><td>Docker-in-Docker pour restart API</td></tr>
         </tbody>
       </table></div>
-      <p><strong>Important :</strong> les flows Prefect sont chargés depuis le bind-mount (pas l'image). Un SCP suffit pour mettre à jour un flow sans rebuild.</p>
+      <p><strong>Important :</strong> les flows Prefect sont chargés depuis le bind-mount (pas l'image) — un merge sur main suffit à mettre à jour un flow, sans rebuild d'image.</p>
     </div>
   </details>
 
   <!-- 2. DEPLOY DIRECT -->
   <details>
-    <summary>2 — Deploy direct (phase dev — sans GitHub Actions)</summary>
+    <summary>2 — Intervention directe sur le VPS (urgence uniquement)</summary>
     <div class="body">
-      <pre># Flow Prefect
-scp src/flows/mon_flow.py deploy@51.159.187.132:/data/cac_mlops/src/flows/
-# Effet immédiat au prochain run Prefect (pas de restart nécessaire)
+      <div class="band"><strong>⚠️ Hors procédure.</strong> Tout changement passe par une PR vers <code>main</code> : le CD (<code>deploy.yml</code>) fait un <code>git stash</code> + <code>git pull</code> sur le VPS, donc une modification copiée à la main est écrasée au déploiement suivant. À réserver au dépannage, puis à reporter aussitôt dans une PR.</div>
+      <pre># Rétablir un service en urgence (ex. image précédente retaggée :latest)
+ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose up -d &lt;service&gt;"
 
-# Config blueprint
-scp config/model_params.yml deploy@51.159.187.132:/data/cac_mlops/config/
-# Effet immédiat (bind-mount rw)
-
-# Fichier nginx
-scp services/nginx/nginx.conf deploy@51.159.187.132:/data/cac_mlops/services/nginx/nginx.conf
+# Recharger nginx après une correction de config déjà mergée
 ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart nginx"
 
-# docker-compose.yml (nouveau service ou nouveau volume)
-scp docker-compose.yml deploy@51.159.187.132:/data/cac_mlops/docker-compose.yml
-ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose up -d --no-recreate"</pre>
+# À NE PAS faire : pré-puller les images avant un déploiement
+# (le tag :rollback posé par le CD deviendrait identique à la nouvelle image)
+# ni docker image prune -a (une autre application partage le VPS)</pre>
     </div>
   </details>
 
@@ -143,13 +138,13 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose up -d --
       <div class="tbl"><table>
         <thead><tr><th>Workflow</th><th>Trigger</th><th>Rôle</th></tr></thead>
         <tbody>
-          <tr><td><strong>ci.yml</strong></td><td>push/PR → <code>main</code>, branches <code>mlops</code> et <code>DS</code></td><td>pip-audit + flake8 + pytest tests/unit/</td></tr>
+          <tr><td><strong>ci.yml</strong></td><td>PR → <code>main</code> (depuis <code>mlops</code> ou <code>DS</code>)</td><td>blueprint isolation check + pip-audit + flake8 + pytest tests/unit/ (54 tests) — check <code>test</code> obligatoire pour merger</td></tr>
           <tr><td><strong>deploy.yml</strong></td><td>push → <code>main</code></td><td>Build images (si changées) → VPS prépare (git pull, pull images, calcul flags) → déclenche <code>deploy-vps-flow</code> ou <code>update-model-flow</code> (Prefect) — interruption APRÈS la gate manuelle</td></tr>
           <tr><td><strong>cleanup.yml</strong></td><td>cron dimanche 3h UTC</td><td>Nettoyage NVMe (docker prune, logs)</td></tr>
         </tbody>
       </table></div>
 
-      <p class="sec-label">Secrets GitHub requis</p>
+      <p class="sec-label">Secrets GitHub réellement utilisés par les workflows</p>
       <div class="tbl"><table>
         <thead><tr><th>Secret</th><th>Valeur</th></tr></thead>
         <tbody>
@@ -157,12 +152,9 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose up -d --
           <tr><td><code>SCALEWAY_USER</code></td><td><code>deploy</code></td></tr>
           <tr><td><code>SCALEWAY_SSH_KEY</code></td><td>Clé privée SSH du runner</td></tr>
           <tr><td><code>DEPLOY_DIR</code></td><td><code>/data/cac_mlops</code></td></tr>
-          <tr><td><code>JWT_SECRET_KEY</code></td><td>Secret JWT production</td></tr>
-          <tr><td><code>API_USERNAME</code> / <code>API_PASSWORD</code></td><td>Credentials API</td></tr>
-          <tr><td><code>MINIO_ROOT_USER</code> / <code>MINIO_ROOT_PASSWORD</code></td><td>Credentials MinIO</td></tr>
-          <tr><td><code>KAPSULE_CLUSTER_ID</code></td><td>(optionnel) ID cluster K8s Scaleway</td></tr>
         </tbody>
       </table></div>
+      <p>Les secrets applicatifs (JWT, identifiants API/Postgres/MinIO, clés Scaleway) vivent dans <code>/data/cac_mlops/.env</code> sur le VPS, et les secrets rotables sur S3 (<code>s3://cac-mlops-data/secrets/</code>) — pas dans GitHub. Jetons GitHub (PAT) à surveiller : <code>GHCR_TOKEN</code> (<code>.env</code> VPS, <code>read:packages</code>) et le jeton de l'ETL (S3 <code>secrets/gh_pat</code>, <code>repo</code>) — <strong>expiration le 25/12/2026</strong>, sans aucun préavis automatique.</p>
     </div>
   </details>
 
@@ -215,18 +207,23 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</pre>
       <div class="tbl"><table>
         <thead><tr><th>Deployment</th><th>Flow</th><th>Trigger</th></tr></thead>
         <tbody>
-          <tr><td><code>check-new-data</code></td><td><code>check_new_data_flow</code></td><td>cron lundi 8h</td></tr>
+          <tr><td><code>check-new-data</code></td><td><code>check_new_data_flow</code></td><td>cron lundi 8h (Europe/Paris)</td></tr>
           <tr><td><code>etl</code></td><td><code>etl_flow</code></td><td>manuel / chaîné</td></tr>
           <tr><td><code>train</code></td><td><code>train_flow</code></td><td>manuel / chaîné</td></tr>
           <tr><td><code>update-model</code></td><td><code>update_model_flow</code></td><td>deploy.yml trigger 3</td></tr>
-          <tr><td><code>deploy-vps</code></td><td><code>deploy_vps_flow</code></td><td>deploy.yml trigger 2</td></tr>
+          <tr><td><code>deploy-vps</code></td><td><code>deploy_vps_flow</code></td><td>deploy.yml trigger 2 · enfant de T1 (check-new-data) et T3 (update-model)</td></tr>
+          <tr><td><code>deploy-kapsule</code></td><td><code>deploy_kapsule_flow</code></td><td>fin de deploy-vps (si test-api VPS OK)</td></tr>
           <tr><td><code>drift-check</code></td><td><code>drift_monitoring_flow</code></td><td>manuel / fin de retrain</td></tr>
+          <tr><td><code>prediction-drift-check</code></td><td><code>prediction_drift_flow</code></td><td>cron lundi 9h (Europe/Paris) + manuel — drift du trafic réel</td></tr>
           <tr><td><code>full-retrain</code></td><td><code>full_retrain_flow</code></td><td>manuel (init complète)</td></tr>
           <tr><td><code>reset</code></td><td><code>reset_flow</code></td><td>manuel (RAZ)</td></tr>
           <tr><td><code>kapsule-up/down</code></td><td>flows Kapsule</td><td>manuel</td></tr>
           <tr><td><code>diag</code></td><td><code>diag_flow</code></td><td>manuel</td></tr>
           <tr><td><code>disk-cleanup</code></td><td><code>disk_cleanup_flow</code></td><td>cron 2h UTC quotidien + manuel</td></tr>
-          <tr><td><code>test-api</code></td><td><code>test_api_flow</code></td><td>fin de <code>deploy-vps-flow</code> + manuel</td></tr>
+          <tr><td><code>test-api</code></td><td><code>test_api_flow</code></td><td>fin de <code>deploy-vps-flow</code> / <code>deploy-kapsule-flow</code> (interne puis externe) + manuel</td></tr>
+          <tr><td><code>test-gradio-public</code></td><td><code>test_gradio_public_flow</code></td><td>idem test-api</td></tr>
+          <tr><td><code>test-rate-limit</code></td><td><code>test_rate_limit_flow</code></td><td>manuel (Cockpit → Orchestration) — jamais en CD</td></tr>
+          <tr><td><code>k8s-daemonset-health</code></td><td><code>k8s_daemonset_health_flow</code></td><td>manuel (Cockpit → Healthcheck)</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -236,13 +233,14 @@ docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</pre>
   <details>
     <summary>6 — Images Docker</summary>
     <div class="body">
-      <p>Trois images buildées par <code>deploy.yml</code> et pushées sur GHCR :</p>
+      <p>Quatre images buildées par <code>deploy.yml</code> (build conditionnel par service) et pushées sur GHCR :</p>
       <div class="tbl"><table>
         <thead><tr><th>Image</th><th>Dockerfile</th><th>Contient</th></tr></thead>
         <tbody>
           <tr><td><code>ghcr.io/jakatt/cac-mlops-api:latest</code></td><td><code>services/api/Dockerfile</code></td><td>FastAPI + flows Prefect + scripts + CLI docker/docker-compose (prefect-worker réutilise cette image)</td></tr>
           <tr><td><code>ghcr.io/jakatt/cac-mlops-mlflow:latest</code></td><td><code>services/mlflow/Dockerfile</code></td><td>MLflow server (custom : boto3 + psycopg2)</td></tr>
           <tr><td><code>ghcr.io/jakatt/cac-mlops-gradio:latest</code></td><td><code>services/gradio/Dockerfile</code></td><td>Cockpit admin (<code>app.py</code> — Tailscale) ET Cockpit public (<code>app_public.py</code>) — même image, <code>command:</code> overridée dans <code>docker-compose.yml</code></td></tr>
+          <tr><td><code>ghcr.io/jakatt/cac-mlops-caddy:latest</code></td><td><code>services/caddy/Dockerfile</code></td><td>Caddy + plugin de stockage S3 (certificats partagés entre répliques) — Kapsule uniquement</td></tr>
         </tbody>
       </table></div>
       <p>Le prefect-worker utilise <code>cac-mlops-api</code> (toutes les dépendances ML sont là).</p>
@@ -266,8 +264,7 @@ docker compose up -d api</pre>
   work_pool:
     name: default-process-pool</pre>
       <ul>
-        <li>Re-enregistrer : <code>docker exec -w /app cac_mlops-prefect-worker-1 prefect deploy --all</code></li>
-        <li>SCP le fichier sur le VPS : <code>scp src/flows/mon_flow.py deploy@VPS:/data/cac_mlops/src/flows/</code></li>
+        <li>Ouvrir une PR : après merge, le CD fait le <code>git pull</code> sur le VPS et relance <code>prefect deploy --all</code> automatiquement — aucune copie manuelle</li>
       </ul>
     </div>
   </details>
@@ -286,26 +283,34 @@ docker compose up -d api</pre>
       </table></div>
 
       <details>
-        <summary>7 alertes Grafana</summary>
+        <summary>12 alertes Grafana</summary>
         <div class="body">
-          <p><strong>Groupe security-monitoring (Prometheus, éval 1 min) :</strong></p>
+          <p><strong>Prometheus VPS :</strong></p>
           <ul>
             <li><code>brute-force-401</code> : &gt; 20 erreurs 401 / 5 min</li>
-            <li><code>ddos-429</code> : &gt; 50 erreurs 429 / 5 min</li>
+            <li><code>ddos-429</code> : &gt; 50 erreurs 429 / 5 min — ⚠️ lit <code>api_requests_total{status="429"}</code> (métrique FastAPI), or les 429 sont émis par nginx et n'atteignent jamais l'API : ne peut pas se déclencher en l'état</li>
             <li><code>ram-critical</code> : RAM disponible &lt; 10%</li>
             <li><code>disk-data-critical</code> : /data libre &lt; 15%</li>
           </ul>
-          <p><strong>Groupe logs-monitoring (Loki, éval 2 min) :</strong></p>
+          <p><strong>Loki :</strong></p>
           <ul>
-            <li><code>prefect-error-logs</code> : ERROR ou CRITICAL dans prefect-worker (5 min)</li>
-            <li><code>no-champion-log</code> : "Aucun algorithme" dans prefect-worker (10 min) — train_flow terminé sans amélioration @Production</li>
-            <li><code>drift-critical-log</code> : "CRITICAL drift detected" dans prefect-worker</li>
+            <li>Erreur de flow Prefect (ERROR / CRITICAL)</li>
+            <li>MLOps critique : <code>event=alert severity=critical</code> (échec de déploiement ou de Kapsule, validation de schéma, drift critique…)</li>
+            <li>MLOps warning : <code>event=alert severity=warning</code> (aucun champion, drift modéré, ONISR partiel…)</li>
+            <li>Pipeline CI/CD <code>deploy.yml</code> en échec (Trivy, schémas Prefect, déclenchement du flow)</li>
+            <li>Gate refusée (STOP)</li>
+            <li>Rollback déclenché</li>
+          </ul>
+          <p><strong>Prometheus K8s (groupe kapsule-monitoring) :</strong></p>
+          <ul>
+            <li>Replicas api sous le minimum HPA (&lt; 2 pendant 2 min)</li>
+            <li>Endpoint public <code>kapsule.jakat-inc.fr</code> down (2 min)</li>
           </ul>
         </div>
       </details>
 
       <details>
-        <summary>Dashboards Grafana (6)</summary>
+        <summary>Dashboards Grafana (11)</summary>
         <div class="body">
           <div class="tbl"><table>
             <thead><tr><th>Dashboard</th><th>Contenu</th></tr></thead>
@@ -316,6 +321,7 @@ docker compose up -d api</pre>
               <tr><td><code>model-drift.json</code></td><td>drift_share évolution, features driftées, dernière date de détection</td></tr>
               <tr><td><code>system-health.json</code></td><td>CPU / RAM / disk en temps réel (node-exporter)</td></tr>
               <tr><td><code>kapsule-k8s.json</code></td><td>Replicas disponibles par Deployment, sonde publique blackbox, scrape up (Prometheus K8s distant)</td></tr>
+              <tr><td><code>fastapi-vps.json</code> · <code>fastapi-k8s.json</code> · <code>gradio-public-vps.json</code> · <code>gradio-public-k8s.json</code> · <code>gradio-admin-vps.json</code></td><td>Un dashboard par accès : disponibilité et indisponibilité cumulée 7 j, latence p50/p95/p99, erreurs 5xx, prédictions</td></tr>
             </tbody>
           </table></div>
           <p>Dashboards définis dans <code>infrastructure/grafana/dashboards/</code>. Alertes dans <code>infrastructure/grafana/provisioning/alerting/alerting.yaml</code>.</p>
@@ -344,11 +350,14 @@ trivy image --severity CRITICAL --ignore-unfixed \
         <thead><tr><th>Symptôme</th><th>Cause probable</th><th>Action</th></tr></thead>
         <tbody>
           <tr><td>Flow Prefect ne démarre pas</td><td>Worker déconnecté</td><td><code>docker compose restart prefect-worker</code></td></tr>
-          <tr><td><code>prefect deploy --all</code> échoue</td><td>Fichier flow absent sur VPS host</td><td>SCP le fichier manquant</td></tr>
-          <tr><td>Déploiement "Completed" mais rien n'a changé</td><td><code>restart_services</code>/<code>needs_build</code> a échoué silencieusement dans <code>compose_up_task</code></td><td>Consulter les logs du flow run — chercher <code>Restart échoué</code></td></tr>
+          <tr><td><code>prefect deploy --all</code> échoue</td><td>Transitoire (worker pas prêt) ou fichier de flow absent</td><td>Relancer le job depuis GitHub Actions ; sinon vérifier que le fichier est bien mergé sur main</td></tr>
+          <tr><td>Déploiement "Completed" mais rien n'a changé</td><td><code>restart_services</code>/<code>rebuilt_services</code> a échoué silencieusement dans <code>compose_up_task</code></td><td>Consulter les logs du flow run — chercher <code>Restart échoué</code></td></tr>
           <tr><td><code>docker: 'compose' is not a docker command</code> dans logs Prefect</td><td>Plugin <code>docker-compose</code> absent dans l'image api (réutilisée par prefect-worker)</td><td>Vérifier <code>services/api/Dockerfile</code></td></tr>
           <tr><td>Smoke test échec dans <code>deploy-vps-flow</code></td><td>Image corrompue ou service en crash</td><td>Vérifier <code>docker compose logs &lt;service&gt;</code> — rollback Docker <code>:rollback</code> automatique si test-api KO</td></tr>
-          <tr><td><code>docker compose pull</code> échoue</td><td>Token GHCR expiré</td><td>Vérifier <code>GHCR_TOKEN</code> dans <code>/data/cac_mlops/.env</code></td></tr>
+          <tr><td><code>docker compose pull</code> échoue (<code>denied</code> / 401)</td><td>Jeton GHCR expiré (prochaine expiration : 25/12/2026)</td><td>Régénérer le PAT (<code>read:packages</code>) et mettre à jour <code>GHCR_TOKEN</code> dans <code>/data/cac_mlops/.env</code></td></tr>
+          <tr><td>test-api post-deploy en <code>HTTP 429</code> → rollback</td><td>Rafale nginx par client trop basse : les tests interne + externe partent tous du conteneur prefect-worker (même IP réelle, 8 <code>/predict</code> en quelques secondes)</td><td>Garder <code>burst ≥ 10</code> sur <code>predict_ratelimit</code> ; ne pas lancer <code>test-rate-limit</code> pendant un déploiement</td></tr>
+          <tr><td>Le flow utilise une ancienne version de <code>docker-compose.yml</code> / <code>prefect.yaml</code> / <code>.env</code></td><td>Montages fichier unique figés tant que prefect-worker n'est pas recréé — le CD ne le recrée pas s'il reste des runs actifs &lt; 48 h</td><td>Annuler les runs fantômes dans Prefect, puis recréer prefect-worker</td></tr>
+          <tr><td>MLflow « out-of-date database schema »</td><td>Image MLflow plus récente que le schéma PostgreSQL</td><td>Version épinglée (<code>mlflow==3.15.1</code>, <code>SQLAlchemy&lt;2.1</code>) — ne jamais lancer <code>mlflow db upgrade</code> sans décision explicite (migration irréversible)</td></tr>
           <tr><td><code>config/model_params.yml</code> non mis à jour dans le flow</td><td><code>./config</code> pas bind-mounté</td><td>Vérifier <code>docker compose up -d prefect-worker</code> après changement compose</td></tr>
           <tr><td>MLflow 403 "Invalid Host header"</td><td><code>--allowed-hosts</code> incomplet</td><td>Ajouter le nom d'hôte/port dans la commande mlflow server dans <code>docker-compose.yml</code></td></tr>
         </tbody>

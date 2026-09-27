@@ -1,97 +1,57 @@
-Project Name
-==============================
+# CAC MLOps — Gravité des accidents de la route
 
-This project is a starting Pack for MLOps projects based on the subject "road accident". It's not perfect so feel free to make some modifications on it.
+Système MLOps de bout en bout qui prédit si un accident de la route impliquera une victime grave (hospitalisée ou tuée), à partir des données officielles ONISR publiées sur data.gouv.fr (2021 → 2024).
 
-Project Organization
-------------
+- **Cockpit public** : [mlops.jakat-inc.fr](https://mlops.jakat-inc.fr) (Predict · What-if · Points noirs)
+- **Documentation complète** (15 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/readme.html)
 
-    ├── LICENSE
-    ├── README.md          <- The top-level README for developers using this project.
-    ├── data
-    │   ├── external       <- Data from third party sources.
-    │   ├── interim        <- Intermediate data that has been transformed.
-    │   ├── processed      <- The final, canonical data sets for modeling.
-    │   └── raw            <- The original, immutable data dump.
-    │
-    ├── logs               <- Logs from training and predicting
-    │
-    ├── models             <- Trained and serialized models, model predictions, or model summaries
-    │
-    ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-    │                         the creator's initials, and a short `-` delimited description, e.g.
-    │                         `1.0-jqp-initial-data-exploration`.
-    │
-    ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-    │
-    ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │   └── figures        <- Generated graphics and figures to be used in reporting
-    │
-    ├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-    │                         generated with `pip freeze > requirements.txt`
-    │
-    ├── src                <- Source code for use in this project.
-    │   ├── __init__.py    <- Makes src a Python module
-    │   │
-    │   ├── data           <- Scripts to download or generate data
-    │   │   ├── check_structure.py    
-    │   │   ├── import_raw_data.py 
-    │   │   └── make_dataset.py
-    │   │
-    │   ├── features       <- Scripts to turn raw data into features for modeling
-    │   │   └── build_features.py
-    │   │
-    │   ├── models         <- Scripts to train models and then use trained models to make
-    │   │   │                 predictions
-    │   │   ├── predict_model.py
-    │   │   └── train_model.py
-    │   │
-    │   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
-    │   │   └── visualize.py
-    │   └── config         <- Describe the parameters used in train_model.py and predict_model.py
+## En bref
 
----------
+| Élément | Détail |
+| --- | --- |
+| Modèle en production | `lgbm_accidents` v4 @Production — entraîné sur 2021-2023, testé sur 2024 · F1 0.689 · AUC 0.837 · Recall 0.767 · Accuracy 0.764 |
+| Données | ONISR, 4 fichiers CSV par an — validation Pandera 3 niveaux + auto-correction, versioning DVC (Scaleway S3) |
+| Entraînement | Benchmark RF / XGBoost / LightGBM à chaque cycle, suivi MLflow (runs + Model Registry) |
+| Mise en production | 3 déclencheurs : nouvelles données (T1), nouveau code (T2), nouveau blueprint d'hyperparamètres (T3) — toujours une **validation humaine GO/STOP** avant toute interruption, rollback automatique si un test échoue |
+| Orchestration | Prefect (18 deployments) · CI/CD GitHub Actions (3 workflows) |
+| Service | FastAPI + JWT derrière nginx (rate-limit à 2 niveaux) et Caddy (TLS) |
+| Infrastructure | VPS Scaleway (Docker Compose, 16 conteneurs) + cluster Kubernetes Kapsule à la demande (zéro interruption) |
+| Observabilité | Prometheus · Loki · Grafana (11 dashboards, 12 alertes email) · drift Evidently |
+| Sécurité | Outils d'administration accessibles uniquement via Tailscale · scan Trivy des images · pip-audit |
 
-## Steps to follow 
+## Documentation
 
-Convention : All python scripts must be run from the root specifying the relative file path.
+| Document | Pour qui |
+| --- | --- |
+| [Résumé exécutif](https://mlops.jakat-inc.fr/ci-docs/execsum.html) | Décideurs |
+| [Flux MLOps](https://mlops.jakat-inc.fr/ci-docs/flux_mlops.html) | Public non technique |
+| [Architecture](https://mlops.jakat-inc.fr/ci-docs/architecture.html) · [Guide administrateur](https://mlops.jakat-inc.fr/ci-docs/guide_administrateur.html) | Équipe technique |
+| [Mécanismes de résilience](https://mlops.jakat-inc.fr/ci-docs/resilience_mechanisms.html) | Gates, rollbacks, interruptions par déclencheur |
+| [Guide Data Scientist](https://mlops.jakat-inc.fr/ci-docs/ds_guide.html) · [Guide hyperparamètres](https://mlops.jakat-inc.fr/ci-docs/hyperparams_guide.html) | Data scientists |
+| [Guide MLOps Engineer](https://mlops.jakat-inc.fr/ci-docs/mlops_eng_guide.html) · [Guide MLOps Lead](https://mlops.jakat-inc.fr/ci-docs/mlops_lead_guide.html) | Exploitation |
+| [Catalogue des tests](https://mlops.jakat-inc.fr/ci-docs/tests_catalogue.html) · [Catalogue ETL](https://mlops.jakat-inc.fr/ci-docs/etl_catalogue.html) · [Lignée des données](https://mlops.jakat-inc.fr/ci-docs/data_lineage.html) | Qualité et traçabilité |
 
-### 1- Create a virtual environment using Virtualenv.
+Les sources de ces pages sont dans [`docs/`](docs/).
 
-    `python -m venv my_env`
+## Démarrage rapide (développeur)
 
-###   Activate it 
+```bash
+git clone git@github.com:jakatt/cac_mlops.git && cd cac_mlops
+python3 -m venv my_env && source my_env/bin/activate
+pip install -r requirements.txt "dvc[s3]>=3.0" && pip install -e .
+cp .env.example .env
+./scripts/ds_session_start.sh      # synchronise la branche + dvc pull des données
+pytest tests/unit/ -v              # 54 tests, ceux exécutés par la CI
+```
 
-    `./my_env/Scripts/activate`
+L'accès à MLflow, Prefect et Grafana nécessite de rejoindre le tailnet du projet (Tailscale).
 
-###   Install the packages from requirements.txt
+## Règles de contribution
 
-    `pip install -r .\requirements.txt` ### You will have an error in "setup.py" but this won't interfere with the rest
+- Travail sur les branches `mlops` (code) ou `DS` (blueprint), jamais directement sur `main`.
+- Toute modification passe par une PR vers `main` ; la CI (lint, pip-audit, tests) doit être verte.
+- Ne jamais mélanger `config/model_params.yml` et du code source dans la même PR (bloqué par la CI).
 
-### 2- Execute import_raw_data.py to import the 4 datasets.
+---
 
-    `python .\src\data\import_raw_data.py` ### It will ask you to create a new folder, accept it.
-
-### 3- Execute make_dataset.py initializing `./data/raw` as input file path and `./data/preprocessed` as output file path.
-
-    `python .\src\data\make_dataset.py`
-
-### 4- Execute train_model.py to instanciate the model in joblib format
-
-    `python .\src\models\train_model.py`
-
-### 5- Finally, execute predict_model.py with respect to one of these rules :
-  
-  - Provide a json file as follow : 
-
-    
-    `python ./src/models/predict_model.py ./src/models/test_features.json`
-
-  test_features.json is an example that you can try 
-
-  - If you do not specify a json file, you will be asked to enter manually each feature. 
-
-
-------------------------
-
-<p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
+<sub>Projet réalisé dans le cadre de la formation MLOps DataScientest, à partir du template [DataScientest-Studio/Template_MLOps_accidents](https://github.com/DataScientest-Studio/Template_MLOps_accidents).</sub>

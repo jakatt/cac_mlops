@@ -236,6 +236,7 @@
           <tr><td>Copie + <code>dvc add</code></td><td>Les données réelles sont copiées dans le clone (pas de symlink — DVC les refuse), puis trackées</td></tr>
           <tr><td><code>dvc push</code> → Scaleway S3</td><td>Upload vers le remote S3 — credentials écrites dans <code>.dvc/config.local</code> à partir des variables d'environnement (DVC n'interpole pas <code>${VAR}</code> dans <code>.dvc/config</code> versionné)</td></tr>
           <tr><td>Commit + push git <code>[skip ci]</code></td><td>Le <code>.dvc</code> mis à jour est commité et poussé sur <code>origin/main</code> — source de vérité partagée pour tout <code>dvc pull</code> ultérieur ; no-op silencieux si déjà à jour</td></tr>
+          <tr><td>En cas d'échec <span class="tag-warn">non bloquant</span></td><td>Une étape de versioning qui échoue (jeton GitHub indisponible, clone, <code>dvc add</code>/<code>push</code>, <code>git push</code>) logue <code>event=alert topic=dvc_versioning_failed step=…</code> en ERROR → alerte Grafana par email. Le flow continue : les données sont validées et utilisables, seule leur traçabilité DVC est à rattraper.</td></tr>
         </table>
         </div>
       </div>

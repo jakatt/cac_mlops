@@ -141,8 +141,8 @@
 
   <div class="summary-row">
     <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 43, données mockées</span></div>
-    <div class="badge cd"><span class="badge-num">10</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
-    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow + test-gradio-public</span></div>
+    <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
+    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow + test-gradio-public (6 exécutées en CD)</span></div>
   </div>
 
   <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
@@ -163,13 +163,13 @@
         <td><strong>T2</strong> — Code seul</td>
         <td>54 (11 API + 43 ETL — suite complète, aucun filtrage par fichier changé)</td>
         <td>n/a (pas de nouvelles données)</td>
-        <td>jusqu'à 10 — variable selon les services touchés (builds conditionnels)</td>
+        <td>jusqu'à 11 — variable selon les services touchés (builds conditionnels par service)</td>
       </tr>
       <tr>
         <td><strong>T3</strong> — Nouveau blueprint</td>
         <td>54 (idem T2 — même suite complète)</td>
         <td>n/a</td>
-        <td>4 étapes réelles (1·6·9·10) + 2 no-op (7·8) + 4 toujours sautées (2-5) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
+        <td>4 étapes réelles (1·7·10·11) + 2 no-op (8·9) + 5 toujours sautées (2-6) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
       </tr>
     </table>
     </div>
@@ -180,7 +180,7 @@
   <!-- ════════════════════ 1. CI ════════════════════ -->
   <details class="section ci">
     <summary><span class="section-pill ci">CI</span> Tests unitaires</summary>
-    <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur push vers mlops/DS et PR vers main (T2/T3 uniquement — jamais T1)</div>
+    <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur PR vers main (T2/T3 uniquement — jamais T1) · les 13 tests d'intégration (<code>tests/integration/</code>, Docker Compose requis) ne tournent pas en CI</div>
 
     <details>
       <summary>API <span class="count">11</span> — <code>ci.yml</code></summary>
@@ -340,61 +340,67 @@
       <tr>
         <td>1</td>
         <td><code>check-changes</code></td>
-        <td>Détecte si Dockerfiles / <code>requirements.txt</code> / fichiers Python de service ont changé → <code>needs_build=true/false</code>. Calcule aussi <code>RESTART_SERVICES</code> (nginx · gradio · grafana · prometheus · loki · promtail).</td>
+        <td>Détecte si Dockerfiles / <code>requirements.txt</code> / fichiers Python de service ont changé, <strong>service par service</strong> → <code>build_api</code> · <code>build_mlflow</code> · <code>build_gradio</code> · <code>build_caddy</code> (et <code>needs_build</code> global). Calcule aussi <code>RESTART_SERVICES</code> (nginx · gradio · grafana · prometheus · loki · promtail).</td>
         <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
       <tr>
         <td>2</td>
         <td>Build API</td>
-        <td><code>docker build</code> + push <code>cac-mlops-api:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+        <td><code>docker build</code> + push <code>cac-mlops-api:latest</code> vers GHCR — skippé si ce service n'a pas changé</td>
         <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
         <td>3</td>
         <td>Build MLflow</td>
-        <td><code>docker build</code> + push <code>cac-mlops-mlflow:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+        <td><code>docker build</code> + push <code>cac-mlops-mlflow:latest</code> vers GHCR — skippé si ce service n'a pas changé</td>
         <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
         <td>4</td>
         <td>Build Gradio</td>
-        <td><code>docker build</code> + push <code>cac-mlops-gradio:latest</code> vers GHCR — skippé si <code>needs_build=false</code></td>
+        <td><code>docker build</code> + push <code>cac-mlops-gradio:latest</code> vers GHCR — skippé si ce service n'a pas changé</td>
         <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
+<tr>
+<td>5</td>
+<td>Build Caddy</td>
+<td><code>docker build</code> + push <code>cac-mlops-caddy:latest</code> vers GHCR (Caddy + plugin de stockage S3, Kapsule uniquement) — skippé si ce service n'a pas changé</td>
+<td>T2 (cond.) · T3 (sauté)</td>
+</tr>
       <tr>
-        <td>5</td>
+        <td>6</td>
         <td>Scan Trivy</td>
         <td>Scan CVE CRITICAL sur les 4 images — <strong>bloque le deploy</strong> si vulnérabilité non corrigée détectée</td>
         <td>T2 (cond.) · T3 (sauté)</td>
       </tr>
       <tr>
-        <td>6</td>
+        <td>7</td>
         <td>SSH VPS → git pull</td>
         <td><code>git pull origin main</code> sur le VPS (+ stash des fichiers locaux bind-mountés)</td>
         <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
       <tr>
-        <td>7</td>
+        <td>8</td>
         <td><code>docker compose pull</code></td>
-        <td>Pull des nouvelles images (si <code>needs_build=true</code> uniquement) — <strong>pas de <code>docker compose up</code> ici</strong> : le vrai redémarrage est appliqué par <code>deploy-vps-flow</code>/<code>update-model-flow</code> APRÈS la gate manuelle (<code>compose_up_task</code>), pour que la gate protège bien toute interruption de service</td>
+        <td>Pull des nouvelles images des <strong>seuls services à image GHCR</strong> (si build) — images courantes retaggées <code>:rollback</code> juste avant — <strong>pas de <code>docker compose up</code> ici</strong> : le vrai redémarrage est appliqué par <code>deploy-vps-flow</code>/<code>update-model-flow</code> APRÈS la gate manuelle (<code>compose_up_task</code>), pour que la gate protège bien toute interruption de service</td>
         <td>T2 (cond.) · T3 (à vide)</td>
       </tr>
       <tr>
-        <td>8</td>
+        <td>9</td>
         <td>Calcul <code>RESTART_SERVICES</code></td>
         <td>Détermine quels conteneurs (nginx · gradio · grafana · prometheus · loki · promtail) devront être redémarrés — passé en paramètre au flow Prefect, qui exécute le restart réel après la gate. Ne redémarre rien lui-même.</td>
         <td>T2 (cond.) · T3 (à vide)</td>
       </tr>
       <tr>
-        <td>9</td>
+        <td>10</td>
         <td>prefect deploy --all</td>
         <td>Resynchronisation des schémas de déploiement Prefect — bloque le deploy si schéma périmé</td>
         <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
       <tr>
-        <td>10</td>
+        <td>11</td>
         <td>Déclenchement flow</td>
-        <td><code>update-model-flow</code> si <code>config/model_params.yml</code> modifié (T3) · <code>deploy-vps-flow</code> sinon (T2). Rollback images <code>:rollback</code> si smoke test pré-gate échoue.</td>
+        <td><code>update-model-flow</code> si <code>config/model_params.yml</code> modifié (T3) · <code>deploy-vps-flow</code> sinon (T2). Avant : recréation de prefect-worker s'il n'y a aucun run actif &lt; 48 h (montages fichier unique à jour). Aucun conteneur applicatif n'est touché avant la gate.</td>
         <td>T2 (tjrs.) · T3 (tjrs.)</td>
       </tr>
     </table>

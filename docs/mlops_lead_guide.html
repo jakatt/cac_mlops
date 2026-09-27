@@ -86,12 +86,12 @@
       <div class="tbl"><table>
         <thead><tr><th>Interface</th><th>URL</th><th>Accès</th><th>Rôle</th></tr></thead>
         <tbody>
-          <tr><td><strong>Gradio Cockpit</strong></td><td><code>http://100.117.99.62:7860</code></td><td>Tailscale</td><td>Cockpit MLOps 10 onglets — <strong>Cockpit</strong> (gates GO/STOP) · Drift/Modèles (accordéons dans Cockpit)</td></tr>
+          <tr><td><strong>Gradio Cockpit</strong></td><td><code>http://100.117.99.62:7860</code></td><td>Tailscale</td><td>Cockpit MLOps 6 onglets — <strong>Cockpit</strong> (gates GO/STOP, historique des déploiements) · Orchestration / Healthcheck / Drift / Modèles / Liens (accordéons dans Cockpit)</td></tr>
           <tr><td><strong>Prefect UI</strong></td><td><code>http://100.117.99.62:4200</code></td><td>Tailscale</td><td>Flows, runs, gates manuelles</td></tr>
           <tr><td><strong>MLflow UI</strong></td><td><code>http://100.117.99.62:5001</code></td><td>Tailscale</td><td>Expériences, Model Registry</td></tr>
           <tr><td><strong>Grafana</strong></td><td><code>http://100.117.99.62:3000</code></td><td>Tailscale</td><td>Métriques API, alertes</td></tr>
           <tr><td><strong>Prometheus</strong></td><td><code>http://100.117.99.62:9090</code></td><td>Tailscale</td><td>PromQL brut</td></tr>
-          <tr><td><strong>API public</strong></td><td><code>https://mlops.jakat-inc.fr</code></td><td>Internet</td><td>/predict rate-limité · /health · /reports/drift/*</td></tr>
+          <tr><td><strong>API public</strong></td><td><code>https://mlops.jakat-inc.fr</code></td><td>Internet</td><td>/predict (JWT, rate-limit 2 niveaux : 20/min par client + 60/min global) · /health · /reports/drift/* · /ci-docs/</td></tr>
           <tr><td><strong>Gradio public</strong></td><td><code>https://mlops.jakat-inc.fr</code></td><td>Internet</td><td>Predict + What-If + Points Noirs (3 onglets)</td></tr>
         </tbody>
       </table></div>
@@ -105,9 +105,9 @@
       <details>
         <summary>Trigger 1 — Nouvelle data ONISR (automatique, hebdo)</summary>
         <div class="body">
-          <p><code>check-new-data-flow</code> tourne chaque <strong>lundi 8h UTC</strong>. S'il détecte une nouvelle année sur data.gouv.fr (4/4 fichiers disponibles) :</p>
+          <p><code>check-new-data-flow</code> tourne chaque <strong>lundi 8h (heure de Paris)</strong>. S'il détecte une nouvelle année sur data.gouv.fr (4/4 fichiers disponibles) :</p>
           <pre>ETL → validation schéma → train (année incluse, test set temporel) → sélection champion
-  → GATE MANUELLE → promote → test-api (6 tests) → Kapsule (si OK) → drift</pre>
+  → GATE MANUELLE → promote → test-api (5 tests) + test-gradio-public → Kapsule (si OK) → drift</pre>
           <p><strong>Règle de promotion T1 :</strong> gate KPI absolue (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72). Le nouveau modèle est promu même s'il régresse légèrement vs @Production (test sets différents). Tolérance : régression sur <strong>au plus 1 métrique</strong>. Régression sur ≥2 → @Production inchangé.</p>
           <p><strong>Ton rôle :</strong> valider la gate — onglet <strong>Cockpit</strong> du cockpit Gradio (bouton GO/STOP) ou Prefect UI — quand tu reçois la notification email.</p>
         </div>
@@ -118,7 +118,7 @@
         <div class="body">
           <pre>build images (si nécessaire) → git pull VPS + pull images (préparation, sans interruption)
   → GATE MANUELLE (avant toute interruption VPS) → docker compose up + redémarrages ciblés
-  → smoke test → test-api (6 tests) → Kapsule (si OK)</pre>
+  → smoke test → test-api (5 tests) + test-gradio-public → Kapsule (si OK)</pre>
           <p>La gate intervient <strong>avant</strong> que quoi que ce soit soit appliqué sur le VPS — rien n'est interrompu tant que tu n'as pas validé. Un <strong>STOP</strong> annule proprement sans rollback (rien n'a encore tourné).</p>
           <p><strong>Ton rôle :</strong> valider la gate (onglet <strong>Cockpit</strong> — SHA du commit, images à reconstruire, services à redémarrer affichés) ou Prefect UI.</p>
         </div>
@@ -127,7 +127,7 @@
       <details>
         <summary>Trigger 3 — Nouveau modèle DS</summary>
         <div class="body">
-          <pre>extract blueprint → train avec nouveaux params → compare @Production
+          <pre>merge du blueprint (config/model_params.yml) → train avec nouveaux params → compare @Production
   → si meilleur (+0.01 F1, même test set) : GATE MANUELLE → promote → test-api → Kapsule
   → si non meilleur : @Production inchangé, email notification DS</pre>
           <p><strong>Règle de promotion T3 :</strong> KPI absolus + delta F1 &gt; +0.01 vs @Production. La comparaison est valide car les deux modèles utilisent le même test set (même année).</p>
@@ -146,9 +146,9 @@
         <div class="body">
           <ul>
             <li>Onglet <strong>Cockpit</strong> → la file d'attente liste les déploiements <code>deploy-vps-flow</code> en pause</li>
-            <li>Sélectionner le run → le détail affiche les métriques du champion (F1/Recall/AUC vs @Production) ou le SHA/services impactés</li>
+            <li>Sélectionner le run → le détail affiche, pour T1/T3, les métriques des 3 algos puis un <strong>tableau de comparaison @Production vs candidat</strong> (F1/Recall/AUC/Accuracy, écart 🟢/🔴) avec le verdict de la règle ; pour T2, le SHA, la PR et les services impactés</li>
             <li><strong>GO</strong> → applique le déploiement (promote et/ou compose up selon le trigger) → test-api → Kapsule (si OK)</li>
-            <li><strong>STOP</strong> → annule proprement — rien n'a encore été appliqué, aucun rollback nécessaire</li>
+            <li><strong>STOP</strong> → annule proprement — rien n'a encore été appliqué, aucun rollback nécessaire. Pour un T3, le blueprint est aussi reverté automatiquement sur main (<code>config/model_params.yml</code> resynchronisé avec @Production)</li>
           </ul>
         </div>
       </details>
@@ -193,7 +193,7 @@
           <tr><td>&gt; 25%</td><td>CRITICAL</td><td>Email d'alerte — planifier le prochain cycle annuel manuellement</td></tr>
         </tbody>
       </table></div>
-      <p>Aucun réentraînement automatique sur drift : les labels N+1 sont indisponibles (ONISR publie avec ~2 ans de délai). Réentraîner sur les mêmes données produirait un modèle identique. Le drift est un signal pour décider quand déclencher le prochain cycle via <code>check-new-data-flow</code>.</p>
+      <p>Aucun réentraînement automatique sur drift : les labels N+1 sont indisponibles (ONISR publie l'année N seulement vers octobre N+1). Réentraîner sur les mêmes données produirait un modèle identique. Le drift est un signal pour décider quand déclencher le prochain cycle via <code>check-new-data-flow</code>.</p>
     </div>
   </details>
 
@@ -221,7 +221,7 @@
         <div class="body">
           <pre>python3 - &lt;&lt;'EOF'
 import mlflow
-mlflow.set_tracking_uri("http://localhost:5001")   # tunnel SSH actif
+mlflow.set_tracking_uri("http://100.117.99.62:5001")   # via Tailscale
 client = mlflow.tracking.MlflowClient()
 
 # Lister les versions
@@ -247,14 +247,14 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
       <div class="tbl"><table>
         <thead><tr><th>Panel</th><th>Seuil d'alerte</th><th>Action</th></tr></thead>
         <tbody>
-          <tr><td>Latence p95</td><td>&gt; 500 ms</td><td>Vérifier <code>docker compose logs api</code></td></tr>
+          <tr><td>Latence p95</td><td>&gt; 300 ms (objectif, pas d'alerte)</td><td>Vérifier <code>docker compose logs api</code></td></tr>
           <tr><td>Taux erreurs 5xx</td><td>&gt; 1%</td><td>Vérifier le modèle @Production</td></tr>
           <tr><td>Distribution prédictions grav=1</td><td>Dérive anormale</td><td>Lancer drift-check</td></tr>
           <tr><td>RAM disponible</td><td>&lt; 10%</td><td>Libérer mémoire, vérifier OOM</td></tr>
           <tr><td>Disque /data</td><td>&lt; 15%</td><td>Lancer disk-cleanup manuellement</td></tr>
         </tbody>
       </table></div>
-      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code> pour : brute-force 401, DDoS 429, RAM critique, disque critique, erreurs Prefect, aucun champion, drift CRITICAL.</p>
+      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code> pour les 12 règles Grafana : brute-force 401, DDoS 429 (⚠️ inopérante en l'état — lit une métrique FastAPI alors que les 429 viennent de nginx), RAM critique, disque critique, erreurs de flow Prefect, alertes MLOps critiques et warning (échec de déploiement, aucun champion, drift, versioning DVC…), pipeline CI/CD en échec, gate refusée (STOP), rollback, et côté Kapsule : replicas api sous le minimum HPA, endpoint public down.</p>
     </div>
   </details>
 
@@ -264,7 +264,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
     <div class="body">
       <pre>ssh deploy@51.159.187.132
 
-# État des conteneurs (15 permanents attendus + minio-init EXIT)
+# État des conteneurs (16 permanents attendus + minio-init EXIT)
 cd /data/cac_mlops &amp;&amp; docker compose ps
 
 # Logs en temps réel
@@ -289,7 +289,8 @@ df -h / /data</pre>
     <summary>9 — RAZ complète de la stack</summary>
     <div class="body">
       <pre># Via Prefect UI : Deployments → reset → Run with params :
-# clear_predictions=true, clear_drift=true, clear_mlflow=false (ou true)
+# clear_predictions / clear_drift / clear_mlflow (true par défaut)
+# clear_postgres_full / clear_minio / clear_grafana / clear_loki / full_reset (false par défaut)
 
 # Puis relancer tous les cycles depuis zéro :
 # Deployments → full-retrain → Quick run</pre>
@@ -306,7 +307,7 @@ df -h / /data</pre>
         <tbody>
           <tr><td><code>/predict</code> → 401</td><td>Token expiré (24h)</td><td>Re-POST <code>/token</code> pour renouveler</td></tr>
           <tr><td><code>/predict</code> → 503</td><td>Aucun modèle @Production</td><td>Promouvoir un modèle → <code>docker compose restart api</code></td></tr>
-          <tr><td>API → 429</td><td>Rate-limit nginx atteint (20r/min)</td><td>Normal si trafic légitime → augmenter dans <code>nginx.conf</code></td></tr>
+          <tr><td>API → 429</td><td>Rate-limit nginx atteint — par client (20/min, rafale 10) ou global (60/min, rafale 30)</td><td>Normal pour un client abusif. Si trafic légitime → ajuster dans <code>nginx.conf</code> en gardant la rafale par client ≥ 10 (les tests post-deploy envoient 8 <code>/predict</code> depuis une même IP). Vérifier : Cockpit → Orchestration → « Tester la protection anti-abus sur l'API »</td></tr>
           <tr><td>Gate Prefect non reçue</td><td>Worker déconnecté</td><td><code>docker compose restart prefect-worker</code></td></tr>
           <tr><td>Email Grafana "DatasourceError"</td><td>Prometheus scrape KO</td><td>Vérifier que prometheus scrape l'API sur <code>:8000/metrics</code></td></tr>
           <tr><td><code>check-new-data</code> re-trigger chaque semaine</td><td><code>data/raw/{year}/</code> absent</td><td>Vérifier que le téléchargement ETL a bien eu lieu</td></tr>
