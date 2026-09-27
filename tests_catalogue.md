@@ -97,6 +97,18 @@ Exécuté à l'intérieur du réseau Docker (`http://nginx:80`) — teste l'API 
 | 3 | `test-401-sans-token` | `POST /predict` sans en-tête Authorization → HTTP 401 |
 | 4 | `test-200-avec-token` | `POST /predict` avec Bearer JWT → HTTP 200 + `prediction`/`probability`/`model_version` |
 | 5 | `test-whatif-vitesse-90-vs-50` | **Cohérence métier** : route départementale, nuit sans éclairage, hors agglo — `proba(vma=90) > proba(vma=50)` (Δ ≈ +0.17) |
-| 6 | `test-429-rate-limit` | 22 requêtes consécutives → HTTP 429 déclenché *(skippé en CD, actif en test manuel)* |
+| 6 | `test-429-rate-limit` | 22 requêtes consécutives → HTTP 429 déclenché *(uniquement via un lancement manuel de `test-api` dans Prefect ; sauté en CD et par le bouton Cockpit « Tester les 4 accès publics » — démonstration complète : `test-rate-limit` ci-dessous)* |
 
 > Le test n°5 est le test de simulation utilisateur le plus important : il garantit que le modèle en production répond de manière cohérente avec la physique des accidents (vitesse maximale autorisée plus élevée → risque de blessure grave plus élevé, toutes choses égales par ailleurs).
+
+### Test anti-abus — `test-rate-limit` (manuel, Cockpit → Orchestration)
+
+Vérifie les 2 niveaux de limite nginx sur `POST /predict` : **par client** (IP réelle, 20/min, rafale 5) et **globale** (60/min, rafale 20). Clients simulés via `X-Forwarded-For` depuis le réseau Docker (IP fictives RFC 5737). ~5 s. Jamais en CD (quota global épuisé ~15 s après).
+
+| # | Task Prefect | Ce qui est vérifié |
+|---|---|---|
+| 1 | `1 · API en ligne (GET health)` | `GET /health` → HTTP 200 |
+| 2 | `2 · Obtenir un jeton JWT` | `POST /token` → JWT |
+| 3 | `3 · Limite par client — rafale d'un seul client` | client A : ~6 acceptées puis HTTP 429 |
+| 4 | `4 · Limite par client — un autre client n'est pas pénalisé` | client B : HTTP 200 juste après |
+| 5 | `5 · Limite globale — plusieurs clients sous leur quota` | clients C1…Cn (3 req. chacun) : HTTP 429 une fois le quota global restant épuisé |
