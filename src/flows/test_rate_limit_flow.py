@@ -2,9 +2,9 @@
 Test rate-limit flow — vérifie les 2 niveaux de protection anti-abus de nginx
 sur POST /predict (cf. services/nginx/nginx.conf) :
 
-  - limite PAR CLIENT (IP réelle, 20/min, rafale 5) : un client abusif est
+  - limite PAR CLIENT (IP réelle, 20/min, rafale 10) : un client abusif est
     bloqué seul, les autres clients ne sont pas pénalisés ;
-  - limite GLOBALE (60/min, rafale 20) : plafond de charge du serveur, même
+  - limite GLOBALE (60/min, rafale 30) : plafond de charge du serveur, même
     quand chaque client reste sous sa propre limite.
 
 Plusieurs clients sont simulés depuis le réseau Docker interne via l'en-tête
@@ -26,11 +26,11 @@ from prefect import flow, task
 from src.flows.test_api_flow import API_PASSWORD, API_USERNAME, NGINX_URL, SAMPLE_PAYLOAD
 
 # Doivent rester alignés sur services/nginx/nginx.conf (affichage uniquement).
-PER_CLIENT_RATE, PER_CLIENT_BURST = "20/min", 5
-GLOBAL_RATE, GLOBAL_BURST = "60/min", 20
+PER_CLIENT_RATE, PER_CLIENT_BURST = "20/min", 10
+GLOBAL_RATE, GLOBAL_BURST = "60/min", 30
 
 # Garde-fous : nombre max de requêtes envoyées par étape.
-MAX_SINGLE_CLIENT_REQUESTS = 15
+MAX_SINGLE_CLIENT_REQUESTS = 20
 REQUESTS_PER_GLOBAL_CLIENT = 3   # < PER_CLIENT_BURST + 1 : aucun client ne dépasse sa limite
 MAX_GLOBAL_CLIENTS = 15
 
@@ -134,6 +134,10 @@ def test_rate_limit_flow(base_url: str = NGINX_URL) -> dict:
     # d'où un blocage global avant la rafale complète de GLOBAL_BURST + 1.
     consumed_before = per_client["accepted"] + 1
     result = {
+        "per_client_rate":       PER_CLIENT_RATE,
+        "per_client_burst":      PER_CLIENT_BURST,
+        "global_rate":           GLOBAL_RATE,
+        "global_burst":          GLOBAL_BURST,
         "per_client_accepted":   per_client["accepted"],
         "per_client_blocked_at": per_client["blocked_at"],
         "global_consumed_before": consumed_before,
