@@ -482,7 +482,7 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
               <tr><td><strong>nginx-exporter</strong></td><td>9113</td><td>interne Docker (Prometheus)</td></tr>
               <tr><td><strong>prometheus</strong></td><td>9090</td><td>http://100.117.99.62:9090 (Tailscale)</td></tr>
               <tr><td><strong>grafana</strong></td><td>3000</td><td>http://100.117.99.62:3000 (Tailscale)</td></tr>
-              <tr><td><strong>loki</strong></td><td>3100</td><td>interne Docker (logs agrégation)</td></tr>
+              <tr><td><strong>loki</strong></td><td>3100</td><td>http://100.117.99.62:3100 (Tailscale — agrégation des logs VPS + push K8s)</td></tr>
               <tr><td><strong>promtail</strong></td><td>—</td><td>agent scrape logs → loki</td></tr>
               <tr><td><strong>blackbox-exporter</strong></td><td>—</td><td>interne Docker — sonde HTTP bout-en-bout des accès publics (Caddy → nginx → api / gradio-public)</td></tr>
             </tbody>

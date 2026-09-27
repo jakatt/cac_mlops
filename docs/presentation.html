@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Résumé exécutif — CAC MLOps</title>
+<title>Présentation du projet — CAC MLOps</title>
 <style>
 .ci-doc {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -68,6 +68,10 @@
 .ci-doc ul { padding-left:1.4em;margin:8px 0; }
 .ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
 .ci-doc li strong { color:var(--text); }
+.ci-doc .link-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:10px 0; }
+.ci-doc .link-card { background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px; }
+.ci-doc .link-card a { color:var(--accent);text-decoration:none;font-size:.82rem;font-weight:600; }
+.ci-doc .link-card p { margin:3px 0 0;font-size:.74rem; }
 .ci-doc .kpi-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0; }
 .ci-doc .kpi-card { background:var(--accent-lt);border:1px solid var(--border);border-radius:8px;padding:12px 14px;text-align:center; }
 .ci-doc .kpi-val { font-size:1.25rem;font-weight:800;color:var(--accent);line-height:1; }
@@ -79,8 +83,8 @@
 <div class="wrapper">
   <header>
     <p class="eyebrow">MLOps · Accidents routiers</p>
-    <h1 class="page-title">Résumé exécutif</h1>
-    <p class="page-sub">Synthèse complète du projet — données ONISR · modèle de classification binaire · infrastructure MLOps opérationnelle en production (état au 27/09/2026)</p>
+    <h1 class="page-title">Présentation du projet</h1>
+    <p class="page-sub">Vue d'ensemble et synthèse — données ONISR · modèle de classification binaire · infrastructure MLOps opérationnelle en production (état au 27/09/2026). Pour démarrer en tant que développeur : <a href="https://github.com/jakatt/cac_mlops#readme" target="_blank">README du dépôt GitHub</a>.</p>
   </header>
 
   <!-- SYNTHESE -->
@@ -89,6 +93,29 @@
     <div class="body">
       <p>Système MLOps complet de <strong>prédiction de gravité d'accidents routiers</strong>, entraîné sur les données officielles ONISR (data.gouv.fr) — années 2021 → 2024 disponibles. Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise la dernière année disponible comme source de données pour le monitoring drift Evidently (simulation production via <code>scripts/simulate_production.py</code>).</p>
       <p><strong>Année drift auto-détectée :</strong> quand les données 2025 seront disponibles (publication ONISR attendue ~octobre 2026 — les données 2024 ont été publiées le 21/10/2025), elles deviendront automatiquement l'année drift et 2024 rejoindra le train set.</p>
+    </div>
+  </details>
+
+  <!-- EN BREF -->
+  <details>
+    <summary>🎯 Le projet en bref</summary>
+    <div class="body">
+      <p><strong>Objectif :</strong> prédire si un accident de la route impliquera une victime grave (classification binaire <code>grav ∈ {0, 1}</code>) à partir de 27 features (conditions météo, type de voie, heure, caractéristiques de l'usager et du véhicule).</p>
+      <p><strong>Source de données :</strong> données officielles ONISR (Observatoire National Interministériel de la Sécurité Routière) téléchargées depuis <code>data.gouv.fr</code> via API — 4 fichiers CSV par année, ~55 000 accidents/an. Périmètre actuel : 2021 → 2024.</p>
+      <p><strong>Ce que démontre le projet :</strong></p>
+      <ul>
+        <li>Ingérer une nouvelle année de données de manière fiable et automatisée</li>
+        <li>Détecter automatiquement tout changement de format source (Pandera — 3 niveaux)</li>
+        <li>Versionner chaque évolution : données (DVC) · code (Git) · modèle (MLflow)</li>
+        <li>Benchmarker 3 algorithmes (RF / XGBoost / LightGBM) et sélectionner le champion</li>
+        <li>Déployer sous contrôle : validation humaine avant toute interruption, rollback automatique, zéro interruption sur Kubernetes (~30 s sur le VPS)</li>
+        <li>Surveiller le comportement du modèle en production (drift Evidently + Grafana)</li>
+        <li>Sécuriser l'accès aux outils d'administration (Tailscale VPN mesh)</li>
+      </ul>
+      <div class="band">
+        <strong>Modèle en production :</strong> lgbm_accidents v4 @Production · cumul 2021→2024 (test 2024) · 27 features
+        &nbsp;·&nbsp; <strong>Métriques :</strong> F1 = 0.689 · AUC = 0.837 · Recall = 0.767 · Acc = 0.764
+      </div>
     </div>
   </details>
 
@@ -122,7 +149,7 @@
           <div class="tbl"><table>
             <thead><tr><th>Composant</th><th>Détail</th></tr></thead>
             <tbody>
-              <tr><td><strong>17 services Docker (16 permanents)</strong></td><td>PostgreSQL · MinIO · MLflow · API FastAPI · Prefect (server+worker) · Nginx · Grafana · Prometheus · Loki · Promtail · Gradio (Tailscale) · Gradio-public (internet) · node-exporter · nginx-exporter · minio-init (EXIT)</td></tr>
+              <tr><td><strong>17 services Docker (16 permanents)</strong></td><td>PostgreSQL · MinIO · MLflow · API FastAPI · Prefect (server+worker) · Nginx · Grafana · Prometheus · Loki · Promtail · Gradio (Tailscale) · Gradio-public (internet) · node-exporter · nginx-exporter · blackbox-exporter · minio-init (EXIT)</td></tr>
               <tr><td><strong>DVC remote</strong></td><td>Scaleway Object Storage s3://cac-mlops-data/dvc</td></tr>
               <tr><td><strong>Accès admin</strong></td><td>Tailscale VPN uniquement — IP stable 100.117.99.62</td></tr>
               <tr><td><strong>Accès public</strong></td><td>Caddy TLS → nginx → gradio-public · <code>https://mlops.jakat-inc.fr</code></td></tr>
@@ -149,9 +176,52 @@
     </div>
   </details>
 
-  <!-- SLIDE 1 -->
+  <!-- STACK -->
   <details>
-    <summary>📊 Slide 1 — Flow annuel de mise à jour des données</summary>
+    <summary>🛠️ Stack technique</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Couche</th><th>Outil</th><th>Rôle</th></tr></thead>
+        <tbody>
+          <tr><td>Données</td><td><strong>DVC + Scaleway S3</strong></td><td>Versioning données — remote <code>s3://cac-mlops-data/dvc</code></td></tr>
+          <tr><td>Validation</td><td><strong>Pandera</strong></td><td>3 niveaux CRITICAL/WARNING/OK sur les 4 fichiers ONISR</td></tr>
+          <tr><td>ML</td><td><strong>scikit-learn / XGBoost / LightGBM</strong></td><td>Benchmark 3 algos · sélection champion par F1</td></tr>
+          <tr><td>Tracking</td><td><strong>MLflow</strong></td><td>Runs, paramètres, métriques, Model Registry (@Production)</td></tr>
+          <tr><td>API</td><td><strong>FastAPI + Pydantic + JWT</strong></td><td>POST /predict · GET /health · GET /metrics</td></tr>
+          <tr><td>Gateway</td><td><strong>NGINX + Caddy</strong></td><td>Rate-limit /predict 2 niveaux (par client + global) · TLS Let's Encrypt · <code>mlops.jakat-inc.fr</code></td></tr>
+          <tr><td>Orchestration</td><td><strong>Prefect</strong></td><td>18 deployments · gate manuelle pause_flow_run()</td></tr>
+          <tr><td>CI/CD</td><td><strong>GitHub Actions</strong></td><td>3 workflows (ci · deploy · cleanup) · Trivy CVE</td></tr>
+          <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 11 dashboards · 12 alertes email</td></tr>
+          <tr><td>Drift</td><td><strong>Evidently</strong></td><td>Drift des features par année vs référence + drift du trafic réel (prédictions, 90 j)</td></tr>
+          <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>6 onglets admin (Tailscale, dont Cockpit = 6 accordéons) + 3 onglets public (internet)</td></tr>
+          <tr><td>Infra VPS</td><td><strong>Scaleway DEV1-XL</strong></td><td>16 conteneurs Docker permanents · 4 vCPU / 12 GB RAM / 80 GB /data</td></tr>
+          <tr><td>Infra K8s</td><td><strong>Scaleway Kapsule</strong></td><td>On-demand · HPA · zero-downtime rolling updates</td></tr>
+          <tr><td>Sécurité</td><td><strong>Tailscale VPN</strong></td><td>Ports admin invisibles depuis internet · mesh réseau</td></tr>
+          <tr><td>Container Registry</td><td><strong>GHCR</strong></td><td><code>ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio,caddy}</code></td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 3 TRIGGERS -->
+  <details>
+    <summary>⚡ Les 3 triggers de mise en production</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <thead><tr><th>Trigger</th><th>Déclencheur</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><strong>T1 — Nouvelle data</strong></td><td>Prefect cron lundi 8h (Europe/Paris) · détection ONISR automatique</td><td>ETL → validation → benchmark 3 algos → gate manuelle → promote → test-api → Kapsule</td></tr>
+          <tr><td><strong>T2 — Nouveau code</strong></td><td>Push vers main (hors blueprint)</td><td>CI → build images → VPS prépare → gate manuelle → compose up → test-api → Kapsule</td></tr>
+          <tr><td><strong>T3 — Nouveau modèle DS</strong></td><td>PR avec <code>config/model_params.yml</code> uniquement</td><td>Benchmark avec nouveaux hyperparamètres → si champion : gate manuelle → promote → test-api → Kapsule</td></tr>
+        </tbody>
+      </table></div>
+      <p><strong>Gate manuelle (tous triggers) :</strong> <code>pause_flow_run()</code> Prefect natif — validée via l'onglet <strong>Cockpit</strong> du cockpit Gradio (GO/STOP) ou Prefect UI. Intervient <strong>avant toute interruption VPS</strong>.</p>
+    </div>
+  </details>
+
+  <!-- CYCLE ANNUEL -->
+  <details>
+    <summary>🔁 Cycle annuel de mise à jour des données</summary>
     <div class="body">
       <p><em>Déclenché chaque année vers octobre, à la publication des données ONISR de l'année N-1 (détection automatique chaque lundi).</em></p>
 
@@ -246,9 +316,9 @@
     </div>
   </details>
 
-  <!-- SLIDE 2 -->
+  <!-- ARCHITECTURE -->
   <details>
-    <summary>📊 Slide 2 — Architecture &amp; composants principaux</summary>
+    <summary>🏗️ Architecture &amp; composants principaux</summary>
     <div class="body">
       <details>
         <summary>Outils par responsabilité</summary>
@@ -289,6 +359,30 @@
     </div>
   </details>
 
+  <!-- LIENS -->
+  <details>
+    <summary>🔗 Liens rapides (Tailscale requis pour l'admin)</summary>
+    <div class="body">
+      <div class="link-grid">
+        <div class="link-card"><a href="http://100.117.99.62:7860" target="_blank">Cockpit Gradio</a><p>6 onglets MLOps</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:4200" target="_blank">Prefect UI</a><p>Flows, runs, gates</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:5001" target="_blank">MLflow UI</a><p>Expériences + Registry</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:3000" target="_blank">Grafana</a><p>Dashboards + alertes</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:9090" target="_blank">Prometheus</a><p>Métriques PromQL</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:9001" target="_blank">MinIO Console</a><p>Object Storage</p></div>
+        <div class="link-card"><a href="https://mlops.jakat-inc.fr" target="_blank">API / Gradio public</a><p>Internet · Caddy TLS</p></div>
+        <div class="link-card"><a href="https://github.com/jakatt/cac_mlops" target="_blank">GitHub</a><p>Code source</p></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- DEV -->
+  <details>
+    <summary>👩‍💻 Pour les développeurs</summary>
+    <div class="body">
+      <p>Démarrage rapide, règles de branches et de PR : <a href="https://github.com/jakatt/cac_mlops#readme" target="_blank">README du dépôt GitHub</a>. Structure détaillée du dépôt : <a href="guide_administrateur.html">Guide administrateur</a> (§15). Workflow data scientist : <a href="ds_guide.html">Guide Data Scientist</a>.</p>
+    </div>
+  </details>
 </div>
 </div>
 </body>
