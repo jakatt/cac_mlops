@@ -271,7 +271,7 @@
             <thead><tr><th>Type</th><th>Alerte</th><th>Détection</th></tr></thead>
             <tbody>
               <tr><td>Prometheus</td><td>Brute-force 401</td><td>&gt; 20 / 5 min</td></tr>
-              <tr><td>Prometheus</td><td>DDoS 429</td><td>&gt; 50 / 5 min — ⚠️ lit <code>api_requests_total{status="429"}</code> (métrique FastAPI) alors que les 429 sont émis par nginx et n'atteignent jamais l'API : ne peut pas se déclencher en l'état (à rebrancher sur les logs nginx)</td></tr>
+              <tr><td>Loki</td><td>DDoS / rate-limit 429</td><td>&gt; 50 requêtes refusées en 429 par nginx / 5 min (logs d'accès nginx — les 429 n'atteignent jamais FastAPI)</td></tr>
               <tr><td>Prometheus</td><td>RAM critique</td><td>&lt; 10%</td></tr>
               <tr><td>Prometheus</td><td>Disk /data</td><td>&lt; 15%</td></tr>
               <tr><td>Loki</td><td>Erreur flow Prefect</td><td><code>ERROR|CRITICAL</code> dans les logs</td></tr>

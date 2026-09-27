@@ -64,39 +64,47 @@ groups:
         title: "DDoS / rate-limit (429)"
         condition: C
         data:
+          # Les 429 sont émis par nginx (limit_req) et n'atteignent jamais
+          # FastAPI : l'ancienne requête sur api_requests_total{status="429"}
+          # ne pouvait donc jamais se déclencher (constaté 2026-09-27). On
+          # compte désormais les lignes d'accès nginx en 429 dans Loki.
+          # Seuil 50/5 min : très au-dessus du test Cockpit test-rate-limit
+          # (2 refus par exécution), donc aucune alerte pendant une démo.
           - refId: A
             relativeTimeRange:
               from: 300
               to: 0
-            datasourceUid: prometheus
+            datasourceUid: loki
             model:
-              expr: 'increase(api_requests_total{status="429"}[5m])'
+              expr: 'sum(count_over_time({service="nginx"} |= "\" 429 " [5m]))'
+              instant: true
               intervalMs: 1000
               maxDataPoints: 43200
-          - refId: B
-            datasourceUid: "__expr__"
-            model:
-              type: reduce
-              expression: "A"
-              reducer: last
-              settings:
-                mode: dropNN
+              queryType: instant
           - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
             datasourceUid: "__expr__"
             model:
               type: threshold
-              expression: "B"
+              expression: "A"
               conditions:
                 - evaluator:
                     params: [50]
                     type: gt
                   operator:
                     type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
         noDataState: OK
         execErrState: Error
         for: 1m
         annotations:
-          summary: "Plus de 50 erreurs 429 en 5 minutes — attaque DDoS ou storm de requêtes"
+          summary: "Plus de 50 requêtes refusées en 429 par nginx en 5 minutes — client abusif, attaque DDoS ou storm de requêtes (vérifier les IP dans les logs nginx)"
         labels:
           severity: critical
 

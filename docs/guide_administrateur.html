@@ -741,7 +741,7 @@ IP réelle du client : set_real_ip_from 172.16.0.0/12 + X-Forwarded-For
             <tbody>
               <tr><td><strong>Prometheus</strong></td><td>Métriques numériques (API, système, drift)</td></tr>
               <tr><td><strong>Loki</strong></td><td>Logs centralisés (tous conteneurs Docker + K8s)</td></tr>
-              <tr><td><strong>Grafana</strong></td><td>11 dashboards + 12 alertes (6 Prometheus dont 2 K8s + 6 Loki) · email</td></tr>
+              <tr><td><strong>Grafana</strong></td><td>11 dashboards + 12 alertes (5 Prometheus dont 2 K8s + 7 Loki) · email</td></tr>
               <tr><td><strong>Promtail</strong></td><td>Agent Docker → collecte logs → Loki</td></tr>
               <tr><td><strong>Evidently</strong></td><td>Drift features (X_train vs année drift) + drift du trafic réel (prédictions 90 j) · rapports HTML + 6 gauges Prometheus</td></tr>
             </tbody>
