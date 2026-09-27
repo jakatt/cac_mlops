@@ -14,6 +14,7 @@ Onglets MLOps (Léon — MLOps lead) :
 """
 from __future__ import annotations
 
+import html
 import logging
 import os
 import re
@@ -1362,7 +1363,48 @@ def _recent_deployments_table(trigger_filter: str = "Tous les triggers", limit: 
     return pd.DataFrame(rows)
 
 
+def _as_float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_metric(value) -> str:
+    v = _as_float(value)
+    return f"{v:.4f}" if v is not None else "—"
+
+
+def _normalize_gate_metrics(metrics, champion: str | None) -> dict[str, dict]:
+    """Ramène params.metrics au format {algo: {f1, auc, ...}} attendu par la carte.
+
+    Un format plat {f1: .., auc: ..} (run relancé à la main, incident 2026-09-27)
+    est rattaché au champion ; toute autre valeur non conforme est ignorée.
+    """
+    if not isinstance(metrics, dict):
+        return {}
+    if metrics and not any(isinstance(v, dict) for v in metrics.values()):
+        return {champion: metrics} if champion else {}
+    return {algo: m for algo, m in metrics.items() if isinstance(m, dict)}
+
+
 def _render_gate_card(run_id: str) -> str:
+    """Carte de décision d'une gate. Ne lève jamais : une exception ici fait
+    échouer tout refresh_gate_queue() (file, dropdown et carte), ce qui bloquait
+    la validation de TOUTES les gates à cause d'un seul run aux paramètres
+    inattendus (incident 2026-09-27, metrics au format plat)."""
+    try:
+        return _render_gate_card_unsafe(run_id)
+    except Exception as e:
+        logger.warning("event=gate_card_render_failed run_id=%s error=%s", (run_id or "")[:8], e)
+        return (
+            f"<p style='color:{DANGER};'>Détail indisponible pour ce run "
+            f"(paramètres inattendus : {html.escape(str(e))[:200]}). "
+            f"GO / STOP restent utilisables.</p>"
+        )
+
+
+def _render_gate_card_unsafe(run_id: str) -> str:
     if not run_id:
         return f"<p style='color:{MUTED};'>Sélectionnez un déploiement en attente.</p>"
     runs = {r.get("id"): r for r in _prefect_paused_runs()}
@@ -1372,7 +1414,7 @@ def _render_gate_card(run_id: str) -> str:
 
     params            = run.get("parameters") or {}
     champion          = params.get("champion")
-    metrics           = params.get("metrics") or {}
+    metrics           = _normalize_gate_metrics(params.get("metrics"), champion)
     year              = params.get("year")
     sha_tag           = params.get("sha_tag") or ""
     # CSV des services dont l'image a réellement été reconstruite (calculé par
@@ -1401,10 +1443,10 @@ def _render_gate_card(run_id: str) -> str:
             rows_html += (
                 f'<tr style="{bg}"><td style="padding:4px 10px;font-weight:{weight};color:{SLATE};">'
                 f'{algo}{" 🏆" if is_champ else ""}</td>'
-                f'<td style="padding:4px 10px;">{m.get("f1", 0):.4f}</td>'
-                f'<td style="padding:4px 10px;">{m.get("recall", 0):.4f}</td>'
-                f'<td style="padding:4px 10px;">{m.get("auc", 0):.4f}</td>'
-                f'<td style="padding:4px 10px;">{m.get("accuracy", 0):.4f}</td></tr>'
+                f'<td style="padding:4px 10px;">{_fmt_metric(m.get("f1"))}</td>'
+                f'<td style="padding:4px 10px;">{_fmt_metric(m.get("recall"))}</td>'
+                f'<td style="padding:4px 10px;">{_fmt_metric(m.get("auc"))}</td>'
+                f'<td style="padding:4px 10px;">{_fmt_metric(m.get("accuracy"))}</td></tr>'
             )
         parts.append(
             '<table style="border-collapse:collapse;font-size:.85rem;margin-bottom:8px;">'
@@ -1432,7 +1474,7 @@ def _render_gate_card(run_id: str) -> str:
             # ne dépende pas d'un calcul mental sur les chiffres bruts ci-dessus.
             champ_metrics = metrics.get(champion, {})
             if trigger == "T3":
-                delta = champ_metrics.get("f1", 0) - prod["f1"]
+                delta = (_as_float(champ_metrics.get("f1")) or 0.0) - (_as_float(prod["f1"]) or 0.0)
                 passed = delta >= _MIN_IMPROVEMENT
                 icon, color = (("✅", SUCCESS) if passed else ("❌", DANGER))
                 parts.append(
@@ -1440,7 +1482,10 @@ def _render_gate_card(run_id: str) -> str:
                     f'+{_MIN_IMPROVEMENT} f1 minimum vs @Production — delta = {delta:+.4f}</p>'
                 )
             else:
-                regressions = [k for k in _KPI_THRESHOLDS if champ_metrics.get(k, 0) < prod.get(k, 0)]
+                regressions = [
+                    k for k in _KPI_THRESHOLDS
+                    if (_as_float(champ_metrics.get(k)) or 0.0) < (_as_float(prod.get(k)) or 0.0)
+                ]
                 passed = len(regressions) < 2
                 icon, color = (("✅", SUCCESS) if passed else ("❌", DANGER))
                 reg_str = ", ".join(regressions) if regressions else "aucune"
@@ -1652,20 +1697,36 @@ def _loki_last_line(stage: str) -> str | None:
         return None
 
 
-def _last_deploy_flow_run() -> dict | None:
-    """Dernier flow run deploy-vps-flow / update-model-flow, tous triggers confondus."""
+def _last_deploy_flow_run(sha: str | None = None) -> dict | None:
+    """Dernier flow run deploy-vps-flow / update-model-flow — celui du commit
+    `sha` s'il est fourni (même commit que le titre du bandeau), sinon le plus
+    récent tous triggers confondus.
+
+    Pour un T3, le deploy-vps enfant (qui porte la gate) démarre après
+    l'update-model parent et porte le même sha_tag : le tri START_TIME_DESC le
+    renvoie donc en premier dès qu'il existe.
+    """
     try:
         r = requests.post(
             f"{PREFECT_API}/flow_runs/filter",
             json={
                 "flows": {"name": {"any_": ["deploy-vps-flow", "update-model-flow"]}},
                 "sort": "START_TIME_DESC",
-                "limit": 1,
+                "limit": 1 if not sha else 30,
             },
             timeout=5,
         )
         runs = r.json()
-        return runs[0] if runs else None
+        if not isinstance(runs, list) or not runs:
+            return None
+        if not sha:
+            return runs[0]
+        # sha_tag = SHA court (8 car.) ; la ligne Loki d'échec CD porte le SHA long.
+        for run in runs:
+            tag = ((run.get("parameters") or {}).get("sha_tag") or "").strip()
+            if tag and (sha.startswith(tag) or tag.startswith(sha)):
+                return run
+        return None
     except Exception:
         return None
 
@@ -1679,9 +1740,20 @@ def _render_pipeline_status_banner() -> str:
     cd_icon = _STATUS_OK if cd_fields.get("status") == "ok" else (_STATUS_NOK if cd_fields else "—")
     tr_icon = _STATUS_OK if tr_fields.get("status") == "ok" else (_STATUS_NOK if tr_fields else "—")
 
-    flow_run = _last_deploy_flow_run()
+    sha = cd_fields.get("sha") or tr_fields.get("sha") or ""
+
+    # Ligne 3 alignée sur le commit du titre (bug corrigé 2026-09-27 : elle
+    # affichait le dernier flow run tous triggers confondus — ex. « ⏹ Annulé »
+    # d'un T1 stoppé sous le titre d'un T2 encore à la gate).
+    flow_run = _last_deploy_flow_run(sha or None)
     if flow_run:
         state_type = (flow_run.get("state") or {}).get("type", "")
+        # Work pool 'process' : un run à la gate reste souvent RUNNING côté API
+        # (cf. _prefect_paused_runs) — on le reconnaît via sa présence en file.
+        if state_type in ("RUNNING", "PAUSED") and flow_run.get("id") in {
+            r.get("id") for r in _prefect_paused_runs()
+        }:
+            state_type = "PAUSED"
         flow_icon = {
             "COMPLETED": _STATUS_OK,
             "CANCELLED": "⏹ Annulé (STOP)",
@@ -1691,17 +1763,25 @@ def _render_pipeline_status_banner() -> str:
             # attend une action humaine (gate), pas un calcul en cours — sans
             # ça, impossible de distinguer "toujours en train d'entraîner" de
             # "arrivé à la gate, attend ton GO/STOP" (même sablier affiché).
-            "PAUSED": "⏸ En attente de ta validation — voir la file d'attente ci-dessous",
+            "PAUSED": "⏸ En attente de validation — voir la file d'attente ci-dessous",
         }.get(state_type, "⏳ En cours")
+    elif sha:
+        flow_icon = "— aucun flow run pour ce commit"
     else:
         flow_icon = "—"
 
-    sha = cd_fields.get("sha") or tr_fields.get("sha") or "?"
+    if sha:
+        sha_html = (
+            f'<a href="https://github.com/{GITHUB_REPO}/commit/{sha}" target="_blank" '
+            f'style="color:{NAVY};">{sha[:8]}</a>'
+        )
+    else:
+        sha_html = "?"
 
     return (
         '<div style="font-family:\'Inter\',system-ui,sans-serif;font-size:.85rem;'
         'border:1px solid #E5E7EB;border-radius:8px;padding:10px 14px;margin-bottom:12px;">'
-        f'<p style="font-weight:700;color:{NAVY};margin-bottom:6px;">Dernier pipeline post-merge — commit {sha}</p>'
+        f'<p style="font-weight:700;color:{NAVY};margin-bottom:6px;">Dernier pipeline post-merge — commit {sha_html}</p>'
         f'<p style="margin:2px 0;">GitHub CD (Trivy, schémas Prefect) : {cd_icon}</p>'
         f'<p style="margin:2px 0;">Déclenchement Prefect (création du flow run) : {tr_icon}</p>'
         f'<p style="margin:2px 0;">Exécution du flow (gate, promote, Kapsule) : {flow_icon}</p>'
