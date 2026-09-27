@@ -1095,12 +1095,20 @@ _PIPELINE: dict[str, dict] = {
 }
 
 _GH_PR_CACHE: dict[str, dict | None] = {}
+# Échecs API mémorisés 10 min (sha → timestamp) : sans ce délai, un quota
+# GitHub épuisé ne se rétablissait jamais — l'historique (40 lignes) est
+# rafraîchi toutes les 20 s et relançait un appel par ligne sans PR connue
+# (incident 2026-09-27 : 60/60 requêtes consommées, PR absente de la gate).
+_GH_PR_FAILED: dict[str, float] = {}
+_GH_PR_RETRY_S = 600
 
 
 def _fetch_github_pr(sha: str) -> dict | None:
     """Retourne {number, title, author, url} pour un SHA (court) via l'API GitHub, ou None."""
     if sha in _GH_PR_CACHE:
         return _GH_PR_CACHE[sha]
+    if time.time() - _GH_PR_FAILED.get(sha, 0) < _GH_PR_RETRY_S:
+        return None
     try:
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
         if GITHUB_TOKEN:
@@ -1122,11 +1130,14 @@ def _fetch_github_pr(sha: str) -> dict | None:
                     "url":    pr.get("html_url", ""),
                 }
             _GH_PR_CACHE[sha] = result
+            _GH_PR_FAILED.pop(sha, None)
             return result
-    except Exception:
-        pass
-    # Échec API (quota 60/h sans jeton, réseau) : pas de mise en cache, sinon
-    # le lien PR resterait absent jusqu'au redémarrage du Cockpit.
+        logger.warning("event=github_pr_lookup_failed sha=%s status=%s", sha, r.status_code)
+    except Exception as e:
+        logger.warning("event=github_pr_lookup_failed sha=%s error=%s", sha, e)
+    # Échec API (quota, réseau) : pas de mise en cache définitive — nouvel
+    # essai au plus tôt dans _GH_PR_RETRY_S secondes.
+    _GH_PR_FAILED[sha] = time.time()
     return None
 
 

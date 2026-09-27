@@ -259,6 +259,9 @@ services:
       VPS_TAILSCALE_IP:       ${VPS_TAILSCALE_IP:-}
       PUBLIC_URL:             "https://mlops.jakat-inc.fr"
       GITHUB_REPO:            ${GITHUB_REPO:-jakatt/cac_mlops}
+      # Lien PR de la gate / de l'historique — API GitHub authentifiée (5000 req/h
+      # au lieu de 60/h par IP). Dépôt public : le PAT GHCR (read:packages) suffit.
+      GITHUB_TOKEN:           ${GHCR_TOKEN:-}
       REPORTS_PATH:           /app/reports/drift
       KAPSULE_STATE:          /app/state/kapsule_ips
       # PAT GitHub récupéré depuis S3 (pas une var figée) — nécessaire pour le
