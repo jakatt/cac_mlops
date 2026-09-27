@@ -103,12 +103,12 @@ Exécuté à l'intérieur du réseau Docker (`http://nginx:80`) — teste l'API 
 
 ### Test anti-abus — `test-rate-limit` (manuel, Cockpit → Orchestration)
 
-Vérifie les 2 niveaux de limite nginx sur `POST /predict` : **par client** (IP réelle, 20/min, rafale 5) et **globale** (60/min, rafale 20). Clients simulés via `X-Forwarded-For` depuis le réseau Docker (IP fictives RFC 5737). ~5 s. Jamais en CD (quota global épuisé ~15 s après).
+Vérifie les 2 niveaux de limite nginx sur `POST /predict` : **par client** (IP réelle, 20/min, rafale 10) et **globale** (60/min, rafale 30). Clients simulés via `X-Forwarded-For` depuis le réseau Docker (IP fictives RFC 5737). ~5 s. Jamais en CD (quota global épuisé ~15 s après).
 
 | # | Task Prefect | Ce qui est vérifié |
 |---|---|---|
 | 1 | `1 · API en ligne (GET health)` | `GET /health` → HTTP 200 |
 | 2 | `2 · Obtenir un jeton JWT` | `POST /token` → JWT |
-| 3 | `3 · Limite par client — rafale d'un seul client` | client A : ~6 acceptées puis HTTP 429 |
+| 3 | `3 · Limite par client — rafale d'un seul client` | client A : ~11 acceptées puis HTTP 429 |
 | 4 | `4 · Limite par client — un autre client n'est pas pénalisé` | client B : HTTP 200 juste après |
 | 5 | `5 · Limite globale — plusieurs clients sous leur quota` | clients C1…Cn (3 req. chacun) : HTTP 429 une fois le quota global restant épuisé |

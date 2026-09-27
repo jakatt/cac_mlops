@@ -670,8 +670,8 @@ Caddy (TLS Let's Encrypt, mlops.jakat-inc.fr)
      ▼
 NGINX (nginx:alpine)
      ├── /          → gradio-public:7862 (WebSocket/SSE)
-     ├── /predict   → api:8000 (rate-limit 2 niveaux : 20r/min par client (IP réelle), burst=5
-     │                          + 60r/min global, burst=20)
+     ├── /predict   → api:8000 (rate-limit 2 niveaux : 20r/min par client (IP réelle), burst=10
+     │                          + 60r/min global, burst=30)
      ├── /health    → api:8000
      ├── /token     → api:8000
      ├── /metrics   → api:8000
