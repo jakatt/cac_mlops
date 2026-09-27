@@ -2569,9 +2569,9 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                 ) as acc_validation:
                     gr.Markdown(
                         "### Cockpit — validation des déploiements en attente\n"
-                        "Chaque mise à jour (nouvelles données, nouveau code, nouveau blueprint) s'arrête "
-                        "ici avant toute interruption de service sur le VPS, quel que soit le trigger. "
-                        "**GO** applique le déploiement · **STOP** l'annule (rien n'est encore appliqué en prod à ce stade)."
+                        "Chaque mise à jour de nouvelles données (trigger 1), nouveau code (trigger 2) ou "
+                        "nouveau modèle (trigger 3) s'arrête ici avant toute interruption de service sur le "
+                        "VPS et K8S. **GO** applique le déploiement · **STOP** l'annule."
                     )
                     pipeline_banner = gr.HTML(value=_render_pipeline_status_banner())
                     # Auto-rafraîchissement (incident 2026-07-23) : sans ça, le bandeau
@@ -2581,8 +2581,8 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     # spammer l'API Prefect/Loki.
                     pipeline_timer = gr.Timer(20)
                     with gr.Row():
-                        retry_btn    = gr.Button("Réessayer le déclenchement", variant="secondary", scale=3)
-                        banner_refresh = gr.Button("↻", scale=1)
+                        retry_btn      = gr.Button("Réessayer le déclenchement", variant="primary")
+                        banner_refresh = gr.Button("Rafraîchir le statut du pipeline", variant="stop")
                     retry_status = gr.Markdown()
 
                     _gate_choices = _paused_runs_choices()
@@ -2591,12 +2591,11 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     gate_queue = gr.Dataframe(
                         value=_paused_runs_table(), label="File d'attente", interactive=False,
                     )
-                    with gr.Row():
-                        gate_dd = gr.Dropdown(
-                            choices=_gate_choices, value=_gate_default,
-                            label="Déploiement à traiter", scale=3,
-                        )
-                        gate_refresh = gr.Button("Rafraîchir", scale=1)
+                    gate_dd = gr.Dropdown(
+                        choices=_gate_choices, value=_gate_default,
+                        label="Déploiement à traiter",
+                    )
+                    gate_refresh = gr.Button("Rafraîchir la file d'attente")
                     gate_card = gr.HTML(value=_render_gate_card(_gate_default))
                     with gr.Row():
                         go_btn   = gr.Button("GO — Déployer", variant="primary")
