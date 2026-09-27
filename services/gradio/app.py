@@ -1077,19 +1077,21 @@ def _fetch_github_pr(sha: str) -> dict | None:
         )
         if r.status_code == 200:
             prs = r.json()
+            result: dict | None = None
             if isinstance(prs, list) and prs:
                 pr = prs[0]
-                result: dict | None = {
+                result = {
                     "number": pr.get("number"),
                     "title":  pr.get("title", ""),
                     "author": (pr.get("user") or {}).get("login", ""),
                     "url":    pr.get("html_url", ""),
                 }
-                _GH_PR_CACHE[sha] = result
-                return result
+            _GH_PR_CACHE[sha] = result
+            return result
     except Exception:
         pass
-    _GH_PR_CACHE[sha] = None
+    # Échec API (quota 60/h sans jeton, réseau) : pas de mise en cache, sinon
+    # le lien PR resterait absent jusqu'au redémarrage du Cockpit.
     return None
 
 
@@ -1227,19 +1229,19 @@ _TRIGGER_DESCRIPTIONS = {
 }
 
 
-def _recent_deployment_runs(limit: int = 10) -> list[dict]:
-    """Historique des derniers déploiements TERMINÉS (états finaux uniquement,
-    tous triggers confondus) — complète la file d'attente ci-dessus (runs en
-    attente de décision) avec ce qui a déjà été traité. Mêmes flows que
-    _last_deploy_flow_run()."""
+_HISTORY_FLOWS = ["deploy-vps-flow", "update-model-flow", "full-retrain-flow", "check-new-data-flow"]
+_HISTORY_FILTERS = ["Tous les triggers", "Trigger 1 — Nouvelles données", "Trigger 2 — Code", "Trigger 3 — Blueprint"]
+# task_run_id → flow_run_id parent : immuable, donc mis en cache sans expiration
+_PARENT_FLOW_RUN_CACHE: dict[str, str | None] = {}
+
+
+def _history_runs(flow_name: str, limit: int = 60) -> list[dict]:
     try:
         r = requests.post(
             f"{PREFECT_API}/flow_runs/filter",
             json={
-                "flows": {"name": {"any_": ["deploy-vps-flow", "update-model-flow"]}},
-                "flow_runs": {
-                    "state": {"type": {"any_": ["COMPLETED", "FAILED", "CRASHED", "CANCELLED"]}},
-                },
+                "flows": {"name": {"any_": [flow_name]}},
+                "flow_runs": {"state": {"type": {"any_": ["COMPLETED", "FAILED", "CRASHED", "CANCELLED"]}}},
                 "sort": "START_TIME_DESC",
                 "limit": limit,
             },
@@ -1251,33 +1253,112 @@ def _recent_deployment_runs(limit: int = 10) -> list[dict]:
         return []
 
 
-def _recent_deployments_table() -> pd.DataFrame:
-    rows = []
-    for run in _recent_deployment_runs():
+def _parent_flow_run_id(task_run_id: str) -> str | None:
+    if task_run_id not in _PARENT_FLOW_RUN_CACHE:
+        try:
+            r = requests.get(f"{PREFECT_API}/task_runs/{task_run_id}", timeout=5)
+            _PARENT_FLOW_RUN_CACHE[task_run_id] = r.json().get("flow_run_id")
+        except Exception:
+            return None
+    return _PARENT_FLOW_RUN_CACHE[task_run_id]
+
+
+def _run_duration(run: dict) -> str:
+    try:
+        start = datetime.fromisoformat(run["start_time"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(run["end_time"].replace("Z", "+00:00"))
+    except Exception:
+        return "—"
+    minutes = int((end - start).total_seconds() // 60)
+    return f"{minutes // 60} h {minutes % 60:02d}" if minutes >= 60 else f"{minutes} min"
+
+
+def _gate_outcome(child: dict | None, run: dict) -> str:
+    """Statut d'un T1/T3 : décidé par son deploy-vps enfant (celui qui porte la
+    gate) — le parent peut être Completed alors que la gate a été STOPpée."""
+    if child is None:
+        if run.get("state_type") == "COMPLETED":
+            return "⚪ Aucun modèle meilleur"
+        return _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), "?")
+    return {
+        "COMPLETED": "🟢 Promu",
+        "CANCELLED": "⏹ STOP",
+        "FAILED":    "🔴 Échec",
+        "CRASHED":   "🔴 Crash",
+    }.get(child.get("state_type", ""), "?")
+
+
+def _pr_link(sha_tag: str) -> str:
+    if not sha_tag:
+        return "—"
+    pr = _fetch_github_pr(sha_tag)
+    if not pr:
+        return "—"
+    return f"[#{pr['number']}](https://github.com/{GITHUB_REPO}/pull/{pr['number']})"
+
+
+def _recent_deployments_table(trigger_filter: str = "Tous les triggers", limit: int = 40) -> pd.DataFrame:
+    """Historique des déploiements terminés, triggers 1, 2 et 3.
+
+    T2 = deploy-vps lancé par la CD. T3 = update-model-flow (réentraînement
+    blueprint) dont le deploy-vps enfant porte la gate. T1 = full-retrain, ou
+    check-new-data quand il a réellement lancé un déploiement (sinon simple
+    vérification hebdomadaire, non listée). Les deploy-vps enfants ne sont pas
+    listés séparément : leur issue est reportée sur la ligne du parent."""
+    by_flow = {f: _history_runs(f) for f in _HISTORY_FLOWS}
+
+    children: dict[str, dict] = {}
+    for run in by_flow["deploy-vps-flow"]:
+        if run.get("parent_task_run_id"):
+            parent = _parent_flow_run_id(run["parent_task_run_id"])
+            if parent:
+                children[parent] = run
+
+    entries = []
+    for run in by_flow["deploy-vps-flow"]:
+        if run.get("parent_task_run_id"):
+            continue
         params = run.get("parameters") or {}
         trigger = _trigger_label(params)
-        sha_tag = params.get("sha_tag") or ""
-        pr_label = "—"
-        if sha_tag:
-            pr = _fetch_github_pr(sha_tag)
-            if pr:
-                pr_url = f"https://github.com/{GITHUB_REPO}/pull/{pr['number']}"
-                pr_label = f"[#{pr['number']}]({pr_url})"
+        entries.append((run, trigger, _TRIGGER_DESCRIPTIONS.get(trigger, "—"),
+                        params.get("champion") or "—", params.get("sha_tag") or "",
+                        _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), "?")))
+    for run in by_flow["update-model-flow"]:
+        child = children.get(run.get("id"))
+        champion = ((child or {}).get("parameters") or {}).get("champion") or "—"
+        entries.append((run, "Trigger 3 — Blueprint", "Blueprint DS mergé → réentraînement → gate → promotion",
+                        champion, (run.get("parameters") or {}).get("sha_tag") or "",
+                        _gate_outcome(child, run)))
+    for run in by_flow["check-new-data-flow"]:
+        child = children.get(run.get("id"))
+        if child is None:
+            continue
+        champion = (child.get("parameters") or {}).get("champion") or "—"
+        entries.append((run, "Trigger 1 — Nouvelles données", "Nouvelle année ONISR détectée → ETL → réentraînement → gate",
+                        champion, "", _gate_outcome(child, run)))
+    for run in by_flow["full-retrain-flow"]:
+        entries.append((run, "Trigger 1 — Nouvelles données", "Réentraînement complet sur tout l'historique ONISR",
+                        "3 algos", "", _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), "?")))
+
+    if trigger_filter and trigger_filter != "Tous les triggers":
+        entries = [e for e in entries if e[1] == trigger_filter]
+    entries.sort(key=lambda e: e[0].get("start_time") or "", reverse=True)
+
+    rows = []
+    for run, trigger, desc, champion, sha_tag, status in entries[:limit]:
         run_id = run.get("id", "")
-        run_id_label = "—"
-        if run_id:
-            run_url = f"http://{VPS_TAILSCALE_IP}:4200/flow-runs/flow-run/{run_id}"
-            run_id_label = f"[{run_id[:8]}]({run_url})"
         rows.append({
             "Trigger":     trigger,
-            "Déploiement": _TRIGGER_DESCRIPTIONS.get(trigger, "—"),
-            "PR":          pr_label,
+            "Déploiement": desc,
+            "Modèle":      champion,
+            "PR":          _pr_link(sha_tag),
             "Démarré":     _parse_ts(run.get("start_time") or ""),
-            "Statut":      _DEPLOY_STATE_LABEL.get(run.get("state_type", ""), run.get("state_type") or "?"),
-            "Run ID":      run_id_label,
+            "Durée":       _run_duration(run),
+            "Statut":      status,
+            "Run ID":      f"[{run_id[:8]}](http://{VPS_TAILSCALE_IP}:4200/flow-runs/flow-run/{run_id})" if run_id else "—",
         })
     if not rows:
-        return pd.DataFrame({"Info": ["Aucun déploiement récent"]})
+        return pd.DataFrame({"Info": ["Aucun déploiement pour ce filtre"]})
     return pd.DataFrame(rows)
 
 
@@ -2606,9 +2687,10 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     gate_refresh.click(fn=refresh_gate_queue, outputs=[gate_queue, gate_dd, gate_card])
                     banner_refresh.click(fn=_render_pipeline_status_banner, outputs=pipeline_banner)
 
-                    def _auto_refresh_banner_and_queue():
+                    def _auto_refresh_banner_and_queue(history_filter):
                         table, dd_update, card = refresh_gate_queue()
-                        return _render_pipeline_status_banner(), table, dd_update, card, _recent_deployments_table()
+                        return (_render_pipeline_status_banner(), table, dd_update, card,
+                                _recent_deployments_table(history_filter))
 
                     def _gate_go(run_id):
                         msg = resume_run(run_id)
@@ -2632,17 +2714,27 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         outputs=[retry_status, pipeline_banner, gate_queue, gate_dd, gate_card],
                     )
 
-                    gr.Markdown("### Derniers déploiements exécutés")
-                    with gr.Row():
-                        history_table = gr.Dataframe(
-                            value=_recent_deployments_table(), label="Historique", interactive=False, scale=5,
-                            datatype="markdown",
-                        )
-                        history_refresh = gr.Button("↻", scale=1)
-                    history_refresh.click(fn=_recent_deployments_table, outputs=history_table)
+                    gr.Markdown(
+                        "### Historique des déploiements — triggers 1, 2 et 3\n"
+                        "Les 40 derniers déploiements terminés. Pour un trigger 1 ou 3, le statut "
+                        "est l'issue de la gate : 🟢 Promu · ⏹ STOP · ⚪ aucun modèle meilleur "
+                        "(pas de gate) · 🔴 échec avec rollback."
+                    )
+                    history_filter = gr.Dropdown(
+                        choices=_HISTORY_FILTERS, value=_HISTORY_FILTERS[0], label="Filtrer par trigger",
+                    )
+                    history_table = gr.Dataframe(
+                        value=_recent_deployments_table(), label="Historique", interactive=False,
+                        datatype="markdown", max_height=520, wrap=True,
+                        column_widths=["16%", "28%", "7%", "6%", "13%", "8%", "12%", "10%"],
+                    )
+                    history_refresh = gr.Button("Rafraîchir l'historique")
+                    history_filter.change(fn=_recent_deployments_table, inputs=history_filter, outputs=history_table)
+                    history_refresh.click(fn=_recent_deployments_table, inputs=history_filter, outputs=history_table)
 
                     pipeline_timer.tick(
                         fn=_auto_refresh_banner_and_queue,
+                        inputs=history_filter,
                         outputs=[pipeline_banner, gate_queue, gate_dd, gate_card, history_table],
                     )
 
