@@ -147,7 +147,7 @@
 
   <div class="rule">
     <span class="rule-icon">&#9432;</span>
-    <span>Règle simple à retenir : <strong>chaque Stop et chaque Rollback envoie automatiquement une Alerte</strong> — sauf les tests automatiques du code (Trigger 2 et 3), qui bloquent directement sur GitHub, visibles par l'équipe sans email séparé.</span>
+    <span>Règle simple à retenir : <strong>chaque Stop et chaque Rollback envoie automatiquement une Alerte</strong> (Trigger 1 en compte une de plus, non bloquante : l'échec éventuel de l'archivage des données) — sauf les tests automatiques du code (Trigger 2 et 3), qui bloquent directement sur GitHub, visibles par l'équipe sans email séparé.</span>
   </div>
 
   <div class="tbl-wrap">
@@ -188,7 +188,7 @@
         <tr>
           <td><span class="row-label"><span class="dot dot-rb"></span>Rollback</span></td>
           <td><span class="badge badge-rb"><span class="badge-num">3</span></span></td>
-          <td><span class="badge badge-rb"><span class="badge-num">4</span></span></td>
+          <td><span class="badge badge-rb"><span class="badge-num">5</span></span></td>
           <td><span class="badge badge-rb"><span class="badge-num">3</span></span></td>
         </tr>
         <tr>
@@ -199,8 +199,8 @@
         </tr>
         <tr>
           <td><span class="row-label"><span class="dot dot-alert"></span>Alerte</span></td>
+          <td><span class="badge badge-alert"><span class="badge-num">8</span></span></td>
           <td><span class="badge badge-alert"><span class="badge-num">7</span></span></td>
-          <td><span class="badge badge-alert"><span class="badge-num">6</span></span></td>
           <td><span class="badge badge-alert"><span class="badge-num">5</span></span></td>
         </tr>
 
@@ -214,9 +214,10 @@
               <li>Si la source de données officielle est injoignable ou le fichier manquant → <b class="k-stop">Stop</b>, une <b class="k-alert">Alerte</b> prévient l'équipe.</li>
               <li>Avant de bloquer quoi que ce soit, le système essaie d'abord de corriger tout seul les petits problèmes déjà rencontrés par le passé (colonne renommée, espace superflu, format de nombre, nom de fichier légèrement différent...) — en coulisses, sans alerte ni interruption.</li>
               <li>Si malgré cette correction automatique un problème grave subsiste (colonnes, volumes, format) → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
-              <li>Le modèle se réentraîne. Si aucune des nouvelles versions ne fait mieux que celle déjà en place → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b> : rien ne change, la production continue avec l'ancien modèle.</li>
+              <li>Les données acceptées sont archivées et versionnées (pour pouvoir toujours retrouver celles qui ont produit un modèle). Si cet archivage échoue, une <b class="k-alert">Alerte</b> prévient l'équipe, sans bloquer la suite : les données restent utilisables, seule leur traçabilité est à rattraper.</li>
+              <li>Le modèle se réentraîne. Si aucune des nouvelles versions n'atteint le niveau de qualité minimum, ou si la meilleure <b>recule sur plus d'une mesure de qualité</b> par rapport au modèle en place → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b> : rien ne change, la production continue avec l'ancien modèle.</li>
               <li>Juste avant de présenter les résultats à un humain, une dernière vérification de bon fonctionnement du serveur a lieu. Si elle échoue → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
-              <li><b class="k-human">Validation humaine</b> : les résultats du nouveau modèle sont présentés dans le Cockpit. Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
+              <li><b class="k-human">Validation humaine</b> : les résultats du nouveau modèle sont présentés dans le Cockpit, <b>côte à côte avec ceux du modèle actuel</b> (écart mesure par mesure et verdict de la règle). Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
               <li>Le feu vert donné, le nouveau modèle est mis en service <b>d'abord sur le <span class="env-tag">VPS</span></b> : une <b class="k-int">Interruption</b> d'environ 30 secondes a lieu le temps du redémarrage.</li>
               <li>Si la vérification qui suit sur le <span class="env-tag">VPS</span> échoue → <b class="k-rb">Rollback</b> vers la version précédente + <b class="k-alert">Alerte</b> — et le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
               <li><b>Seulement si le <span class="env-tag">VPS</span> est OK</b>, la même mise à jour est ensuite déployée sur <span class="env-tag">K8s</span> (infrastructure parallèle, haute disponibilité) — <b>sans aucune interruption de service</b> : l'ancienne version continue de répondre aux utilisateurs tant que la nouvelle n'est pas vérifiée. Deux vérifications indépendantes y sont refaites (le déploiement lui-même, puis son bon fonctionnement) ; si l'une échoue → <b class="k-rb">2 rollbacks</b> possibles (un par vérification) + <b class="k-alert">2 alertes</b>, le <span class="env-tag">VPS</span> reste inchangé.</li>
@@ -233,6 +234,7 @@
               <li>Juste avant la mise à jour, une dernière vérification de bon fonctionnement a lieu sur le <span class="env-tag">VPS</span>. Si elle échoue → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
               <li><b class="k-human">Validation humaine</b> n°2 : le changement est présenté dans le Cockpit. Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
               <li>Le feu vert donné, la mise à jour est appliquée <b>d'abord sur le <span class="env-tag">VPS</span></b> : une <b class="k-int">Interruption</b> d'environ 30 secondes a lieu le temps de la mise à jour.</li>
+              <li>Si la mise à jour elle-même ne parvient pas à démarrer sur le <span class="env-tag">VPS</span> → <b class="k-rb">Rollback</b> immédiat vers la version précédente + <b class="k-alert">Alerte</b>.</li>
               <li>Juste après, une première vérification a lieu sur le <span class="env-tag">VPS</span>. Si elle échoue → <b class="k-rb">Rollback</b> vers la version précédente + <b class="k-alert">Alerte</b>.</li>
               <li>Une seconde vérification, plus complète, suit sur le <span class="env-tag">VPS</span>. Si elle échoue → <b class="k-rb">Rollback</b> + <b class="k-alert">Alerte</b> — le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
               <li><b>Seulement si le <span class="env-tag">VPS</span> est OK</b>, la même mise à jour est ensuite déployée sur <span class="env-tag">K8s</span> (infrastructure parallèle, haute disponibilité) — <b>sans aucune interruption de service</b>. Deux vérifications indépendantes y sont refaites ; si l'une échoue → <b class="k-rb">2 rollbacks</b> possibles + <b class="k-alert">2 alertes</b>, le <span class="env-tag">VPS</span> reste inchangé.</li>
@@ -245,11 +247,11 @@
             <ul class="desc-list">
               <li>Si les tests automatiques échouent → <b class="k-stop">Stop</b> : la proposition n'est pas retenue, bloquée directement sur GitHub, sans email séparé.</li>
               <li><b class="k-human">Validation humaine</b> n°1 : un responsable relit et valide la proposition — avant même que le réentraînement ne démarre.</li>
-              <li>Le modèle se réentraîne avec les nouveaux réglages. Si aucun des candidats ne fait mieux que le modèle actuel → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b> : rien ne change en production.</li>
+              <li>Le modèle se réentraîne avec les nouveaux réglages. Si aucun des candidats ne fait <b>nettement</b> mieux que le modèle actuel (au moins +1 point sur le score principal, le F1) → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b> : rien ne change en production.</li>
               <li>Juste avant de présenter les résultats, une dernière vérification de bon fonctionnement du serveur a lieu. Si elle échoue → <b class="k-stop">Stop</b> + <b class="k-alert">Alerte</b>.</li>
-              <li><b class="k-human">Validation humaine</b> n°2 : les résultats sont présentés dans le Cockpit. Rien n'est encore appliqué — un humain donne le feu vert ou annule.</li>
+              <li><b class="k-human">Validation humaine</b> n°2 : les résultats sont présentés dans le Cockpit, <b>côte à côte avec ceux du modèle actuel</b>. Rien n'est encore appliqué — un humain donne le feu vert ou annule ; en cas d'annulation, la proposition est aussi retirée automatiquement du code, pour que le code reste aligné sur le modèle réellement en production.</li>
               <li>Le feu vert donné, le nouveau modèle est mis en service <b>d'abord sur le <span class="env-tag">VPS</span></b> : une <b class="k-int">Interruption</b> d'environ 30 secondes a lieu le temps de la mise en service.</li>
-              <li>Si une vérification après la mise en service sur le <span class="env-tag">VPS</span> échoue → <b class="k-rb">Rollback</b> vers l'ancienne version + <b class="k-alert">Alerte</b> — le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
+              <li>Si une vérification après la mise en service sur le <span class="env-tag">VPS</span> échoue → <b class="k-rb">Rollback</b> vers l'ancienne version (et retrait de la proposition dans le code) + <b class="k-alert">Alerte</b> — le déploiement s'arrête là, <span class="env-tag">K8s</span> n'est jamais touché.</li>
               <li><b>Seulement si le <span class="env-tag">VPS</span> est OK</b>, la même mise à jour est ensuite déployée sur <span class="env-tag">K8s</span> (infrastructure parallèle, haute disponibilité) — <b>sans aucune interruption de service</b>. Deux vérifications indépendantes y sont refaites ; si l'une échoue → <b class="k-rb">2 rollbacks</b> possibles + <b class="k-alert">2 alertes</b>, le <span class="env-tag">VPS</span> reste inchangé.</li>
             </ul>
           </td>

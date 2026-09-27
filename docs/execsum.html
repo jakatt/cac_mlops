@@ -80,7 +80,7 @@
   <header>
     <p class="eyebrow">MLOps · Accidents routiers</p>
     <h1 class="page-title">Résumé exécutif</h1>
-    <p class="page-sub">Synthèse complète du projet — données ONISR · modèle de classification binaire · infrastructure MLOps opérationnelle en production (2026-07)</p>
+    <p class="page-sub">Synthèse complète du projet — données ONISR · modèle de classification binaire · infrastructure MLOps opérationnelle en production (état au 27/09/2026)</p>
   </header>
 
   <!-- SYNTHESE -->
@@ -88,7 +88,7 @@
     <summary>📋 En deux phrases</summary>
     <div class="body">
       <p>Système MLOps complet de <strong>prédiction de gravité d'accidents routiers</strong>, entraîné sur les données officielles ONISR (data.gouv.fr) — années 2021 → 2024 disponibles. Le pipeline s'exécute de bout en bout chaque année lors de la publication de nouvelles données — avec versioning intégral (DVC · Git · MLflow) — et utilise la dernière année disponible comme source de données pour le monitoring drift Evidently (simulation production via <code>scripts/simulate_production.py</code>).</p>
-      <p><strong>Année drift auto-détectée :</strong> quand les données 2025 seront disponibles (publiées ~juin 2027), elles deviendront automatiquement l'année drift et 2024 rejoindra le train set.</p>
+      <p><strong>Année drift auto-détectée :</strong> quand les données 2025 seront disponibles (publication ONISR attendue ~octobre 2026 — les données 2024 ont été publiées le 21/10/2025), elles deviendront automatiquement l'année drift et 2024 rejoindra le train set.</p>
     </div>
   </details>
 
@@ -96,7 +96,7 @@
   <details>
     <summary>✅ Statut d'implémentation</summary>
     <div class="body">
-      <div class="band"><strong>SOLUTION COMPLÈTE — EN PRODUCTION</strong> (branche main — 2026-07)</div>
+      <div class="band"><strong>SOLUTION COMPLÈTE — EN PRODUCTION</strong> (branche main — état au 27/09/2026)</div>
 
       <details>
         <summary>Données &amp; Modèle</summary>
@@ -108,7 +108,7 @@
               <tr><td><strong>schema.py + schema_validator.py</strong></td><td>✅</td><td>Schémas Pandera 4 fichiers ONISR · 3 niveaux CRITICAL/WARNING/OK</td></tr>
               <tr><td><strong>make_dataset.py</strong></td><td>✅</td><td>Paramétré <code>--year/--cumul</code> · split temporel</td></tr>
               <tr><td><strong>train_model.py</strong></td><td>✅</td><td>MLflow tracking · benchmark RF/XGB/LGBM · gate KPI · Model Registry</td></tr>
-              <tr><td><strong>Modèle en prod</strong></td><td>✅</td><td><strong>lgbm_accidents@Production</strong> — cumul 2021+2022+2023 · 27 features · F1=0.664 · AUC=0.839</td></tr>
+              <tr><td><strong>Modèle en prod</strong></td><td>✅</td><td><strong>lgbm_accidents v4 @Production</strong> — cumul 2021→2024 (test 2024) · 27 features · F1=0.689 · AUC=0.837</td></tr>
               <tr><td><strong>Expériences MLflow</strong></td><td>✅</td><td><code>accidents_severity_prod</code> (officiel) · <code>accidents_severity_dev</code> (explore DS)</td></tr>
             </tbody>
           </table></div>
@@ -122,7 +122,7 @@
           <div class="tbl"><table>
             <thead><tr><th>Composant</th><th>Détail</th></tr></thead>
             <tbody>
-              <tr><td><strong>16 conteneurs Docker</strong></td><td>PostgreSQL · MinIO · MLflow · API FastAPI · Prefect (server+worker) · Nginx · Grafana · Prometheus · Loki · Promtail · Gradio (Tailscale) · Gradio-public (internet) · node-exporter · nginx-exporter · minio-init (EXIT)</td></tr>
+              <tr><td><strong>17 services Docker (16 permanents)</strong></td><td>PostgreSQL · MinIO · MLflow · API FastAPI · Prefect (server+worker) · Nginx · Grafana · Prometheus · Loki · Promtail · Gradio (Tailscale) · Gradio-public (internet) · node-exporter · nginx-exporter · minio-init (EXIT)</td></tr>
               <tr><td><strong>DVC remote</strong></td><td>Scaleway Object Storage s3://cac-mlops-data/dvc</td></tr>
               <tr><td><strong>Accès admin</strong></td><td>Tailscale VPN uniquement — IP stable 100.117.99.62</td></tr>
               <tr><td><strong>Accès public</strong></td><td>Caddy TLS → nginx → gradio-public · <code>https://mlops.jakat-inc.fr</code></td></tr>
@@ -137,10 +137,10 @@
           <div class="tbl"><table>
             <thead><tr><th>Couche</th><th>État</th><th>Détail</th></tr></thead>
             <tbody>
-              <tr><td><strong>CI/CD GitHub Actions</strong></td><td>✅</td><td>3 workflows : ci · deploy · cleanup · 54 tests unitaires</td></tr>
-              <tr><td><strong>Orchestration Prefect</strong></td><td>✅</td><td>14 flows · crons + déclenchements manuels + cockpit</td></tr>
-              <tr><td><strong>Monitoring</strong></td><td>✅</td><td>Prometheus + Loki/Promtail + Grafana (VPS+Kapsule consolidés) · 7 alertes · SMTP ✓</td></tr>
-              <tr><td><strong>Cockpit</strong></td><td>✅</td><td>Gradio 10 onglets (Tailscale) + Gradio-public 3 onglets (internet)</td></tr>
+              <tr><td><strong>CI/CD GitHub Actions</strong></td><td>✅</td><td>3 workflows : ci · deploy · cleanup · 54 tests unitaires en CI (+ 13 tests d'intégration hors CI)</td></tr>
+              <tr><td><strong>Orchestration Prefect</strong></td><td>✅</td><td>18 deployments · crons + déclenchements manuels + cockpit</td></tr>
+              <tr><td><strong>Monitoring</strong></td><td>✅</td><td>Prometheus + Loki/Promtail + Grafana (VPS+Kapsule consolidés) · 11 dashboards · 12 alertes · SMTP ✓</td></tr>
+              <tr><td><strong>Cockpit</strong></td><td>✅</td><td>Gradio 6 onglets (Tailscale, dont Cockpit = 6 accordéons) + Gradio-public 3 onglets (internet)</td></tr>
               <tr><td><strong>Kubernetes</strong></td><td>✅</td><td>Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)</td></tr>
             </tbody>
           </table></div>
@@ -153,7 +153,7 @@
   <details>
     <summary>📊 Slide 1 — Flow annuel de mise à jour des données</summary>
     <div class="body">
-      <p><em>Déclenché chaque année en juin, à la publication des données ONISR de l'année N-1.</em></p>
+      <p><em>Déclenché chaque année vers octobre, à la publication des données ONISR de l'année N-1 (détection automatique chaque lundi).</em></p>
 
       <details>
         <summary>Étape 1 — Validation du schéma (Pandera)</summary>
@@ -181,7 +181,7 @@
         <summary>Étape 3 — Versioning DVC</summary>
         <div class="body">
           <p><code>dvc add</code> → <code>dvc push</code> → Scaleway Object Storage <code>s3://cac-mlops-data/dvc</code></p>
-          <p>Tag Git : <code>data-v{N}</code> — reproductibilité totale des données à chaque cycle.</p>
+          <p>Pointeurs <code>.dvc</code> commités automatiquement sur main à chaque cycle (raw + préprocessé) — reproductibilité totale des données (cf. Lignée des données).</p>
         </div>
       </details>
 
@@ -212,8 +212,8 @@
         <summary>Étape 6 — Déploiement</summary>
         <div class="body">
           <p>Gate manuelle dans <strong>l'onglet Cockpit du cockpit Gradio</strong> (ou Prefect UI) → GO/STOP</p>
-          <p>Après GO : promotion @Production MLflow + restart API → test-api (6 tests) → rolling update Kapsule (si actif)</p>
-          <p>Interruption VPS : <strong>~30-90 s</strong> (pendant <code>docker compose up -d</code>) — <strong>jamais avant</strong> la gate manuelle.</p>
+          <p>Après GO : promotion @Production MLflow + restart API → test-api (5 tests) + test-gradio-public, en interne puis en externe → rolling update Kapsule (si actif)</p>
+          <p>Interruption VPS : <strong>~30 s</strong> (redémarrage de l'API pour charger le nouveau modèle) — <strong>jamais avant</strong> la gate manuelle.</p>
           <p>Kapsule K8s : <strong>zéro interruption</strong> (<code>maxUnavailable:0</code>).</p>
         </div>
       </details>
@@ -224,7 +224,7 @@
           <div class="tbl"><table>
             <thead><tr><th>Outil</th><th>Ce qu'il mesure</th><th>Seuil d'alerte</th></tr></thead>
             <tbody>
-              <tr><td><strong>Prometheus</strong></td><td>Latence API, volume, erreurs HTTP</td><td>p95 &lt; 300 ms · 5xx &lt; 1%</td></tr>
+              <tr><td><strong>Prometheus</strong></td><td>Latence API, volume, erreurs HTTP</td><td>Objectifs p95 &lt; 300 ms · 5xx &lt; 1% (suivis en dashboard) · alertes : brute-force 401, RAM, disque</td></tr>
               <tr><td><strong>Evidently</strong></td><td>Drift de features (X_train vs données drift)</td><td>share &gt; 10% WARNING · &gt; 25% CRITICAL</td></tr>
               <tr><td><strong>Grafana</strong></td><td>Dashboards API-perf + model-drift + alertes</td><td>Email sur toutes alertes critiques</td></tr>
             </tbody>
@@ -259,10 +259,10 @@
               <tr><td>Valider le schéma données</td><td><strong>Pandera</strong></td><td>—</td></tr>
               <tr><td>Versionner les données</td><td><strong>DVC</strong></td><td>Scaleway Object Storage</td></tr>
               <tr><td>Versionner le code</td><td><strong>Git</strong></td><td>GitHub</td></tr>
-              <tr><td>Tracker les expériences</td><td><strong>MLflow</strong></td><td>Scaleway S3 + PostgreSQL</td></tr>
+              <tr><td>Tracker les expériences</td><td><strong>MLflow</strong></td><td>MinIO (VPS) + PostgreSQL</td></tr>
               <tr><td>Orchestrer les pipelines</td><td><strong>Prefect</strong></td><td>VPS (prod)</td></tr>
               <tr><td>Servir le modèle</td><td><strong>FastAPI</strong></td><td>VPS (prod) + Kapsule (on-demand)</td></tr>
-              <tr><td>Sécuriser l'API</td><td><strong>NGINX / Caddy</strong></td><td>VPS (prod) + Kapsule (ingress)</td></tr>
+              <tr><td>Sécuriser l'API</td><td><strong>NGINX / Caddy</strong></td><td>VPS (prod) + Kapsule (LoadBalancer Caddy)</td></tr>
               <tr><td>Monitorer les perfs</td><td><strong>Prometheus</strong></td><td>VPS (prod) + Kapsule (distant)</td></tr>
               <tr><td>Visualiser les métriques</td><td><strong>Grafana</strong></td><td>VPS (prod) — datasource K8s distante</td></tr>
               <tr><td>Détecter le drift</td><td><strong>Evidently</strong></td><td>VPS (prod) uniquement</td></tr>
@@ -278,7 +278,7 @@
           <div class="tbl"><table>
             <thead><tr><th>Dimension</th><th>LOCAL (développement)</th><th>VPS SCALEWAY (production)</th></tr></thead>
             <tbody>
-              <tr><td><strong>Stack</strong></td><td>Docker Compose (tous services sur localhost)</td><td>Docker Compose · 16 conteneurs</td></tr>
+              <tr><td><strong>Stack</strong></td><td>Docker Compose (tous services sur localhost)</td><td>Docker Compose · 16 conteneurs permanents</td></tr>
               <tr><td><strong>MLflow</strong></td><td>MinIO local simule S3 · PostgreSQL local</td><td>MinIO (S3) · PostgreSQL · Registry réel</td></tr>
               <tr><td><strong>Tests</strong></td><td>pytest · flake8 · pip-audit</td><td>CI/CD : lint → test → build → push → deploy</td></tr>
               <tr><td><strong>K8s</strong></td><td>kind (optionnel, dev local)</td><td>Kapsule Scaleway (on-demand, HA)</td></tr>

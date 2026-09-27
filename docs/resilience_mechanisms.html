@@ -204,14 +204,14 @@
         <tr>
           <td><span class="row-label">Rollbacks</span></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">3</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">4</span></span></div></td>
+          <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">5</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-rb"><span class="badge-num">3</span></span></div></td>
         </tr>
-        <!-- Alertes (= Stops + Rollbacks, moins les Stops CI sans alerte email) -->
+        <!-- Alertes (= Stops + Rollbacks, moins les Stops CI sans alerte email ; T1 +1 alerte non bloquante versioning DVC) -->
         <tr>
           <td><span class="row-label">Alertes</span></td>
+          <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">8</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">7</span></span></div></td>
-          <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">6</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-alt"><span class="badge-num">5</span></span></div></td>
         </tr>
         <!-- Interruptions VPS -->
@@ -254,7 +254,11 @@
               </li>
               <li>
                 <span class="item-label">Gate 3</span>
-                <span class="item-desc">KPI gate failed : aucun champion RF/XGB/LGBM → @Production inchangé + alerte</span>
+                <span class="item-desc">Gate KPI + comparaison @Production : aucun algo RF/XGB/LGBM ne passe les seuils absolus, <strong>ou</strong> le champion régresse sur ≥ 2 métriques vs @Production (test sets d'années différentes, comparaison stricte non valide) → @Production inchangé + alerte, <strong>aucune gate ouverte</strong></span>
+              </li>
+              <li>
+                <span class="item-label" style="opacity:.7;">Versioning DVC<br><span style="font-weight:400;font-size:.9em;">(non bloquant)</span></span>
+                <span class="item-desc">Échec du versioning des données (DVC push / commit git du <code>.dvc</code>) → log ERROR + alerte, le flow continue : les données sont utilisables, seule leur traçabilité est à rattraper (cf. <a href="data_lineage.html">Lignée des données</a>).</span>
               </li>
               <li>
                 <span class="item-label">Smoke test pré-gate</span>
@@ -262,15 +266,15 @@
               </li>
               <li class="item-manual">
                 <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du champion (f1 / recall / auc / acc) affichées dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> GO → promotion @Production + redémarrage API (~30 s). STOP → run annulé, @Production inchangé, aucun impact.</span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques des 3 algos, puis <strong>tableau de comparaison @Production vs candidat</strong> (F1 / Recall / AUC / Accuracy, écart 🟢/🔴) et verdict de la règle Trigger 1, affichés dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> GO → promotion @Production + redémarrage API (~30 s). STOP → run annulé, @Production inchangé, aucun impact.</span>
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (6 tâches) + test-gradio-public — interne PUIS externe (vrai domaine public) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public — interne PUIS externe (vrai domaine public) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout) + rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout) + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s — FTe (interne + externe)</span>
@@ -281,7 +285,7 @@
 
           <!-- T2 -->
           <td>
-            <p class="desc-title">VPS · 3 Stops — 2 Validations humaines — 1 Interruption — 2 Rollbacks<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
+            <p class="desc-title">VPS · 3 Stops — 2 Validations humaines — 1 Interruption — 3 Rollbacks<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
             <ul class="desc-list">
               <li>
                 <span class="item-label">Gate 1</span>
@@ -304,12 +308,16 @@
                 <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : SHA, images à builder et services à redémarrer affichés dans le Cockpit ou Prefect UI. Images <code>pull</code>-ées mais <strong>pas encore appliquées</strong>. GO → <code>docker compose up -d</code>. STOP → run annulé, aucun conteneur touché.</span>
               </li>
               <li class="item-vps">
+                <span class="item-label">Compose up VPS</span>
+                <span class="item-desc">Échec de <code>docker compose up -d</code> lui-même (conteneur qui ne démarre pas) → rollback Docker <code>:rollback</code> + alerte (depuis le 2026-09-26 : auparavant, les conteneurs recréés-non-démarrés étaient ensuite supprimés par le nettoyage disque → prod en 502)</span>
+              </li>
+              <li class="item-vps">
                 <span class="item-label">Gate 3 VPS</span>
                 <span class="item-desc">Smoke test (90 s) après <code>docker compose up -d</code> : si fail → rollback Docker <code>:rollback</code> + alerte</span>
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (6 tâches) + test-gradio-public — interne PUIS externe : si fail → rollback Docker <code>:rollback</code> + alerte</span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public — interne PUIS externe : si fail → rollback Docker <code>:rollback</code> + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
@@ -336,7 +344,7 @@
               </li>
               <li>
                 <span class="item-label">Gate 2</span>
-                <span class="item-desc">KPI gate failed : aucun champion → @Production inchangé + alerte</span>
+                <span class="item-desc">Gate KPI + comparaison @Production : aucun algo ne passe les seuils absolus, <strong>ou</strong> le champion ne dépasse pas @Production d'au moins <strong>+0.01 de F1</strong> → @Production inchangé + alerte, <strong>aucune gate ouverte</strong></span>
               </li>
               <li>
                 <span class="item-label">Smoke test pré-gate</span>
@@ -344,15 +352,15 @@
               </li>
               <li class="item-manual">
                 <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint affichées dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> GO → promotion @Production + restart API (~30 s). STOP → run annulé, aucun impact.</span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint, puis <strong>tableau de comparaison @Production vs candidat</strong> et verdict de la règle Trigger 3 (écart F1 ≥ +0.01), affichés dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> GO → promotion @Production + restart API (~30 s). STOP → run annulé, aucun impact en prod, et blueprint <strong>reverté sur main</strong> (<code>config/model_params.yml</code> resynchronisé avec @Production).</span>
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 3 VPS</span>
-                <span class="item-desc">test-api (6 tâches) + test-gradio-public — interne PUIS externe : si fail → rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public — interne PUIS externe : si fail → rollback alias MLflow @Production + revert du blueprint sur main + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>) + rollback alias MLflow @Production + alerte</span>
+                <span class="item-desc">Readiness probe <code>/health</code> (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>) + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s — FTe (interne + externe)</span>
@@ -381,7 +389,7 @@
 
   <div class="footnote">
     <span>Alerte = log Loki → alerte Grafana → email SMTP · Seule exception (T2 Gate 1 · T3 Gate 1) : CI lint/pytest tourne dans ci.yml (job PR, aucun canal SSH vers le VPS) → notification GitHub Actions uniquement, pas d'email. Trivy (T2 Gate 2, dans deploy.yml) envoie bien une alerte via le job catch-all <code>notify-pipeline-failure</code>.</span>
-    <span>Rollback VPS T1/T3 : alias MLflow @Production · Rollback VPS T2 : images Docker <code>:rollback</code> · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe interne/externe KO) : digest précis de l'image précédente via <code>kubectl set image</code> (fallback <code>rollout undo</code> si aucun digest capturé)</span>
+    <span>Rollback VPS T1/T3 : alias MLflow @Production (T3 : + revert du blueprint sur main) · Rollback VPS T2 : images Docker <code>:rollback</code> (échec de <code>compose up</code>, smoke test ou test-api) · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe interne/externe KO) : digest précis de l'image précédente via <code>kubectl set image</code> (fallback <code>rollout undo</code> si aucun digest capturé) — ne touche jamais à l'alias MLflow : le modèle, déjà validé sur le VPS, reste @Production</span>
   </div>
 </div>
 </div>

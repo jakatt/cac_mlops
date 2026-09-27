@@ -148,7 +148,7 @@ grav = 0  →  blessé léger ou indemne               (NON PRIORITAIRE)</pre>
               <tr><td>Recall (grav=1)</td><td>≥ 0.58</td><td>Minimiser les faux négatifs — ne pas manquer un blessé grave</td></tr>
             </tbody>
           </table></div>
-          <div class="band"><strong>Modèle actuel @Production :</strong> lgbm_accidents — cumul 2021+2022+2023 · F1=0.664 · AUC=0.839 · Recall=0.631 · Acc=0.783 · Marge ~8% pour absorber la variance inter-années</div>
+          <div class="band"><strong>Modèle actuel @Production :</strong> lgbm_accidents v4 — cumul 2021→2024 (train 2021-2023 · test 2024) · F1=0.689 · AUC=0.837 · Recall=0.767 · Acc=0.764 · promu le 31/08/2026 · Marge ~8% pour absorber la variance inter-années</div>
           <p><strong>Seuil delta minimal :</strong> +0.01 sur F1 pour remplacer @Production (évite les swaps sur bruit statistique).</p>
           <p><strong>Seuil de régression :</strong> si le nouveau modèle régresse vs @Production sur ≥2 métriques → aucune promotion, @Production inchangé.</p>
         </div>
@@ -160,9 +160,9 @@ grav = 0  →  blessé léger ou indemne               (NON PRIORITAIRE)</pre>
           <div class="tbl"><table>
             <thead><tr><th>Métrique</th><th>Seuil alerte</th><th>Outil</th></tr></thead>
             <tbody>
-              <tr><td>Latence p95 /predict</td><td>&lt; 300 ms</td><td>Prometheus</td></tr>
-              <tr><td>Taux erreur HTTP 5xx</td><td>&lt; 1%</td><td>Prometheus</td></tr>
-              <tr><td>Disponibilité</td><td>&gt; 99.5%</td><td>Grafana uptime</td></tr>
+              <tr><td>Latence p95 /predict</td><td>&lt; 300 ms (objectif — suivi dashboard, pas d'alerte dédiée)</td><td>Prometheus</td></tr>
+              <tr><td>Taux erreur HTTP 5xx</td><td>&lt; 1% (objectif — suivi dashboard, pas d'alerte dédiée)</td><td>Prometheus</td></tr>
+              <tr><td>Disponibilité</td><td>&gt; 99.5% (objectif — panneaux « Disponibilité 7j » par accès)</td><td>Grafana + blackbox-exporter</td></tr>
               <tr><td>Validation schéma</td><td>0 erreur CRITICAL</td><td>Pandera — stop immédiat</td></tr>
               <tr><td>Dérive données (Evidently)</td><td>share &gt; 10% WARNING · &gt; 25% CRITICAL</td><td>Evidently + Prometheus</td></tr>
               <tr><td>Volume annuel accidents</td><td>40 000 – 90 000</td><td>schema_validator WARNING</td></tr>
@@ -178,13 +178,13 @@ grav = 0  →  blessé léger ou indemne               (NON PRIORITAIRE)</pre>
     <summary>2 — Source des données &amp; stratégie d'ingestion</summary>
     <div class="body">
       <div class="band">
-        <strong>Source :</strong> ONISR (Observatoire National Interministériel de la Sécurité Routière) — data.gouv.fr · Dataset ID : 53698f4ca3a729239d2036df · Publication annuelle (données N publiées en mai-juin N+1)
+        <strong>Source :</strong> ONISR (Observatoire National Interministériel de la Sécurité Routière) — data.gouv.fr · Dataset ID : 53698f4ca3a729239d2036df · Publication annuelle (données N publiées vers octobre N+1 — 2024 publiées le 21/10/2025)
       </div>
 
       <details>
         <summary>Périmètre retenu : 2021 → 2024</summary>
         <div class="body">
-          <p>Schéma ONISR stable depuis 2021 (refonte majeure en 2019). Données 2021→2023 = entraînement cumulatif. Données 2024 = simulation production drift.</p>
+          <p>Schéma ONISR stable depuis 2021 (refonte majeure en 2019). Modèle actuel (v4) : entraînement 2021→2023, test 2024. L'année 2024 sert aussi d'année drift (simulation production).</p>
           <div class="tbl"><table>
             <thead><tr><th>Année calendaire</th><th>Entraînement cumulatif</th><th>Drift de features</th></tr></thead>
             <tbody>
@@ -226,7 +226,7 @@ vehicules-{year}.csv         ·  ~97 000 lignes  ·  1 ligne par véhicule
 APRÈS FUSION ET PREPROCESSING
 ─────────────────────────────
 ~55 450 lignes × 27 features + 1 cible (par année)
-Cumul 3 années : ~166 000 lignes (train + test)</pre>
+Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
         </div>
       </details>
     </div>
@@ -257,7 +257,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
             <li>Fusion 4 tables sur Num_Acc · tri par grav DESC · dédoublonnage (1 ligne/accident — victime la plus grave)</li>
             <li>Cible binaire : <code>grav {2,3,4} → {0,1,1}</code></li>
             <li>Suppression colonnes identifiants (<code>id_usager</code>, <code>year_acc</code>)</li>
-            <li>Train/Test split : 70/30, <code>random_state=42</code></li>
+            <li>Train/Test split <strong>temporel</strong> : dernière année du cumul = test set, toutes les précédentes = train (évite la fuite temporelle) — 70/30 aléatoire (<code>random_state=42</code>) uniquement pour une année seule</li>
             <li>Imputation NaN sur 4 colonnes par mode(X_train)</li>
           </ul>
         </div>
@@ -397,8 +397,8 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
         <thead><tr><th>Zone</th><th>Composant</th><th>Rôle</th></tr></thead>
         <tbody>
           <tr><td><strong>POSTE DEV</strong></td><td>Mac développeur</td><td>git · dvc · pytest · flake8 · kubectl · docker-compose local</td></tr>
-          <tr><td rowspan="3"><strong>VPS SCALEWAY</strong><br>51.159.187.132<br>100.117.99.62 (Tailscale)</td><td>16 conteneurs Docker</td><td>Voir §7</td></tr>
-          <tr><td>16 deployments Prefect</td><td>Orchestration ETL, train, deploy, drift, kapsule, diag, healthcheck K8s…</td></tr>
+          <tr><td rowspan="3"><strong>VPS SCALEWAY</strong><br>51.159.187.132<br>100.117.99.62 (Tailscale)</td><td>17 services Docker (16 permanents)</td><td>Voir §7</td></tr>
+          <tr><td>18 deployments Prefect</td><td>Orchestration ETL, train, deploy, drift, kapsule, diag, healthcheck K8s…</td></tr>
           <tr><td>PLG Stack + Evidently</td><td>Monitoring + alertes</td></tr>
           <tr><td><strong>KAPSULE K8s</strong><br>on-demand</td><td>9 Deployments + 2 DaemonSets</td><td>Voir §9 — zéro-downtime rolling updates</td></tr>
           <tr><td><strong>PARTAGÉ</strong></td><td>GitHub · GHCR · Scaleway Object Storage</td><td>Code · Images · DVC remote · Artefacts K8s</td></tr>
@@ -463,7 +463,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
       </div>
 
       <details>
-        <summary>16 conteneurs Docker (15 permanents + minio-init EXIT)</summary>
+        <summary>17 services Docker (16 permanents + minio-init EXIT)</summary>
         <div class="body">
           <div class="tbl"><table>
             <thead><tr><th>Conteneur</th><th>Port hôte</th><th>Accès</th></tr></thead>
@@ -484,6 +484,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
               <tr><td><strong>grafana</strong></td><td>3000</td><td>http://100.117.99.62:3000 (Tailscale)</td></tr>
               <tr><td><strong>loki</strong></td><td>3100</td><td>interne Docker (logs agrégation)</td></tr>
               <tr><td><strong>promtail</strong></td><td>—</td><td>agent scrape logs → loki</td></tr>
+              <tr><td><strong>blackbox-exporter</strong></td><td>—</td><td>interne Docker — sonde HTTP bout-en-bout des accès publics (Caddy → nginx → api / gradio-public)</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -495,7 +496,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
           <div class="tbl"><table>
             <thead><tr><th>Device</th><th>Mount</th><th>Rôle</th></tr></thead>
             <tbody>
-              <tr><td>/dev/vda1 NVMe</td><td>/</td><td>OS + système (~30% utilisé)</td></tr>
+              <tr><td>/dev/vda1 NVMe (20 GB)</td><td>/</td><td>OS + système (~60% utilisé — nettoyé chaque dimanche par <code>cleanup.yml</code>)</td></tr>
               <tr><td>/dev/sda Block</td><td>/data</td><td>Docker + volumes + données (74 GB) · <code>data-root=/data/docker</code></td></tr>
             </tbody>
           </table></div>
@@ -505,7 +506,7 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
       <details>
         <summary>Autre application sur ce VPS (NE PAS TOUCHER)</summary>
         <div class="body">
-          <div class="band">Caddy (port 80/443) + 2× uvicorn Python (port 8000/8001) · Qdrant vector DB (Docker, localhost:6333-6334 uniquement) — application séparée, ne pas supprimer les images Docker sans vérification.</div>
+          <div class="band">Caddy (port 80/443, partagé : sert aussi <code>mlops.jakat-inc.fr</code>) + application RAG séparée — 2× uvicorn Python (port 8000/8001) · Qdrant vector DB (Docker, localhost:6333-6334) — <strong>arrêtée par défaut depuis le 26/09/2026</strong> (<code>rag-on</code> / <code>rag-off</code>). Ne jamais supprimer ses images Docker (pas de <code>docker image prune -a</code>).</div>
         </div>
       </details>
 
@@ -517,7 +518,9 @@ Cumul 3 années : ~166 000 lignes (train + test)</pre>
             <tbody>
               <tr><td><code>dvc/</code></td><td>Données brutes versionnées (DVC remote)</td></tr>
               <tr><td><code>k8s-model/</code></td><td>trained_model.joblib (pour initContainer K8s)</td></tr>
-              <tr><td><code>mlflow-k8s/</code></td><td>Artefacts MLflow dans Kapsule</td></tr>
+              <tr><td><code>k8s-gradio-data/</code></td><td>X_test / y_test pour les onglets What-if / Points Noirs du Gradio public K8s</td></tr>
+              <tr><td><code>caddy-certs/</code></td><td>Certificat TLS Let's Encrypt de Kapsule (clé IAM restreinte à ce préfixe)</td></tr>
+              <tr><td><code>secrets/</code></td><td>Secrets rotables (jeton GitHub ETL, clé Tailscale, identifiants Caddy S3, mot de passe Grafana)</td></tr>
             </tbody>
           </table></div>
         </div>
@@ -676,7 +679,11 @@ NGINX (nginx:alpine)
      ├── /token     → api:8000
      ├── /metrics   → api:8000
      ├── /docs      → api:8000
-     └── /reports/  → /srv/reports/ (rapports Evidently HTML)</pre>
+     ├── /reports/  → /srv/reports/ (rapports Evidently HTML)
+     ├── /ci-docs/  → /srv/ci-docs/ (cette documentation)
+     └── /gradio-public-health → gradio-public:7862/health (sonde blackbox)
+IP réelle du client : set_real_ip_from 172.16.0.0/12 + X-Forwarded-For
+(Caddy écrase l'en-tête côté Internet → non falsifiable)</pre>
         </div>
       </details>
 
@@ -697,7 +704,7 @@ NGINX (nginx:alpine)
       </details>
 
       <details>
-        <summary>Prefect — 16 deployments</summary>
+        <summary>Prefect — 18 deployments</summary>
         <div class="body">
           <div class="tbl"><table>
             <thead><tr><th>Deployment</th><th>Flow</th><th>Trigger</th></tr></thead>
@@ -705,15 +712,17 @@ NGINX (nginx:alpine)
               <tr><td><code>etl</code></td><td>etl_flow.py</td><td>manuel / chaîné</td></tr>
               <tr><td><code>train</code></td><td>train_flow.py</td><td>manuel / chaîné</td></tr>
               <tr><td><code>drift-check</code></td><td>drift_monitoring_flow.py</td><td>manuel / fin retrain</td></tr>
+              <tr><td><code>prediction-drift-check</code></td><td>prediction_drift_flow.py</td><td>cron lundi 9h (Europe/Paris) + manuel — drift du trafic réel (table predictions, 90 j)</td></tr>
               <tr><td><code>full-retrain</code></td><td>full_retrain_flow.py</td><td>manuel (init complète)</td></tr>
               <tr><td><code>reset</code></td><td>reset_flow.py</td><td>manuel (RAZ)</td></tr>
-              <tr><td><code>check-new-data</code></td><td>check_new_data_flow.py</td><td>cron lundi 8h UTC</td></tr>
+              <tr><td><code>check-new-data</code></td><td>check_new_data_flow.py</td><td>cron lundi 8h (Europe/Paris)</td></tr>
               <tr><td><code>update-model</code></td><td>update_model_flow.py</td><td>deploy.yml trigger 3</td></tr>
               <tr><td><code>deploy-vps</code></td><td>deploy_vps_flow.py</td><td>deploy.yml trigger 2</td></tr>
               <tr><td><code>deploy-kapsule</code></td><td>deploy_kapsule_flow.py</td><td>fin de deploy-vps-flow (si test-api OK)</td></tr>
               <tr><td><code>kapsule-up</code></td><td>kapsule_up_flow.py</td><td>manuel</td></tr>
               <tr><td><code>kapsule-down</code></td><td>kapsule_down_flow.py</td><td>manuel</td></tr>
-              <tr><td><code>test-api</code></td><td>test_api_flow.py</td><td>fin de deploy-vps/kapsule-flow (interne + externe) + bouton Cockpit "Tester les 4 accès publics"</td></tr>
+              <tr><td><code>test-api</code></td><td>test_api_flow.py</td><td>fin de deploy-vps/kapsule-flow (interne + externe) + bouton Cockpit "Tester les 4 accès publics" — tâche 429 sautée dans ces deux cas</td></tr>
+              <tr><td><code>test-rate-limit</code></td><td>test_rate_limit_flow.py</td><td>manuel — bouton Cockpit "Tester la protection anti-abus sur l'API" (2 niveaux nginx : par client + global)</td></tr>
               <tr><td><code>test-gradio-public</code></td><td>test_gradio_public_flow.py</td><td>idem test-api — même point d'entrée</td></tr>
               <tr><td><code>diag</code></td><td>diag_flow.py</td><td>manuel</td></tr>
               <tr><td><code>k8s-daemonset-health</code></td><td>k8s_daemonset_health_flow.py</td><td>manuel (bouton Cockpit Healthcheck) — node-exporter/promtail/loki-forwarder/tailscale-subnet-router uniquement, via kubectl</td></tr>
@@ -732,9 +741,9 @@ NGINX (nginx:alpine)
             <tbody>
               <tr><td><strong>Prometheus</strong></td><td>Métriques numériques (API, système, drift)</td></tr>
               <tr><td><strong>Loki</strong></td><td>Logs centralisés (tous conteneurs Docker + K8s)</td></tr>
-              <tr><td><strong>Grafana</strong></td><td>Dashboards + 7 alertes (4 Prometheus + 3 Loki) · email</td></tr>
+              <tr><td><strong>Grafana</strong></td><td>11 dashboards + 12 alertes (6 Prometheus dont 2 K8s + 6 Loki) · email</td></tr>
               <tr><td><strong>Promtail</strong></td><td>Agent Docker → collecte logs → Loki</td></tr>
-              <tr><td><strong>Evidently</strong></td><td>Drift features (X_train vs X_test) · rapport HTML + 6 gauges Prometheus</td></tr>
+              <tr><td><strong>Evidently</strong></td><td>Drift features (X_train vs année drift) + drift du trafic réel (prédictions 90 j) · rapports HTML + 6 gauges Prometheus</td></tr>
             </tbody>
           </table></div>
           <p><strong>Métriques Prometheus API :</strong> <code>api_requests_total</code> · <code>api_request_duration_seconds</code> · <code>api_predictions_total</code> · <code>model_version_info</code></p>
@@ -761,8 +770,8 @@ NGINX (nginx:alpine)
           <div class="tbl"><table>
             <thead><tr><th>Accordéon (dans l'onglet Cockpit)</th><th>Rôle</th></tr></thead>
             <tbody>
-              <tr><td><strong>Validation des déploiements en attente</strong></td><td>Gate manuelle GO/STOP · bandeau d'état du pipeline (auto-refresh 20s) · file d'attente des runs en pause · tableau "Derniers déploiements exécutés" (trigger, description courte, PR cliquable, statut, Run ID cliquable vers Prefect UI)</td></tr>
-              <tr><td><strong>Orchestration</strong></td><td>Déclenchement flows Prefect depuis le cockpit. Le bouton "Tester les 4 accès publics (fonctionnel)" (ex-"Tester l'API") teste FastAPI + Gradio Public, VPS et K8s, via le vrai chemin utilisateur (Caddy → HTTPS → domaine public) — rapport détaillé par accès dans le Bloc résultat, pas juste un ping</td></tr>
+              <tr><td><strong>Validation des déploiements en attente</strong></td><td>Gate manuelle GO/STOP · bandeau d'état du pipeline (auto-refresh 20s, 3 lignes alignées sur le même commit) · file d'attente des runs en pause · carte de décision (T1/T3 : métriques des 3 algos + <strong>comparaison @Production vs candidat</strong> et verdict de la règle ; T2 : SHA, PR, services impactés) · historique des déploiements T1/T2/T3 (40 derniers, filtre par trigger, issue réelle de la gate : Promu / STOP / aucun modèle meilleur / échec)</td></tr>
+              <tr><td><strong>Orchestration</strong></td><td>Déclenchement flows Prefect depuis le cockpit. Le bouton "Tester les 4 accès publics (fonctionnel)" teste FastAPI + Gradio Public, VPS et K8s, via le vrai chemin utilisateur (Caddy → HTTPS → domaine public) — rapport détaillé par accès dans le Bloc résultat, pas juste un ping. Le bouton "Tester la protection anti-abus sur l'API" lance <code>test-rate-limit</code> et résume en clair les 2 niveaux de limite nginx</td></tr>
               <tr><td><strong>Healthcheck</strong></td><td>Tableaux VPS/K8s — vérification HTTP directe pour la majorité des composants ; TCP direct pour PostgreSQL ; statut ONLINE/OFFLINE de l'API Prefect pour prefect-worker ; flow Prefect dédié <code>k8s-daemonset-health</code> (via kubectl) pour node-exporter/promtail/loki-forwarder/tailscale-subnet-router</td></tr>
               <tr><td><strong>Drift</strong></td><td>Rapports de dérive Evidently par cycle</td></tr>
               <tr><td><strong>Modèles</strong></td><td>Versions MLflow enregistrées + promotion manuelle (bypass CI/CD, urgence uniquement)</td></tr>
@@ -813,11 +822,11 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
     <summary>12 — CI/CD — GitHub Actions</summary>
     <div class="body">
       <div class="band">
-        <strong>Branch protection main (activée) :</strong> CI obligatoire avant merge · 1 review requise · force push interdit · suppression interdite
+        <strong>Branch protection main (activée) :</strong> check CI <code>test</code> obligatoire et à jour avec main avant merge · pas de review imposée (projet mono-développeur, merge toujours manuel) · force push interdit · suppression interdite
       </div>
 
       <details>
-        <summary>ci.yml — push mlops/DS / PR→main</summary>
+        <summary>ci.yml — PR → main</summary>
         <div class="body">
           <ul>
             <li>pip install -r requirements.txt</li>
@@ -834,13 +843,13 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
           <p><strong>Concurrence group :</strong> annule deploy précédent si nouveau commit.</p>
           <p><strong>JOB 1 — build</strong> (runner GitHub Actions) :</p>
           <ul>
-            <li>Build + push images :latest ET :sha-xxxxxxxx (8 chars) → ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}</li>
-            <li>Scan Trivy CRITICAL (ignore-unfixed) sur 3 images → bloque si CVE critique</li>
+            <li>Build + push images :latest ET :sha-xxxxxxxx (8 chars) → ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio,caddy} (build conditionnel par service)</li>
+            <li>Scan Trivy CRITICAL (ignore-unfixed) sur les 4 images → bloque si CVE critique (job build — sauté si aucune image à reconstruire, ex. blueprint pur)</li>
           </ul>
           <p><strong>JOB 2 — trigger-deploy</strong> (SSH sur l'hôte VPS — /data/cac_mlops) :</p>
           <ol>
             <li>git stash + git pull origin main</li>
-            <li>Si build détecté : login GHCR · tag images courantes → :rollback · docker compose pull (images seulement, aucune interruption)</li>
+            <li>Si build détecté : login GHCR · tag images courantes → :rollback · <code>docker compose pull</code> des seuls services à image GHCR (aucune interruption) — ne jamais pré-puller à la main avant un déploiement (le tag :rollback deviendrait identique à la nouvelle image)</li>
             <li>Calcul RESTART_SERVICES : <code>git diff HEAD~1</code> → nginx/gradio/grafana/prometheus/loki/promtail selon fichiers changés</li>
             <li><code>prefect deploy --all</code> (resync schémas)</li>
             <li>Détection trigger 2 vs 3 → lancement flow Prefect (fire-and-forget)</li>
@@ -870,7 +879,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
             <li><strong>1.</strong> Smoke test baseline : GET /health (retry 18×5s) → si KO : alerte + stop</li>
             <li><strong>2. ★ GATE MANUELLE</strong> : <code>pause_flow_run(timeout=86400s)</code> — AVANT toute interruption<br>→ Opérateur : Prefect UI "Resume" OU cockpit Gradio onglet Cockpit (GO/STOP)</li>
             <li><strong>3a.</strong> Si champion : sauvegarde @Production → promote MLflow → restart api</li>
-            <li><strong>3b.</strong> Si needs_build/restart_services : <code>docker compose up -d --remove-orphans</code> + redémarrages ciblés → 2nd smoke test → si KO : rollback :rollback</li>
+            <li><strong>3b.</strong> Si rebuilt_services/restart_services : <code>docker compose up -d --remove-orphans</code> + redémarrages ciblés — si la commande elle-même échoue : rollback :rollback + alerte → 2nd smoke test → si KO : rollback :rollback</li>
             <li><strong>4.</strong> test-api + test-gradio-public — interne (réseau Docker) PUIS externe (vrai domaine public <code>mlops.jakat-inc.fr</code>), skip_rate_limit=True — externe ne se lance que si l'interne passe → si KO (l'une ou l'autre étape) : rollback promote ET/OU rollback Docker :rollback</li>
             <li><strong>5.</strong> deploy-kapsule-flow (si test-api OK)</li>
           </ul>
@@ -883,7 +892,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
           <div class="tbl"><table>
             <thead><tr><th>Infra</th><th>Interruption</th><th>Quand</th></tr></thead>
             <tbody>
-              <tr><td><strong>VPS Scaleway</strong></td><td>~30–90s pendant <code>docker compose up -d</code></td><td>Toujours APRÈS la gate manuelle — sur les 3 triggers</td></tr>
+              <tr><td><strong>VPS Scaleway</strong></td><td>~30 s (redémarrage API, T1/T3) · ~1–30 s selon les services recréés (T2)</td><td>Toujours APRÈS la gate manuelle — sur les 3 triggers</td></tr>
               <tr><td><strong>Kapsule K8s</strong></td><td>ZÉRO — maxUnavailable:0</td><td>Jamais &lt;1 réplica disponible</td></tr>
             </tbody>
           </table></div>
@@ -899,21 +908,21 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
       <div class="tbl"><table>
         <thead><tr><th>Branche</th><th>Règle</th></tr></thead>
         <tbody>
-          <tr><td><strong>mlops / DS</strong></td><td>Commits libres, push direct · CI sur push</td></tr>
-          <tr><td><strong>main</strong></td><td>Pas de commit direct — uniquement via PR · CI obligatoire · 1 review requise</td></tr>
+          <tr><td><strong>mlops / DS</strong></td><td>Commits libres, push direct · CI déclenchée à l'ouverture / mise à jour d'une PR vers main</td></tr>
+          <tr><td><strong>main</strong></td><td>Pas de commit direct — uniquement via PR · CI obligatoire · merge manuel (pas de review imposée)</td></tr>
         </tbody>
       </table></div>
 
       <details>
         <summary>Cycle d'ajout d'une nouvelle année ONISR</summary>
         <div class="body">
-          <p><strong>Automatique (via check-new-data-flow — lundi 8h UTC) :</strong></p>
+          <p><strong>Automatique (via check-new-data-flow — lundi 8h, Europe/Paris) :</strong></p>
           <ul>
             <li>check-new-data-flow détecte les données N sur data.gouv.fr (fuzzy-match CATEGORY_KEYWORDS)</li>
             <li>etl_flow déclenché (download, validation, preprocessing, dvc push)</li>
             <li>train_flow (benchmark 3 algos, gate KPI, promote=False)</li>
             <li>deploy-vps-flow : gate manuelle → GO → promote @Production → test-api → Kapsule</li>
-            <li>Commiter le .dvc pointer généré → PR → main (seule action manuelle)</li>
+            <li>Les pointeurs <code>.dvc</code> sont commités et poussés automatiquement sur main par l'ETL (<code>[skip ci]</code>) — seule action manuelle : le GO/STOP à la gate</li>
           </ul>
         </div>
       </details>
@@ -933,13 +942,13 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 │   │                      scenarios.py · Dockerfile
 │   ├── mlflow/            Dockerfile custom (boto3 + psycopg2)
 │   ├── nginx/             nginx.conf (rate-limit + routing + /reports/)
-│   └── monitoring/        drift_detection.py (Evidently + Prometheus)
+│   └── monitoring/        drift_detection · prediction_drift · data_quality · model_diff
 ├── src/
 │   ├── data/              import_raw_data · schema · schema_validator · known_fixes
 │   │                      make_dataset
 │   ├── models/            train_model · predict_model · validate_model
-│   ├── flows/             16 flows Prefect (dont k8s_daemonset_health_flow.py)
-│   └── utils/             email_utils (SMTP silent si non configuré)
+│   ├── flows/             18 flows Prefect (dont k8s_daemonset_health_flow.py, test_rate_limit_flow.py)
+│   └── utils/             blueprint_revert · github · logging_utils · secrets (lecture S3)
 ├── k8s/                   Manifests Kubernetes (1 dossier/composant, 9 Deployments + 2 DaemonSets)
 │   ├── api/               deployment (HPA + initContainer) · hpa · service
 │   ├── gradio-public/ nginx/ caddy/ prometheus/  (pas de "gradio" admin ni "mlflow" sur K8s)
@@ -951,7 +960,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 ├── infrastructure/
 │   ├── tailscale/         setup.sh (install + UFW)
 │   ├── prometheus/        prometheus.yml
-│   └── grafana/           provisioning/ · dashboards/ (6 dashboards)
+│   └── grafana/           provisioning/ · dashboards/ (11 dashboards)
 ├── config/
 │   └── model_params.yml   Blueprint DS — hyperparamètres RF/XGB/LGBM
 ├── docs/                  HTML statiques servies par nginx (/ci-docs/)
@@ -963,8 +972,8 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 │   └── integration/       test_api (Docker Compose requis)
 ├── scripts/               simulate_production.py · raz_mlops.sh · setup_branch_protection.sh
 │                          ds_session_start.sh (routine début de session DS)
-├── docker-compose.yml     Stack 16 conteneurs (local + VPS)
-├── prefect.yaml           16 deployments Prefect
+├── docker-compose.yml     Stack 17 services (local + VPS)
+├── prefect.yaml           18 deployments Prefect
 ├── .env.example
 ├── .dvc/config            remote = Scaleway Object Storage S3
 └── requirements.txt</pre>
@@ -985,13 +994,13 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
           <tr><td>Versioning modèles</td><td>MLflow Registry · alias @Production</td><td>Rollback en 1 commande</td></tr>
           <tr><td>Algorithme</td><td>Benchmark RF / XGBoost / LightGBM à chaque cycle</td><td>Champion = meilleur F1 + gate KPI · Actuel : lgbm_accidents</td></tr>
           <tr><td>API</td><td>FastAPI + Pydantic + JWT HS256</td><td>Performance + validation + sécurité</td></tr>
-          <tr><td>Gateway</td><td>NGINX (rate limit 20r/min) + Caddy (TLS)</td><td>Rate-limiting + TLS Let's Encrypt auto</td></tr>
-          <tr><td>Orchestration</td><td>Prefect (16 deployments)</td><td>Plus léger qu'Airflow · gate native pause_flow_run()</td></tr>
+          <tr><td>Gateway</td><td>NGINX (rate limit /predict 2 niveaux : 20/min par client + 60/min global) + Caddy (TLS)</td><td>Rate-limiting + TLS Let's Encrypt auto</td></tr>
+          <tr><td>Orchestration</td><td>Prefect (18 deployments)</td><td>Plus léger qu'Airflow · gate native pause_flow_run()</td></tr>
           <tr><td>Monitoring</td><td>PLG stack + Evidently · K8s consolidé dans VPS</td><td>Cohérence · moins de ressources K8s</td></tr>
           <tr><td>Sécurité réseau</td><td>Tailscale VPN mesh</td><td>Pas d'IP fixes à maintenir · invisible depuis internet</td></tr>
           <tr><td>Infrastructure VPS</td><td>Scaleway DEV1-XL (4 vCPU, 12 GB RAM)</td><td>Coût/performance · block storage séparé</td></tr>
           <tr><td>Infrastructure K8s</td><td>Scaleway Kapsule on-demand</td><td>HPA + zero-downtime · coût nul hors soutenance</td></tr>
-          <tr><td>Drift — pas d'auto-retrain</td><td>Signal pour planifier le cycle</td><td>Labels N+1 indisponibles (ONISR +2 ans)</td></tr>
+          <tr><td>Drift — pas d'auto-retrain</td><td>Signal pour planifier le cycle</td><td>Labels de l'année en cours indisponibles (ONISR publie l'année N vers octobre N+1)</td></tr>
           <tr><td>CI/CD</td><td>CI dans GH Actions · CD dans Prefect</td><td>Séparation build/deploy · gate manuelle Prefect</td></tr>
           <tr><td>Blueprint DS</td><td>config/model_params.yml (guard CI)</td><td>Séparation code/hyperparamètres — PR indépendantes</td></tr>
         </tbody>

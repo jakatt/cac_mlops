@@ -130,6 +130,7 @@
     Référence complète des hyperparamètres configurables pour chacun des trois algorithmes.
     Ces valeurs sont consignées dans <code style="font-size:.82rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;">config/model_params.yml</code>
     après expérimentation locale, puis transmises au réentraînement de production via le Trigger&nbsp;3.
+    La colonne « Valeur actuelle » reflète ce fichier au 27/09/2026 (blueprint lgbm de la PR #217 ; <code>class_weight="balanced"</code> sur rf et lgbm).
   </p>
 
   <div class="workflow-box">
@@ -183,7 +184,7 @@
       <tr>
         <td><span class="param-name">min_samples_leaf</span></td>
         <td><span class="param-type">int</span></td>
-        <td><span class="param-default">1</span></td>
+        <td><span class="param-default">5</span></td>
         <td class="param-desc">Min échantillons dans une feuille. <strong>↑ = arbres plus lisses, moins de surfit</strong>. Tester 2–10 sur ce dataset.</td>
       </tr>
       <tr>
@@ -227,7 +228,7 @@
       <tr>
         <td><span class="param-name">class_weight</span></td>
         <td><span class="param-type">str | null</span></td>
-        <td><span class="param-default">null</span></td>
+        <td><span class="param-default">"balanced"</span></td>
         <td class="param-desc">Pondération des classes. <strong><code>"balanced"</code> = poids inversement proportionnel à la fréquence</strong> → utile si le ratio blessés graves / indemnes est déséquilibré. <code>"balanced_subsample"</code> recalcule à chaque arbre.</td>
       </tr>
     </table>
@@ -360,13 +361,13 @@
       <tr>
         <td><span class="param-name">n_estimators</span></td>
         <td><span class="param-type">int</span></td>
-        <td><span class="param-default">300</span></td>
+        <td><span class="param-default">650</span></td>
         <td class="param-desc">Nombre de boosting rounds. <strong>Coupler avec learning_rate</strong> : ↓ lr → ↑ n_estimators.</td>
       </tr>
       <tr>
         <td><span class="param-name">num_leaves</span></td>
         <td><span class="param-type">int</span></td>
-        <td><span class="param-default">63</span></td>
+        <td><span class="param-default">100</span></td>
         <td class="param-desc"><strong>Paramètre de complexité principal de LightGBM</strong> (leaf-wise). Max feuilles par arbre. Valeur théorique : 2^max_depth. <strong>↑ = plus expressif, risque surfit</strong>. Typiquement 31–255. Toujours garder num_leaves &lt; 2^max_depth si max_depth fixé.</td>
       </tr>
       <tr>
@@ -391,19 +392,19 @@
       <tr>
         <td><span class="param-name">subsample</span></td>
         <td><span class="param-type">float</span></td>
-        <td><span class="param-default">1.0</span></td>
+        <td><span class="param-default">0.8</span></td>
         <td class="param-desc">Fraction des <strong>lignes</strong> par arbre. <strong>Nécessite subsample_freq &gt; 0 pour être actif</strong>. Ex: 0.8 + subsample_freq=5.</td>
       </tr>
       <tr>
         <td><span class="param-name">subsample_freq</span></td>
         <td><span class="param-type">int</span></td>
-        <td><span class="param-default">0</span></td>
+        <td><span class="param-default">5</span></td>
         <td class="param-desc">Fréquence du bagging. <strong>0 = désactivé</strong>. Ex: 5 → bagging tous les 5 arbres. Mettre &gt; 0 pour activer <code>subsample</code>.</td>
       </tr>
       <tr>
         <td><span class="param-name">colsample_bytree</span></td>
         <td><span class="param-type">float</span></td>
-        <td><span class="param-default">1.0</span></td>
+        <td><span class="param-default">0.7</span></td>
         <td class="param-desc">Fraction des <strong>features</strong> par arbre. Actif sans condition. <strong>Ex: 0.8</strong>. Alias LightGBM : <code>feature_fraction</code>.</td>
       </tr>
     </table>
@@ -416,7 +417,7 @@
       <tr>
         <td><span class="param-name">min_child_samples</span></td>
         <td><span class="param-type">int</span></td>
-        <td><span class="param-default">20</span></td>
+        <td><span class="param-default">12</span></td>
         <td class="param-desc">Min données dans une feuille. <strong>Contrôle majeur du surfit pour LightGBM</strong>. ↑ = feuilles moins spécifiques. Tester 10–100 selon taille du dataset.</td>
       </tr>
       <tr>
@@ -441,7 +442,7 @@
       <tr>
         <td><span class="param-name">class_weight</span></td>
         <td><span class="param-type">str | null</span></td>
-        <td><span class="param-default">null</span></td>
+        <td><span class="param-default">"balanced"</span></td>
         <td class="param-desc">Pondération des classes. <strong><code>"balanced"</code></strong> = poids inversement proportionnel à la fréquence. Améliore recall sur la classe minoritaire. Peut être combiné avec <code>subsample</code>.</td>
       </tr>
     </table>

@@ -100,7 +100,7 @@
   <header>
     <p class="eyebrow">MLOps · Accidents routiers</p>
     <h1 class="page-title">Architecture de la solution</h1>
-    <p class="page-sub">VPS Scaleway DEV1-XL · Docker 16 conteneurs · Prefect 16 flows · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
+    <p class="page-sub">VPS Scaleway DEV1-XL · Docker 17 services (16 permanents) · Prefect 18 deployments · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
   </header>
 
   <!-- DEV LOCAL -->
@@ -129,7 +129,7 @@
 
   <!-- VPS -->
   <details>
-    <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · 100 GB STORAGE)</summary>
+    <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · 20 GB système + 80 GB block /data)</summary>
     <div class="body">
       <div class="band">
         URL publique : <strong><a href="https://mlops.jakat-inc.fr" target="_blank" style="color:inherit;">https://mlops.jakat-inc.fr</a></strong> (Caddy TLS → nginx :8090 → gradio-public) &nbsp;·&nbsp;
@@ -138,10 +138,10 @@
 
       <!-- Docker -->
       <details>
-        <summary>🐳 Docker — 16 conteneurs (15 permanents + minio-init EXIT)</summary>
+        <summary>🐳 Docker — 17 services (16 permanents + minio-init EXIT)</summary>
         <div class="body">
           <details>
-            <summary>🔵 Notre Solution — 4 conteneurs (3 images buildées en CI/CD)</summary>
+            <summary>🔵 Notre Solution — 4 conteneurs (3 des 4 images GHCR buildées en CI/CD — la 4ᵉ, caddy, sert Kapsule)</summary>
             <div class="body">
               <div class="tbl"><table>
                 <thead><tr><th>Conteneur</th><th>Port hôte</th><th>Accès</th><th>Rôle</th></tr></thead>
@@ -155,7 +155,7 @@
             </div>
           </details>
           <details>
-            <summary>⚪ Infrastructure Standard — 12 conteneurs</summary>
+            <summary>⚪ Infrastructure Standard — 13 conteneurs</summary>
             <div class="body">
               <div class="tbl"><table>
                 <thead><tr><th>Conteneur</th><th>Port hôte</th><th>Accès</th></tr></thead>
@@ -168,6 +168,7 @@
                   <tr><td><strong>prefect-worker</strong></td><td>—</td><td>process pool (image api + kubectl + scw)</td></tr>
                   <tr><td><strong>node-exporter</strong></td><td>9100</td><td>interne Docker</td></tr>
                   <tr><td><strong>nginx-exporter</strong></td><td>9113</td><td>interne Docker</td></tr>
+                  <tr><td><strong>blackbox-exporter</strong></td><td>—</td><td>interne Docker — sonde HTTP bout-en-bout des accès publics (Caddy → nginx → api / gradio-public)</td></tr>
                   <tr><td><strong>prometheus</strong></td><td>9090</td><td>Tailscale</td></tr>
                   <tr><td><strong>grafana</strong></td><td>3000</td><td>Tailscale</td></tr>
                   <tr><td><strong>loki</strong></td><td>3100</td><td>interne Docker</td></tr>
@@ -182,10 +183,10 @@
 
       <!-- Prefect -->
       <details>
-        <summary>⚙️ Prefect — 16 flows (prefect-server :4200 · pool: process)</summary>
+        <summary>⚙️ Prefect — 18 deployments (prefect-server :4200 · pool: process)</summary>
         <div class="body">
           <details>
-            <summary>🤖 ML / ETL — 7 flows</summary>
+            <summary>🤖 ML / ETL — 8 flows</summary>
             <div class="body">
               <div class="tbl"><table>
                 <thead><tr><th>Flow</th><th>Déclencheur</th><th>Rôle</th></tr></thead>
@@ -194,15 +195,16 @@
                   <tr><td><strong>train</strong></td><td>manuel / post-etl</td><td>benchmark RF / XGBoost / LGBM → sélection champion (T1: tolérance régression ≤1 métrique vs @Prod · T3: +0.01 F1 vs @Prod)</td></tr>
                   <tr><td><strong>full-retrain</strong></td><td>manuel</td><td>tous les cycles depuis zéro — détecte automatiquement les années dispo (etl + train × N cycles + drift)</td></tr>
                   <tr><td><strong>drift-check</strong></td><td>manuel / fin de cycle T1</td><td>drift de features (indépendant du modèle) → <code>event=alert</code> loggué → Loki → Grafana alerte email SMTP</td></tr>
+                  <tr><td><strong>prediction-drift-check</strong></td><td>cron lundi 9h (Europe/Paris) + manuel</td><td>drift du <strong>trafic réel</strong> : prédictions récentes (table <code>predictions</code>, fenêtre 90 jours) vs référence d'entraînement — indépendant des cycles de retrain, ignoré sous 100 lignes réelles</td></tr>
                   <tr><td><strong>reset</strong></td><td>manuel</td><td>7 options : <code>predictions</code> · <code>drift</code> · <code>mlflow</code> · <code>postgres_full</code> · <code>minio</code> · <code>grafana</code> · <code>loki</code> + <code>full_reset</code> (force toutes les options)</td></tr>
-                  <tr><td><strong>check-new-data</strong></td><td>cron lundi 8h UTC</td><td>détecte nouvelles données ONISR → déclenche etl + train</td></tr>
+                  <tr><td><strong>check-new-data</strong></td><td>cron lundi 8h (Europe/Paris)</td><td>détecte nouvelles données ONISR → déclenche etl + train</td></tr>
                   <tr><td><strong>update-model</strong></td><td>trigger 3 CI/CD</td><td>train avec les hyperparamètres commités dans <code>config/model_params.yml</code> → si aucun champion : alerte DS + stop · si champion : gate manuelle → promote @Production + restart API (~30 s) → test-api → rollback alias MLflow @Production si KO → Kapsule</td></tr>
                 </tbody>
               </table></div>
             </div>
           </details>
           <details>
-            <summary>🔧 Infra / Ops — 9 flows</summary>
+            <summary>🔧 Infra / Ops — 10 flows</summary>
             <div class="body">
               <div class="tbl"><table>
                 <thead><tr><th>Flow</th><th>Déclencheur</th><th>Rôle</th></tr></thead>
@@ -211,7 +213,8 @@
                   <tr><td><strong>deploy-kapsule</strong></td><td>post deploy-vps</td><td>rolling update pods K8s (sans gate) → test-api/test-gradio-public (interne puis externe) → rollback vers le digest précis de l'image précédente si échec (pas <code>rollout undo</code>, insuffisant sur un tag flottant <code>:latest</code>)</td></tr>
                   <tr><td><strong>kapsule-up</strong></td><td>manuel</td><td>provision cluster Kapsule (root volume 50GB) + upload modèle S3</td></tr>
                   <tr><td><strong>kapsule-down</strong></td><td>manuel</td><td>déprovision cluster Kapsule</td></tr>
-                  <tr><td><strong>test-api</strong></td><td>CI/CD + manuel</td><td>6 tests fonctionnels (JWT · /predict · what-if · 429) — interne (réseau Docker/ClusterIP) puis externe (domaine public) si l'interne passe</td></tr>
+                  <tr><td><strong>test-api</strong></td><td>CI/CD + manuel</td><td>5 tests fonctionnels en CD (health · JWT · 401 · /predict · what-if) — interne (réseau Docker/ClusterIP) puis externe (domaine public) si l'interne passe · la 6ᵉ tâche (429) ne tourne qu'en lancement manuel depuis Prefect</td></tr>
+                  <tr><td><strong>test-rate-limit</strong></td><td>manuel (Cockpit Orchestration)</td><td>protection anti-abus nginx sur <code>/predict</code>, 2 niveaux : par client (IP réelle, 20/min, rafale 10) et global (60/min, rafale 30) — clients simulés via <code>X-Forwarded-For</code> · jamais en CD</td></tr>
                   <tr><td><strong>test-gradio-public</strong></td><td>CI/CD + manuel</td><td>vrai <code>/predict</code> via <code>gradio_client</code> sur le cockpit public — même logique interne/externe que test-api</td></tr>
                   <tr><td><strong>diag</strong></td><td>manuel</td><td>snapshot VPS : disk, docker ps, ports réseau</td></tr>
                   <tr><td><strong>k8s-daemonset-health</strong></td><td>manuel (Cockpit Healthcheck)</td><td>node-exporter/promtail/loki-forwarder/tailscale-subnet-router via kubectl — pas de Service stable ni HTTP pour ces 4</td></tr>
@@ -246,7 +249,7 @@
               <tr><td><code>node-exporter ×2</code></td><td>CPU / RAM / disk des nœuds K8s</td></tr>
             </tbody>
           </table></div>
-          <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 6 dashboards provisionnés (dossier <code>cac-mlops</code>), seule instance du projet</p>
+          <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 11 dashboards provisionnés (dossier <code>cac-mlops</code>), seule instance du projet</p>
           <div class="tbl"><table>
             <thead><tr><th>Dashboard</th><th>Contenu</th></tr></thead>
             <tbody>
@@ -256,16 +259,19 @@
               <tr><td><code>model-drift</code></td><td>drift_share, features driftées (Evidently → Prometheus)</td></tr>
               <tr><td><code>system-health</code></td><td>CPU / RAM / disk VPS en temps réel</td></tr>
               <tr><td><code>kapsule-k8s</code></td><td>Replicas disponibles, sonde publique, scrape api (Prometheus K8s)</td></tr>
+              <tr><td><code>fastapi-vps</code> · <code>fastapi-k8s</code></td><td>Un dashboard par accès FastAPI (VPS / K8s) : disponibilité et indisponibilité cumulée sur 7 j, latence p50/p95/p99, erreurs 5xx, prédictions</td></tr>
+              <tr><td><code>gradio-public-vps</code> · <code>gradio-public-k8s</code></td><td>Même lecture pour chaque accès Gradio public (VPS / K8s) : disponibilité 7 j, latence, erreurs, prédictions</td></tr>
+              <tr><td><code>gradio-admin-vps</code></td><td>Même lecture pour le Cockpit admin (VPS, Tailscale)</td></tr>
             </tbody>
           </table></div>
           <p><strong>Loki + Promtail</strong> — Promtail (VPS) scrape les logs de tous les conteneurs, dont les événements logfmt structurés (<code>event=gate_open/gate_resolved/interruption_*/rollback/alert</code>). Promtail (K8s, DaemonSet) fait de même pour tous les pods Kapsule, relayé via <code>loki-forwarder</code> (label <code>cluster="kapsule"</code>).</p>
-          <p class="sec-label">11 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte</p>
+          <p class="sec-label">12 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte</p>
           <p>Chaque flow loggue <code>event=alert severity=...</code>, Grafana évalue et notifie — un seul chemin, pas de doublon.</p>
           <div class="tbl"><table>
             <thead><tr><th>Type</th><th>Alerte</th><th>Détection</th></tr></thead>
             <tbody>
               <tr><td>Prometheus</td><td>Brute-force 401</td><td>&gt; 20 / 5 min</td></tr>
-              <tr><td>Prometheus</td><td>DDoS 429</td><td>&gt; 50 / 5 min</td></tr>
+              <tr><td>Prometheus</td><td>DDoS 429</td><td>&gt; 50 / 5 min — ⚠️ lit <code>api_requests_total{status="429"}</code> (métrique FastAPI) alors que les 429 sont émis par nginx et n'atteignent jamais l'API : ne peut pas se déclencher en l'état (à rebrancher sur les logs nginx)</td></tr>
               <tr><td>Prometheus</td><td>RAM critique</td><td>&lt; 10%</td></tr>
               <tr><td>Prometheus</td><td>Disk /data</td><td>&lt; 15%</td></tr>
               <tr><td>Loki</td><td>Erreur flow Prefect</td><td><code>ERROR|CRITICAL</code> dans les logs</td></tr>
@@ -273,6 +279,7 @@
               <tr><td>Loki</td><td>MLOps warning</td><td><code>event=alert severity=warning</code> (aucun champion, drift modéré, ONISR partiel)</td></tr>
               <tr><td>Loki</td><td>Gate refusée (STOP)</td><td><code>event=gate_resolved decision=STOP</code></td></tr>
               <tr><td>Loki</td><td>Rollback déclenché</td><td><code>event=rollback</code></td></tr>
+              <tr><td>Loki</td><td>Pipeline CI/CD en échec</td><td>logs <code>event=deploy_pipeline status=failed</code> poussés par <code>deploy.yml</code> (Trivy, schémas Prefect, déclenchement du flow)</td></tr>
               <tr><td>Prometheus K8s</td><td>Replicas api &lt; min HPA</td><td><code>kube_deployment_status_replicas_available &lt; 2</code> — 2 min</td></tr>
               <tr><td>Prometheus K8s</td><td>Endpoint public K8s down</td><td><code>probe_success == 0</code> sur <code>kapsule.jakat-inc.fr/health</code> — 2 min</td></tr>
             </tbody>
@@ -287,18 +294,18 @@
           <div class="tbl"><table>
             <thead><tr><th>Workflow</th><th>Déclencheur</th><th>Étapes</th></tr></thead>
             <tbody>
-              <tr><td><strong>ci.yml</strong></td><td>push mlops/DS + PR → main</td><td><strong>Blueprint isolation check</strong> (bloque toute PR mélangeant <code>config/model_params.yml</code> avec du code source — forcer 2 PRs séparées) → flake8 → pip-audit → pytest → bloque PR si ✗</td></tr>
+              <tr><td><strong>ci.yml</strong></td><td>PR → main</td><td><strong>Blueprint isolation check</strong> (bloque toute PR mélangeant <code>config/model_params.yml</code> avec du code source — forcer 2 PRs séparées) → flake8 → pip-audit → pytest → bloque PR si ✗</td></tr>
               <tr><td><strong>deploy.yml</strong></td><td>push → main</td><td>build images (si nécessaire) → Trivy CRITICAL → SSH VPS : git pull + pull images → déclenche Prefect</td></tr>
-              <tr><td><strong>cleanup.yml</strong></td><td>cron hebdo</td><td>purge anciennes images GHCR</td></tr>
+              <tr><td><strong>cleanup.yml</strong></td><td>cron dimanche 3h UTC</td><td>nettoyage NVMe du VPS (docker prune, logs) via SSH</td></tr>
             </tbody>
           </table></div>
-          <p><strong>3 images Docker buildées et publiées sur GHCR</strong><br>
-          <code>ghcr.io/jakatt/cac-mlops-api:latest</code> · <code>cac-mlops-mlflow:latest</code> · <code>cac-mlops-gradio:latest</code><br>
+          <p><strong>4 images Docker buildées et publiées sur GHCR</strong> (scannées par Trivy)<br>
+          <code>ghcr.io/jakatt/cac-mlops-api:latest</code> · <code>cac-mlops-mlflow:latest</code> · <code>cac-mlops-gradio:latest</code> · <code>cac-mlops-caddy:latest</code> (Caddy + plugin S3, Kapsule uniquement)<br>
           (gradio-public réutilise l'image gradio — commande différente au démarrage)</p>
           <p><strong>Rollback automatique</strong> : images taguées <code>:sha-xxxxxxxx</code> + <code>:rollback</code> avant chaque build. <code>docker compose up</code> et le smoke test s'exécutent dans le flow Prefect (<code>deploy-vps-flow</code>), après la gate manuelle.</p>
           <p><strong>Trigger 3 — Blueprint DS</strong> : le DS met à jour <code>config/model_params.yml</code> avec ses hyperparamètres gagnants et ouvre une PR dédiée (le CI guard bloque tout mélange code+blueprint dans la même PR). Après merge, <code>update-model-flow</code> s'entraîne directement sur ce fichier — <code>config/model_params.yml</code> commité est la seule source de vérité (aucune extraction MLflow).</p>
-          <p><strong>Séquence T3 :</strong> Gate 1 CI (blueprint isolation check + lint/pytest) → Gate 2 Trivy CRITICAL → Gate 3 KPI (train_flow : si aucun champion, stop + alerte — @Production inchangé) → smoke test pré-gate → Gate manuelle (métriques nouveau blueprint affichées, rien appliqué en prod) → GO : promotion @Production + restart API (~30 s) → Gate 4 test-api ; si KO : rollback alias MLflow @Production. Aucun <code>docker compose up</code> — T3 est blueprint pur, le CI guard interdit tout mélange avec du code.</p>
-          <p><strong>Sécurité</strong> : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection main (1 review requise).</p>
+          <p><strong>Séquence T3 :</strong> Gate 1 CI (blueprint isolation check + lint/pytest) → Gate 2 KPI (train_flow : si aucun champion ou F1 &lt; @Production + 0.01, stop + alerte — @Production inchangé ; pas de Trivy : aucune image reconstruite pour un blueprint pur) → smoke test pré-gate → Gate manuelle (métriques du nouveau blueprint + comparaison @Production vs candidat, rien appliqué en prod) → GO : promotion @Production + restart API (~30 s) → Gate 3 test-api ; si KO : rollback alias MLflow @Production + revert du blueprint sur main (idem si STOP à la gate). Aucun <code>docker compose up</code> — T3 est blueprint pur, le CI guard interdit tout mélange avec du code.</p>
+          <p><strong>Sécurité</strong> : Trivy bloque si CVE CRITICAL · pip-audit dans CI · branch protection <code>main</code> (check CI <code>test</code> obligatoire, pas de review imposée — projet mono-développeur ; merge manuel uniquement).</p>
         </div>
       </details>
 
@@ -345,7 +352,7 @@
             <tbody>
               <tr><td><strong>caddy</strong></td><td><strong>Public</strong> (LoadBalancer)</td><td>TLS Let's Encrypt, <code>/token</code> rate-limité 5r/min</td></tr>
               <tr><td><strong>nginx, gradio-public</strong></td><td>ClusterIP</td><td>Aucune IP publique propre — atteints par le public uniquement via caddy</td></tr>
-              <tr><td><strong>mlflow, prometheus, kube-state-metrics, blackbox-exporter</strong></td><td>ClusterIP</td><td>Tailscale uniquement — jamais exposés au public, même indirectement</td></tr>
+              <tr><td><strong>prometheus, kube-state-metrics, blackbox-exporter</strong></td><td>ClusterIP</td><td>Tailscale uniquement — jamais exposés au public, même indirectement</td></tr>
               <tr><td><strong>loki-forwarder</strong></td><td>ClusterIP (SOCKS5 <code>:1055</code>)</td><td>Pas de route tailnet advertisée — sortant uniquement</td></tr>
             </tbody>
           </table></div>
@@ -372,7 +379,8 @@
             <thead><tr><th>Secret</th><th>Variables</th></tr></thead>
             <tbody>
               <tr><td><code>s3-creds</code></td><td><code>AWS_ACCESS_KEY_ID</code> · <code>AWS_SECRET_ACCESS_KEY</code></td></tr>
-              <tr><td><code>app-creds</code></td><td><code>JWT_SECRET_KEY</code> · <code>API_USERNAME</code> · <code>API_PASSWORD</code></td></tr>
+              <tr><td><code>caddy-s3-creds</code></td><td>Clé IAM dédiée, restreinte au préfixe <code>caddy-certs/</code> (blast radius limité)</td></tr>
+              <tr><td><code>app-creds</code></td><td><code>JWT_SECRET_KEY</code> · <code>API_USERNAME</code> · <code>API_PASSWORD</code> · <code>POSTGRES_PASSWORD</code></td></tr>
               <tr><td><code>tailscale-auth</code></td><td><code>TS_AUTHKEY</code> (clé reusable + ephemeral, taguée <code>tag:k8s-cac-mlops</code>)</td></tr>
             </tbody>
           </table></div>
@@ -411,10 +419,16 @@
             <td>Kapsule — initContainer <code>fetch-model</code> au démarrage pod</td>
           </tr>
           <tr>
-            <td><code>mlflow-k8s/</code></td>
-            <td>Artefacts MLflow dans Kapsule (expériences, métriques)</td>
-            <td>Kapsule (MLflow → S3 direct)</td>
-            <td>Kapsule (MLflow)</td>
+            <td><code>k8s-gradio-data/</code></td>
+            <td><code>X_test.csv</code> / <code>y_test.csv</code> — données des onglets What-if / Points Noirs du Gradio public K8s</td>
+            <td>VPS — <code>kapsule-up-flow</code></td>
+            <td>Kapsule — initContainer de <code>gradio-public</code></td>
+          </tr>
+          <tr>
+            <td><code>secrets/</code></td>
+            <td>Secrets rotables (jeton GitHub de l'ETL, clé Tailscale, identifiants Caddy S3, mot de passe Grafana) — lus au moment du besoin, jamais figés dans une image</td>
+            <td>Administrateur (rotation manuelle)</td>
+            <td>VPS (flows Prefect) · <code>kapsule-up-flow</code></td>
           </tr>
           <tr>
             <td><code>caddy-certs/</code></td>

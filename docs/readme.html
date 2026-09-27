@@ -100,8 +100,8 @@
         <li>Sécuriser l'accès aux outils d'administration (Tailscale VPN mesh)</li>
       </ul>
       <div class="band">
-        <strong>Modèle en production :</strong> lgbm_accidents@Production · cumul 2021+2022+2023 · 27 features
-        &nbsp;·&nbsp; <strong>Métriques :</strong> F1 = 0.664 · AUC = 0.839 · Recall = 0.631 · Acc = 0.783
+        <strong>Modèle en production :</strong> lgbm_accidents v4 @Production · cumul 2021→2024 (test 2024) · 27 features
+        &nbsp;·&nbsp; <strong>Métriques :</strong> F1 = 0.689 · AUC = 0.837 · Recall = 0.767 · Acc = 0.764
       </div>
     </div>
   </details>
@@ -118,16 +118,16 @@
           <tr><td>ML</td><td><strong>scikit-learn / XGBoost / LightGBM</strong></td><td>Benchmark 3 algos · sélection champion par F1</td></tr>
           <tr><td>Tracking</td><td><strong>MLflow</strong></td><td>Runs, paramètres, métriques, Model Registry (@Production)</td></tr>
           <tr><td>API</td><td><strong>FastAPI + Pydantic + JWT</strong></td><td>POST /predict · GET /health · GET /metrics</td></tr>
-          <tr><td>Gateway</td><td><strong>NGINX + Caddy</strong></td><td>Rate-limit 20r/min · TLS Let's Encrypt · <code>mlops.jakat-inc.fr</code></td></tr>
-          <tr><td>Orchestration</td><td><strong>Prefect</strong></td><td>14 deployments · gate manuelle pause_flow_run()</td></tr>
+          <tr><td>Gateway</td><td><strong>NGINX + Caddy</strong></td><td>Rate-limit /predict 2 niveaux (par client + global) · TLS Let's Encrypt · <code>mlops.jakat-inc.fr</code></td></tr>
+          <tr><td>Orchestration</td><td><strong>Prefect</strong></td><td>18 deployments · gate manuelle pause_flow_run()</td></tr>
           <tr><td>CI/CD</td><td><strong>GitHub Actions</strong></td><td>3 workflows (ci · deploy · cleanup) · Trivy CVE</td></tr>
-          <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 6 dashboards · 7 alertes email</td></tr>
-          <tr><td>Drift</td><td><strong>Evidently</strong></td><td>Features drift par année vs référence précédente</td></tr>
-          <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>10 onglets admin (Tailscale) + 3 onglets public (internet)</td></tr>
-          <tr><td>Infra VPS</td><td><strong>Scaleway DEV1-XL</strong></td><td>16 conteneurs Docker · 4 vCPU / 12 GB RAM / 80 GB /data</td></tr>
+          <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 11 dashboards · 12 alertes email</td></tr>
+          <tr><td>Drift</td><td><strong>Evidently</strong></td><td>Drift des features par année vs référence + drift du trafic réel (prédictions, 90 j)</td></tr>
+          <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>6 onglets admin (Tailscale, dont Cockpit = 6 accordéons) + 3 onglets public (internet)</td></tr>
+          <tr><td>Infra VPS</td><td><strong>Scaleway DEV1-XL</strong></td><td>16 conteneurs Docker permanents · 4 vCPU / 12 GB RAM / 80 GB /data</td></tr>
           <tr><td>Infra K8s</td><td><strong>Scaleway Kapsule</strong></td><td>On-demand · HPA · zero-downtime rolling updates</td></tr>
           <tr><td>Sécurité</td><td><strong>Tailscale VPN</strong></td><td>Ports admin invisibles depuis internet · mesh réseau</td></tr>
-          <tr><td>Container Registry</td><td><strong>GHCR</strong></td><td><code>ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio}</code></td></tr>
+          <tr><td>Container Registry</td><td><strong>GHCR</strong></td><td><code>ghcr.io/jakatt/cac-mlops-{api,mlflow,gradio,caddy}</code></td></tr>
         </tbody>
       </table></div>
     </div>
@@ -166,7 +166,7 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
   <details>
     <summary>🔄 Workflow Git</summary>
     <div class="body">
-      <pre>feature/xxx  →  PR vers main  →  CI (lint + tests)  →  review  →  merge
+      <pre>mlops / DS  →  PR vers main  →  CI (lint + tests)  →  merge manuel
                                                                      │
                                                           deploy.yml (GH Actions)
                                                                      │
@@ -180,8 +180,8 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
       <div class="tbl"><table>
         <thead><tr><th>Branche</th><th>Règle</th></tr></thead>
         <tbody>
-          <tr><td><strong>mlops / DS</strong></td><td>Commits libres, push direct · CI s'exécute sur push</td></tr>
-          <tr><td><strong>main</strong></td><td>Jamais de commit direct — uniquement via PR · CI obligatoire · 1 review requise</td></tr>
+          <tr><td><strong>mlops / DS</strong></td><td>Commits libres, push direct · CI déclenchée par la PR vers main</td></tr>
+          <tr><td><strong>main</strong></td><td>Jamais de commit direct — uniquement via PR · CI obligatoire · merge manuel</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -192,7 +192,7 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
     <summary>🔗 Liens rapides (Tailscale requis pour l'admin)</summary>
     <div class="body">
       <div class="link-grid">
-        <div class="link-card"><a href="http://100.117.99.62:7860" target="_blank">Cockpit Gradio</a><p>10 onglets MLOps</p></div>
+        <div class="link-card"><a href="http://100.117.99.62:7860" target="_blank">Cockpit Gradio</a><p>6 onglets MLOps</p></div>
         <div class="link-card"><a href="http://100.117.99.62:4200" target="_blank">Prefect UI</a><p>Flows, runs, gates</p></div>
         <div class="link-card"><a href="http://100.117.99.62:5001" target="_blank">MLflow UI</a><p>Expériences + Registry</p></div>
         <div class="link-card"><a href="http://100.117.99.62:3000" target="_blank">Grafana</a><p>Dashboards + alertes</p></div>
@@ -216,12 +216,12 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
 │   ├── gradio/          Cockpit MLOps (app.py) + public (app_public.py)
 │   ├── mlflow/          Dockerfile custom (boto3 + psycopg2)
 │   ├── nginx/           nginx.conf — rate-limit + routing
-│   └── monitoring/      drift_detection.py — Evidently + Prometheus
+│   └── monitoring/      drift_detection · prediction_drift · data_quality · model_diff
 ├── src/
 │   ├── data/            import_raw_data · schema · schema_validator · make_dataset
 │   ├── models/          train_model · predict_model · validate_model
-│   ├── flows/           14 flows Prefect (etl, train, deploy-vps, deploy-kapsule…)
-│   └── utils/           email_utils (alertes SMTP)
+│   ├── flows/           18 flows Prefect (etl, train, deploy-vps, deploy-kapsule…)
+│   └── utils/           blueprint_revert · github · logging_utils · secrets
 ├── k8s/                 Manifests Kubernetes — 1 dossier/composant
 ├── infrastructure/      Grafana dashboards + alertes · Prometheus config · Tailscale
 ├── config/
@@ -231,8 +231,8 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
 │   └── integration/     test_api (Docker Compose requis)
 ├── scripts/             simulate_production.py · raz_mlops.sh
 ├── docs/                HTML docs statiques servies par nginx (/ci-docs/)
-├── docker-compose.yml   Stack 16 conteneurs
-├── prefect.yaml         14 deployments Prefect
+├── docker-compose.yml   Stack 17 services (16 permanents)
+├── prefect.yaml         18 deployments Prefect
 └── requirements.txt</pre>
     </div>
   </details>
@@ -244,7 +244,7 @@ RUN_INTEGRATION_TESTS=1 pytest tests/integration/ -v</pre>
       <div class="tbl"><table>
         <thead><tr><th>Trigger</th><th>Déclencheur</th><th>Action</th></tr></thead>
         <tbody>
-          <tr><td><strong>T1 — Nouvelle data</strong></td><td>Prefect cron lundi 8h · détection ONISR automatique</td><td>ETL → validation → benchmark 3 algos → gate manuelle → promote → test-api → Kapsule</td></tr>
+          <tr><td><strong>T1 — Nouvelle data</strong></td><td>Prefect cron lundi 8h (Europe/Paris) · détection ONISR automatique</td><td>ETL → validation → benchmark 3 algos → gate manuelle → promote → test-api → Kapsule</td></tr>
           <tr><td><strong>T2 — Nouveau code</strong></td><td>Push vers main (hors blueprint)</td><td>CI → build images → VPS prépare → gate manuelle → compose up → test-api → Kapsule</td></tr>
           <tr><td><strong>T3 — Nouveau modèle DS</strong></td><td>PR avec <code>config/model_params.yml</code> uniquement</td><td>Benchmark avec nouveaux hyperparamètres → si champion : gate manuelle → promote → test-api → Kapsule</td></tr>
         </tbody>
