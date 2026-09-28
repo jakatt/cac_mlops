@@ -126,6 +126,7 @@
 .ci-doc code { font-family:monospace;font-size:.82rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;color:var(--accent); }
 .ci-doc .note { font-size:.77rem;color:var(--muted);font-style:italic;margin-top:10px;padding:8px 12px;border-left:2px solid var(--border); }
 .ci-doc .tag-skip { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#fef9c3;color:#92400e;font-weight:600; }
+.ci-doc .sec-label { font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:18px 0 6px; }
 </style>
 </head>
 <body>
@@ -142,7 +143,7 @@
   <div class="summary-row">
     <div class="badge ci"><span class="badge-num">73</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 62, données mockées</span></div>
     <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
-    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow + test-gradio-public (6 exécutées en CD)</span></div>
+    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tests fonctionnels<br>vus de l'utilisateur · API + Cockpit public</span></div>
   </div>
 
   <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
@@ -431,83 +432,70 @@
     </div>
   </details><!-- section cd -->
 
-  <!-- ════════════════════ 3. POST-DEPLOY ════════════════════ -->
+  <!-- ════════════════════ 3. TESTS FONCTIONNELS ════════════════════ -->
   <details class="section pf">
-    <summary><span class="section-pill pf">PREFECT</span> Tests post-deploy — <code>test-api-flow</code></summary>
-    <div class="section-meta">Déclenché automatiquement par deploy-vps-flow/deploy-kapsule-flow après chaque déploiement réussi (VPS <em>et</em> K8s) · Exécuté <strong>deux fois</strong> à chaque déploiement (2026-07-29) : d'abord en interne (réseau Docker <code>http://nginx:80</code> / ClusterIP K8s), puis — si l'interne passe — en externe via le vrai domaine public (<code>mlops.jakat-inc.fr</code> / <code>kapsule.jakat-inc.fr</code>). Le test interne seul ne prouve pas qu'un utilisateur réel peut accéder au service (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>) ; aussi déclenchable manuellement (Cockpit → Orchestration → "Tester les 4 accès publics")</div>
+    <summary><span class="section-pill pf">PREFECT</span> Tests fonctionnels — la solution marche-t-elle pour l'utilisateur ?</summary>
+    <div class="section-meta">Après chaque déploiement, Prefect se comporte comme un utilisateur : il se connecte, demande une vraie prédiction et vérifie la réponse — sur chaque accès, sur le VPS puis sur Kubernetes. Au premier test en échec : retour automatique à la version précédente + alerte.</div>
 
     <div style="padding:0 16px 16px;">
+
+    <p class="sec-label" style="margin-top:12px;">1 · Quels accès sont testés, et où</p>
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
-      <tr>
-        <td>1</td>
-        <td><code>test-health</code></td>
-        <td><code>GET /health</code> → HTTP 200 — confirme que l'API est démarrée et le modèle chargé</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td><code>test-token</code></td>
-        <td><code>POST /token</code> (OAuth2 password grant) → JWT valide retourné</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td><code>test-401-sans-token</code></td>
-        <td><code>POST /predict</code> sans en-tête Authorization → HTTP 401 (authentification obligatoire)</td>
-      </tr>
-      <tr>
-        <td>4</td>
-        <td><code>test-200-avec-token</code></td>
-        <td><code>POST /predict</code> avec Bearer JWT → HTTP 200 + <code>prediction</code> · <code>probability</code> · <code>model_version</code></td>
-      </tr>
-      <tr>
-        <td>5</td>
-        <td><code>test-whatif-vitesse-90-vs-50</code></td>
-        <td>
-          <strong>Test de cohérence métier</strong> — route départementale, nuit sans éclairage, hors agglomération :<br>
-          <code>proba(vma=90) &gt; proba(vma=50)</code> (Δ ≈ +0.17)<br>
-          <em>Garantit que le modèle en production répond de manière cohérente avec la physique des accidents
-          (vitesse maximale autorisée plus élevée → risque de blessure grave plus élevé, toutes choses égales).</em>
-        </td>
-      </tr>
-      <tr>
-        <td>6</td>
-        <td><code>test-429-rate-limit</code> <span class="tag-skip">skippé en CD</span></td>
-        <td>22 requêtes consécutives → HTTP 429 déclenché par le rate limiter. Exécuté uniquement par un lancement manuel du flow <code>test-api</code> depuis l'interface Prefect (<code>skip_rate_limit=False</code>) — sauté en CD <em>et</em> par le bouton Cockpit "Tester les 4 accès publics" (évite de saturer le rate limiter). Pour la démonstration complète des 2 niveaux de limite, voir <code>test-rate-limit</code> ci-dessous.</td>
-      </tr>
+      <tr><th>Accès</th><th>Utilisé par</th><th>VPS — <code>mlops.jakat-inc.fr</code></th><th>Kubernetes — <code>kapsule.jakat-inc.fr</code></th></tr>
+      <tr><td><strong>Cockpit public</strong> (Gradio)</td><td>Grand public · démonstration</td><td>✅ Test fonctionnel : vraie prédiction</td><td>✅ Test fonctionnel : vraie prédiction</td></tr>
+      <tr><td><strong>API</strong> (FastAPI)</td><td>Applications clientes</td><td>✅ Test fonctionnel : 5 contrôles</td><td>✅ Test fonctionnel : 5 contrôles</td></tr>
+      <tr><td><strong>Cockpit admin</strong> (Gradio)</td><td>Équipe MLOps, via VPN Tailscale</td><td>⚪ Santé uniquement (<code>/health</code> avant et après le déploiement)</td><td>— non déployé sur Kubernetes</td></tr>
     </table>
-    </div>
-    <p class="note">Les tests post-deploy s'exécutent à l'intérieur du réseau Docker via <code>http://nginx:80</code> — ils testent l'API en conditions réelles (load balancer, auth, modèle chargé en mémoire) et non via un mock.</p>
     </div>
 
-    <div class="section-meta" style="margin-top:8px;">Déclenché automatiquement juste après <code>test-api-flow</code> (VPS et K8s), lui aussi interne puis externe — <code>test-gradio-public</code> · appel réel via <code>gradio_client</code>, pas un ping <code>/health</code></div>
-    <div style="padding:0 16px 16px;">
+    <p class="sec-label">2 · Interne puis externe : deux questions différentes</p>
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
-      <tr>
-        <td>1</td>
-        <td><code>test-gradio-public-predict</code></td>
-        <td>Appel réel de la fonction <code>Predict</code> exposée par le cockpit public (<code>gradio_client</code>, <code>api_name="/predict"</code>) → réponse non vide, sans <code>"Erreur"</code>, contenant bien un verdict de gravité</td>
-      </tr>
+      <tr><th>Passage</th><th>Adresse appelée</th><th>Question posée</th></tr>
+      <tr><td><strong>1. Interne</strong></td><td>Directement dans le réseau du serveur (nginx du VPS, service interne K8s)</td><td>L'<strong>application</strong> fonctionne-t-elle ?</td></tr>
+      <tr><td><strong>2. Externe</strong></td><td>L'adresse publique HTTPS, comme un vrai utilisateur</td><td>L'utilisateur peut-il <strong>y accéder</strong> ? (nom de domaine, certificat TLS, reverse-proxy Caddy, load balancer)</td></tr>
     </table>
     </div>
-    <p class="note">Seul test fonctionnel qui couvre <strong>gradio-public</strong> — le point d'accès réellement utilisé par les utilisateurs finaux (FastAPI n'est aujourd'hui appelé que par des tests automatisés et la simulation de drift, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>). Échec → même rollback que <code>test-api-flow</code> : images <code>:rollback</code> sur VPS · sur K8s, rollback vers le digest précis de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout — pas <code>kubectl rollout undo</code>, insuffisant sur un tag flottant <code>:latest</code>, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</p>
+    <p class="note" style="margin-top:6px;">L'externe n'est lancé que si l'interne réussit : un échec indique donc directement la cause — l'application elle-même, ou seulement le chemin d'accès public. Ordre sur chaque environnement : API interne → API externe → Cockpit public interne → Cockpit public externe.</p>
+
+    <p class="sec-label">3 · Quand ces tests s'exécutent</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>Déclencheur</th><th>Accès testés</th><th>Passages</th><th>En cas d'échec</th></tr>
+      <tr><td>Chaque déploiement VPS (après le GO)</td><td>API + Cockpit public — VPS</td><td>Interne puis externe</td><td>Retour à la version précédente sur le VPS (modèle et/ou images) + alerte · Kubernetes n'est pas touché</td></tr>
+      <tr><td>Chaque déploiement Kubernetes (si le VPS est OK)</td><td>API + Cockpit public — K8s</td><td>Interne puis externe</td><td>Retour à l'image précédente sur K8s + alerte · le VPS reste en place</td></tr>
+      <tr><td>Bouton Cockpit « Tester les 4 accès publics »</td><td>API + Cockpit public — VPS et K8s</td><td>Externe uniquement</td><td>Rapport par accès dans le Cockpit — aucun rollback</td></tr>
+    </table>
     </div>
 
-    <div class="section-meta" style="margin-top:8px;">Déclenché <strong>manuellement uniquement</strong> — Cockpit → Orchestration → "Tester la protection anti-abus sur l'API" — <code>test-rate-limit</code> · vérifie les 2 niveaux de limite nginx sur <code>POST /predict</code> : <strong>par client</strong> (IP réelle, 20/min, rafale 10) et <strong>globale</strong> (60/min, rafale 30). Plusieurs clients simulés depuis le réseau Docker via <code>X-Forwarded-For</code> (IP fictives RFC 5737), en-tête que nginx ne croit que depuis le réseau Docker — Caddy l'écrase côté Internet. Durée ~5 s.</div>
-    <div style="padding:0 16px 16px;">
+    <p class="sec-label">4 · Ce que vérifie chaque test</p>
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
-      <tr><td>1</td><td><code>1 · API en ligne (GET health)</code></td><td><code>GET /health</code> → HTTP 200</td></tr>
-      <tr><td>2</td><td><code>2 · Obtenir un jeton JWT</code></td><td><code>POST /token</code> → JWT, pour des prédictions authentifiées</td></tr>
-      <tr><td>3</td><td><code>3 · Limite par client — rafale d'un seul client</code></td><td>Le client A envoie des prédictions en boucle → ~11 acceptées (1 + rafale 10), puis <strong>HTTP 429</strong></td></tr>
-      <tr><td>4</td><td><code>4 · Limite par client — un autre client n'est pas pénalisé</code></td><td>Le client B envoie 1 prédiction juste après → <strong>HTTP 200</strong> : chaque client a son propre quota</td></tr>
-      <tr><td>5</td><td><code>5 · Limite globale — plusieurs clients sous leur quota</code></td><td>Des clients C1, C2… envoient 3 requêtes chacun (sous leur limite) → <strong>HTTP 429</strong> une fois le quota global restant épuisé (31 − places déjà prises par les étapes 3-4)</td></tr>
+      <tr><th>Accès</th><th>#</th><th>Contrôle (tâche Prefect)</th><th>Attendu</th></tr>
+      <tr><td rowspan="6"><strong>API</strong><br><code>test-api</code></td><td>1</td><td>L'API est en ligne<br><code>test-health</code></td><td><code>GET /health</code> → 200 : API démarrée, modèle chargé</td></tr>
+      <tr><td>2</td><td>Connexion<br><code>test-token</code></td><td><code>POST /token</code> avec identifiants → jeton d'accès reçu</td></tr>
+      <tr><td>3</td><td>Accès protégé<br><code>test-401-sans-token</code></td><td>Prédiction <strong>sans</strong> jeton → refusée (401)</td></tr>
+      <tr><td>4</td><td>Prédiction<br><code>test-200-avec-token</code></td><td>Prédiction avec jeton → 200 + verdict, probabilité et version du modèle</td></tr>
+      <tr><td>5</td><td>Simulation « what-if »<br><code>test-whatif-vitesse-90-vs-50</code></td><td>Même accident à 90 puis à 50 km/h → les deux prédictions répondent. L'écart est affiché mais <strong>pas jugé</strong> : le test vérifie que la fonctionnalité marche, pas le raisonnement du modèle (validé par ses métriques)</td></tr>
+      <tr><td>6</td><td>Protection anti-abus<br><code>test-429-rate-limit</code> <span class="tag-skip">hors déploiement</span></td><td>Sautée pendant les déploiements (elle bloquerait les tests suivants) — démontrée à part par <code>test-rate-limit</code>, ci-dessous</td></tr>
+      <tr><td><strong>Cockpit public</strong><br><code>test-gradio-public</code></td><td>1</td><td>Prédiction via l'interface<br><code>test-gradio-public-predict</code></td><td>Même appel que le bouton « Prédire » (<code>gradio_client</code>) → réponse non vide, sans « Erreur », contenant le verdict « prioritaire / non prioritaire »</td></tr>
     </table>
     </div>
-    <p class="note">Jamais lancé en CD : l'étape 5 épuise volontairement le quota global — un vrai client <code>/predict</code> peut recevoir des 429 pendant ~15 s après le test. Gradio public n'est pas concerné (il prédit dans son propre processus, sans passer par <code>/predict</code>). Avant le 2026-09-27, la limite « par IP » était en réalité partagée par tous les internautes (nginx voyait l'IP de la passerelle Docker de Caddy) — corrigé par <code>set_real_ip_from</code> / <code>real_ip_header</code> dans <code>nginx.conf</code>.</p>
+
+    <p class="sec-label">5 · Test fonctionnel anti-abus — à la demande</p>
+    <p style="font-size:.83rem;margin:4px 0 8px;">Cockpit → Orchestration → « Tester la protection anti-abus sur l'API » (<code>test-rate-limit</code>, ~5 s) — jamais pendant un déploiement. Vérifie les 2 niveaux de limite de nginx sur les prédictions de l'API : <strong>par client</strong> (20/min, rafale 10) et <strong>globale</strong> (60/min, rafale 30). Plusieurs clients sont simulés depuis le réseau interne (IP fictives) ; depuis Internet, impossible de se faire passer pour un autre client.</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Contrôle (tâche Prefect)</th><th>Attendu</th></tr>
+      <tr><td>1</td><td><code>1 · API en ligne (GET health)</code></td><td>200</td></tr>
+      <tr><td>2</td><td><code>2 · Obtenir un jeton JWT</code></td><td>Jeton reçu</td></tr>
+      <tr><td>3</td><td><code>3 · Limite par client — rafale d'un seul client</code></td><td>Le client A est bloqué (429) après ~11 prédictions</td></tr>
+      <tr><td>4</td><td><code>4 · Limite par client — un autre client n'est pas pénalisé</code></td><td>Le client B, juste après, est accepté (200)</td></tr>
+      <tr><td>5</td><td><code>5 · Limite globale — plusieurs clients sous leur quota</code></td><td>Des clients raisonnables (3 requêtes chacun) finissent bloqués (429) : le serveur plafonne la charge totale</td></tr>
+    </table>
+    </div>
+    <p class="note">Le Cockpit public n'est pas concerné par cette limite : il calcule ses prédictions lui-même, sans passer par l'API. Après le test, le quota global de l'API reste épuisé ~15 s.</p>
     </div>
   </details><!-- section pf -->
 

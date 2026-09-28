@@ -308,7 +308,7 @@ df -h / /data</pre>
         <tbody>
           <tr><td><code>/predict</code> → 401</td><td>Token expiré (24h)</td><td>Re-POST <code>/token</code> pour renouveler</td></tr>
           <tr><td><code>/predict</code> → 503</td><td>Aucun modèle @Production</td><td>Promouvoir un modèle → <code>docker compose restart api</code></td></tr>
-          <tr><td>API → 429</td><td>Rate-limit nginx atteint — par client (20/min, rafale 10) ou global (60/min, rafale 30)</td><td>Normal pour un client abusif. Si trafic légitime → ajuster dans <code>nginx.conf</code> en gardant la rafale par client ≥ 10 (les tests post-deploy envoient 8 <code>/predict</code> depuis une même IP). Vérifier : Cockpit → Orchestration → « Tester la protection anti-abus sur l'API »</td></tr>
+          <tr><td>API → 429</td><td>Rate-limit nginx atteint — par client (20/min, rafale 10) ou global (60/min, rafale 30)</td><td>Normal pour un client abusif. Si trafic légitime → ajuster dans <code>nginx.conf</code> en gardant la rafale par client ≥ 10 (les tests fonctionnels de déploiement envoient 8 <code>/predict</code> depuis une même IP). Vérifier : Cockpit → Orchestration → « Tester la protection anti-abus sur l'API »</td></tr>
           <tr><td>Gate Prefect non reçue</td><td>Worker déconnecté</td><td><code>docker compose restart prefect-worker</code></td></tr>
           <tr><td>Email Grafana "DatasourceError"</td><td>Prometheus scrape KO</td><td>Vérifier que prometheus scrape l'API sur <code>:8000/metrics</code></td></tr>
           <tr><td><code>check-new-data</code> re-trigger chaque semaine</td><td><code>data/raw/{year}/</code> absent</td><td>Vérifier que le téléchargement ETL a bien eu lieu</td></tr>
