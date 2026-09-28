@@ -126,6 +126,7 @@
 .ci-doc code { font-family:monospace;font-size:.82rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;color:var(--accent); }
 .ci-doc .note { font-size:.77rem;color:var(--muted);font-style:italic;margin-top:10px;padding:8px 12px;border-left:2px solid var(--border); }
 .ci-doc .tag-skip { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#fef9c3;color:#92400e;font-weight:600; }
+.ci-doc .sec-label { font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:18px 0 6px; }
 </style>
 </head>
 <body>
@@ -140,9 +141,9 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 43, données mockées</span></div>
+    <div class="badge ci"><span class="badge-num">73</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 62, données mockées</span></div>
     <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
-    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow + test-gradio-public (6 exécutées en CD)</span></div>
+    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tests fonctionnels<br>vus de l'utilisateur · API + Cockpit public</span></div>
   </div>
 
   <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
@@ -155,19 +156,19 @@
       <tr><th>Trigger</th><th>Checks CI/ETL</th><th>Mécanismes auto-correction</th><th>Étapes CD</th></tr>
       <tr>
         <td><strong>T1</strong> — Nouvelles données</td>
-        <td>43 (logique testée en CI, exécutée pour de vrai sur données réelles — voir <a href="etl_catalogue.html">Catalogue ETL</a>)</td>
-        <td>4 (voir plus bas)</td>
+        <td>62 (logique testée en CI, exécutée pour de vrai sur données réelles — voir <a href="etl_catalogue.html">Catalogue ETL</a>)</td>
+        <td>9 (voir plus bas) — 17 auto-corrections au total dans le <a href="etl_catalogue.html">Catalogue ETL</a></td>
         <td>0 — <code>deploy.yml</code> ne se déclenche jamais (aucun push sur <code>main</code>, flow Prefect pur)</td>
       </tr>
       <tr>
         <td><strong>T2</strong> — Code seul</td>
-        <td>54 (11 API + 43 ETL — suite complète, aucun filtrage par fichier changé)</td>
+        <td>73 (11 API + 62 ETL — suite complète, aucun filtrage par fichier changé)</td>
         <td>n/a (pas de nouvelles données)</td>
         <td>jusqu'à 11 — variable selon les services touchés (builds conditionnels par service)</td>
       </tr>
       <tr>
         <td><strong>T3</strong> — Nouveau blueprint</td>
-        <td>54 (idem T2 — même suite complète)</td>
+        <td>73 (idem T2 — même suite complète)</td>
         <td>n/a</td>
         <td>4 étapes réelles (1·7·10·11) + 2 no-op (8·9) + 5 toujours sautées (2-6) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
       </tr>
@@ -214,13 +215,13 @@
     </details>
 
     <details>
-      <summary>DATAS <span class="count">43</span> — ETL (<code>etl_flow.py</code>, Trigger 1) · CI (<code>ci.yml</code>, T2/T3)</summary>
+      <summary>DATAS <span class="count">62</span> — ETL (<code>etl_flow.py</code>, Trigger 1) · CI (<code>ci.yml</code>, T2/T3)</summary>
       <div class="body">
       <div style="padding:0;">
-        <p class="note" style="margin-top:0;">Ces 43 tests couvrent la même logique qui s'exécute pour de vrai sur données réelles côté Trigger 1 (<code>etl_flow.py</code>, aucun lien avec <code>ci.yml</code> qui ne se déclenche jamais sur ce trigger) — détail de cette exécution réelle : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
+        <p class="note" style="margin-top:0;">Ces 62 tests couvrent la même logique qui s'exécute pour de vrai sur données réelles côté Trigger 1 (<code>etl_flow.py</code>, aucun lien avec <code>ci.yml</code> qui ne se déclenche jamais sur ce trigger) — détail de cette exécution réelle : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
 
     <details>
-      <summary>test_preprocessing.py — Feature engineering <span class="count">15</span></summary>
+      <summary>test_preprocessing.py — Feature engineering <span class="count">18</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -240,13 +241,16 @@
           <tr><td><code>test_no_id_columns_in_output</code></td><td>Colonnes techniques supprimées (<code>Num_Acc</code>, <code>an_nais</code>, <code>hrmn</code>…)</td></tr>
           <tr><td><code>test_nb_victim_aggregated_per_accident</code></td><td><code>nb_victim</code> = nombre d'usagers impliqués par accident</td></tr>
           <tr><td><code>test_missing_raw_dir_raises_runtime_error</code></td><td><code>_load_year</code> (délègue à <code>load_and_validate_year</code>) lève <code>RuntimeError</code> si CRITICAL — stoppe le preprocessing au lieu de continuer silencieusement</td></tr>
-        </table>
+                  <tr><td><code>test_all_formats_give_same_hour</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> <code>hrmn</code> en <code>14:30</code>, <code>1430</code>, <code>14</code>, <code>9:05</code>, <code>905</code>, <code>1430.0</code> → même heure (l'ancien code lisait <code>1430</code> comme 1 h)</td></tr>
+          <tr><td><code>test_invalid_values_become_nan</code></td><td>Heure hors 0-23 ou texte → <code>NaN</code> (puis 0), jamais une heure fausse</td></tr>
+          <tr><td><code>test_onisr_hh_mm_format_unchanged</code></td><td>Format réel ONISR <code>HH:MM</code> : résultat identique à l'ancien code (non-régression du dataset)</td></tr>
+</table>
         </div>
       </div>
     </details>
 
     <details>
-      <summary>test_schema_validator.py — Validation Pandera <span class="count">16</span></summary>
+      <summary>test_schema_validator.py — Validation Pandera <span class="count">23</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -267,13 +271,20 @@
           <tr><td><code>test_uncoercible_value_stays_warning_not_critical</code></td><td>Valeur non convertible (ex. <code>"abc"</code>) → coercion échoue proprement, reste WARNING (comportement de repli inchangé)</td></tr>
           <tr><td><code>test_returns_dfs_for_all_4_tables</code></td><td><code>load_and_validate_year</code> renvoie les 4 DataFrames corrigés/typés, prêts pour le feature engineering</td></tr>
           <tr><td><code>test_critical_returns_empty_dfs</code></td><td><code>load_and_validate_year</code> renvoie <code>{}</code> si Level 1 échoue (pas de DataFrames à moitié chargés)</td></tr>
-        </table>
+                  <tr><td><code>test_out_of_nomenclature_code_replaced_and_table_typed</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> <code>lum=9</code> → <code>-1</code>, table correctement typée, plus de WARNING <code>type_check</code></td></tr>
+          <tr><td><code>test_text_in_numeric_code_column_replaced</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> <code>vma="N/C"</code> → <code>-1</code></td></tr>
+          <tr><td><code>test_exact_duplicate_rows_removed</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> ligne dupliquée supprimée (cas réel : <code>lieux</code> 2024)</td></tr>
+          <tr><td><code>test_bom_and_case_normalized</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> fichier UTF-8 avec BOM + <code>NUM_ACC</code> / <code>" Jour "</code> → noms canoniques, pas de CRITICAL</td></tr>
+          <tr><td><code>test_known_unused_columns_are_info_not_warning</code></td><td>Colonnes ONISR connues (<code>an</code>, <code>adr</code>) → INFO, plus de WARNING récurrent</td></tr>
+          <tr><td><code>test_really_new_column_still_warns</code></td><td>Colonne réellement nouvelle → WARNING conservé (le vrai signal n'est pas perdu)</td></tr>
+          <tr><td><code>test_drom_coordinates_below_threshold_are_info</code></td><td>5 % de coordonnées DROM → INFO (WARNING seulement au-delà de 10 %)</td></tr>
+</table>
         </div>
       </div>
     </details>
 
     <details>
-      <summary>test_import_raw_data.py — Découverte des fichiers ONISR <span class="count">7</span></summary>
+      <summary>test_import_raw_data.py — Découverte + contrôle d'entrée des fichiers ONISR <span class="count">13</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -285,13 +296,18 @@
           <tr><td><code>test_fuzzy_fallback_catches_typo</code></td><td>Reproduit l'incident <code>carcteristiques-2021.csv</code> (faute de frappe source ONISR) → fallback fuzzy (difflib) retrouve le bon fichier + WARNING loggué</td></tr>
           <tr><td><code>test_unmatchable_file_raises_runtime_error</code></td><td>Nom trop éloigné de toute catégorie connue → <code>RuntimeError</code>, aucun faux positif</td></tr>
           <tr><td><code>test_nonexistent_dir_raises_file_not_found</code></td><td>Répertoire source inexistant → <code>FileNotFoundError</code></td></tr>
+          <tr><td><code>test_accident_id_2022_accepted_via_known_rename</code></td><td>Entête ONISR 2022 (<code>Accident_Id</code> au lieu de <code>Num_Acc</code>) accepté au téléchargement grâce au renommage connu (<code>known_fixes</code>)</td></tr>
+          <tr><td><code>test_other_separator_accepted</code> ×2</td><td>Fichier séparé par tabulation ou par virgule au lieu de <code>;</code> → accepté (et loggué AUTO_CORRECTED)</td></tr>
+          <tr><td><code>test_unknown_separator_rejected</code></td><td>Aucun séparateur reconnu → rejet (fichier réellement inexploitable)</td></tr>
+          <tr><td><code>test_missing_required_column_rejected</code></td><td>Colonne obligatoire absente même après renommages connus → rejet</td></tr>
+          <tr><td><code>test_too_small_file_rejected</code></td><td>Fichier &lt; 500 Ko (page d'erreur, dataset dérivé) → rejet</td></tr>
         </table>
         </div>
       </div>
     </details>
 
     <details>
-      <summary>test_known_fixes.py — Registre centralisé de correctifs <span class="count">5</span></summary>
+      <summary>test_known_fixes.py — Registre centralisé de correctifs <span class="count">8</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -301,15 +317,18 @@
           <tr><td><code>test_no_rename_for_other_tables</code></td><td>Le renommage <code>caracteristiques</code> ne s'applique pas aux 3 autres tables</td></tr>
           <tr><td><code>test_strips_nbsp_and_whitespace</code></td><td>Espaces insécables (<code>\xa0</code>) et superflus nettoyés sur les colonnes texte</td></tr>
           <tr><td><code>test_numeric_columns_untouched</code></td><td>Les colonnes déjà numériques ne sont pas affectées par le nettoyage texte</td></tr>
-        </table>
+                  <tr><td><code>test_bom_quotes_spaces_and_case</code></td><td><code>normalize_column_names()</code> : BOM, guillemets, espaces et casse → nom canonique</td></tr>
+          <tr><td><code>test_unknown_column_left_untouched</code></td><td>Colonne sans équivalent canonique laissée telle quelle (traitée ensuite comme colonne inconnue)</td></tr>
+          <tr><td><code>test_never_overwrites_existing_canonical_column</code></td><td>Jamais d'écrasement si la colonne canonique existe déjà (pas de perte silencieuse)</td></tr>
+</table>
         </div>
       </div>
     </details>
 
     <details>
-      <summary>Mécanismes d'auto-correction couverts <span class="count">4</span></summary>
+      <summary>Mécanismes d'auto-correction couverts <span class="count">9</span></summary>
       <div class="body">
-        <p class="note" style="margin-top:0;">Sur les 5 tests de <code>test_known_fixes.py</code>, 2 seulement couvrent un mécanisme réel (les 3 autres sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas). Au total, tout module confondu, la chaîne ETL compte <strong>4 mécanismes d'auto-correction</strong> distincts :</p>
+        <p class="note" style="margin-top:0;">Sur les 8 tests de <code>test_known_fixes.py</code>, 3 couvrent un mécanisme réel (renommage, espaces, noms de colonnes) et 5 sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas. Tous modules confondus, 9 mécanismes d'auto-correction sont couverts par des tests unitaires (sur les 17 de la chaîne ETL, cf. <a href="etl_catalogue.html">Catalogue ETL</a>) :</p>
         <div class="overflow-x">
         <table>
           <tr><th>#</th><th>Mécanisme</th><th>Module</th><th>Réagit à</th></tr>
@@ -317,6 +336,11 @@
           <tr><td>2</td><td>Nettoyage espaces insécables/superflus</td><td><code>known_fixes.py</code></td><td>Artefacts d'encodage sur colonnes texte</td></tr>
           <tr><td>3</td><td>Coercion de type Pandera</td><td><code>schema_validator.py</code></td><td>Colonne numérique lue en texte (artefact de formatage)</td></tr>
           <tr><td>4</td><td>Matching fuzzy de nom de fichier</td><td><code>import_raw_data.py</code></td><td>Faute de frappe ONISR sur le nom du fichier</td></tr>
+          <tr><td>5</td><td>Contrôle d'entrée tolérant au téléchargement (séparateur <code>;</code>/<code>,</code>/tabulation, renommages connus)</td><td><code>import_raw_data.py</code></td><td>Changement de séparateur ou format ONISR 2022 (<code>Accident_Id</code>) dès le téléchargement — 5 tests dans <code>test_import_raw_data.py</code></td></tr>
+          <tr><td>6</td><td>Normalisation des noms de colonnes (BOM, casse, espaces)</td><td><code>known_fixes.py</code></td><td>Fichier UTF-8 avec BOM, casse ou espaces différents</td></tr>
+          <tr><td>7</td><td>Suppression des lignes dupliquées</td><td><code>schema_validator.py</code></td><td>Doublons stricts (cas réel <code>lieux</code> 2024)</td></tr>
+          <tr><td>8</td><td>Valeurs hors nomenclature → « non renseigné »</td><td><code>schema_validator.py</code></td><td>Nouveau code ONISR ou texte parasite dans une colonne codifiée</td></tr>
+          <tr><td>9</td><td>Heure multi-format</td><td><code>make_dataset.py</code></td><td><code>hrmn</code> en <code>HHMM</code>, <code>H:MM</code>, numérique</td></tr>
         </table>
         </div>
         <p class="note">Détail complet de chaque mécanisme en conditions réelles (pas seulement testé en CI) : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
@@ -408,83 +432,70 @@
     </div>
   </details><!-- section cd -->
 
-  <!-- ════════════════════ 3. POST-DEPLOY ════════════════════ -->
+  <!-- ════════════════════ 3. TESTS FONCTIONNELS ════════════════════ -->
   <details class="section pf">
-    <summary><span class="section-pill pf">PREFECT</span> Tests post-deploy — <code>test-api-flow</code></summary>
-    <div class="section-meta">Déclenché automatiquement par deploy-vps-flow/deploy-kapsule-flow après chaque déploiement réussi (VPS <em>et</em> K8s) · Exécuté <strong>deux fois</strong> à chaque déploiement (2026-07-29) : d'abord en interne (réseau Docker <code>http://nginx:80</code> / ClusterIP K8s), puis — si l'interne passe — en externe via le vrai domaine public (<code>mlops.jakat-inc.fr</code> / <code>kapsule.jakat-inc.fr</code>). Le test interne seul ne prouve pas qu'un utilisateur réel peut accéder au service (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>) ; aussi déclenchable manuellement (Cockpit → Orchestration → "Tester les 4 accès publics")</div>
+    <summary><span class="section-pill pf">PREFECT</span> Tests fonctionnels — la solution marche-t-elle pour l'utilisateur ?</summary>
+    <div class="section-meta">Après chaque déploiement, Prefect se comporte comme un utilisateur : il se connecte, demande une vraie prédiction et vérifie la réponse — sur chaque accès, sur le VPS puis sur Kubernetes. Au premier test en échec : retour automatique à la version précédente + alerte.</div>
 
     <div style="padding:0 16px 16px;">
+
+    <p class="sec-label" style="margin-top:12px;">1 · Quels accès sont testés, et où</p>
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
-      <tr>
-        <td>1</td>
-        <td><code>test-health</code></td>
-        <td><code>GET /health</code> → HTTP 200 — confirme que l'API est démarrée et le modèle chargé</td>
-      </tr>
-      <tr>
-        <td>2</td>
-        <td><code>test-token</code></td>
-        <td><code>POST /token</code> (OAuth2 password grant) → JWT valide retourné</td>
-      </tr>
-      <tr>
-        <td>3</td>
-        <td><code>test-401-sans-token</code></td>
-        <td><code>POST /predict</code> sans en-tête Authorization → HTTP 401 (authentification obligatoire)</td>
-      </tr>
-      <tr>
-        <td>4</td>
-        <td><code>test-200-avec-token</code></td>
-        <td><code>POST /predict</code> avec Bearer JWT → HTTP 200 + <code>prediction</code> · <code>probability</code> · <code>model_version</code></td>
-      </tr>
-      <tr>
-        <td>5</td>
-        <td><code>test-whatif-vitesse-90-vs-50</code></td>
-        <td>
-          <strong>Test de cohérence métier</strong> — route départementale, nuit sans éclairage, hors agglomération :<br>
-          <code>proba(vma=90) &gt; proba(vma=50)</code> (Δ ≈ +0.17)<br>
-          <em>Garantit que le modèle en production répond de manière cohérente avec la physique des accidents
-          (vitesse maximale autorisée plus élevée → risque de blessure grave plus élevé, toutes choses égales).</em>
-        </td>
-      </tr>
-      <tr>
-        <td>6</td>
-        <td><code>test-429-rate-limit</code> <span class="tag-skip">skippé en CD</span></td>
-        <td>22 requêtes consécutives → HTTP 429 déclenché par le rate limiter. Exécuté uniquement par un lancement manuel du flow <code>test-api</code> depuis l'interface Prefect (<code>skip_rate_limit=False</code>) — sauté en CD <em>et</em> par le bouton Cockpit "Tester les 4 accès publics" (évite de saturer le rate limiter). Pour la démonstration complète des 2 niveaux de limite, voir <code>test-rate-limit</code> ci-dessous.</td>
-      </tr>
+      <tr><th>Accès</th><th>Utilisé par</th><th>VPS — <code>mlops.jakat-inc.fr</code></th><th>Kubernetes — <code>kapsule.jakat-inc.fr</code></th></tr>
+      <tr><td><strong>Cockpit public</strong> (Gradio)</td><td>Grand public · démonstration</td><td>✅ Test fonctionnel : vraie prédiction</td><td>✅ Test fonctionnel : vraie prédiction</td></tr>
+      <tr><td><strong>API</strong> (FastAPI)</td><td>Applications clientes</td><td>✅ Test fonctionnel : 5 contrôles</td><td>✅ Test fonctionnel : 5 contrôles</td></tr>
+      <tr><td><strong>Cockpit admin</strong> (Gradio)</td><td>Équipe MLOps, via VPN Tailscale</td><td>⚪ Santé uniquement (<code>/health</code> avant et après le déploiement)</td><td>— non déployé sur Kubernetes</td></tr>
     </table>
-    </div>
-    <p class="note">Les tests post-deploy s'exécutent à l'intérieur du réseau Docker via <code>http://nginx:80</code> — ils testent l'API en conditions réelles (load balancer, auth, modèle chargé en mémoire) et non via un mock.</p>
     </div>
 
-    <div class="section-meta" style="margin-top:8px;">Déclenché automatiquement juste après <code>test-api-flow</code> (VPS et K8s), lui aussi interne puis externe — <code>test-gradio-public</code> · appel réel via <code>gradio_client</code>, pas un ping <code>/health</code></div>
-    <div style="padding:0 16px 16px;">
+    <p class="sec-label">2 · Interne puis externe : deux questions différentes</p>
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
-      <tr>
-        <td>1</td>
-        <td><code>test-gradio-public-predict</code></td>
-        <td>Appel réel de la fonction <code>Predict</code> exposée par le cockpit public (<code>gradio_client</code>, <code>api_name="/predict"</code>) → réponse non vide, sans <code>"Erreur"</code>, contenant bien un verdict de gravité</td>
-      </tr>
+      <tr><th>Passage</th><th>Adresse appelée</th><th>Question posée</th></tr>
+      <tr><td><strong>1. Interne</strong></td><td>Directement dans le réseau du serveur (nginx du VPS, service interne K8s)</td><td>L'<strong>application</strong> fonctionne-t-elle ?</td></tr>
+      <tr><td><strong>2. Externe</strong></td><td>L'adresse publique HTTPS, comme un vrai utilisateur</td><td>L'utilisateur peut-il <strong>y accéder</strong> ? (nom de domaine, certificat TLS, reverse-proxy Caddy, load balancer)</td></tr>
     </table>
     </div>
-    <p class="note">Seul test fonctionnel qui couvre <strong>gradio-public</strong> — le point d'accès réellement utilisé par les utilisateurs finaux (FastAPI n'est aujourd'hui appelé que par des tests automatisés et la simulation de drift, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>). Échec → même rollback que <code>test-api-flow</code> : images <code>:rollback</code> sur VPS · sur K8s, rollback vers le digest précis de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout — pas <code>kubectl rollout undo</code>, insuffisant sur un tag flottant <code>:latest</code>, cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</p>
+    <p class="note" style="margin-top:6px;">L'externe n'est lancé que si l'interne réussit : un échec indique donc directement la cause — l'application elle-même, ou seulement le chemin d'accès public. Ordre sur chaque environnement : API interne → API externe → Cockpit public interne → Cockpit public externe.</p>
+
+    <p class="sec-label">3 · Quand ces tests s'exécutent</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>Déclencheur</th><th>Accès testés</th><th>Passages</th><th>En cas d'échec</th></tr>
+      <tr><td>Chaque déploiement VPS (après le GO)</td><td>API + Cockpit public — VPS</td><td>Interne puis externe</td><td>Retour à la version précédente sur le VPS (modèle et/ou images) + alerte · Kubernetes n'est pas touché</td></tr>
+      <tr><td>Chaque déploiement Kubernetes (si le VPS est OK)</td><td>API + Cockpit public — K8s</td><td>Interne puis externe</td><td>Retour à l'image précédente sur K8s + alerte · le VPS reste en place</td></tr>
+      <tr><td>Bouton Cockpit « Tester les 4 accès publics »</td><td>API + Cockpit public — VPS et K8s</td><td>Externe uniquement</td><td>Rapport par accès dans le Cockpit — aucun rollback</td></tr>
+    </table>
     </div>
 
-    <div class="section-meta" style="margin-top:8px;">Déclenché <strong>manuellement uniquement</strong> — Cockpit → Orchestration → "Tester la protection anti-abus sur l'API" — <code>test-rate-limit</code> · vérifie les 2 niveaux de limite nginx sur <code>POST /predict</code> : <strong>par client</strong> (IP réelle, 20/min, rafale 10) et <strong>globale</strong> (60/min, rafale 30). Plusieurs clients simulés depuis le réseau Docker via <code>X-Forwarded-For</code> (IP fictives RFC 5737), en-tête que nginx ne croit que depuis le réseau Docker — Caddy l'écrase côté Internet. Durée ~5 s.</div>
-    <div style="padding:0 16px 16px;">
+    <p class="sec-label">4 · Ce que vérifie chaque test</p>
     <div class="overflow-x">
     <table>
-      <tr><th>#</th><th>Task Prefect</th><th>Ce qui est vérifié</th></tr>
-      <tr><td>1</td><td><code>1 · API en ligne (GET health)</code></td><td><code>GET /health</code> → HTTP 200</td></tr>
-      <tr><td>2</td><td><code>2 · Obtenir un jeton JWT</code></td><td><code>POST /token</code> → JWT, pour des prédictions authentifiées</td></tr>
-      <tr><td>3</td><td><code>3 · Limite par client — rafale d'un seul client</code></td><td>Le client A envoie des prédictions en boucle → ~11 acceptées (1 + rafale 10), puis <strong>HTTP 429</strong></td></tr>
-      <tr><td>4</td><td><code>4 · Limite par client — un autre client n'est pas pénalisé</code></td><td>Le client B envoie 1 prédiction juste après → <strong>HTTP 200</strong> : chaque client a son propre quota</td></tr>
-      <tr><td>5</td><td><code>5 · Limite globale — plusieurs clients sous leur quota</code></td><td>Des clients C1, C2… envoient 3 requêtes chacun (sous leur limite) → <strong>HTTP 429</strong> une fois le quota global restant épuisé (31 − places déjà prises par les étapes 3-4)</td></tr>
+      <tr><th>Accès</th><th>#</th><th>Contrôle (tâche Prefect)</th><th>Attendu</th></tr>
+      <tr><td rowspan="6"><strong>API</strong><br><code>test-api</code></td><td>1</td><td>L'API est en ligne<br><code>test-health</code></td><td><code>GET /health</code> → 200 : API démarrée, modèle chargé</td></tr>
+      <tr><td>2</td><td>Connexion<br><code>test-token</code></td><td><code>POST /token</code> avec identifiants → jeton d'accès reçu</td></tr>
+      <tr><td>3</td><td>Accès protégé<br><code>test-401-sans-token</code></td><td>Prédiction <strong>sans</strong> jeton → refusée (401)</td></tr>
+      <tr><td>4</td><td>Prédiction<br><code>test-200-avec-token</code></td><td>Prédiction avec jeton → 200 + verdict, probabilité et version du modèle</td></tr>
+      <tr><td>5</td><td>Simulation « what-if »<br><code>test-whatif-vitesse-90-vs-50</code></td><td>Même accident à 90 puis à 50 km/h → les deux prédictions répondent. L'écart est affiché mais <strong>pas jugé</strong> : le test vérifie que la fonctionnalité marche, pas le raisonnement du modèle (validé par ses métriques)</td></tr>
+      <tr><td>6</td><td>Protection anti-abus<br><code>test-429-rate-limit</code> <span class="tag-skip">hors déploiement</span></td><td>Sautée pendant les déploiements (elle bloquerait les tests suivants) — démontrée à part par <code>test-rate-limit</code>, ci-dessous</td></tr>
+      <tr><td><strong>Cockpit public</strong><br><code>test-gradio-public</code></td><td>1</td><td>Prédiction via l'interface<br><code>test-gradio-public-predict</code></td><td>Même appel que le bouton « Prédire » (<code>gradio_client</code>) → réponse non vide, sans « Erreur », contenant le verdict « prioritaire / non prioritaire »</td></tr>
     </table>
     </div>
-    <p class="note">Jamais lancé en CD : l'étape 5 épuise volontairement le quota global — un vrai client <code>/predict</code> peut recevoir des 429 pendant ~15 s après le test. Gradio public n'est pas concerné (il prédit dans son propre processus, sans passer par <code>/predict</code>). Avant le 2026-09-27, la limite « par IP » était en réalité partagée par tous les internautes (nginx voyait l'IP de la passerelle Docker de Caddy) — corrigé par <code>set_real_ip_from</code> / <code>real_ip_header</code> dans <code>nginx.conf</code>.</p>
+
+    <p class="sec-label">5 · Test fonctionnel anti-abus — à la demande</p>
+    <p style="font-size:.83rem;margin:4px 0 8px;">Cockpit → Orchestration → « Tester la protection anti-abus sur l'API » (<code>test-rate-limit</code>, ~5 s) — jamais pendant un déploiement. Vérifie les 2 niveaux de limite de nginx sur les prédictions de l'API : <strong>par client</strong> (20/min, rafale 10) et <strong>globale</strong> (60/min, rafale 30). Plusieurs clients sont simulés depuis le réseau interne (IP fictives) ; depuis Internet, impossible de se faire passer pour un autre client.</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Contrôle (tâche Prefect)</th><th>Attendu</th></tr>
+      <tr><td>1</td><td><code>1 · API en ligne (GET health)</code></td><td>200</td></tr>
+      <tr><td>2</td><td><code>2 · Obtenir un jeton JWT</code></td><td>Jeton reçu</td></tr>
+      <tr><td>3</td><td><code>3 · Limite par client — rafale d'un seul client</code></td><td>Le client A est bloqué (429) après ~11 prédictions</td></tr>
+      <tr><td>4</td><td><code>4 · Limite par client — un autre client n'est pas pénalisé</code></td><td>Le client B, juste après, est accepté (200)</td></tr>
+      <tr><td>5</td><td><code>5 · Limite globale — plusieurs clients sous leur quota</code></td><td>Des clients raisonnables (3 requêtes chacun) finissent bloqués (429) : le serveur plafonne la charge totale</td></tr>
+    </table>
+    </div>
+    <p class="note">Le Cockpit public n'est pas concerné par cette limite : il calcule ses prédictions lui-même, sans passer par l'API. Après le test, le quota global de l'API reste épuisé ~15 s.</p>
     </div>
   </details><!-- section pf -->
 

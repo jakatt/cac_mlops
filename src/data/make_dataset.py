@@ -51,6 +51,36 @@ def _load_year(year: int, raw_dir: Path | None = None) -> tuple[
     return dfs["usagers"], dfs["caracteristiques"], dfs["lieux"], dfs["vehicules"]
 
 
+def _hour_from_hrmn(hrmn: pd.Series) -> pd.Series:
+    """Heure (0-23) depuis la colonne ONISR hrmn, quel que soit son format.
+
+    Format ONISR 2021-2024 : "HH:MM" (100 % des lignes). Tolère aussi "HHMM",
+    "H:MM", "HH" et les valeurs numériques (1430) — auto-correction plutôt
+    que d'extraire une heure fausse si ONISR change de format. Valeur
+    inexploitable ou heure hors 0-23 → NaN (remplacée par 0 en aval, comme
+    auparavant). Pour "HH:MM", résultat identique à l'ancien str[:-3].
+    """
+    s = hrmn.astype(str).str.strip()
+    has_colon = s.str.contains(":", regex=False)
+    digits = s.str.replace(r"\.0$", "", regex=True).str.replace(r"\D", "", regex=True)
+    hour = pd.Series(np.nan, index=s.index)
+    hour[has_colon] = pd.to_numeric(s[has_colon].str.split(":").str[0], errors="coerce")
+    no_colon = ~has_colon & digits.str.len().between(1, 4)
+    hour[no_colon] = pd.to_numeric(
+        digits[no_colon].where(digits[no_colon].str.len() <= 2, digits[no_colon].str.zfill(4).str[:2]),
+        errors="coerce",
+    )
+    hour[(hour < 0) | (hour > 23)] = np.nan
+    n_other = int((~has_colon).sum())
+    if n_other:
+        logger.warning(
+            "event=auto_corrected check=hrmn_format detail=%d valeur(s) hors format HH:MM "
+            "converties (HHMM / numérique) — %d inexploitable(s) → 0",
+            n_other, int(hour[~has_colon].isna().sum()),
+        )
+    return hour
+
+
 def _engineer(
     df_users: pd.DataFrame,
     df_caract: pd.DataFrame,
@@ -69,7 +99,7 @@ def _engineer(
         (df_users["victim_age"] > 120) | (df_users["victim_age"] < 0), "victim_age"
     ] = np.nan
 
-    df_caract["hour"] = df_caract["hrmn"].astype(str).str[:-3]
+    df_caract["hour"] = _hour_from_hrmn(df_caract["hrmn"])
     df_caract.drop(columns=["hrmn", "an"], inplace=True, errors="ignore")
     df_users.drop(columns=["an_nais"], inplace=True, errors="ignore")
 
@@ -110,6 +140,19 @@ def _engineer(
     # ── target variable ────────────────────────────────────────────────────────
     # grav=1 (indemne) → 0 ; grav=2 (blessé léger recode) → 0 ; 3/4 → 1 (grave)
     fusion["grav"] = fusion["grav"].replace([1, 2, 3, 4], [0, 0, 1, 1])
+
+    # Cible inexploitable : accident dont aucun usager n'a de gravité
+    # renseignée (grav=-1 ONISR). Écarté explicitement et journalisé — ces
+    # lignes disparaissaient déjà implicitement plus loin (NaN critiques),
+    # sans trace. Filtrage sans réordonnancement : dataset identique.
+    unknown_target = ~fusion["grav"].isin([0, 1])
+    if unknown_target.any():
+        logger.warning(
+            "event=auto_corrected check=unknown_target detail=%d accident(s) sans gravité "
+            "renseignée (grav=-1) écarté(s) de l'entraînement",
+            int(unknown_target.sum()),
+        )
+        fusion = fusion[~unknown_target]
 
     # ── NaN handling ──────────────────────────────────────────────────────────
     cols_minus1_to_nan = ["trajet", "secu1", "catv", "obsm", "motor", "circ", "surf", "situ", "vma", "atm", "col"]
