@@ -147,10 +147,14 @@
   <h1 class="page-title">Catalogue ETL</h1>
   <p class="page-sub">
     Détail des 4 grandes étapes du flow <code>etl-flow</code> (déclenché par <code>check-new-data-flow</code>,
-    ou une fois par cycle dans <code>full_retrain_flow</code>). Contrairement aux tests CI (données fabriquées,
-    voir <a href="tests_catalogue.html">Catalogue des tests</a>), tout ce qui suit s'exécute sur les
-    <strong>vraies données</strong> ONISR téléchargées le jour même — c'est la protection réelle de Trigger 1,
-    complémentaire aux tests unitaires qui gardent la logique correcte à chaque changement de code.
+    ou une fois par cycle dans <code>full_retrain_flow</code>). <strong>Objectif : auto-corriger un maximum
+    d'anomalies</strong> plutôt que d'alerter ou d'arrêter — chaque correction est tracée
+    (<span class="tag-auto">AUTO_CORRECTED</span>), et seule une donnée réellement inexploitable arrête le
+    pipeline (<span class="tag-crit">CRITICAL</span>, le modèle en production reste alors inchangé).
+    Contrairement aux tests CI (données fictives de test, voir <a href="tests_catalogue.html">Catalogue des tests</a>),
+    tout ce qui suit s'exécute sur les <strong>vraies données</strong> ONISR téléchargées le jour même — c'est la
+    protection réelle de Trigger 1, complémentaire aux tests unitaires qui gardent la logique correcte à chaque
+    changement de code.
   </p>
 
   <div class="summary-row">
@@ -159,31 +163,6 @@
     <div class="badge wn"><span class="badge-num">7</span><span class="badge-label">Alertes non bloquantes<br><span class="tag-warn">WARNING</span> — email, le pipeline continue</span></div>
     <div class="badge st"><span class="badge-num">5</span><span class="badge-label">Arrêts<br><span class="tag-crit">CRITICAL</span> — donnée réellement inexploitable</span></div>
   </div>
-
-  <!-- ════════════════════ 0. PHILOSOPHIE & BILAN ════════════════════ -->
-  <details class="section ac" open>
-    <summary><span class="section-pill ac">★</span> Corriger plutôt qu'arrêter — principe et bilan réel</summary>
-    <div class="section-meta">Chaque anomalie est traitée au niveau le plus bas possible · toute correction est journalisée (<code>AUTO_CORRECTED</code> dans le rapport de validation, <code>event=auto_corrected</code> dans les logs Prefect / Loki)</div>
-    <div class="body">
-      <div class="ladder">
-        <b>1.</b> <span class="tag-auto">AUTO_CORRECTED</span> anomalie connue → corrigée, tracée, <strong>aucune alerte</strong>
-        <span>›</span> <b>2.</b> <span class="tag-retry">AUTO_RETRY</span> incident transitoire → nouvel essai
-        <span>›</span> <b>3.</b> <span class="tag-warn">WARNING</span> anomalie inconnue mais sans risque → email, le pipeline continue
-        <span>›</span> <b>4.</b> <span class="tag-crit">CRITICAL</span> donnée inexploitable → arrêt, <strong>@Production inchangé</strong>
-      </div>
-      <p><strong>Résultat sur les vraies données ONISR</strong> (rapport de validation rejoué le 28/09/2026) :</p>
-      <div class="overflow-x">
-      <table>
-        <tr><th>Année</th><th>Avant (jusqu'au 27/09)</th><th>Après</th><th>Auto-corrections appliquées</th></tr>
-        <tr><td>2021</td><td><span class="tag-warn">WARNING</span> · 9 alertes</td><td><span class="tag-auto">OK</span> · 0 alerte</td><td>Types de colonnes (4 tables)</td></tr>
-        <tr><td>2022</td><td><span class="tag-warn">WARNING</span> · 9 alertes</td><td><span class="tag-auto">OK</span> · 0 alerte</td><td>Types (4 tables) + <code>Accident_Id</code> → <code>Num_Acc</code></td></tr>
-        <tr><td>2023</td><td><span class="tag-warn">WARNING</span> · 9 alertes</td><td><span class="tag-auto">OK</span> · 0 alerte</td><td>Types de colonnes (4 tables)</td></tr>
-        <tr><td>2024</td><td><span class="tag-warn">WARNING</span> · 9 alertes</td><td><span class="tag-auto">OK</span> · 0 alerte</td><td>Types (4 tables) + <strong>2 lignes dupliquées supprimées</strong> dans <code>lieux</code></td></tr>
-      </table>
-      </div>
-      <p class="note">Les 9 alertes annuelles étaient du bruit récurrent — mêmes colonnes ONISR connues et non utilisées, taux de NaN sur des colonnes ignorées par le modèle, ~3 000 accidents en DROM/COM hors du cadre « métropole ». Requalifiées en <span class="tag-info">INFO</span>, elles ne déclenchent plus d'email : une alerte redevient un vrai signal. Garantie de non-régression : le dataset préprocessé 2021→2024 produit par le nouveau code est <strong>identique à l'octet près</strong> à celui versionné dans DVC (4 fichiers, md5 comparés — cf. <a href="data_lineage.html">Lignée des données</a>).</p>
-    </div>
-  </details>
 
   <!-- ════════════════════ 1. TÉLÉCHARGEMENT ════════════════════ -->
   <details class="section dl">
