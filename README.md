@@ -16,7 +16,7 @@ Système MLOps de bout en bout qui prédit si un accident de la route impliquera
 | Orchestration | Prefect (18 deployments) · CI/CD GitHub Actions (3 workflows) |
 | Service | FastAPI + JWT derrière nginx (rate-limit à 2 niveaux) et Caddy (TLS) |
 | Infrastructure | VPS Scaleway (Docker Compose, 16 conteneurs) + cluster Kubernetes Kapsule à la demande (zéro interruption) |
-| Observabilité | Prometheus · Loki · Grafana (11 dashboards, 12 alertes email) · drift Evidently |
+| Observabilité | Prometheus · Loki · Grafana (7 dashboards, 12 alertes email) · drift Evidently |
 | Sécurité | Outils d'administration accessibles uniquement via Tailscale · scan Trivy des images · pip-audit |
 
 ## Documentation
@@ -41,7 +41,7 @@ python3 -m venv my_env && source my_env/bin/activate
 pip install -r requirements.txt "dvc[s3]>=3.0" && pip install -e .
 cp .env.example .env
 ./scripts/ds_session_start.sh      # synchronise la branche + dvc pull des données
-pytest tests/unit/ -v              # 73 tests, ceux exécutés par la CI
+pytest tests/unit/ -v              # 76 tests, ceux exécutés par la CI
 ```
 
 L'accès à MLflow, Prefect et Grafana nécessite de rejoindre le tailnet du projet (Tailscale).

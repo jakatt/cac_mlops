@@ -18,7 +18,7 @@ from .routes.predict    import router as predict_router
 from .routes.health     import router as health_router
 from .routes.dashboard  import router as dashboard_router
 from .routes.auth       import router as auth_router
-from ._metrics import REQUESTS_TOTAL, REQUEST_DURATION
+from ._metrics import REQUESTS_TOTAL, REQUEST_DURATION, traffic_of
 from . import log_capture
 from . import db as prediction_db
 
@@ -66,6 +66,7 @@ async def metrics_middleware(request: Request, call_next) -> Response:
         endpoint=request.url.path,
         method=request.method,
         status=str(response.status_code),
+        traffic=traffic_of(request.headers),
     ).inc()
     REQUEST_DURATION.labels(endpoint=request.url.path).observe(duration)
 

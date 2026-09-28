@@ -1,17 +1,18 @@
 {
-  "uid": "cac-home",
-  "title": "CAC MLOps — Vue d'ensemble",
-  "description": "Page d'accueil : santé des 4 accès publics, modèle, alertes, événements.",
+  "uid": "cac-access-api-vps",
+  "title": "Accès · API · VPS",
+  "description": "Disponibilité, performance, usage et erreurs de l'accès, vus de l'utilisateur.",
   "tags": [
     "cac-mlops",
-    "home"
+    "cac-access",
+    "vps"
   ],
   "schemaVersion": 38,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
   "time": {
-    "from": "now-24h",
+    "from": "now-7d",
     "to": "now"
   },
   "timezone": "browser",
@@ -106,7 +107,7 @@
       "transparent": true,
       "options": {
         "mode": "markdown",
-        "content": "## CAC MLOps — Vue d'ensemble\nLes 4 accès publics, le modèle en production et les derniers événements. Cliquer sur un statut ouvre le dashboard de l'accès."
+        "content": "### Accès · API · VPS\nAccès public **https://mlops.jakat-inc.fr/docs** — API de prédiction (applications clientes, jeton JWT) · **VPS**. Tous les chiffres portent sur la période choisie en haut à droite ; trafic de test (sondes, tests fonctionnels) exclu des compteurs d'usage. La sonde tourne sur le VPS : un VPS arrêté (la nuit) n'apparaît pas comme une coupure."
       },
       "id": 1,
       "gridPos": {
@@ -118,7 +119,7 @@
     },
     {
       "type": "row",
-      "title": "Accès publics — sonde bout-en-bout, période choisie",
+      "title": "A · Est-ce que ça marche ?  (sonde bout-en-bout par l'adresse publique HTTPS)",
       "collapsed": false,
       "panels": [],
       "id": 2,
@@ -131,12 +132,12 @@
     },
     {
       "type": "stat",
-      "title": "API · VPS",
+      "title": "Statut actuel",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "Dernier résultat de la sonde blackbox (toutes les 15 s).",
       "targets": [
         {
           "datasource": {
@@ -201,283 +202,11 @@
           "values": false
         }
       },
-      "links": [
-        {
-          "title": "Ouvrir Accès · API · VPS",
-          "url": "/d/cac-access-api-vps"
-        }
-      ],
       "id": 3,
       "gridPos": {
         "x": 0,
         "y": 4,
-        "w": 6,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Cockpit public · VPS",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "noValue": "N/A",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "DOWN",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "UP",
-                  "color": "green"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "links": [
-        {
-          "title": "Ouvrir Accès · Cockpit public · VPS",
-          "url": "/d/cac-access-gradio-vps"
-        }
-      ],
-      "id": 4,
-      "gridPos": {
-        "x": 6,
-        "y": 4,
-        "w": 6,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "API · K8s",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus-k8s"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus-k8s"
-          },
-          "expr": "probe_success{instance=\"https://kapsule.jakat-inc.fr/health\"}",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "noValue": "Cluster éteint",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#8e8e8e",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": -1000000000000.0
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "DOWN",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "UP",
-                  "color": "green"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "links": [
-        {
-          "title": "Ouvrir Accès · API · K8s",
-          "url": "/d/cac-access-api-k8s"
-        }
-      ],
-      "id": 5,
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 6,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Cockpit public · K8s",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus-k8s"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus-k8s"
-          },
-          "expr": "probe_success{instance=\"https://kapsule.jakat-inc.fr/gradio-public-health\"}",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "noValue": "Cluster éteint",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#8e8e8e",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": -1000000000000.0
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "DOWN",
-                  "color": "red"
-                },
-                "1": {
-                  "text": "UP",
-                  "color": "green"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "links": [
-        {
-          "title": "Ouvrir Accès · Cockpit public · K8s",
-          "url": "/d/cac-access-gradio-k8s"
-        }
-      ],
-      "id": 6,
-      "gridPos": {
-        "x": 18,
-        "y": 4,
-        "w": 6,
+        "w": 5,
         "h": 4
       }
     },
@@ -531,7 +260,215 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 5,
+        "y": 4,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Temps d'indisponibilité",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(1 - avg_over_time(probe_success{instance=\"https://mlops.jakat-inc.fr/health\"}[$__range])) * $__range_s",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "N/A",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 10,
+        "y": 4,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Coupures",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Nombre de passages UP → DOWN sur la période.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "ceil(changes(probe_success{instance=\"https://mlops.jakat-inc.fr/health\"}[$__range]) / 2)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "N/A",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 15,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Certificat TLS — jours restants",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(probe_ssl_earliest_cert_expiry{instance=\"https://mlops.jakat-inc.fr/health\"} - time()) / 86400",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "noValue": "N/A",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 14
+              },
+              {
+                "color": "green",
+                "value": 30
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
@@ -546,36 +483,33 @@
       },
       "id": 7,
       "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 6,
-        "h": 3
+        "x": 19,
+        "y": 4,
+        "w": 5,
+        "h": 4
       }
     },
     {
-      "type": "stat",
-      "title": "Disponibilité",
+      "type": "state-timeline",
+      "title": "Frise de disponibilité",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "Vert = accessible depuis Internet, rouge = coupure (planifiée ou non).",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg_over_time(probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}[$__range]) * 100",
+          "expr": "probe_success{instance=\"https://mlops.jakat-inc.fr/health\"}",
           "refId": "A",
-          "instant": true,
-          "range": false
+          "legendFormat": "sonde"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent",
-          "noValue": "N/A",
           "color": {
             "mode": "thresholds"
           },
@@ -587,200 +521,66 @@
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 99
-              },
-              {
                 "color": "green",
-                "value": 99.9
+                "value": 1
               }
             ]
           },
-          "mappings": [],
-          "decimals": 2
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "mergeValues": true,
+        "showValue": "never",
+        "rowHeight": 0.8,
+        "legend": {
+          "showLegend": false
         }
       },
       "id": 8,
       "gridPos": {
-        "x": 6,
+        "x": 0,
         "y": 8,
-        "w": 6,
-        "h": 3
+        "w": 24,
+        "h": 4
       }
     },
     {
-      "type": "stat",
-      "title": "Disponibilité",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus-k8s"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus-k8s"
-          },
-          "expr": "avg_over_time(probe_success{instance=\"https://kapsule.jakat-inc.fr/health\"}[$__range]) * 100",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Cluster éteint",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#8e8e8e",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": -1000000000000.0
-              },
-              {
-                "color": "orange",
-                "value": 99
-              },
-              {
-                "color": "green",
-                "value": 99.9
-              }
-            ]
-          },
-          "mappings": [],
-          "decimals": 2
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
+      "type": "row",
+      "title": "B · Est-ce que c'est rapide ?",
+      "collapsed": false,
+      "panels": [],
       "id": 9,
       "gridPos": {
-        "x": 12,
-        "y": 8,
-        "w": 6,
-        "h": 3
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "type": "stat",
-      "title": "Disponibilité",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus-k8s"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus-k8s"
-          },
-          "expr": "avg_over_time(probe_success{instance=\"https://kapsule.jakat-inc.fr/gradio-public-health\"}[$__range]) * 100",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Cluster éteint",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#8e8e8e",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": -1000000000000.0
-              },
-              {
-                "color": "orange",
-                "value": 99
-              },
-              {
-                "color": "green",
-                "value": 99.9
-              }
-            ]
-          },
-          "mappings": [],
-          "decimals": 2
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "id": 10,
-      "gridPos": {
-        "x": 18,
-        "y": 8,
-        "w": 6,
-        "h": 3
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Temps de réponse p95",
+      "title": "Temps de réponse p95 (sonde)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "Temps de réponse vu d'un utilisateur (DNS + TLS + serveur). Objectif : < 300 ms.",
       "targets": [
         {
           "datasource": {
@@ -823,7 +623,7 @@
         "overrides": []
       },
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
@@ -836,17 +636,17 @@
           "values": false
         }
       },
-      "id": 11,
+      "id": 10,
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 13,
         "w": 6,
-        "h": 3
+        "h": 7
       }
     },
     {
-      "type": "stat",
-      "title": "Temps de réponse p95",
+      "type": "timeseries",
+      "title": "Temps de réponse vu de l'utilisateur (objectif < 300 ms)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -858,18 +658,103 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "quantile_over_time(0.95, probe_duration_seconds{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}[$__range])",
+          "expr": "probe_duration_seconds{instance=\"https://mlops.jakat-inc.fr/health\"}",
           "refId": "A",
-          "instant": true,
-          "range": false
+          "legendFormat": "sonde bout-en-bout"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "noValue": "N/A",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "rgba(255,0,0,0.12)",
+                "value": 0.3
+              }
+            ]
+          },
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 11,
+      "gridPos": {
+        "x": 6,
+        "y": 13,
+        "w": 9,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Calcul d'une prédiction (serveur)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Durée de traitement de POST /predict côté API (hors réseau).",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(api_request_duration_seconds_bucket{job=\"cac-mlops-api\", endpoint=\"/predict\"}[$__rate_interval])))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(api_request_duration_seconds_bucket{job=\"cac-mlops-api\", endpoint=\"/predict\"}[$__rate_interval])))",
+          "refId": "B",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none"
+            }
           },
           "thresholds": {
             "mode": "absolute",
@@ -877,134 +762,60 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "orange",
-                "value": 0.3
-              },
-              {
-                "color": "red",
-                "value": 1
               }
             ]
           },
-          "mappings": [],
-          "decimals": 3
+          "color": {
+            "mode": "palette-classic"
+          }
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
         }
       },
       "id": 12,
       "gridPos": {
-        "x": 6,
-        "y": 11,
-        "w": 6,
-        "h": 3
+        "x": 15,
+        "y": 13,
+        "w": 9,
+        "h": 7
       }
     },
     {
-      "type": "stat",
-      "title": "Temps de réponse p95",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus-k8s"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus-k8s"
-          },
-          "expr": "quantile_over_time(0.95, probe_duration_seconds{instance=\"https://kapsule.jakat-inc.fr/health\"}[$__range])",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "noValue": "Cluster éteint",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#8e8e8e",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": -1000000000000.0
-              },
-              {
-                "color": "orange",
-                "value": 0.3
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "mappings": [],
-          "decimals": 3
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
+      "type": "row",
+      "title": "C · Est-ce utilisé, et sans erreur ?",
+      "collapsed": false,
+      "panels": [],
       "id": 13,
       "gridPos": {
-        "x": 12,
-        "y": 11,
-        "w": 6,
-        "h": 3
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
       }
     },
     {
       "type": "stat",
-      "title": "Temps de réponse p95",
+      "title": "Prédictions réelles",
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus-k8s"
+        "uid": "prometheus"
       },
-      "description": "",
+      "description": "Prédictions des vrais utilisateurs — sondes et tests fonctionnels exclus.",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus-k8s"
+            "uid": "prometheus"
           },
-          "expr": "quantile_over_time(0.95, probe_duration_seconds{instance=\"https://kapsule.jakat-inc.fr/gradio-public-health\"}[$__range])",
+          "expr": "sum(increase(api_predictions_total{job=\"cac-mlops-api\", traffic=\"real\"}[$__range])) or vector(0)",
           "refId": "A",
           "instant": true,
           "range": false
@@ -1012,8 +823,8 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
-          "noValue": "Cluster éteint",
+          "unit": "short",
+          "noValue": "0",
           "color": {
             "mode": "thresholds"
           },
@@ -1021,30 +832,18 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "#8e8e8e",
+                "color": "blue",
                 "value": null
-              },
-              {
-                "color": "green",
-                "value": -1000000000000.0
-              },
-              {
-                "color": "orange",
-                "value": 0.3
-              },
-              {
-                "color": "red",
-                "value": 1
               }
             ]
           },
           "mappings": [],
-          "decimals": 3
+          "decimals": 0
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
@@ -1059,28 +858,487 @@
       },
       "id": 14,
       "gridPos": {
-        "x": 18,
-        "y": 11,
-        "w": 6,
-        "h": 3
+        "x": 0,
+        "y": 21,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Prédictions de test",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Tests fonctionnels de déploiement et simulation de drift.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(api_predictions_total{job=\"cac-mlops-api\", traffic=\"test\"}[$__range])) or vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8e8e8e",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 5,
+        "y": 21,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Erreurs serveur (5xx)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(api_requests_total{job=\"cac-mlops-api\", status=~\"5..\"}[$__range])) or vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 9,
+        "y": 21,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Refus anti-abus (429)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Requêtes refusées par nginx (limite par client 20/min et globale 60/min) — lues dans les logs d'accès nginx.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service=\"nginx\"} |= \"POST /predict\" |= \"\\\" 429 \" [$__range])) or vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 14,
+        "y": 21,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Accès refusés sans jeton (401)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(api_requests_total{job=\"cac-mlops-api\", traffic=\"real\", status=\"401\"}[$__range])) or vector(0)",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 20
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "id": 18,
+      "gridPos": {
+        "x": 19,
+        "y": 21,
+        "w": 5,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Prédictions — réelles vs test",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (traffic) (increase(api_predictions_total{job=\"cac-mlops-api\"}[$__interval]))",
+          "refId": "A",
+          "legendFormat": "{{traffic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 60,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requêtes par statut HTTP",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (status) (rate(api_requests_total{job=\"cac-mlops-api\", endpoint=\"/predict\"}[$__rate_interval]))",
+          "refId": "A",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "id": 20,
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 7
       }
     },
     {
       "type": "row",
-      "title": "Modèle & données",
+      "title": "D · Que répond le modèle ?",
       "collapsed": false,
       "panels": [],
-      "id": 15,
+      "id": 21,
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 32,
         "w": 24,
         "h": 1
       }
     },
     {
       "type": "stat",
-      "title": "Modèle @Production",
+      "title": "Part de prédictions « prioritaires »",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Accidents prédits graves (blessé hospitalisé ou tué) parmi les prédictions réelles.",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(api_predictions_total{job=\"cac-mlops-api\", traffic=\"real\", result=\"1\"}[$__range])) / sum(increase(api_predictions_total{job=\"cac-mlops-api\", traffic=\"real\"}[$__range])) * 100",
+          "refId": "A",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "pas de trafic réel",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {
+          "valueSize": 34
+        }
+      },
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 12,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Modèle servi",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1102,7 +1360,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "noValue": "aucun",
+          "noValue": "—",
           "color": {
             "mode": "thresholds"
           },
@@ -1136,312 +1394,42 @@
           "valueSize": 34
         }
       },
-      "id": 16,
-      "gridPos": {
-        "x": 0,
-        "y": 15,
-        "w": 6,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "F1 du dernier champion",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "Seuil minimum de promotion : 0,60.",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "cac_mlops_train_metric{metric=\"f1\"}",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "noValue": "0",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 0.6
-              }
-            ]
-          },
-          "mappings": [],
-          "decimals": 3
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "id": 17,
-      "gridPos": {
-        "x": 6,
-        "y": 15,
-        "w": 6,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Drift des données (dernier cycle)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "cac_mlops_drift_level",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "noValue": "—",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 2
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "OK",
-                  "color": "green"
-                },
-                "1": {
-                  "text": "WARNING",
-                  "color": "orange"
-                },
-                "2": {
-                  "text": "CRITICAL",
-                  "color": "red"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "id": 18,
+      "id": 23,
       "gridPos": {
         "x": 12,
-        "y": 15,
-        "w": 6,
-        "h": 4
-      }
-    },
-    {
-      "type": "stat",
-      "title": "Qualité des données (dernier ETL)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "cac_mlops_data_quality_level",
-          "refId": "A",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "noValue": "—",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 2
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": {
-                  "text": "OK",
-                  "color": "green"
-                },
-                "1": {
-                  "text": "WARNING",
-                  "color": "orange"
-                },
-                "2": {
-                  "text": "CRITICAL",
-                  "color": "red"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      },
-      "id": 19,
-      "gridPos": {
-        "x": 18,
-        "y": 15,
-        "w": 6,
+        "y": 33,
+        "w": 12,
         "h": 4
       }
     },
     {
       "type": "row",
-      "title": "Alertes et derniers événements",
+      "title": "E · Que s'est-il passé ?  (repères verticaux : GO · rollback · redémarrage planifié)",
       "collapsed": false,
       "panels": [],
-      "id": 20,
+      "id": 24,
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 37,
         "w": 24,
         "h": 1
       }
     },
     {
-      "type": "alertlist",
-      "title": "Alertes actives",
-      "options": {
-        "showOptions": "current",
-        "maxItems": 10,
-        "sortOrder": 1,
-        "dashboardAlerts": false,
-        "alertName": "",
-        "dashboardTitle": "",
-        "tags": [],
-        "stateFilter": {
-          "firing": true,
-          "pending": true,
-          "noData": false,
-          "normal": false,
-          "error": true
-        }
-      },
-      "id": 21,
-      "gridPos": {
-        "x": 0,
-        "y": 20,
-        "w": 8,
-        "h": 9
-      }
-    },
-    {
       "type": "logs",
-      "title": "Derniers événements du pipeline",
+      "title": "Erreurs de cet accès",
       "datasource": {
         "type": "loki",
         "uid": "loki"
       },
-      "description": "Gates, déploiements, rollbacks, pipelines CD — détail dans Flux MLOps.",
+      "description": "Seulement les lignes d'erreur — pas le flux de logs complet.",
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"prefect-worker|gradio|github-actions\"} |~ \"event=(gate_open|gate_resolved|rollback|deploy_pipeline)|topic=(deploy_success|deploy_failure|kapsule_success|kapsule_failure|no_champion|schema_validation|dvc_versioning_failed)\"",
+          "expr": "{service=\"api\"} |~ \"\\b(ERROR|CRITICAL)\\b|Traceback\"",
           "refId": "A"
         }
       ],
@@ -1453,11 +1441,11 @@
         "dedupStrategy": "none",
         "prettifyLogMessage": false
       },
-      "id": 22,
+      "id": 25,
       "gridPos": {
-        "x": 8,
-        "y": 20,
-        "w": 16,
+        "x": 0,
+        "y": 38,
+        "w": 24,
         "h": 9
       }
     }

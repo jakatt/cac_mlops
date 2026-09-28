@@ -6,8 +6,15 @@ from __future__ import annotations
 
 import os
 
-import requests as http
+import requests
 from prefect import flow, task
+
+# Session commune : chaque appel porte l'en-tête X-Synthetic — l'API compte ces
+# requêtes comme trafic de TEST (étiquette traffic="test" des métriques) et
+# n'enregistre pas leurs prédictions dans la table predictions (drift réel).
+SYNTHETIC_HEADERS = {"X-Synthetic": "1"}
+http = requests.Session()
+http.headers.update(SYNTHETIC_HEADERS)
 
 # Dans le réseau Docker interne : nginx écoute sur nginx:80
 NGINX_URL    = os.getenv("NGINX_URL",    "http://nginx:80")

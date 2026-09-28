@@ -24,7 +24,7 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
-from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation
+from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -252,10 +252,11 @@ def _predict_with_proba(df: pd.DataFrame) -> tuple[int, float | None]:
     return pred, proba
 
 
+@track_errors("predict")
 def run_predict(place, catu, sexe, secu1, victim_age, catv,
                 obsm, motor, catr, circ, surf, situ, vma, jour, mois,
                 lum, dep, com, agg_, intersection_type, atm, col,
-                lat, long, hour, nb_victim, nb_vehicules) -> str:
+                lat, long, hour, nb_victim, nb_vehicules, request: gr.Request = None) -> str:
     try:
         row = dict(zip(FEATURE_COLS, [
             int(place), int(catu), int(sexe), float(secu1), float(victim_age),
@@ -266,7 +267,9 @@ def run_predict(place, catu, sexe, secu1, victim_age, catv,
         ]))
         df = pd.DataFrame([row])
         pred, proba = _predict_with_proba(df)
-        PREDICTIONS_TOTAL.labels(result=str(pred)).inc()
+        PREDICTIONS_TOTAL.labels(
+            result=str(pred), traffic=traffic_of(getattr(request, "headers", None))
+        ).inc()
         label       = "**PRIORITAIRE** — blessure grave ou décès probable" if pred == 1 else "**Non prioritaire** — blessure légère ou indemne probable"
         emoji       = "🔴" if pred == 1 else "🟢"
         proba_str   = f"  \nProbabilité : **{proba:.1%}**" if proba is not None else ""
@@ -278,6 +281,7 @@ def run_predict(place, catu, sexe, secu1, victim_age, catv,
 
 # ── Tab 1 — What-If ────────────────────────────────────────────────────────────
 
+@track_errors("whatif")
 def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> tuple:
     df = _get_data()
     if df is None:
@@ -363,6 +367,7 @@ def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> 
 
 # ── Tab 2 — Points Noirs ───────────────────────────────────────────────────────
 
+@track_errors("heatmap")
 def run_heatmap(min_grav_pct: float, min_accidents: int,
                 filter_catr: list[int], sample_size: int) -> tuple:
     df = _get_data_with_labels()

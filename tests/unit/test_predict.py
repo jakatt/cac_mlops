@@ -104,3 +104,20 @@ class TestPredictEndpoint:
     def test_metrics_endpoint_returns_200(self, client):
         resp = client.get("/metrics")
         assert resp.status_code == 200
+
+
+# ── Trafic réel vs test (étiquette traffic des métriques) ─────────────────────
+from services.api.app._metrics import traffic_of  # noqa: E402
+
+
+class TestTrafficLabel:
+    def test_functional_tests_are_test_traffic(self):
+        assert traffic_of({"x-synthetic": "1"}) == "test"
+
+    def test_probes_and_drift_simulation_are_test_traffic(self):
+        assert traffic_of({"user-agent": "Blackbox Exporter/0.25.0"}) == "test"
+        assert traffic_of({"x-sim-date": "2024-06-01"}) == "test"
+
+    def test_browser_or_client_is_real_traffic(self):
+        assert traffic_of({"user-agent": "Mozilla/5.0"}) == "real"
+        assert traffic_of({}) == "real"

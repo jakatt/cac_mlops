@@ -138,7 +138,7 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
       <div class="tbl"><table>
         <thead><tr><th>Workflow</th><th>Trigger</th><th>Rôle</th></tr></thead>
         <tbody>
-          <tr><td><strong>ci.yml</strong></td><td>PR → <code>main</code> (depuis <code>mlops</code> ou <code>DS</code>)</td><td>blueprint isolation check + pip-audit + flake8 + pytest tests/unit/ (73 tests) — check <code>test</code> obligatoire pour merger</td></tr>
+          <tr><td><strong>ci.yml</strong></td><td>PR → <code>main</code> (depuis <code>mlops</code> ou <code>DS</code>)</td><td>blueprint isolation check + pip-audit + flake8 + pytest tests/unit/ (76 tests) — check <code>test</code> obligatoire pour merger</td></tr>
           <tr><td><strong>deploy.yml</strong></td><td>push → <code>main</code></td><td>Build images (si changées) → VPS prépare (git pull, pull images, calcul flags) → déclenche <code>deploy-vps-flow</code> ou <code>update-model-flow</code> (Prefect) — interruption APRÈS la gate manuelle</td></tr>
           <tr><td><strong>cleanup.yml</strong></td><td>cron dimanche 3h UTC</td><td>Nettoyage NVMe (docker prune, logs)</td></tr>
         </tbody>

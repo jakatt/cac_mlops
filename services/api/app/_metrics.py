@@ -12,14 +12,14 @@ REGISTRY = CollectorRegistry(auto_describe=True)
 REQUESTS_TOTAL = Counter(
     "api_requests_total",
     "Total HTTP requests",
-    ["endpoint", "method", "status"],
+    ["endpoint", "method", "status", "traffic"],
     registry=REGISTRY,
 )
 
 PREDICTIONS_TOTAL = Counter(
     "api_predictions_total",
     "Total predictions by result class",
-    ["result"],
+    ["result", "traffic"],
     registry=REGISTRY,
 )
 
@@ -173,6 +173,23 @@ MODEL_INFO = Gauge(
 )
 
 _LEVEL_MAP = {"OK": 0, "WARNING": 1, "CRITICAL": 2}
+
+# ── Trafic réel vs trafic de test ────────────────────────────────────────────
+# Étiquette `traffic` ("real" | "test") sur les compteurs de requêtes et de
+# prédictions : sans elle, les dashboards mélangeaient l'usage réel avec les
+# sondes, les tests fonctionnels post-déploiement et la simulation de drift.
+_TEST_USER_AGENTS = ("blackbox exporter", "kube-probe", "prometheus")
+
+
+def traffic_of(headers) -> str:
+    """"test" si la requête vient d'un test fonctionnel (en-tête X-Synthetic: 1),
+    de la simulation de drift (X-Sim-Date) ou d'une sonde de supervision ;
+    "real" sinon."""
+    if headers.get("x-synthetic") == "1" or headers.get("x-sim-date"):
+        return "test"
+    ua = (headers.get("user-agent") or "").lower()
+    return "test" if ua.startswith(_TEST_USER_AGENTS) else "real"
+
 
 
 def update_model_info() -> None:

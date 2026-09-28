@@ -2,12 +2,12 @@
 import logging
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 
 from ..schemas.accident import AccidentFeatures, PredictionResponse
 from ..model_loader import get_model, get_model_version
 from ..auth import get_current_user
-from .._metrics import PREDICTIONS_TOTAL
+from .._metrics import PREDICTIONS_TOTAL, traffic_of
 from .. import db as prediction_db
 
 router = APIRouter()
@@ -25,6 +25,7 @@ FEATURE_ORDER = [
 def predict(
     features: AccidentFeatures,
     background_tasks: BackgroundTasks,
+    request: Request,
     _user: str = Depends(get_current_user),
     x_sim_date: str | None = Header(None),
 ) -> PredictionResponse:
@@ -49,16 +50,20 @@ def predict(
         raise HTTPException(status_code=500, detail=f"Prediction error: {exc}") from exc
 
     version = get_model_version()
-    PREDICTIONS_TOTAL.labels(result=str(prediction)).inc()
+    PREDICTIONS_TOTAL.labels(result=str(prediction), traffic=traffic_of(request.headers)).inc()
 
-    background_tasks.add_task(
-        prediction_db.log_prediction,
-        features=features.model_dump(by_alias=True),
-        prediction=prediction,
-        probability=round(probability, 4),
-        model_version=version,
-        sim_date=x_sim_date,
-    )
+    # Les prédictions des tests fonctionnels (X-Synthetic: 1) ne sont pas
+    # enregistrées : la table predictions alimente le drift « trafic réel ».
+    # La simulation de drift (X-Sim-Date) reste enregistrée, par conception.
+    if request.headers.get("x-synthetic") != "1":
+        background_tasks.add_task(
+            prediction_db.log_prediction,
+            features=features.model_dump(by_alias=True),
+            prediction=prediction,
+            probability=round(probability, 4),
+            model_version=version,
+            sim_date=x_sim_date,
+        )
 
     return PredictionResponse(
         prediction=prediction,
