@@ -164,9 +164,9 @@
           <div class="tbl"><table>
             <thead><tr><th>Couche</th><th>État</th><th>Détail</th></tr></thead>
             <tbody>
-              <tr><td><strong>CI/CD GitHub Actions</strong></td><td>✅</td><td>3 workflows : ci · deploy · cleanup · 73 tests unitaires en CI (+ 13 tests d'intégration hors CI)</td></tr>
+              <tr><td><strong>CI/CD GitHub Actions</strong></td><td>✅</td><td>3 workflows : ci · deploy · cleanup · 76 tests unitaires en CI (+ 13 tests d'intégration hors CI)</td></tr>
               <tr><td><strong>Orchestration Prefect</strong></td><td>✅</td><td>18 deployments · crons + déclenchements manuels + cockpit</td></tr>
-              <tr><td><strong>Monitoring</strong></td><td>✅</td><td>Prometheus + Loki/Promtail + Grafana (VPS+Kapsule consolidés) · 11 dashboards · 12 alertes · SMTP ✓</td></tr>
+              <tr><td><strong>Monitoring</strong></td><td>✅</td><td>Prometheus + Loki/Promtail + Grafana (VPS+Kapsule consolidés) · 7 dashboards · 12 alertes · SMTP ✓</td></tr>
               <tr><td><strong>Cockpit</strong></td><td>✅</td><td>Gradio 6 onglets (Tailscale, dont Cockpit = 6 accordéons) + Gradio-public 3 onglets (internet)</td></tr>
               <tr><td><strong>Kubernetes</strong></td><td>✅</td><td>Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)</td></tr>
             </tbody>
@@ -191,7 +191,7 @@
           <tr><td>Gateway</td><td><strong>NGINX + Caddy</strong></td><td>Rate-limit /predict 2 niveaux (par client + global) · TLS Let's Encrypt · <code>mlops.jakat-inc.fr</code></td></tr>
           <tr><td>Orchestration</td><td><strong>Prefect</strong></td><td>18 deployments · gate manuelle pause_flow_run()</td></tr>
           <tr><td>CI/CD</td><td><strong>GitHub Actions</strong></td><td>3 workflows (ci · deploy · cleanup) · Trivy CVE</td></tr>
-          <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 11 dashboards · 12 alertes email</td></tr>
+          <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 7 dashboards · 12 alertes email</td></tr>
           <tr><td>Drift</td><td><strong>Evidently</strong></td><td>Drift des features par année vs référence + drift du trafic réel (prédictions, 90 j)</td></tr>
           <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>6 onglets admin (Tailscale, dont Cockpit = 6 accordéons) + 3 onglets public (internet)</td></tr>
           <tr><td>Infra VPS</td><td><strong>Scaleway DEV1-XL</strong></td><td>16 conteneurs Docker permanents · 4 vCPU / 12 GB RAM / 80 GB /data</td></tr>
@@ -296,7 +296,7 @@
             <tbody>
               <tr><td><strong>Prometheus</strong></td><td>Latence API, volume, erreurs HTTP</td><td>Objectifs p95 &lt; 300 ms · 5xx &lt; 1% (suivis en dashboard) · alertes : brute-force 401, RAM, disque</td></tr>
               <tr><td><strong>Evidently</strong></td><td>Drift de features (X_train vs données drift)</td><td>share &gt; 10% WARNING · &gt; 25% CRITICAL</td></tr>
-              <tr><td><strong>Grafana</strong></td><td>Dashboards API-perf + model-drift + alertes</td><td>Email sur toutes alertes critiques</td></tr>
+              <tr><td><strong>Grafana</strong></td><td>Dashboards par accès (disponibilité, perf, usage) + Flux MLOps + alertes</td><td>Email sur toutes alertes critiques</td></tr>
             </tbody>
           </table></div>
           <p><em>Source de simulation production : données 2024 rejouées via <code>scripts/simulate_production.py</code> (~55k req/cycle).</em></p>

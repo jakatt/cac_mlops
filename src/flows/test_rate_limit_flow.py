@@ -20,10 +20,9 @@ from __future__ import annotations
 
 import random
 
-import requests as http
 from prefect import flow, task
 
-from src.flows.test_api_flow import API_PASSWORD, API_USERNAME, NGINX_URL, SAMPLE_PAYLOAD
+from src.flows.test_api_flow import API_PASSWORD, API_USERNAME, NGINX_URL, SAMPLE_PAYLOAD, http
 
 # Doivent rester alignés sur services/nginx/nginx.conf (affichage uniquement).
 PER_CLIENT_RATE, PER_CLIENT_BURST = "20/min", 10

@@ -249,21 +249,17 @@
               <tr><td><code>node-exporter ×2</code></td><td>CPU / RAM / disk des nœuds K8s</td></tr>
             </tbody>
           </table></div>
-          <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 11 dashboards provisionnés (dossier <code>cac-mlops</code>), seule instance du projet</p>
+          <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 7 dashboards provisionnés (dossier <code>cac-mlops</code>), seule instance du projet, générés par <code>infrastructure/grafana/build_dashboards.py</code></p>
           <div class="tbl"><table>
             <thead><tr><th>Dashboard</th><th>Contenu</th></tr></thead>
             <tbody>
-              <tr><td><code>home</code></td><td>Vue d'ensemble : modèle en prod, RAM/disque, disponibilité API</td></tr>
-              <tr><td><code>resilience</code></td><td>Gates GO/STOP, interruptions, rollbacks, erreurs flow, disponibilité API</td></tr>
-              <tr><td><code>api-performance</code></td><td>Latence, taux erreur, throughput</td></tr>
-              <tr><td><code>model-drift</code></td><td>drift_share, features driftées (Evidently → Prometheus)</td></tr>
-              <tr><td><code>system-health</code></td><td>CPU / RAM / disk VPS en temps réel</td></tr>
-              <tr><td><code>kapsule-k8s</code></td><td>Replicas disponibles, sonde publique, scrape api (Prometheus K8s)</td></tr>
-              <tr><td><code>fastapi-vps</code> · <code>fastapi-k8s</code></td><td>Un dashboard par accès FastAPI (VPS / K8s) : disponibilité et indisponibilité cumulée sur 7 j, latence p50/p95/p99, erreurs 5xx, prédictions</td></tr>
-              <tr><td><code>gradio-public-vps</code> · <code>gradio-public-k8s</code></td><td>Même lecture pour chaque accès Gradio public (VPS / K8s) : disponibilité 7 j, latence, erreurs, prédictions</td></tr>
-              <tr><td><code>gradio-admin-vps</code></td><td>Même lecture pour le Cockpit admin (VPS, Tailscale)</td></tr>
+              <tr><td><code>home</code> — Vue d'ensemble</td><td>Page d'accueil : état UP/DOWN des 4 accès publics (lien vers leur dashboard), modèle en prod et F1, drift, qualité des données, alertes actives, derniers événements du pipeline</td></tr>
+              <tr><td><code>access-api-vps</code> · <code>access-gradio-vps</code> · <code>access-api-k8s</code> · <code>access-gradio-k8s</code></td><td>Un dashboard par accès public, même structure (un seul modèle) : <strong>disponibilité</strong> (statut, % sur la période, temps d'arrêt, coupures, certificat TLS) · <strong>performance</strong> (temps de réponse sonde et p50/p95 réels) · <strong>usage</strong> (prédictions réelles vs de test, erreurs 5xx, 429 rate-limit et 401 pour l'API, erreurs fonctionnelles pour Gradio) · <strong>modèle servi</strong> · réplicas et redémarrages (K8s) · logs d'erreur</td></tr>
+              <tr><td><code>flux-mlops</code> — Flux MLOps</td><td>Récapitulatif des flux : gates ouvertes, GO / STOP, déploiements, rollbacks, échecs CD, journal des événements · ETL (auto-corrections, validation de schéma, versionnage DVC, qualité) · modèle (champion, métriques d'entraînement) · drift des données et des prédictions</td></tr>
+              <tr><td><code>infrastructure</code></td><td>VPS (RAM, disques, CPU, connexions nginx, sonde Cockpit admin, cibles Prometheus UP/DOWN) · Kapsule (nœuds, pods, redémarrages, RAM) · santé de la supervision (scrapes en échec, alertes)</td></tr>
             </tbody>
           </table></div>
+          <p>Le trafic est étiqueté <code>traffic="real"|"test"</code> dans les métriques : les flows de test envoient l'en-tête <code>X-Synthetic: 1</code> (les sondes blackbox/kube-probe sont reconnues par leur User-Agent), ce qui sépare l'usage réel des tests automatiques. Les prédictions de test ne sont pas enregistrées en base, donc n'influencent pas le drift. La sonde de disponibilité tourne sur le VPS : VPS éteint = absence de mesure, pas une coupure.</p>
           <p><strong>Loki + Promtail</strong> — Promtail (VPS) scrape les logs de tous les conteneurs, dont les événements logfmt structurés (<code>event=gate_open/gate_resolved/interruption_*/rollback/alert</code>). Promtail (K8s, DaemonSet) fait de même pour tous les pods Kapsule, relayé via <code>loki-forwarder</code> (label <code>cluster="kapsule"</code>).</p>
           <p class="sec-label">12 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte</p>
           <p>Chaque flow loggue <code>event=alert severity=...</code>, Grafana évalue et notifie — un seul chemin, pas de doublon.</p>

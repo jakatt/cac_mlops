@@ -3,7 +3,7 @@
 Avant ce module, ni le cockpit admin (app.py) ni le cockpit public
 (app_public.py) n'exposaient de métrique Prometheus ni de log par requête —
 seul le service `api` (FastAPI) était instrumenté (voir services/api/app/
-_metrics.py). Conséquence : les dashboards Grafana "API Performance"
+_metrics.py). Conséquence : les dashboards Grafana de performance
 n'affichaient jamais que du trafic de tests synthétiques (test_api_flow,
 simulation de drift), jamais l'usage réel des cockpits.
 
@@ -15,6 +15,7 @@ label `job`/`access`.
 """
 from __future__ import annotations
 
+import functools
 import logging
 import time
 
@@ -29,16 +30,63 @@ REGISTRY = CollectorRegistry(auto_describe=True)
 REQUESTS_TOTAL = Counter(
     "api_requests_total",
     "Total HTTP requests",
-    ["endpoint", "method", "status"],
+    ["endpoint", "method", "status", "traffic"],
     registry=REGISTRY,
 )
 
 PREDICTIONS_TOTAL = Counter(
     "api_predictions_total",
     "Total predictions by result class",
-    ["result"],
+    ["result", "traffic"],
     registry=REGISTRY,
 )
+
+# Erreurs fonctionnelles : Predict / What-if / Points Noirs renvoient une page
+# d'erreur avec un HTTP 200 (Gradio), donc invisibles dans les 5xx. Cas réel :
+# carte Points Noirs cassée par plotly 7 (28/09/2026), jamais vue dans Grafana.
+FUNCTIONAL_ERRORS_TOTAL = Counter(
+    "app_functional_errors_total",
+    "Fonctionnalités du Cockpit en erreur (predict / whatif / heatmap)",
+    ["feature"],
+    registry=REGISTRY,
+)
+
+_TEST_USER_AGENTS = ("blackbox exporter", "kube-probe", "prometheus")
+
+
+def traffic_of(headers) -> str:
+    """"test" (tests fonctionnels X-Synthetic: 1, sondes de supervision) ou "real"."""
+    if headers is None:
+        return "real"
+    if headers.get("x-synthetic") == "1":
+        return "test"
+    ua = (headers.get("user-agent") or "").lower()
+    return "test" if ua.startswith(_TEST_USER_AGENTS) else "real"
+
+
+def _is_error_output(out) -> bool:
+    values = out if isinstance(out, tuple) else (out,)
+    return any(isinstance(v, str) and v.startswith(("Erreur", "Donnees non disponibles")) for v in values)
+
+
+def track_errors(feature: str):
+    """Compte dans FUNCTIONAL_ERRORS_TOTAL les échecs d'une fonctionnalité :
+    exception (relevée ensuite, comportement inchangé) ou message d'erreur
+    renvoyé à l'utilisateur. functools.wraps conserve la signature, donc
+    l'injection gr.Request par Gradio continue de fonctionner."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                out = fn(*args, **kwargs)
+            except Exception:
+                FUNCTIONAL_ERRORS_TOTAL.labels(feature=feature).inc()
+                raise
+            if _is_error_output(out):
+                FUNCTIONAL_ERRORS_TOTAL.labels(feature=feature).inc()
+            return out
+        return wrapper
+    return deco
 
 REQUEST_DURATION = Histogram(
     "api_request_duration_seconds",
@@ -71,6 +119,7 @@ def mount_instrumentation(demo, access_label: str, **launch_kwargs) -> FastAPI:
             endpoint=request.url.path,
             method=request.method,
             status=str(response.status_code),
+            traffic=traffic_of(request.headers),
         ).inc()
         REQUEST_DURATION.labels(endpoint=request.url.path).observe(duration)
 

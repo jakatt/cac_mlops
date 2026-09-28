@@ -15,14 +15,14 @@ import os
 
 from prefect import flow, get_run_logger, task
 
-from src.flows.test_api_flow import NGINX_URL, SAMPLE_PAYLOAD
+from src.flows.test_api_flow import NGINX_URL, SAMPLE_PAYLOAD, SYNTHETIC_HEADERS
 
 
 @task(name="test-gradio-public-predict", retries=1)
 def test_predict(base_url: str = NGINX_URL) -> str:
     from gradio_client import Client
 
-    client = Client(base_url)
+    client = Client(base_url, headers=SYNTHETIC_HEADERS)  # trafic de TEST côté Cockpit
     # Positionnel — l'ordre de SAMPLE_PAYLOAD correspond exactement à celui des
     # inputs du bouton Predict (services/gradio/app_public.py, _pred_inputs).
     result = client.predict(*SAMPLE_PAYLOAD.values(), api_name="/predict")
