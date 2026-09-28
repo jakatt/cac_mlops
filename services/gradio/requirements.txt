@@ -1,13 +1,21 @@
-gradio>=4.40.0
-prometheus-client>=0.20.0
-tzdata>=2024.1
-requests>=2.31.0
-pandas>=1.5.0
-numpy>=1.24.0
-plotly>=5.18.0
-mlflow>=3.9.0
-scikit-learn>=1.3.0
-lightgbm>=4.0.0
-joblib>=1.3.0
-psycopg2-binary>=2.9.0
-boto3>=1.28.0
+# Versions ÉPINGLÉES (== version validée en production le 28/09/2026).
+# Des contraintes ouvertes (>=) ont laissé un rebuild d'image tirer plotly 7,
+# qui a supprimé px.density_mapbox : onglet Points Noirs en erreur sur les
+# deux Cockpits (incident 2026-09-28, après le rebuild de la PR #273). Même
+# leçon que mlflow (services/mlflow/Dockerfile, 26/09). Toute montée de
+# version = décision explicite + test des onglets Predict / What-if /
+# Points Noirs. scikit-learn / lightgbm doivent rester alignés sur les
+# versions ayant produit les modèles chargés.
+gradio==6.28.0
+prometheus-client==0.26.0
+tzdata==2026.4
+requests==2.34.2
+pandas==3.0.6
+numpy==2.4.6
+plotly==7.1.0
+mlflow==3.16.1
+scikit-learn==1.9.1
+lightgbm==4.7.0
+joblib==1.6.0
+psycopg2-binary==2.9.13
+boto3==1.43.103

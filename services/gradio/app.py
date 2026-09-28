@@ -491,10 +491,10 @@ def run_heatmap(min_grav_pct: float, min_accidents: int, filter_catr: list[int],
     if agg_filtered.empty:
         return None, pd.DataFrame(), "Aucune zone ne correspond aux criteres. Reduisez les seuils."
 
-    fig = px.density_mapbox(
+    fig = px.density_map(
         agg_filtered, lat="lat_r", lon="lon_r", z="pct_graves",
         radius=18, center={"lat": 46.5, "lon": 2.5}, zoom=5,
-        mapbox_style="carto-positron", color_continuous_scale="YlOrRd",
+        map_style="carto-positron", color_continuous_scale="YlOrRd",
         range_color=[min_grav_pct / 100, 1.0],
         title="Zones a risque eleve — gravite reelle ONISR",
         labels={"pct_graves": "% graves"},
