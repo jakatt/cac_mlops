@@ -328,7 +328,7 @@
     <details>
       <summary>Mécanismes d'auto-correction couverts <span class="count">9</span></summary>
       <div class="body">
-        <p class="note" style="margin-top:0;">Sur les 5 tests de <code>test_known_fixes.py</code>, 2 seulement couvrent un mécanisme réel (les 3 autres sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas). Au total, tout module confondu, la chaîne ETL compte <strong>4 mécanismes d'auto-correction</strong> distincts :</p>
+        <p class="note" style="margin-top:0;">Sur les 8 tests de <code>test_known_fixes.py</code>, 3 couvrent un mécanisme réel (renommage, espaces, noms de colonnes) et 5 sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas. Tous modules confondus, 9 mécanismes d'auto-correction sont couverts par des tests unitaires (sur les 17 de la chaîne ETL, cf. <a href="etl_catalogue.html">Catalogue ETL</a>) :</p>
         <div class="overflow-x">
         <table>
           <tr><th>#</th><th>Mécanisme</th><th>Module</th><th>Réagit à</th></tr>
