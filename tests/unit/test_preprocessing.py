@@ -185,3 +185,25 @@ class TestLoadYear:
     def test_missing_raw_dir_raises_runtime_error(self, tmp_path):
         with pytest.raises(RuntimeError, match="CRITICAL"):
             _load_year(2021, tmp_path / "nonexistent")
+
+
+class TestHourFromHrmn:
+    """Auto-correction du format horaire ONISR (2026-09-28) : l'ancien
+    str[:-3] donnait hour=1 pour "1430" (bug masqué — le test ci-dessus ne
+    vérifiait que le type)."""
+
+    def test_all_formats_give_same_hour(self):
+        from src.data.make_dataset import _hour_from_hrmn
+        out = _hour_from_hrmn(pd.Series(["14:30", "1430", "14", "9:05", "905", "1430.0"]))
+        assert out.tolist() == [14, 14, 14, 9, 9, 14]
+
+    def test_invalid_values_become_nan(self):
+        from src.data.make_dataset import _hour_from_hrmn
+        out = _hour_from_hrmn(pd.Series(["99:00", "abc", ""]))
+        assert out.isna().all()
+
+    def test_onisr_hh_mm_format_unchanged(self):
+        """Format réel ONISR 2021-2024 : résultat identique à l'ancien code."""
+        from src.data.make_dataset import _hour_from_hrmn
+        s = pd.Series(["07:32", "00:05", "23:59"])
+        assert _hour_from_hrmn(s).tolist() == [int(v[:-3]) for v in s]

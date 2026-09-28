@@ -2321,7 +2321,7 @@ def build_docs_html() -> str:
         (f"{PUBLIC_BASE}/ci-docs/data_dictionary.html", "Dictionnaire des données",
          "Description des 27 features du modèle et de la cible binaire",      "data_dictionary.html"),
         (f"{PUBLIC_BASE}/ci-docs/tests_catalogue.html", "Catalogue des tests",
-         "60 tests unitaires CI (11 API + 49 ETL/Data) · pipeline CD (11 étapes) · tests Prefect post-deploy · test anti-abus", "tests_catalogue.html"),
+         "73 tests unitaires CI (11 API + 62 ETL/Data) · pipeline CD (11 étapes) · tests Prefect post-deploy · test anti-abus", "tests_catalogue.html"),
         (f"{PUBLIC_BASE}/ci-docs/etl_catalogue.html", "Catalogue ETL",
          "Détail des 4 grandes étapes du pipeline ETL (Trigger 1) — téléchargement, validation, DVC, preprocessing",
          "etl_catalogue.html"),

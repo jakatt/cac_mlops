@@ -38,3 +38,27 @@ def apply_known_fixes(df: pd.DataFrame, table: str) -> tuple[pd.DataFrame, list[
         df[col] = df[col].astype(str).str.replace("\xa0", "", regex=False).str.strip()
 
     return df, sorted(to_rename)
+
+
+def normalize_column_names(
+    df: pd.DataFrame, canonical: list[str]
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Ramène les noms de colonnes à leur forme canonique (celle du schéma).
+
+    Corrige : BOM UTF-8 en tête de fichier (\ufeffNum_Acc), guillemets et
+    espaces parasites, casse différente (NUM_ACC, Jour). La correspondance est
+    insensible à la casse ; une colonne sans équivalent canonique est laissée
+    telle quelle (traitée ensuite comme colonne inconnue).
+
+    Retourne (df_corrigé, {ancien_nom: nom_canonique}) pour journalisation.
+    """
+    by_key = {c.lower(): c for c in canonical}
+    mapping: dict[str, str] = {}
+    for col in df.columns:
+        cleaned = str(col).replace("\ufeff", "").strip().strip('"').strip("'").strip()
+        target = by_key.get(cleaned.lower(), cleaned)
+        if target != col and target not in df.columns:
+            mapping[col] = target
+    if mapping:
+        df = df.rename(columns=mapping)
+    return df, mapping

@@ -250,7 +250,7 @@
               </li>
               <li>
                 <span class="item-label" style="opacity:.7;">Auto-correction<br><span style="font-weight:400;font-size:.9em;">(non bloquant)</span></span>
-                <span class="item-desc">Pandera ne fait pas que bloquer ou passer : 5 mécanismes corrigent des anomalies connues en les journalisant (renommage colonne, espaces insécables, coercion de type, fuzzy matching de nom de fichier, séparateur <code>;</code>/<code>,</code>/tabulation toléré dès le téléchargement) sans interrompre le flow — détail complet dans le <a href="tests_catalogue.html">Catalogue des tests</a> et le <a href="etl_catalogue.html">Catalogue ETL</a>.</span>
+                <span class="item-desc">Pandera ne fait pas que bloquer ou passer : 17 auto-corrections journalisées (renommage de colonne ONISR 2022, noms de colonnes / BOM / casse, séparateur <code>;</code>/<code>,</code>/tabulation, nom de fichier par similarité, doublons, codes hors nomenclature → « non renseigné », types, format horaire, coordonnées…) et 2 réessais automatiques — sur 2021→2024, chaque ETL se termine <strong>OK sans aucune alerte</strong> sans interrompre le flow — détail complet dans le <a href="tests_catalogue.html">Catalogue des tests</a> et le <a href="etl_catalogue.html">Catalogue ETL</a>.</span>
               </li>
               <li>
                 <span class="item-label">Gate 3</span>

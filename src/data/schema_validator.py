@@ -19,9 +19,12 @@ from pathlib import Path
 import pandas as pd
 import pandera.pandas as pa
 
-from .schema import QUALITY_BOUNDS, REQUIRED_COLUMNS, TABLE_SCHEMAS
+from .schema import (
+    KNOWN_UNUSED_COLUMNS, NOMENCLATURE_FLOAT_COLUMNS, NOMENCLATURE_INT_COLUMNS,
+    QUALITY_BOUNDS, REQUIRED_COLUMNS, TABLE_SCHEMAS,
+)
 from .import_raw_data import discover_raw_files, PROJECT_ROOT
-from .known_fixes import apply_known_fixes
+from .known_fixes import COLUMN_RENAMES, apply_known_fixes, normalize_column_names
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +109,48 @@ def _validate_level1(year: int, raw_dir: Path, report: ValidationReport) -> bool
 
 # ── Level 2 ───────────────────────────────────────────────────────────────────
 
+def _canonical_names(table: str) -> list[str]:
+    """Noms de colonnes attendus pour *table* (schéma + requis + connus + renommages)."""
+    names = set(TABLE_SCHEMAS[table].columns.keys()) | set(REQUIRED_COLUMNS.get(table, []))
+    names |= set(KNOWN_UNUSED_COLUMNS.get(table, []))
+    names |= set(COLUMN_RENAMES.get(table, {}).keys())
+    return sorted(names)
+
+
+def _fix_out_of_nomenclature(
+    df: pd.DataFrame, exc: pa.errors.SchemaErrors
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Ramène à « non renseigné » les valeurs rejetées par Pandera sur les
+    colonnes codifiées ONISR : -1 pour les codes entiers, NaN pour les float.
+
+    Couvre les deux causes d'échec : code hors nomenclature (Check isin /
+    in_range) et valeur non convertible (texte parasite dans une colonne
+    numérique). Les autres colonnes (identifiants, jour/mois…) ne sont jamais
+    modifiées. Retourne (df_corrigé, {colonne: nb_valeurs_corrigées}).
+    """
+    fc = getattr(exc, "failure_cases", None)
+    if fc is None or fc.empty or "column" not in fc or "index" not in fc:
+        return df, {}
+    df = df.copy()
+    fixed: dict[str, int] = {}
+    for col, grp in fc.dropna(subset=["index"]).groupby("column"):
+        if col not in df.columns:
+            continue
+        idx = [i for i in grp["index"].unique() if i in df.index]
+        if not idx:
+            continue
+        if col in NOMENCLATURE_INT_COLUMNS:
+            df[col] = df[col].astype(object)
+            df.loc[idx, col] = -1
+        elif col in NOMENCLATURE_FLOAT_COLUMNS:
+            df[col] = df[col].astype(object)
+            df.loc[idx, col] = float("nan")
+        else:
+            continue
+        fixed[col] = len(idx)
+    return df, fixed
+
+
 def _validate_level2(
     year: int, raw_dir: Path, report: ValidationReport
 ) -> dict[str, pd.DataFrame]:
@@ -120,6 +165,21 @@ def _validate_level2(
         df = _read_csv_safe(path)
         if df is None:
             continue  # already flagged in Level 1
+
+        df, normalized = normalize_column_names(df, _canonical_names(table))
+        if normalized:
+            report.add(
+                "AUTO_CORRECTED", table, "column_names",
+                f"Noms de colonnes normalisés (BOM/casse/espaces) : {normalized}"
+            )
+
+        n_dup = int(df.duplicated().sum())
+        if n_dup:
+            df = df.drop_duplicates().reset_index(drop=True)
+            report.add(
+                "AUTO_CORRECTED", table, "duplicate_rows",
+                f"{n_dup} ligne(s) strictement dupliquée(s) supprimée(s)"
+            )
 
         df, renamed = apply_known_fixes(df, table)
         if renamed:
@@ -141,7 +201,14 @@ def _validate_level2(
 
         # ── unknown columns ───────────────────────────────────────────────────
         schema_cols = set(TABLE_SCHEMAS[table].columns.keys())
-        unknown = set(df.columns) - schema_cols - required
+        extra = set(df.columns) - schema_cols - required
+        known_unused = extra & set(KNOWN_UNUSED_COLUMNS.get(table, []))
+        unknown = extra - known_unused
+        if known_unused:
+            report.add(
+                "INFO", table, "known_unused_columns",
+                f"Colonnes ONISR connues, non utilisées par le modèle (ignorées) : {sorted(known_unused)}"
+            )
         if unknown:
             report.add(
                 "WARNING", table, "unknown_columns",
@@ -166,6 +233,23 @@ def _validate_level2(
                     f"Colonnes coercées vers le type attendu : {coerced}"
                 )
         except pa.errors.SchemaErrors as exc:
+            # Auto-correction : valeurs hors nomenclature / non convertibles sur
+            # les colonnes codifiées → « non renseigné », puis 2ᵉ validation.
+            # Sans ce correctif, UNE valeur inattendue laissait toute la table
+            # non typée (WARNING + DataFrame brut).
+            df_fixed, fixed = _fix_out_of_nomenclature(df, exc)
+            if fixed:
+                try:
+                    df = TABLE_SCHEMAS[table].validate(df_fixed, lazy=True)
+                    report.add(
+                        "AUTO_CORRECTED", table, "out_of_nomenclature",
+                        f"Valeurs hors nomenclature ramenées à « non renseigné » "
+                        f"(-1 / NaN) : {fixed}"
+                    )
+                    dfs[table] = df
+                    continue
+                except pa.errors.SchemaErrors as exc2:
+                    exc = exc2
             # Collect type errors; column-presence errors already handled above
             # exc.schema_errors is a list of SchemaError objects (pandera >= 0.14)
             type_errors = [
@@ -206,9 +290,12 @@ def _validate_level3(
             report.add("INFO", "caracteristiques", "accident_count",
                        f"{n} accidents (within expected range)")
 
-    # NaN rate per table
+    # NaN rate per table — colonnes du schéma uniquement (celles réellement
+    # utilisées) : un taux élevé sur une colonne ONISR ignorée (v2, lartpc,
+    # occutc…) n'a aucun impact et levait un WARNING à chaque ETL.
     for table, df in dfs.items():
-        for col in df.columns:
+        used = set(TABLE_SCHEMAS[table].columns.keys()) if table in TABLE_SCHEMAS else set(df.columns)
+        for col in [c for c in df.columns if c in used]:
             nan_rate = df[col].isna().mean()
             if nan_rate > bounds["nan_rate_warning"]:
                 report.add(
@@ -235,11 +322,18 @@ def _validate_level3(
                 (df_c["lat"] < bounds["lat_min"]) | (df_c["lat"] > bounds["lat_max"]) |
                 (df_c["long"] < bounds["lon_min"]) | (df_c["long"] > bounds["lon_max"])
             )
-            n_bad = out_of_range.sum()
-            if n_bad > 0:
+            n_bad = int(out_of_range.sum())
+            share = n_bad / max(len(df_c), 1)
+            if share > bounds["outside_metropole_share_warning"]:
                 report.add(
                     "WARNING", "caracteristiques", "lat_long_range",
-                    f"{n_bad} rows with lat/long outside metropolitan France bounding box"
+                    f"{n_bad} rows ({share:.1%}) with lat/long outside metropolitan France "
+                    f"— above the {bounds['outside_metropole_share_warning']:.0%} expected for DROM/COM"
+                )
+            elif n_bad:
+                report.add(
+                    "INFO", "caracteristiques", "lat_long_range",
+                    f"{n_bad} rows ({share:.1%}) outside metropolitan France — DROM/COM, expected"
                 )
         except Exception:
             pass  # lat/long format issues already caught in Level 2

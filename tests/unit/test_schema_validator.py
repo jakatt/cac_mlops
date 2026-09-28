@@ -234,3 +234,72 @@ class TestLoadAndValidateYear:
         dfs, report = load_and_validate_year(2021, tmp_path / "nonexistent")
         assert dfs == {}
         assert report.overall_level == "CRITICAL"
+
+
+# ── Auto-corrections Level 2 / Level 3 (2026-09-28) ──────────────────────────
+
+def _rewrite(tmp: Path, table: str, df: pd.DataFrame, **kw) -> None:
+    df.to_csv(tmp / _TEST_FILES[table], sep=";", index=False, **kw)
+
+
+def _levels(report: ValidationReport, check: str) -> set[str]:
+    return {m.level for m in report.messages if m.check == check}
+
+
+class TestAutoCorrections:
+    def test_out_of_nomenclature_code_replaced_and_table_typed(self, tmp_2021):
+        caract = pd.read_csv(tmp_2021 / _TEST_FILES["caracteristiques"], sep=";", dtype=str)
+        caract.loc[0, "lum"] = "9"              # code inconnu (nomenclature 1-5)
+        _rewrite(tmp_2021, "caracteristiques", caract)
+        dfs, report = load_and_validate_year(2021, tmp_2021)
+        assert _levels(report, "out_of_nomenclature") == {"AUTO_CORRECTED"}
+        assert "type_check" not in {m.check for m in report.messages}
+        assert dfs["caracteristiques"]["lum"].tolist() == [-1, 3]
+        assert pd.api.types.is_integer_dtype(dfs["caracteristiques"]["lum"])
+
+    def test_text_in_numeric_code_column_replaced(self, tmp_2021):
+        lieux = pd.read_csv(tmp_2021 / _TEST_FILES["lieux"], sep=";", dtype=str)
+        lieux.loc[1, "vma"] = "N/C"
+        _rewrite(tmp_2021, "lieux", lieux)
+        dfs, report = load_and_validate_year(2021, tmp_2021)
+        assert _levels(report, "out_of_nomenclature") == {"AUTO_CORRECTED"}
+        assert dfs["lieux"]["vma"].tolist() == [50, -1]
+
+    def test_exact_duplicate_rows_removed(self, tmp_2021):
+        lieux = pd.read_csv(tmp_2021 / _TEST_FILES["lieux"], sep=";", dtype=str)
+        _rewrite(tmp_2021, "lieux", pd.concat([lieux, lieux.iloc[[0]]]))
+        dfs, report = load_and_validate_year(2021, tmp_2021)
+        assert _levels(report, "duplicate_rows") == {"AUTO_CORRECTED"}
+        assert len(dfs["lieux"]) == 2
+
+    def test_bom_and_case_normalized(self, tmp_2021):
+        caract = pd.read_csv(tmp_2021 / _TEST_FILES["caracteristiques"], sep=";", dtype=str)
+        caract = caract.rename(columns={"Num_Acc": "NUM_ACC", "jour": " Jour "})
+        _rewrite(tmp_2021, "caracteristiques", caract, encoding="utf-8-sig")
+        dfs, report = load_and_validate_year(2021, tmp_2021)
+        assert report.overall_level != "CRITICAL"
+        assert _levels(report, "column_names") == {"AUTO_CORRECTED"}
+        assert {"Num_Acc", "jour"} <= set(dfs["caracteristiques"].columns)
+
+    def test_known_unused_columns_are_info_not_warning(self, tmp_2021):
+        # fixture : caractéristiques contient 'an' et 'adr' (colonnes ONISR connues)
+        _, report = load_and_validate_year(2021, tmp_2021)
+        assert _levels(report, "known_unused_columns") == {"INFO"}
+        assert "unknown_columns" not in {m.check for m in report.messages if m.table == "caracteristiques"}
+
+    def test_really_new_column_still_warns(self, tmp_2021):
+        lieux = pd.read_csv(tmp_2021 / _TEST_FILES["lieux"], sep=";", dtype=str)
+        lieux["nouvelle_colonne_2026"] = "x"
+        _rewrite(tmp_2021, "lieux", lieux)
+        _, report = load_and_validate_year(2021, tmp_2021)
+        assert _levels(report, "unknown_columns") == {"WARNING"}
+
+    def test_drom_coordinates_below_threshold_are_info(self):
+        report = ValidationReport(year=2021)
+        n = 100
+        caract = pd.DataFrame({
+            "lat": ["48,85"] * 95 + ["16,25"] * 5,      # 5 % en Guadeloupe
+            "long": ["2,35"] * 95 + ["-61,58"] * 5,
+        })
+        _validate_level3(2021, {"caracteristiques": caract.assign(Num_Acc=range(n))}, report)
+        assert _levels(report, "lat_long_range") == {"INFO"}

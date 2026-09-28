@@ -35,3 +35,26 @@ class TestApplyKnownFixes:
         df = pd.DataFrame({"jour": [1, 2, 3]})
         out, _ = apply_known_fixes(df, "caracteristiques")
         assert out["jour"].tolist() == [1, 2, 3]
+
+
+from src.data.known_fixes import normalize_column_names  # noqa: E402
+
+
+class TestNormalizeColumnNames:
+    def test_bom_quotes_spaces_and_case(self):
+        df = pd.DataFrame(columns=["﻿Num_Acc", ' "JOUR" ', "Mois"])
+        out, mapping = normalize_column_names(df, ["Num_Acc", "jour", "mois"])
+        assert list(out.columns) == ["Num_Acc", "jour", "mois"]
+        assert len(mapping) == 3
+
+    def test_unknown_column_left_untouched(self):
+        df = pd.DataFrame(columns=["Num_Acc", "Colonne_Inconnue"])
+        out, mapping = normalize_column_names(df, ["Num_Acc"])
+        assert list(out.columns) == ["Num_Acc", "Colonne_Inconnue"]
+        assert mapping == {}
+
+    def test_never_overwrites_existing_canonical_column(self):
+        df = pd.DataFrame(columns=["Num_Acc", "NUM_ACC"])
+        out, mapping = normalize_column_names(df, ["Num_Acc"])
+        assert mapping == {}
+        assert list(out.columns) == ["Num_Acc", "NUM_ACC"]

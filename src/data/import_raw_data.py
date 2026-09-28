@@ -315,10 +315,14 @@ def discover_raw_files(year: int, raw_dir: Path | None = None) -> dict[str, Path
                 if ratio > best_ratio:
                     best_match, best_ratio = csv, ratio
             if best_match is not None and best_ratio >= _FUZZY_MATCH_THRESHOLD:
+                # Auto-correction journalisée (event=auto_corrected, visible
+                # dans Loki/Prefect) et non plus alerte email : le fichier est
+                # retrouvé et exploité, rien à faire côté équipe. Un fichier
+                # réellement introuvable reste CRITICAL (RuntimeError plus bas).
                 logger.warning(
-                    "event=alert severity=warning topic=filename_fuzzy_match "
+                    "event=auto_corrected check=filename_fuzzy_match "
                     "year=%d category=%s file=%s similarity=%.2f — "
-                    "nom de fichier source ONISR non standard, vérifier",
+                    "nom de fichier source ONISR non standard, retrouvé par similarité",
                     year, category, best_match.name, best_ratio,
                 )
                 result[category] = best_match

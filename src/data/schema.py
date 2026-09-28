@@ -93,11 +93,38 @@ REQUIRED_COLUMNS: dict[str, list[str]] = {
     "vehicules":        ["Num_Acc", "id_vehicule", "num_veh", "catv", "obsm", "motor"],
 }
 
+# Colonnes ONISR connues mais volontairement non utilisées par le modèle
+# (présentes chaque année depuis 2021) : signalées en INFO, pas en WARNING.
+# Seule une colonne réellement NOUVELLE (absente d'ici et du schéma) lève un
+# WARNING — sans cette liste, chaque ETL finissait en WARNING (alerte email)
+# pour les mêmes colonnes, signal devenu du bruit (constaté 2026-09-28).
+KNOWN_UNUSED_COLUMNS: dict[str, list[str]] = {
+    "caracteristiques": ["adr", "an"],
+    "lieux":            ["infra", "larrout", "lartpc", "nbv", "plan", "pr", "pr1",
+                         "prof", "v1", "v2", "voie", "vosp"],
+    "usagers":          ["actp", "etatp", "id_usager", "locp", "secu2", "secu3", "trajet"],
+    "vehicules":        ["choc", "manv", "obs", "occutc", "senc"],
+}
+
+# Colonnes codifiées ONISR où -1 signifie « non renseigné » : une valeur hors
+# nomenclature (nouveau code, texte parasite) y est ramenée à -1 plutôt que de
+# laisser toute la table non typée (cf. schema_validator._fix_out_of_nomenclature).
+# Colonnes float nullables : ramenées à NaN.
+NOMENCLATURE_INT_COLUMNS = {
+    "lum", "agg", "int", "atm", "col", "catr", "circ", "surf", "situ", "vma",
+    "place", "catu", "grav", "sexe", "catv", "obsm", "motor",
+}
+NOMENCLATURE_FLOAT_COLUMNS = {"secu1", "an_nais"}
+
 # Quality bounds for Level-3 checks
 QUALITY_BOUNDS = {
     "accident_count_min": 40_000,
     "accident_count_max": 90_000,
     "nan_rate_warning":   0.30,
-    "lat_min": 41.0,  "lat_max": 51.5,   # metropolitan France + DROM
+    # Bounding box France métropolitaine + Corse. Les accidents en DROM/COM
+    # (Guadeloupe, Réunion…) sont légitimes et en dehors (~5-6 % par an) :
+    # WARNING seulement au-delà de la part tolérée ci-dessous.
+    "lat_min": 41.0,  "lat_max": 51.5,
     "lon_min": -5.5,  "lon_max": 9.6,
+    "outside_metropole_share_warning": 0.10,
 }
