@@ -140,7 +140,7 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">54</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 43, données mockées</span></div>
+    <div class="badge ci"><span class="badge-num">60</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 49, données mockées</span></div>
     <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
     <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tasks post-deploy<br>Prefect · test-api-flow + test-gradio-public (6 exécutées en CD)</span></div>
   </div>
@@ -155,19 +155,19 @@
       <tr><th>Trigger</th><th>Checks CI/ETL</th><th>Mécanismes auto-correction</th><th>Étapes CD</th></tr>
       <tr>
         <td><strong>T1</strong> — Nouvelles données</td>
-        <td>43 (logique testée en CI, exécutée pour de vrai sur données réelles — voir <a href="etl_catalogue.html">Catalogue ETL</a>)</td>
-        <td>4 (voir plus bas)</td>
+        <td>49 (logique testée en CI, exécutée pour de vrai sur données réelles — voir <a href="etl_catalogue.html">Catalogue ETL</a>)</td>
+        <td>5 (voir plus bas)</td>
         <td>0 — <code>deploy.yml</code> ne se déclenche jamais (aucun push sur <code>main</code>, flow Prefect pur)</td>
       </tr>
       <tr>
         <td><strong>T2</strong> — Code seul</td>
-        <td>54 (11 API + 43 ETL — suite complète, aucun filtrage par fichier changé)</td>
+        <td>60 (11 API + 49 ETL — suite complète, aucun filtrage par fichier changé)</td>
         <td>n/a (pas de nouvelles données)</td>
         <td>jusqu'à 11 — variable selon les services touchés (builds conditionnels par service)</td>
       </tr>
       <tr>
         <td><strong>T3</strong> — Nouveau blueprint</td>
-        <td>54 (idem T2 — même suite complète)</td>
+        <td>60 (idem T2 — même suite complète)</td>
         <td>n/a</td>
         <td>4 étapes réelles (1·7·10·11) + 2 no-op (8·9) + 5 toujours sautées (2-6) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
       </tr>
@@ -214,10 +214,10 @@
     </details>
 
     <details>
-      <summary>DATAS <span class="count">43</span> — ETL (<code>etl_flow.py</code>, Trigger 1) · CI (<code>ci.yml</code>, T2/T3)</summary>
+      <summary>DATAS <span class="count">49</span> — ETL (<code>etl_flow.py</code>, Trigger 1) · CI (<code>ci.yml</code>, T2/T3)</summary>
       <div class="body">
       <div style="padding:0;">
-        <p class="note" style="margin-top:0;">Ces 43 tests couvrent la même logique qui s'exécute pour de vrai sur données réelles côté Trigger 1 (<code>etl_flow.py</code>, aucun lien avec <code>ci.yml</code> qui ne se déclenche jamais sur ce trigger) — détail de cette exécution réelle : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
+        <p class="note" style="margin-top:0;">Ces 49 tests couvrent la même logique qui s'exécute pour de vrai sur données réelles côté Trigger 1 (<code>etl_flow.py</code>, aucun lien avec <code>ci.yml</code> qui ne se déclenche jamais sur ce trigger) — détail de cette exécution réelle : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
 
     <details>
       <summary>test_preprocessing.py — Feature engineering <span class="count">15</span></summary>
@@ -273,7 +273,7 @@
     </details>
 
     <details>
-      <summary>test_import_raw_data.py — Découverte des fichiers ONISR <span class="count">7</span></summary>
+      <summary>test_import_raw_data.py — Découverte + contrôle d'entrée des fichiers ONISR <span class="count">13</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -285,6 +285,11 @@
           <tr><td><code>test_fuzzy_fallback_catches_typo</code></td><td>Reproduit l'incident <code>carcteristiques-2021.csv</code> (faute de frappe source ONISR) → fallback fuzzy (difflib) retrouve le bon fichier + WARNING loggué</td></tr>
           <tr><td><code>test_unmatchable_file_raises_runtime_error</code></td><td>Nom trop éloigné de toute catégorie connue → <code>RuntimeError</code>, aucun faux positif</td></tr>
           <tr><td><code>test_nonexistent_dir_raises_file_not_found</code></td><td>Répertoire source inexistant → <code>FileNotFoundError</code></td></tr>
+          <tr><td><code>test_accident_id_2022_accepted_via_known_rename</code></td><td>Entête ONISR 2022 (<code>Accident_Id</code> au lieu de <code>Num_Acc</code>) accepté au téléchargement grâce au renommage connu (<code>known_fixes</code>)</td></tr>
+          <tr><td><code>test_other_separator_accepted</code> ×2</td><td>Fichier séparé par tabulation ou par virgule au lieu de <code>;</code> → accepté (et loggué AUTO_CORRECTED)</td></tr>
+          <tr><td><code>test_unknown_separator_rejected</code></td><td>Aucun séparateur reconnu → rejet (fichier réellement inexploitable)</td></tr>
+          <tr><td><code>test_missing_required_column_rejected</code></td><td>Colonne obligatoire absente même après renommages connus → rejet</td></tr>
+          <tr><td><code>test_too_small_file_rejected</code></td><td>Fichier &lt; 500 Ko (page d'erreur, dataset dérivé) → rejet</td></tr>
         </table>
         </div>
       </div>
@@ -307,7 +312,7 @@
     </details>
 
     <details>
-      <summary>Mécanismes d'auto-correction couverts <span class="count">4</span></summary>
+      <summary>Mécanismes d'auto-correction couverts <span class="count">5</span></summary>
       <div class="body">
         <p class="note" style="margin-top:0;">Sur les 5 tests de <code>test_known_fixes.py</code>, 2 seulement couvrent un mécanisme réel (les 3 autres sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas). Au total, tout module confondu, la chaîne ETL compte <strong>4 mécanismes d'auto-correction</strong> distincts :</p>
         <div class="overflow-x">
@@ -317,6 +322,7 @@
           <tr><td>2</td><td>Nettoyage espaces insécables/superflus</td><td><code>known_fixes.py</code></td><td>Artefacts d'encodage sur colonnes texte</td></tr>
           <tr><td>3</td><td>Coercion de type Pandera</td><td><code>schema_validator.py</code></td><td>Colonne numérique lue en texte (artefact de formatage)</td></tr>
           <tr><td>4</td><td>Matching fuzzy de nom de fichier</td><td><code>import_raw_data.py</code></td><td>Faute de frappe ONISR sur le nom du fichier</td></tr>
+          <tr><td>5</td><td>Contrôle d'entrée tolérant au téléchargement (séparateur <code>;</code>/<code>,</code>/tabulation, renommages connus)</td><td><code>import_raw_data.py</code></td><td>Changement de séparateur ou format ONISR 2022 (<code>Accident_Id</code>) dès le téléchargement — 5 tests dans <code>test_import_raw_data.py</code></td></tr>
         </table>
         </div>
         <p class="note">Détail complet de chaque mécanisme en conditions réelles (pas seulement testé en CI) : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import requests
 
+from src.data.known_fixes import COLUMN_RENAMES
 from src.utils.logging_utils import init_logging
 
 init_logging()  # au niveau module : fixe le niveau INFO que ce fichier soit importé
@@ -115,15 +116,56 @@ def training_years_up_to(year: int) -> list[int]:
     return list(range(FIRST_TRAINING_YEAR, year + 1))
 
 
+# Séparateurs et encodages tolérés — mêmes candidats que schema_validator._read_csv_safe
+# (source de vérité de la lecture en aval), pour que ce contrôle d'entrée ne
+# rejette jamais un fichier que le reste du pipeline sait lire.
+_CSV_SEPARATORS = (";", ",", "\t")
+_CSV_ENCODINGS = ("utf-8-sig", "utf-8", "latin-1")
+
+
+def _read_header(path: Path) -> tuple[list[str], str]:
+    """Retourne (colonnes normalisées en minuscules, séparateur détecté).
+
+    Le séparateur retenu est celui qui découpe l'entête en le plus de colonnes
+    (> 1). Lève ValueError si aucun candidat ne produit plusieurs colonnes.
+    """
+    for enc in _CSV_ENCODINGS:
+        try:
+            with open(path, encoding=enc) as f:
+                header = f.readline().strip()
+        except (UnicodeDecodeError, OSError):
+            continue
+        best_sep, best_cols = None, []
+        for sep in _CSV_SEPARATORS:
+            cols = [c.strip().strip('"').strip().lower() for c in header.split(sep)]
+            if len(cols) > len(best_cols):
+                best_sep, best_cols = sep, cols
+        if best_sep and len(best_cols) > 1:
+            return best_cols, best_sep
+        raise ValueError(
+            f"{path.name}: séparateur inconnu (ni ';', ni ',', ni tabulation) — "
+            f"entête: {header[:120]!r}"
+        )
+    raise ValueError(f"{path.name}: entête illisible (encodages essayés : {', '.join(_CSV_ENCODINGS)})")
+
+
 def _validate_onisr_csv(path: Path, category: str) -> None:
     """Vérifie qu'un fichier téléchargé est bien un fichier ONISR brut authentique.
 
-    Contrôles :
-      - Taille > _ONISR_MIN_SIZE_KB (rejette les fichiers trop petits)
-      - Séparateur ';' présent dans l'entête
-      - Colonnes obligatoires de la catégorie présentes (insensible à la casse)
+    Contrôle d'entrée volontairement TOLÉRANT (principe d'auto-correction de
+    l'ETL) — il ne rejette que ce que le reste du pipeline ne saurait pas
+    traiter :
+      - Taille > _ONISR_MIN_SIZE_KB (rejette pages d'erreur / fichiers dérivés)
+      - Entête lisible avec l'un des séparateurs ';' / ',' / tabulation
+        (un séparateur autre que ';' est accepté et loggué — la lecture en aval,
+        schema_validator._read_csv_safe, gère les mêmes candidats)
+      - Colonnes obligatoires présentes APRÈS application des renommages connus
+        (known_fixes.COLUMN_RENAMES — ex. Accident_Id → Num_Acc, ONISR 2022)
 
     Lève ValueError avec message diagnostique si un contrôle échoue.
+    Bug corrigé 2026-09-28 : ';' était exigé et Accident_Id refusé — un
+    re-téléchargement de 2022 (ou une année future au même format) stoppait T1
+    en CRITICAL alors que l'auto-correction en aval savait le traiter.
     """
     size_kb = path.stat().st_size // 1024
     if size_kb < _ONISR_MIN_SIZE_KB:
@@ -132,25 +174,28 @@ def _validate_onisr_csv(path: Path, category: str) -> None:
             f"— probablement pas un fichier ONISR brut"
         )
 
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            header = f.readline().strip()
-    except Exception as exc:
-        raise ValueError(f"{path.name}: impossible de lire l'entête — {exc}") from exc
-
-    if ";" not in header:
-        raise ValueError(
-            f"{path.name}: séparateur ';' absent — format inattendu "
-            f"(entête: {header[:120]!r}). Attendu: CSV ONISR avec ';'"
+    cols, sep = _read_header(path)
+    if sep != ";":
+        logger.warning(
+            "event=auto_corrected file=%s check=separator detail=%r au lieu de ';' — accepté",
+            path.name, sep,
         )
 
-    cols = {c.strip().strip('"').lower() for c in header.split(";")}
+    renames = {k.lower(): v.lower() for k, v in COLUMN_RENAMES.get(category, {}).items()}
+    renamed = [c for c in cols if c in renames]
+    if renamed:
+        logger.warning(
+            "event=auto_corrected file=%s check=column_rename detail=%s — renommage connu appliqué",
+            path.name, {c: renames[c] for c in renamed},
+        )
+    cols_set = {renames.get(c, c) for c in cols}
+
     required = _ONISR_REQUIRED_COLS.get(category, ["num_acc"])
-    missing = [c for c in required if c not in cols]
+    missing = [c for c in required if c not in cols_set]
     if missing:
         raise ValueError(
             f"{path.name}: colonnes manquantes pour '{category}': {missing}. "
-            f"Colonnes trouvées: {sorted(cols)}"
+            f"Colonnes trouvées: {sorted(cols_set)}"
         )
 
 

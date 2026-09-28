@@ -54,3 +54,39 @@ class TestDiscoverRawFiles:
     def test_nonexistent_dir_raises_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             discover_raw_files(2021, tmp_path / "nope")
+
+
+# ── _validate_onisr_csv : contrôle d'entrée tolérant (auto-correction) ────────
+from src.data.import_raw_data import _validate_onisr_csv  # noqa: E402
+
+_BODY = ("x" * 80 + "\n") * 8000   # > 500 Ko (seuil anti page d'erreur)
+
+
+def _csv(tmp_path: Path, header: str) -> Path:
+    p = tmp_path / "caracteristiques-2099.csv"
+    p.write_text(header + "\n" + _BODY)
+    return p
+
+
+class TestValidateOnisrCsv:
+    def test_accident_id_2022_accepted_via_known_rename(self, tmp_path):
+        # ONISR 2022 : Num_Acc renommé Accident_Id — renommage connu (known_fixes)
+        _validate_onisr_csv(_csv(tmp_path, '"Accident_Id";"jour";"mois";"an";"lum"'), "caracteristiques")
+
+    @pytest.mark.parametrize("sep", ["\t", ","])
+    def test_other_separator_accepted(self, tmp_path, sep):
+        _validate_onisr_csv(_csv(tmp_path, sep.join(["Num_Acc", "jour", "mois", "an", "lum"])), "caracteristiques")
+
+    def test_unknown_separator_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="séparateur inconnu"):
+            _validate_onisr_csv(_csv(tmp_path, "Num_Acc jour mois an lum"), "caracteristiques")
+
+    def test_missing_required_column_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="colonnes manquantes"):
+            _validate_onisr_csv(_csv(tmp_path, '"Num_Acc";"jour";"mois";"an"'), "caracteristiques")
+
+    def test_too_small_file_rejected(self, tmp_path):
+        p = tmp_path / "caracteristiques-2099.csv"
+        p.write_text('"Num_Acc";"jour";"mois";"an";"lum"\n1;2;3;4;5\n')
+        with pytest.raises(ValueError, match="trop petit"):
+            _validate_onisr_csv(p, "caracteristiques")
