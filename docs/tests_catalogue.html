@@ -141,8 +141,8 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">73</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 62, données mockées</span></div>
-    <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>deploy.yml · GitHub Actions</span></div>
+    <div class="badge ci"><span class="badge-num">73</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>11 + 62, sur données fictives de test</span></div>
+    <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>GitHub Actions → déclenche Prefect</span></div>
     <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tests fonctionnels<br>vus de l'utilisateur · API + Cockpit public</span></div>
   </div>
 
@@ -355,7 +355,7 @@
   <!-- ════════════════════ 2. CD ════════════════════ -->
   <details class="section cd">
     <summary><span class="section-pill cd">CD</span> Pipeline de déploiement — <code>deploy.yml</code></summary>
-    <div class="section-meta">Déclenché automatiquement après chaque merge sur main (ou via workflow_dispatch)</div>
+    <div class="section-meta">Déclenché automatiquement après chaque merge sur main. Les 11 étapes sont pilotées par GitHub Actions (<code>deploy.yml</code>) : étapes 1 à 6 sur les serveurs de GitHub (détection des changements, construction et scan des images), étapes 7 à 11 sur le VPS via SSH (mise à jour du code, images, puis <strong>Prefect</strong> — enregistrement des flows et lancement du déploiement). Prefect prend ensuite le relais : gate GO/STOP, mise à jour des services, tests fonctionnels, Kubernetes (cf. section Tests fonctionnels et <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</div>
 
     <div style="padding:0 16px 16px;">
     <div class="overflow-x">
