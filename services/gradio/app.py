@@ -877,6 +877,7 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
         # dériver Oui / Prod -1 / Prod -2 / ...
         promotions.sort(key=lambda t: t[0], reverse=True)
         prod_rank = {key: i for i, (_, key) in enumerate(promotions)}
+        prev_prod_key = next((key for _, key in promotions if key != prod_key), None)
 
         rows, choices = [], []
         for entry in raw_rows:
@@ -890,7 +891,10 @@ def _load_models_data() -> tuple[pd.DataFrame, list[str]]:
                 prod_label = "Non"
             entry["row"]["Production"] = prod_label
             rows.append(entry["row"])
-            if not entry["stopped"]:
+            # Promotion directe = rollback d'urgence : seule la version
+            # précédemment en production (Prod -1) est proposée. Toute autre
+            # version doit passer par le cycle normal (tests + gate GO/STOP).
+            if choice_key == prev_prod_key and not entry["stopped"]:
                 choices.append(choice_key)
 
         if not rows:
@@ -908,7 +912,7 @@ def refresh_models():
 
 def promote_version(choice_key: str) -> str:
     if not choice_key or ":" not in choice_key:
-        return "Selectionnez une version a promouvoir."
+        return "Aucune version précédente à restaurer."
     try:
         model_name, version = choice_key.rsplit(":", 1)
         mlflow.set_tracking_uri(MLFLOW_URI)
@@ -3330,18 +3334,19 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         interactive=False,
                     )
 
-                    gr.Markdown("#### Promouvoir une version en Production")
+                    gr.Markdown("#### Rollback d'urgence — revenir à la version précédente")
                     gr.Markdown(
                         "> ⚠️ **Promotion directe — bypasse les tests CI/CD.** "
                         "Aucun smoke test ni gate automatique. "
-                        "Réservé aux rollbacks d'urgence. "
-                        "Pour une promotion normale, utiliser le flow **update-model** (Cockpit → accordéon Orchestration)."
+                        "Seule la version précédemment en production (**Prod -1**), déjà validée "
+                        "par son propre cycle, est proposée. "
+                        "Pour toute autre version, utiliser le flow **update-model** (Cockpit → accordéon Orchestration)."
                     )
                     with gr.Row():
                         promote_dd  = gr.Dropdown(choices=_init_choices,
                                                   value=_init_choices[-1] if _init_choices else None,
-                                                  label="Version", scale=2)
-                        promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
+                                                  label="Version précédente (Prod -1)", scale=2)
+                        promote_btn = gr.Button("Restaurer @Production", variant="primary", scale=1)
                     promote_result = gr.Markdown()
 
                     gr.Markdown("#### Rapports par version — performance et comparaison avec la production")
