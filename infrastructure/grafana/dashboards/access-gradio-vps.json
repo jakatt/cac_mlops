@@ -137,7 +137,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** L'accès **Cockpit public · VPS** répond-il en ce moment depuis Internet ?\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. Valeur affichée : le résultat de la dernière sonde.\n\n**Lecture.** UP (vert) = la dernière sonde a reçu HTTP 200 · DOWN (rouge) = erreur, timeout ou code ≠ 200 · gris = aucune mesure (machine éteinte).",
+      "description": "**Ce que ça mesure.** L'accès **Cockpit public · VPS** répond-il en ce moment depuis Internet ?\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. Valeur affichée : le résultat de la dernière sonde.\n\n**Lecture.** UP (vert) = la dernière sonde a reçu HTTP 200 · DOWN (rouge) = erreur, timeout ou code ≠ 200 · gris = aucune mesure (machine éteinte).",
       "targets": [
         {
           "datasource": {
@@ -217,14 +217,14 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Pourcentage de sondes réussies sur la période choisie en haut à droite.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. Calcul : moyenne de `probe_success` (1 = OK, 0 = KO) sur la période, × 100.\n\n**Lecture.** Vert ≥ 99,9 % · orange ≥ 99 % · rouge en dessous. Repère : 99,9 % sur 7 jours = 10 min d'arrêt au plus. Les périodes machine éteinte ne comptent ni pour ni contre.",
+      "description": "**Ce que ça mesure.** Pourcentage de sondes réussies sur la période choisie en haut à droite.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. Calcul : moyenne de `probe_success` (1 = OK, 0 = KO) sur la période, × 100.\n\n**Lecture.** Vert ≥ 99,9 % · orange ≥ 99 % · rouge en dessous. Repère : 99,9 % sur 7 jours = 10 min d'arrêt au plus. Les périodes machine éteinte ne comptent ni pour ni contre.",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg_over_time(probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}[$__range]) * 100",
+          "expr": "avg_over_time((probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"} and on() (time() - process_start_time_seconds{job=\"prometheus\"} > 120))[$__range:15s]) * 100",
           "refId": "A",
           "instant": true,
           "range": false
@@ -288,14 +288,14 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Durée cumulée pendant laquelle l'accès ne répondait pas, sur la période.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. Calcul : nombre de sondes en échec × 15 s (intervalle entre deux sondes).\n\n**Lecture.** Vert < 1 min · orange < 10 min · rouge au-delà. Inclut les redémarrages planifiés (repères orange sur les courbes) : c'est le temps réellement vécu par un utilisateur.",
+      "description": "**Ce que ça mesure.** Durée cumulée pendant laquelle l'accès ne répondait pas, sur la période.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. Calcul : nombre de sondes en échec × 15 s (intervalle entre deux sondes).\n\n**Lecture.** Vert < 1 min · orange < 10 min · rouge au-delà. Inclut les redémarrages planifiés (repères orange sur les courbes) : c'est le temps réellement vécu par un utilisateur.",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(count_over_time(probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}[$__range]) - sum_over_time(probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}[$__range])) * 15",
+          "expr": "(count_over_time((probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"} and on() (time() - process_start_time_seconds{job=\"prometheus\"} > 120))[$__range:15s]) - sum_over_time((probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"} and on() (time() - process_start_time_seconds{job=\"prometheus\"} > 120))[$__range:15s])) * 15",
           "refId": "A",
           "instant": true,
           "range": false
@@ -358,14 +358,14 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Nombre d'interruptions distinctes sur la période.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. Calcul : nombre de changements d'état UP ↔ DOWN, divisé par deux (une coupure = une descente + une remontée).\n\n**Lecture.** 0 = aucune interruption. Une coupure isolée pendant un déploiement est normale (redémarrage du conteneur) ; plusieurs coupures sans déploiement = à investiguer.",
+      "description": "**Ce que ça mesure.** Nombre d'interruptions distinctes sur la période.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. Calcul : nombre de changements d'état UP ↔ DOWN, divisé par deux (une coupure = une descente + une remontée).\n\n**Lecture.** 0 = aucune interruption. Une coupure isolée pendant un déploiement est normale (redémarrage du conteneur) ; plusieurs coupures sans déploiement = à investiguer.",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "ceil(changes(probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"}[$__range]) / 2)",
+          "expr": "ceil(changes((probe_success{instance=\"https://mlops.jakat-inc.fr/gradio-public-health\"} and on() (time() - process_start_time_seconds{job=\"prometheus\"} > 120))[$__range:15s]) / 2)",
           "refId": "A",
           "instant": true,
           "range": false
@@ -425,7 +425,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Jours avant l'expiration du certificat HTTPS présenté aux utilisateurs.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. La sonde lit la date d'expiration du certificat pendant la négociation TLS. Certificat Let's Encrypt (90 jours) renouvelé automatiquement par Caddy ~30 jours avant l'échéance.\n\n**Lecture.** Vert ≥ 30 j · orange ≥ 14 j · rouge en dessous = le renouvellement automatique a échoué.",
+      "description": "**Ce que ça mesure.** Jours avant l'expiration du certificat HTTPS présenté aux utilisateurs.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. La sonde lit la date d'expiration du certificat pendant la négociation TLS. Certificat Let's Encrypt (90 jours) renouvelé automatiquement par Caddy ~30 jours avant l'échéance.\n\n**Lecture.** Vert ≥ 30 j · orange ≥ 14 j · rouge en dessous = le renouvellement automatique a échoué.",
       "targets": [
         {
           "datasource": {
@@ -496,7 +496,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** L'historique UP / DOWN de l'accès sur la période.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours.\n\n**Lecture.** Vert = accessible depuis Internet · rouge = coupure (planifiée ou non) · vide = machine éteinte, pas de mesure. Les repères verticaux indiquent les GO, rollbacks et redémarrages planifiés.",
+      "description": "**Ce que ça mesure.** L'historique UP / DOWN de l'accès sur la période.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours.\n\n**Lecture.** Vert = accessible depuis Internet · rouge = coupure (planifiée ou non) · vide = machine éteinte, pas de mesure. Les repères verticaux indiquent les GO, rollbacks et redémarrages planifiés.",
       "targets": [
         {
           "datasource": {
@@ -580,7 +580,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Temps de réponse vu d'un utilisateur : 95 % des sondes ont répondu plus vite que cette valeur.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. Durée mesurée par la sonde (`probe_duration_seconds`) : résolution DNS, connexion, négociation TLS et réponse du serveur ; puis 95e percentile sur la période.\n\n**Lecture.** Vert < 300 ms (objectif) · orange < 1 s · rouge au-delà. Le p95 écarte les 5 % de mesures les plus lentes (pics isolés) sans masquer une dégradation durable.",
+      "description": "**Ce que ça mesure.** Temps de réponse vu d'un utilisateur : 95 % des sondes ont répondu plus vite que cette valeur.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. Durée mesurée par la sonde (`probe_duration_seconds`) : résolution DNS, connexion, négociation TLS et réponse du serveur ; puis 95e percentile sur la période.\n\n**Lecture.** Vert < 300 ms (objectif) · orange < 1 s · rouge au-delà. Le p95 écarte les 5 % de mesures les plus lentes (pics isolés) sans masquer une dégradation durable.",
       "targets": [
         {
           "datasource": {
@@ -651,7 +651,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** L'évolution du temps de réponse mesuré par la sonde, point par point.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : ce n'est jamais compté comme une coupure. Historique conservé 30 jours. Chaque point = durée totale d'une sonde (DNS + TLS + réponse).\n\n**Lecture.** La zone rouge marque l'objectif de 300 ms. Un pic isolé est normal (redémarrage, chargement du modèle) ; une montée durable signale une dégradation.",
+      "description": "**Ce que ça mesure.** L'évolution du temps de réponse mesuré par la sonde, point par point.\n\n**Comment.** Le **blackbox-exporter** (conteneur du VPS) appelle `https://mlops.jakat-inc.fr/gradio-public-health` toutes les 15 s, à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont pas des coupures. Historique conservé 30 jours. Chaque point = durée totale d'une sonde (DNS + TLS + réponse).\n\n**Lecture.** La zone rouge marque l'objectif de 300 ms. Un pic isolé est normal (redémarrage, chargement du modèle) ; une montée durable signale une dégradation.",
       "targets": [
         {
           "datasource": {

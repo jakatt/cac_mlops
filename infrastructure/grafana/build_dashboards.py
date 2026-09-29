@@ -94,14 +94,33 @@ def di(key: str, comment_suffix: str = "") -> str:
     return d(ind.mesure, ind.comment + (" " + comment_suffix if comment_suffix else ""), ind.lecture)
 
 
+BOOT_GRACE_S = 120   # VPS : sondes ignorées pendant les 2 min qui suivent son démarrage
+
+
+def probe_window(a: dict) -> str:
+    """Fenêtre de calcul (range selector) des indicateurs de disponibilité.
+    VPS : sondes des BOOT_GRACE_S secondes suivant le démarrage de Prometheus
+    (= du VPS) exclues — Docker relance tous les conteneurs en même temps et
+    l'API met ~1 min à être prête : sans ce filtre, chaque démarrage matinal
+    comptait comme une coupure (constaté 2026-09-29 : 45 s). Au-delà, un
+    service qui ne démarre pas reste une vraie coupure. K8s : rien à exclure,
+    la sonde n'est lancée qu'à l'ouverture du service (kapsule-up)."""
+    ps = f'probe_success{{instance="{a["probe"]}"}}'
+    if a["env"] != "vps":
+        return f"{ps}[$__range]"
+    return (f'({ps} and on() (time() - process_start_time_seconds{{job="prometheus"}} > {BOOT_GRACE_S}))'
+            f"[$__range:{SCRAPE_S}s]")
+
+
 def probe_how(a: dict) -> str:
     """Comment la sonde bout-en-bout d'un accès est réalisée (VPS ou K8s)."""
     if a["env"] == "vps":
         return (f"Le **blackbox-exporter** (conteneur du VPS) appelle `{a['probe']}` toutes les {SCRAPE_S} s, "
                 "à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. "
                 "La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — "
-                "exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : "
-                "ce n'est jamais compté comme une coupure. Historique conservé 30 jours.")
+                "exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure, et les 2 minutes "
+                "qui suivent son démarrage (services en cours de lancement) ne sont pas comptées : ce ne sont "
+                "pas des coupures. Historique conservé 30 jours.")
     return (f"Le **blackbox-exporter** (pod du cluster Kapsule) appelle `{a['probe']}` toutes les {SCRAPE_S} s, "
             "à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. "
             "La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. "
@@ -381,8 +400,7 @@ def probe_status(a: dict, title: str, links=None) -> dict:
 
 
 def probe_availability(a: dict, color_mode: str = "background") -> dict:
-    ps = f'probe_success{{instance="{a["probe"]}"}}'
-    return stat("Disponibilité", a["prom"], f"avg_over_time({ps}[$__range]) * 100", unit="percent", decimals=2,
+    return stat("Disponibilité", a["prom"], f"avg_over_time({probe_window(a)}) * 100", unit="percent", decimals=2,
                 thresholds=AVAIL_THR, no_value=OFF_TEXT if a["env"] == "k8s" else "N/A", color_mode=color_mode,
                 desc=d("Pourcentage de sondes réussies sur la période choisie en haut à droite.",
                        probe_how(a) + " Calcul : moyenne de `probe_success` (1 = OK, 0 = KO) sur la période, × 100.",
@@ -432,13 +450,13 @@ def access_dashboard(a: dict) -> dict:
     g.add(probe_status(a, "Statut actuel"), 5, 4)
     g.add(probe_availability(a), 5, 4)
     g.add(stat("Temps d'indisponibilité", ds,
-               f"(count_over_time({ps}[$__range]) - sum_over_time({ps}[$__range])) * {SCRAPE_S}", unit="s",
+               f"(count_over_time({probe_window(a)}) - sum_over_time({probe_window(a)})) * {SCRAPE_S}", unit="s",
                thresholds=steps((None, GREEN), (60, ORANGE), (600, RED)), no_value=off,
                desc=d("Durée cumulée pendant laquelle l'accès ne répondait pas, sur la période.",
                       probe_how(a) + f" Calcul : nombre de sondes en échec × {SCRAPE_S} s (intervalle entre deux sondes).",
                       "Vert < 1 min · orange < 10 min · rouge au-delà. Inclut les redémarrages planifiés "
                       "(repères orange sur les courbes) : c'est le temps réellement vécu par un utilisateur.")), 5, 4)
-    g.add(stat("Coupures", ds, f"ceil(changes({ps}[$__range]) / 2)", decimals=0,
+    g.add(stat("Coupures", ds, f"ceil(changes({probe_window(a)}) / 2)", decimals=0,
                thresholds=steps((None, GREEN), (1, ORANGE)), no_value=off,
                desc=d("Nombre d'interruptions distinctes sur la période.",
                       probe_how(a) + " Calcul : nombre de changements d'état UP ↔ DOWN, divisé par deux "
