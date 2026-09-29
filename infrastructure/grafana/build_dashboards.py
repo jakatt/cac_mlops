@@ -658,29 +658,38 @@ def flux_dashboard() -> dict:
     worker = '{service="prefect-worker"}'
     gates = '{service=~"prefect-worker|gradio"}'
     g.row("Déploiements — période choisie")
-    for title, expr, thr, what, read in [
-        ("Gates ouvertes", f'{gates} |= "event=gate_open"', steps((None, BLUE)),
+    g_open = f'{gates} |= "event=gate_open"'
+    g_go = f'{gates} |= "event=gate_resolved" |= "decision=GO"'
+    g_stop = f'{gates} |= "event=gate_resolved" |= "decision=STOP"'
+    for title, expr, thr, what, read, w in [
+        ("Gates ouvertes", cnt(g_open), steps((None, BLUE)),
          "Le nombre de mises en production proposées : chaque merge sur main (T2, T3) ou nouvelle donnée (T1) "
          "prépare un déploiement puis s'arrête à la gate, en attente d'une décision humaine.",
-         "Gates ouvertes = GO + STOP + gates encore en attente ou expirées (24 h)."),
-        ("GO", f'{gates} |= "event=gate_resolved" |= "decision=GO"', steps((None, GREEN)),
+         "Gates ouvertes = GO + STOP + Annulées ou en attente.", 3),
+        ("GO", cnt(g_go), steps((None, GREEN)),
          "Le nombre de déploiements validés par un humain (bouton GO du Cockpit).",
-         "Chaque GO lance la mise en production sur le VPS, les tests fonctionnels puis Kubernetes."),
-        ("STOP", f'{gates} |= "event=gate_resolved" |= "decision=STOP"', steps((None, GREEN), (1, ORANGE)),
+         "Chaque GO lance la mise en production sur le VPS, les tests fonctionnels puis Kubernetes.", 3),
+        ("STOP", cnt(g_stop), steps((None, GREEN), (1, ORANGE)),
          "Le nombre de déploiements refusés par un humain (bouton STOP du Cockpit).",
-         "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente."),
-        ("Déploiements réussis", f'{worker} |= "topic=deploy_success"', steps((None, GREEN)),
+         "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente.", 3),
+        ("Annulées ou en attente", f"({cnt(g_open)}) - ({cnt(g_go)}) - ({cnt(g_stop)})", steps((None, GREEN), (1, GREY)),
+         "Les gates ouvertes qui n'ont reçu ni GO ni STOP : encore en attente de décision, expirées (24 h sans "
+         "décision) ou annulées directement dans Prefect au lieu du Cockpit.",
+         "Calcul : gates ouvertes − GO − STOP. En temps normal 0, ou 1 pendant qu'une gate attend. Une valeur "
+         "durable = gate fermée hors Cockpit : la production n'a pas changé, mais la décision n'a pas été "
+         "tracée — la voie normale reste le bouton GO ou STOP.", 3),
+        ("Déploiements réussis", cnt(f'{worker} |= "topic=deploy_success"'), steps((None, GREEN)),
          "Le nombre de mises en production terminées avec succès, tests fonctionnels compris.",
-         "Idéalement égal au nombre de GO. L'écart = déploiements en échec (voir Rollbacks)."),
-        ("Rollbacks", f'{worker} |= "event=rollback"', steps((None, GREEN), (1, RED)),
+         "Idéalement égal au nombre de GO. L'écart = déploiements en échec (voir Rollbacks).", 4),
+        ("Rollbacks", cnt(f'{worker} |= "event=rollback"'), steps((None, GREEN), (1, RED)),
          "Le nombre de retours automatiques à la version précédente après un échec.",
          "Un rollback = un déploiement a échoué (healthcheck ou tests fonctionnels) et la version précédente "
-         "a été restaurée sans intervention. Déclenche une alerte email."),
-        ("Pipelines CD en échec", '{service="github-actions"} |= "event=deploy_pipeline" |= "status=failed"', steps((None, GREEN), (1, RED)),
+         "a été restaurée sans intervention. Déclenche une alerte email.", 4),
+        ("Pipelines CD en échec", cnt('{service="github-actions"} |= "event=deploy_pipeline" |= "status=failed"'), steps((None, GREEN), (1, RED)),
          "Le nombre d'exécutions du CD GitHub Actions en échec (build, scan Trivy, synchronisation Prefect).",
-         "Un CD en échec ne touche jamais la production : aucune gate n'est ouverte. Déclenche une alerte email."),
+         "Un CD en échec ne touche jamais la production : aucune gate n'est ouverte. Déclenche une alerte email.", 4),
     ]:
-        g.add(stat(title, LOKI, cnt(expr), thresholds=thr, decimals=0, desc=d(what, loki_how, read)), 4, 4)
+        g.add(stat(title, LOKI, expr, thresholds=thr, decimals=0, desc=d(what, loki_how, read)), w, 4)
     g.add(timeseries("Décisions à la gate par jour", LOKI, [
         target(LOKI, f'sum by (decision) (count_over_time({gates} |= "event=gate_resolved" | logfmt [1d]))', "{{decision}}")],
         bars=True, stack=True, interval="1d", desc=d(
