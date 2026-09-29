@@ -141,7 +141,7 @@
   </p>
 
   <div class="summary-row">
-    <div class="badge ci"><span class="badge-num">76</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>14 + 62, sur données fictives de test</span></div>
+    <div class="badge ci"><span class="badge-num">79</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>17 + 62, sur données fictives de test</span></div>
     <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>GitHub Actions → déclenche Prefect</span></div>
     <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tests fonctionnels<br>vus de l'utilisateur · API + Cockpit public</span></div>
   </div>
@@ -162,13 +162,13 @@
       </tr>
       <tr>
         <td><strong>T2</strong> — Code seul</td>
-        <td>76 (14 API + 62 ETL — suite complète, aucun filtrage par fichier changé)</td>
+        <td>79 (17 API + 62 ETL — suite complète, aucun filtrage par fichier changé)</td>
         <td>n/a (pas de nouvelles données)</td>
         <td>jusqu'à 11 — variable selon les services touchés (builds conditionnels par service)</td>
       </tr>
       <tr>
         <td><strong>T3</strong> — Nouveau blueprint</td>
-        <td>76 (idem T2 — même suite complète)</td>
+        <td>79 (idem T2 — même suite complète)</td>
         <td>n/a</td>
         <td>4 étapes réelles (1·7·10·11) + 2 no-op (8·9) + 5 toujours sautées (2-6) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
       </tr>
@@ -184,12 +184,12 @@
     <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur PR vers main (T2/T3 uniquement — jamais T1) · les 13 tests d'intégration (<code>tests/integration/</code>, Docker Compose requis) ne tournent pas en CI</div>
 
     <details>
-      <summary>API <span class="count">14</span> — <code>ci.yml</code></summary>
+      <summary>API <span class="count">17</span> — <code>ci.yml</code></summary>
       <div class="body">
       <div style="padding:0;">
 
     <details>
-      <summary>test_predict.py — Endpoint API <span class="count">14</span></summary>
+      <summary>test_predict.py — Endpoint API <span class="count">17</span></summary>
       <div class="body">
         <div class="overflow-x">
         <table>
@@ -208,6 +208,9 @@
           <tr><td><code>test_functional_tests_are_test_traffic</code></td><td>En-tête <code>X-Synthetic: 1</code> (flows de test) → trafic compté <code>test</code></td></tr>
           <tr><td><code>test_probes_and_drift_simulation_are_test_traffic</code></td><td>Sondes blackbox / kube-probe et simulation de drift (<code>X-Sim-Date</code>) → trafic <code>test</code></td></tr>
           <tr><td><code>test_browser_or_client_is_real_traffic</code></td><td>Navigateur ou client applicatif → trafic <code>real</code></td></tr>
+          <tr><td><code>test_insufficient_traffic_is_not_ok</code></td><td>Moins de 100 prédictions réelles → niveau de drift « pas de résultat » (−1) et vrai nombre de prédictions publiés, jamais un faux « OK »</td></tr>
+          <tr><td><code>test_missing_reports_are_not_ok</code></td><td>Rapports de drift / qualité absents (ex. après un reset) → niveaux « pas de résultat », jamais « OK »</td></tr>
+          <tr><td><code>test_computed_level_is_published</code></td><td>Drift réellement calculé → niveau et nombre de prédictions publiés tels quels</td></tr>
         </table>
         </div>
       </div>
