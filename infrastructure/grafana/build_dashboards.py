@@ -6,6 +6,11 @@ Source unique : les 4 dashboards d'accès (API / Cockpit public × VPS / K8s)
 sont produits par le MÊME modèle — une amélioration s'applique aux quatre.
 Ne pas éditer les JSON générés à la main : modifier ce script puis le relancer.
 
+Chaque panneau porte une description (icône (i) dans Grafana) au même format :
+ce que ça mesure · comment c'est mesuré · comment le lire. Le même script écrit
+le catalogue des indicateurs de docs/monitoring.html à partir de ces
+descriptions : la doc et Grafana ne peuvent pas diverger.
+
 Structure (dossier Grafana « cac-mlops ») :
   home.json               Vue d'ensemble (page d'accueil Grafana)
   access-api-vps.json     ┐
@@ -17,10 +22,13 @@ Structure (dossier Grafana « cac-mlops ») :
 """
 from __future__ import annotations
 
+import html
 import json
+import re
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent / "dashboards"
+DOC = Path(__file__).resolve().parents[2] / "docs" / "monitoring.html"
 
 PROM = {"type": "prometheus", "uid": "prometheus"}
 PROM_K8S = {"type": "prometheus", "uid": "prometheus-k8s"}
@@ -65,6 +73,37 @@ ACCESSES = [
 ]
 
 OFF_TEXT = "Cluster éteint"   # K8s est allumé à la demande (kapsule-up / kapsule-down)
+SCRAPE_S = 15                 # intervalle de scrape/sonde des 2 Prometheus (VPS et K8s)
+
+
+# ── Descriptions (icône (i)) ──────────────────────────────────────────────────
+def d(mesure: str, comment: str, lecture: str = "") -> str:
+    """Description standard d'un panneau : quoi · comment · lecture."""
+    out = f"**Ce que ça mesure.** {mesure}\n\n**Comment.** {comment}"
+    return out + (f"\n\n**Lecture.** {lecture}" if lecture else "")
+
+
+def probe_how(a: dict) -> str:
+    """Comment la sonde bout-en-bout d'un accès est réalisée (VPS ou K8s)."""
+    if a["env"] == "vps":
+        return (f"Le **blackbox-exporter** (conteneur du VPS) appelle `{a['probe']}` toutes les {SCRAPE_S} s, "
+                "à la demande du Prometheus du VPS : requête GET, réponse **HTTP 200** attendue en moins de 5 s. "
+                "La requête sort par l'adresse publique — DNS, Caddy (HTTPS), nginx, puis le service — "
+                "exactement le chemin d'un utilisateur. Un VPS éteint ne produit aucune mesure : "
+                "ce n'est jamais compté comme une coupure. Historique conservé 30 jours.")
+    return (f"Le **blackbox-exporter** (pod du cluster Kapsule) appelle `{a['probe']}` toutes les {SCRAPE_S} s, "
+            "à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. "
+            "La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. "
+            "Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché "
+            "« Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s).")
+
+
+ALERTLIST_DESC = d(
+    "Les règles d'alerte Grafana actuellement déclenchées (firing) ou en cours de confirmation (pending).",
+    "Grafana évalue ses 12 règles toutes les 1 à 2 min — 5 sur Prometheus (brute-force 401, RAM, disque, "
+    "réplicas et sonde Kapsule), 7 sur les logs Loki (429 nginx, erreurs de flow, alertes MLOps, CD en échec, "
+    "STOP, rollback). Chaque alerte déclenchée envoie un email (SMTP).",
+    "Vide = rien d'anormal. Le détail de chaque règle est dans la doc Monitoring.")
 
 
 # ── Briques de panneaux ───────────────────────────────────────────────────────
@@ -147,6 +186,11 @@ def timeseries(title: str, ds: dict, targets: list[dict], *, unit: str = "short"
     custom = {"drawStyle": "bars" if bars else "line", "lineWidth": 2, "fillOpacity": 60 if bars else 12,
               "showPoints": "never", "spanNulls": True,
               "stacking": {"mode": "normal" if stack else "none"}}
+    if bars:
+        # Un point à l'instant t compte ce qui s'est passé dans l'intervalle
+        # qui PRÉCÈDE t : la barre doit s'étendre avant t, sinon les barres
+        # « par jour » sont décalées d'un jour vers la droite.
+        custom["barAlignment"] = -1
     thr = steps((None, GREEN))
     if threshold_line is not None:
         custom["thresholdsStyle"] = {"mode": "line+area"}
@@ -182,8 +226,16 @@ def logs(title: str, expr: str, desc: str = "") -> dict:
         "type": "logs", "title": title, "datasource": LOKI, "description": desc,
         "targets": [target(LOKI, expr)],
         "options": {"showTime": True, "wrapLogMessage": True, "sortOrder": "Descending",
-                    "enableLogDetails": True, "dedupStrategy": "none", "prettifyLogMessage": False},
+                    "enableLogDetails": True, "dedupStrategy": "none", "prettifyLogMessage": False,
+                    "showLabels": False, "showCommonLabels": False},
     }
+
+
+def alertlist(desc: str = ALERTLIST_DESC) -> dict:
+    return {"type": "alertlist", "title": "Alertes actives", "description": desc, "options": {
+        "showOptions": "current", "maxItems": 10, "sortOrder": 1, "dashboardAlerts": False,
+        "alertName": "", "dashboardTitle": "", "tags": [],
+        "stateFilter": {"firing": True, "pending": True, "noData": False, "normal": False, "error": True}}}
 
 
 def text(content: str) -> dict:
@@ -197,6 +249,59 @@ LEVEL_MAP = [{"type": "value", "options": {"0": {"text": "OK", "color": GREEN},
                                            "1": {"text": "WARNING", "color": ORANGE},
                                            "2": {"text": "CRITICAL", "color": RED}}}]
 AVAIL_THR = steps((None, RED), (99, ORANGE), (99.9, GREEN))
+
+
+# ── Journal des flux : une phrase lisible par événement ───────────────────────
+# Les événements sont des logs logfmt (event=… / topic=…) émis par les flows
+# Prefect, le Cockpit (décision GO/STOP) et le CD GitHub Actions. Le panneau
+# les reformule en français (line_format) ; « CD GitHub terminé » est écarté
+# car il double « flow Prefect lancé », émis au même instant.
+FLOW_EVENTS = ('{service=~"prefect-worker|gradio|github-actions"} |~ '
+               '"event=(gate_open|gate_resolved|rollback|deploy_pipeline)|topic=(deploy_success|deploy_failure|'
+               'kapsule_success|kapsule_failure|no_champion|schema_validation|dvc_versioning_failed)"')
+
+_JOURNAL_TEMPLATE = (
+    '{{ $sha := trunc 7 (default "" .sha) }}{{ if eq $sha "-" }}{{ $sha = "" }}{{ end }}'
+    '{{ $trig := "" }}{{ if .tn }}{{ $trig = printf "T%s · " .tn }}{{ end }}'
+    '{{ $com := "" }}{{ if $sha }}{{ $com = printf "commit %s " $sha }}{{ end }}'
+    '{{ if eq .event "gate_open" }}🟡 GATE OUVERTE — {{$trig}}{{$com}}'
+    '{{ if and .rebuilt_services (ne .rebuilt_services "-") }}· images reconstruites : {{.rebuilt_services}} {{ end }}'
+    '→ en attente de GO / STOP dans le Cockpit'
+    '{{ else if eq .event "gate_resolved" }}{{ if eq .decision "GO" }}🟢 GO — {{$trig}}{{$com}}→ mise en production lancée'
+    '{{ else }}🔴 STOP — {{$trig}}{{$com}}→ annulé, la production reste inchangée{{ end }}'
+    '{{ else if eq .event "rollback" }}↩️ ROLLBACK — '
+    '{{ if eq .kind "docker_image" }}images Docker précédentes restaurées ({{.services}})'
+    '{{ else if eq .kind "model_alias" }}modèle @Production précédent restauré'
+    '{{ else if eq .kind "blueprint_git" }}blueprint remis à la version précédente'
+    '{{ else if eq .kind "kapsule" }}Kubernetes remis à la version précédente'
+    '{{ else }}{{.kind}}{{ end }}{{ if $sha }} · {{$com}}{{ end }}'
+    '{{ else if eq .event "deploy_pipeline" }}{{ if eq .status "ok" }}🚀 PR MERGÉE — CD GitHub Actions OK · {{$trig}}{{$com}}→ flow Prefect lancé'
+    '{{ else }}❌ CD GITHUB ACTIONS EN ÉCHEC — {{$com}}→ rien n\'est déployé'
+    '{{ if eq .reason "schema_sync" }} (synchronisation des flows Prefect){{ else if eq .reason "pipeline_failed" }} (build, scan Trivy ou déclenchement Prefect){{ end }}{{ end }}'
+    '{{ else if eq .topic "deploy_success" }}✅ EN PRODUCTION — {{$com}}'
+    '{{ if and .champion (ne .champion "-") }}· nouveau modèle {{.champion}} {{ end }}· tests fonctionnels OK'
+    '{{ else if eq .topic "deploy_failure" }}❌ DÉPLOIEMENT EN ÉCHEC — {{$com}}· '
+    '{{ if eq .reason "test_api" }}tests fonctionnels en échec{{ else if eq .reason "compose_up" }}démarrage des conteneurs impossible'
+    '{{ else if hasPrefix "smoke_test" .reason }}healthcheck en échec{{ else }}{{.reason}}{{ end }} → rollback automatique'
+    '{{ else if eq .topic "kapsule_success" }}☸️ KUBERNETES — déploiement OK'
+    '{{ else if eq .topic "kapsule_failure" }}❌ KUBERNETES — déploiement en échec → rollback Kubernetes'
+    '{{ else if eq .topic "no_champion" }}ℹ️ ENTRAÎNEMENT — aucun modèle meilleur que @Production → production inchangée'
+    '{{ else if eq .topic "schema_validation" }}⚠️ ETL — données {{.year}} : écart de schéma détecté'
+    '{{ else if eq .topic "dvc_versioning_failed" }}⚠️ ETL — versioning DVC en échec ({{.step}})'
+    '{{ else }}{{ __line__ }}{{ end }}'
+)
+FLOW_JOURNAL = (FLOW_EVENTS + ' !~ "stage=github_cd status=ok"'
+                + ' | regexp `trigger=(T|Trigger )(?P<tn>\\d)`'
+                + ' | regexp `(?P<kv>(event|topic)=.*)$` | line_format "{{.kv}}" | logfmt'
+                + ' | line_format `' + _JOURNAL_TEMPLATE + '`')
+JOURNAL_DESC = d(
+    "Les étapes de chaque mise en production, une phrase par événement, la plus récente en haut.",
+    "Chaque flow Prefect, le Cockpit (bouton GO/STOP) et le CD GitHub Actions écrivent un log structuré "
+    "(`event=…` ou `topic=…`) collecté dans Loki ; ce panneau le reformule en français.",
+    "Un déploiement normal se lit de bas en haut : 🚀 PR mergée (CD GitHub OK, flow Prefect lancé) → "
+    "🟡 gate ouverte (en attente de décision) → 🟢 GO → ✅ en production (tests fonctionnels OK). "
+    "Écarts possibles : 🔴 STOP (rien ne change), ❌ échec puis ↩️ rollback automatique. "
+    "T1 = nouvelles données, T2 = code, T3 = blueprint (modèle) ; commit = version Git déployée.")
 
 
 # ── Repères de déploiement (annotations Loki, sur toutes les courbes) ─────────
@@ -232,105 +337,208 @@ def dashboard(uid: str, title: str, grid: Grid, tags: list[str], desc: str, time
     }
 
 
+# ── Indicateurs de sonde, partagés par les dashboards d'accès et l'accueil ────
+def probe_status(a: dict, title: str, links=None) -> dict:
+    return stat(title, a["prom"], f'probe_success{{instance="{a["probe"]}"}}', mappings=UP_MAP,
+                thresholds=steps((None, RED), (1, GREEN)), no_value=OFF_TEXT if a["env"] == "k8s" else "N/A",
+                links=links, desc=d(
+                    f"L'accès **{a['short']}** répond-il en ce moment depuis Internet ?",
+                    probe_how(a) + " Valeur affichée : le résultat de la dernière sonde.",
+                    "UP (vert) = la dernière sonde a reçu HTTP 200 · DOWN (rouge) = erreur, timeout ou "
+                    "code ≠ 200 · gris = aucune mesure (machine éteinte)."))
+
+
+def probe_availability(a: dict, color_mode: str = "background") -> dict:
+    ps = f'probe_success{{instance="{a["probe"]}"}}'
+    return stat("Disponibilité", a["prom"], f"avg_over_time({ps}[$__range]) * 100", unit="percent", decimals=2,
+                thresholds=AVAIL_THR, no_value=OFF_TEXT if a["env"] == "k8s" else "N/A", color_mode=color_mode,
+                desc=d("Pourcentage de sondes réussies sur la période choisie en haut à droite.",
+                       probe_how(a) + " Calcul : moyenne de `probe_success` (1 = OK, 0 = KO) sur la période, × 100.",
+                       "Vert ≥ 99,9 % · orange ≥ 99 % · rouge en dessous. Repère : 99,9 % sur 7 jours = "
+                       "10 min d'arrêt au plus. Les périodes machine éteinte ne comptent ni pour ni contre."))
+
+
+def probe_p95(a: dict, color_mode: str = "background") -> dict:
+    return stat("Temps de réponse p95 (sonde)" if color_mode == "background" else "Temps de réponse p95", a["prom"],
+                f'quantile_over_time(0.95, probe_duration_seconds{{instance="{a["probe"]}"}}[$__range])',
+                unit="s", decimals=3, thresholds=steps((None, GREEN), (0.3, ORANGE), (1, RED)),
+                no_value=OFF_TEXT if a["env"] == "k8s" else "N/A", color_mode=color_mode,
+                desc=d("Temps de réponse vu d'un utilisateur : 95 % des sondes ont répondu plus vite que cette valeur.",
+                       probe_how(a) + " Durée mesurée par la sonde (`probe_duration_seconds`) : résolution DNS, "
+                       "connexion, négociation TLS et réponse du serveur ; puis 95e percentile sur la période.",
+                       "Vert < 300 ms (objectif) · orange < 1 s · rouge au-delà. Le p95 écarte les 5 % de mesures "
+                       "les plus lentes (pics isolés) sans masquer une dégradation durable."))
+
+
 # ── Modèle commun des 4 dashboards d'accès ────────────────────────────────────
 def access_dashboard(a: dict) -> dict:
     ds, job, probe = a["prom"], a["job"], a["probe"]
-    k8s = a["env"] == "k8s"
+    k8s, api = a["env"] == "k8s", a["kind"] == "api"
     off = OFF_TEXT if k8s else "N/A"
     ps = f'probe_success{{instance="{probe}"}}'
     real = f'job="{job}", traffic="real"'
+    prom_name = "Prometheus du cluster Kapsule (lu via Tailscale)" if k8s else "Prometheus du VPS"
+    counted = (f"Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` "
+               f"et relevée toutes les {SCRAPE_S} s par le {prom_name}. Étiquette `traffic` : **test** si la "
+               "requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de "
+               "drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon.")
     g = Grid()
 
     g.add(text(
         f"### {a['title']}\n"
         f"Accès public **{a['url']}** — "
-        + ("API de prédiction (applications clientes, jeton JWT)" if a["kind"] == "api"
+        + ("API de prédiction (applications clientes, jeton JWT)" if api
            else "Cockpit public Gradio (utilisateurs finaux)")
-        + (" · **Kubernetes Kapsule**, allumé à la demande : « Cluster éteint » = état normal hors démonstration."
-           if k8s else " · **VPS**.")
-        + " Tous les chiffres portent sur la période choisie en haut à droite ; "
-          "trafic de test (sondes, tests fonctionnels) exclu des compteurs d'usage. "
-          "La sonde tourne sur le VPS : un VPS arrêté (la nuit) n'apparaît pas comme une coupure."), 24, 3)
+        + (" · **Kubernetes Kapsule**, allumé à la demande : « Cluster éteint » = état normal hors démonstration. "
+           "Sonde exécutée dans le cluster."
+           if k8s else " · **VPS**. Sonde exécutée sur le VPS : un VPS arrêté (la nuit) n'apparaît pas comme une coupure.")
+        + " Chiffres sur la période choisie en haut à droite ; le trafic de test est exclu des compteurs d'usage. "
+          "Survoler l'icône (i) de chaque panneau pour sa définition."), 24, 3)
 
     # A — Est-ce que ça marche ?
     g.row("A · Est-ce que ça marche ?  (sonde bout-en-bout par l'adresse publique HTTPS)")
-    g.add(stat("Statut actuel", ds, ps, mappings=UP_MAP, thresholds=steps((None, RED), (1, GREEN)),
-               no_value=off, desc="Dernier résultat de la sonde blackbox (toutes les 15 s)."), 5, 4)
-    g.add(stat("Disponibilité", ds, f"avg_over_time({ps}[$__range]) * 100", unit="percent", decimals=2,
-               thresholds=AVAIL_THR, no_value=off), 5, 4)
-    g.add(stat("Temps d'indisponibilité", ds, f"(1 - avg_over_time({ps}[$__range])) * $__range_s", unit="s",
-               thresholds=steps((None, GREEN), (60, ORANGE), (600, RED)), no_value=off), 5, 4)
+    g.add(probe_status(a, "Statut actuel"), 5, 4)
+    g.add(probe_availability(a), 5, 4)
+    g.add(stat("Temps d'indisponibilité", ds,
+               f"(count_over_time({ps}[$__range]) - sum_over_time({ps}[$__range])) * {SCRAPE_S}", unit="s",
+               thresholds=steps((None, GREEN), (60, ORANGE), (600, RED)), no_value=off,
+               desc=d("Durée cumulée pendant laquelle l'accès ne répondait pas, sur la période.",
+                      probe_how(a) + f" Calcul : nombre de sondes en échec × {SCRAPE_S} s (intervalle entre deux sondes).",
+                      "Vert < 1 min · orange < 10 min · rouge au-delà. Inclut les redémarrages planifiés "
+                      "(repères orange sur les courbes) : c'est le temps réellement vécu par un utilisateur.")), 5, 4)
     g.add(stat("Coupures", ds, f"ceil(changes({ps}[$__range]) / 2)", decimals=0,
                thresholds=steps((None, GREEN), (1, ORANGE)), no_value=off,
-               desc="Nombre de passages UP → DOWN sur la période."), 4, 4)
+               desc=d("Nombre d'interruptions distinctes sur la période.",
+                      probe_how(a) + " Calcul : nombre de changements d'état UP ↔ DOWN, divisé par deux "
+                      "(une coupure = une descente + une remontée).",
+                      "0 = aucune interruption. Une coupure isolée pendant un déploiement est normale "
+                      "(redémarrage du conteneur) ; plusieurs coupures sans déploiement = à investiguer.")), 4, 4)
     g.add(stat("Certificat TLS — jours restants", ds,
                f'(probe_ssl_earliest_cert_expiry{{instance="{probe}"}} - time()) / 86400', unit="d", decimals=0,
-               thresholds=steps((None, RED), (14, ORANGE), (30, GREEN)), no_value=off), 5, 4)
-    g.add(up_down_timeline("Frise de disponibilité", ds, [(ps, "sonde")],
-                           desc="Vert = accessible depuis Internet, rouge = coupure (planifiée ou non)."), 24, 4)
+               thresholds=steps((None, RED), (14, ORANGE), (30, GREEN)), no_value=off,
+               desc=d("Jours avant l'expiration du certificat HTTPS présenté aux utilisateurs.",
+                      probe_how(a) + " La sonde lit la date d'expiration du certificat pendant la négociation TLS. "
+                      "Certificat Let's Encrypt (90 jours) renouvelé automatiquement par Caddy ~30 jours avant l'échéance.",
+                      "Vert ≥ 30 j · orange ≥ 14 j · rouge en dessous = le renouvellement automatique a échoué.")), 5, 4)
+    g.add(up_down_timeline("Frise de disponibilité", ds, [(ps, "sonde")], desc=d(
+        "L'historique UP / DOWN de l'accès sur la période.",
+        probe_how(a),
+        "Vert = accessible depuis Internet · rouge = coupure (planifiée ou non) · vide = machine éteinte, "
+        "pas de mesure. Les repères verticaux indiquent les GO, rollbacks et redémarrages planifiés.")), 24, 4)
 
     # B — Est-ce que c'est rapide ?
     g.row("B · Est-ce que c'est rapide ?")
-    g.add(stat("Temps de réponse p95 (sonde)", ds, f"quantile_over_time(0.95, probe_duration_seconds{{instance=\"{probe}\"}}[$__range])",
-               unit="s", decimals=3, thresholds=steps((None, GREEN), (0.3, ORANGE), (1, RED)), no_value=off,
-               desc="Temps de réponse vu d'un utilisateur (DNS + TLS + serveur). Objectif : < 300 ms."), 6, 7)
+    g.add(probe_p95(a), 6, 7)
     g.add(timeseries("Temps de réponse vu de l'utilisateur (objectif < 300 ms)", ds,
                      [target(ds, f'probe_duration_seconds{{instance="{probe}"}}', "sonde bout-en-bout")],
-                     unit="s", threshold_line=0.3), 9, 7)
-    if a["kind"] == "api":
+                     unit="s", threshold_line=0.3, desc=d(
+                         "L'évolution du temps de réponse mesuré par la sonde, point par point.",
+                         probe_how(a) + " Chaque point = durée totale d'une sonde (DNS + TLS + réponse).",
+                         "La zone rouge marque l'objectif de 300 ms. Un pic isolé est normal (redémarrage, "
+                         "chargement du modèle) ; une montée durable signale une dégradation.")), 9, 7)
+    if api:
         lat = [target(ds, f'histogram_quantile({q}, sum by (le) (rate(api_request_duration_seconds_bucket{{job="{job}", endpoint="/predict"}}[$__rate_interval])))', f"p{int(q*100)}", ref=r)
                for q, r in ((0.5, "A"), (0.95, "B"))]
-        g.add(timeseries("Calcul d'une prédiction (serveur)", ds, lat, unit="s",
-                         desc="Durée de traitement de POST /predict côté API (hors réseau)."), 9, 7)
+        g.add(timeseries("Calcul d'une prédiction (serveur)", ds, lat, unit="s", desc=d(
+            "Le temps que met l'API à calculer une prédiction (POST /predict), réseau exclu.",
+            f"L'API chronomètre chaque requête (histogramme `api_request_duration_seconds`), relevé toutes les "
+            f"{SCRAPE_S} s par le {prom_name}. p50 = médiane, p95 = 95 % des requêtes plus rapides.",
+            "Courbe vide = aucune prédiction sur la période. Comparer au temps vu de l'utilisateur : "
+            "l'écart = réseau + TLS + proxys.")), 9, 7)
     else:
         lat = [target(ds, f'histogram_quantile(0.95, sum by (le) (rate(api_request_duration_seconds_bucket{{job="{job}", endpoint="/"}}[$__rate_interval])))', "p95")]
-        g.add(timeseries("Chargement de la page (serveur)", ds, lat, unit="s",
-                         desc="Durée de service de la page d'accueil du Cockpit côté serveur."), 9, 7)
+        g.add(timeseries("Chargement de la page (serveur)", ds, lat, unit="s", desc=d(
+            "Le temps que met le Cockpit à servir sa page d'accueil, réseau exclu.",
+            f"Le Cockpit chronomètre chaque requête (histogramme `api_request_duration_seconds`, route `/`), "
+            f"relevé toutes les {SCRAPE_S} s par le {prom_name}. p95 = 95 % des chargements plus rapides.",
+            "Courbe vide = aucune visite sur la période.")), 9, 7)
 
     # C — Est-ce utilisé, et sans erreur ?
     g.row("C · Est-ce utilisé, et sans erreur ?")
+    pred_how = ("Chaque prédiction incrémente le compteur `api_predictions_total` (étiquette `result` = classe "
+                "prédite). " + counted)
     g.add(stat("Prédictions réelles", ds, f"sum(increase(api_predictions_total{{{real}}}[$__range])) or vector(0)",
-               decimals=0, desc="Prédictions des vrais utilisateurs — sondes et tests fonctionnels exclus."), 5, 4)
+               decimals=0, desc=d("Le nombre de prédictions demandées par de vrais utilisateurs sur la période.",
+                                  pred_how, "Sondes, tests fonctionnels de déploiement et simulation de drift sont "
+                                  "exclus : ce chiffre reflète l'usage réel.")), 5, 4)
     g.add(stat("Prédictions de test", ds, f'sum(increase(api_predictions_total{{job="{job}", traffic="test"}}[$__range])) or vector(0)',
-               decimals=0, thresholds=steps((None, GREY)), desc="Tests fonctionnels de déploiement et simulation de drift."), 4, 4)
+               decimals=0, thresholds=steps((None, GREY)),
+               desc=d("Le nombre de prédictions faites par les tests automatiques sur la période.",
+                      pred_how, "Chaque déploiement joue des tests fonctionnels qui font de vraies prédictions : "
+                      "ce compteur prouve qu'ils ont tourné. Ces prédictions ne sont pas enregistrées en base, "
+                      "donc n'influencent pas le calcul du drift.")), 4, 4)
     g.add(stat("Erreurs serveur (5xx)", ds, f'sum(increase(api_requests_total{{job="{job}", status=~"5.."}}[$__range])) or vector(0)',
-               decimals=0, thresholds=steps((None, GREEN), (1, RED))), 5, 4)
-    if a["kind"] == "api":
+               decimals=0, thresholds=steps((None, GREEN), (1, RED)),
+               desc=d("Le nombre de réponses en erreur serveur (HTTP 500 à 599) sur la période, tout trafic confondu.",
+                      counted, "0 attendu. Une erreur 5xx = une exception non gérée dans le service : "
+                      "voir la section E (logs d'erreur) pour la cause.")), 5, 4)
+    if api:
+        limits = ("20 requêtes/min par client (rafale 10) et 60/min au total (rafale 30)" if not k8s
+                  else "20 requêtes/min par client (rafale 5)")
         g.add(stat("Refus anti-abus (429)", LOKI,
                    f'sum(count_over_time({a["nginx"]} |= "POST /predict" |= "\\" 429 " [$__range])) or vector(0)',
                    decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)),
-                   desc="Requêtes refusées par nginx (limite par client 20/min et globale 60/min) — lues dans les logs d'accès nginx."), 5, 4)
+                   desc=d("Le nombre de prédictions refusées par la protection anti-abus sur la période.",
+                          f"nginx limite `POST /predict` à {limits} et répond **HTTP 429** au-delà, sans "
+                          "transmettre à l'API. Promtail collecte les logs d'accès nginx dans Loki ; on compte "
+                          "les lignes `POST /predict` en 429.",
+                          "Quelques refus = normal (le test anti-abus du Cockpit en provoque volontairement). "
+                          "Plus de 50 en 5 min déclenche l'alerte « DDoS / rate-limit ».")), 5, 4)
         g.add(stat("Accès refusés sans jeton (401)", ds, f'sum(increase(api_requests_total{{{real}, status="401"}}[$__range])) or vector(0)',
-                   decimals=0, thresholds=steps((None, GREEN), (20, ORANGE))), 5, 4)
+                   decimals=0, thresholds=steps((None, GREEN), (20, ORANGE)),
+                   desc=d("Le nombre de requêtes réelles rejetées faute de jeton JWT valide sur la période.",
+                          counted + " L'API répond **HTTP 401** si le jeton est absent, invalide ou expiré.",
+                          "Quelques 401 = client mal configuré. Plus de 20 en 5 min déclenche l'alerte "
+                          "« Brute force détecté ».")), 5, 4)
     else:
         g.add(stat("Erreurs fonctionnelles", ds, f'sum(increase(app_functional_errors_total{{job="{job}"}}[$__range])) or vector(0)',
                    decimals=0, thresholds=steps((None, GREEN), (1, RED)),
-                   desc="Predict / What-if / Points Noirs en erreur — invisibles dans les 5xx car Gradio répond HTTP 200."), 10, 4)
+                   desc=d("Le nombre de fois où une fonction du Cockpit (Prédiction, What-if, Points Noirs) a "
+                          "échoué sur la période.",
+                          "Chaque fonction est instrumentée : une exception, ou un message « Erreur… » renvoyé à "
+                          "l'utilisateur, incrémente `app_functional_errors_total` (étiquette `feature`). "
+                          f"Relevé toutes les {SCRAPE_S} s par le {prom_name}.",
+                          "0 attendu. Ces erreurs sont invisibles dans les 5xx : Gradio répond HTTP 200 même "
+                          "quand la fonction échoue.")), 10, 4)
     g.add(timeseries("Prédictions — réelles vs test", ds,
                      [target(ds, f'sum by (traffic) (increase(api_predictions_total{{job="{job}"}}[$__interval]))', "{{traffic}}")],
-                     bars=True, stack=True), 12, 7)
-    if a["kind"] == "api":
+                     bars=True, stack=True, desc=d(
+                         "Le nombre de prédictions par intervalle de temps, en séparant usage réel et tests.",
+                         pred_how, "real = vrais utilisateurs · test = tests automatiques. Les barres de test "
+                         "apparaissent à chaque déploiement.")), 12, 7)
+    if api:
         g.add(timeseries("Requêtes par statut HTTP", ds,
                          [target(ds, f'sum by (status) (rate(api_requests_total{{job="{job}", endpoint="/predict"}}[$__rate_interval]))', "{{status}}")],
-                         unit="reqps"), 12, 7)
+                         unit="reqps", desc=d(
+                             "Le débit de requêtes sur POST /predict, par code de réponse HTTP (requêtes/seconde).",
+                             counted, "200 = prédiction servie · 401 = sans jeton · 422 = données invalides · "
+                             "5xx = erreur serveur. Les 429 n'apparaissent pas ici : nginx les refuse avant l'API.")), 12, 7)
     else:
         g.add(timeseries("Erreurs fonctionnelles par fonctionnalité", ds,
                          [target(ds, f'sum by (feature) (increase(app_functional_errors_total{{job="{job}"}}[$__interval]))', "{{feature}}")],
-                         bars=True), 12, 7)
+                         bars=True, desc=d(
+                             "Les erreurs fonctionnelles du Cockpit dans le temps, par fonction.",
+                             "Compteur `app_functional_errors_total` (voir « Erreurs fonctionnelles »).",
+                             "predict = Prédiction · whatif = What-if · heatmap = Points Noirs. Vide = aucune erreur.")), 12, 7)
 
     # D — Que répond le modèle ?
     g.row("D · Que répond le modèle ?")
     g.add(stat("Part de prédictions « prioritaires »", ds,
                f'sum(increase(api_predictions_total{{{real}, result="1"}}[$__range])) / sum(increase(api_predictions_total{{{real}}}[$__range])) * 100',
                unit="percent", decimals=1, no_value="pas de trafic réel", value_size=34,
-               desc="Accidents prédits graves (blessé hospitalisé ou tué) parmi les prédictions réelles."), 12, 4)
-    if a["kind"] == "api" and not k8s:
-        g.add(stat("Modèle servi", ds, "mlops_model_info", text_mode="name", legend="{{model}} v{{version}}",
-                   thresholds=steps((None, BLUE)), no_value="—"), 12, 4)
-    else:
-        g.add(stat("Modèle servi", PROM, "mlops_model_info", text_mode="name", legend="{{model}} v{{version}}",
-                   thresholds=steps((None, BLUE)), no_value="—",
-                   desc="Alias @Production du registre MLflow (VPS) — K8s sert la même version, exportée à chaque déploiement."), 12, 4)
+               desc=d("Parmi les prédictions réelles, la part classée « prioritaire » (accident grave prédit : "
+                      "blessé hospitalisé ou tué).",
+                      "Rapport entre les prédictions réelles de classe 1 et toutes les prédictions réelles "
+                      "(compteur `api_predictions_total`, étiquette `result`), sur la période.",
+                      "À comparer au taux d'accidents graves des données d'entraînement : un écart durable peut "
+                      "révéler un changement du trafic (voir le drift dans Flux MLOps).")), 12, 4)
+    model_desc = d("Le modèle et la version actuellement en production (alias @Production du registre MLflow).",
+                   f"À chaque relevé Prometheus ({SCRAPE_S} s), l'API du VPS interroge MLflow et expose "
+                   "`mlops_model_info{model, version}`."
+                   + (" Le cluster K8s sert la même version : elle lui est exportée à chaque déploiement." if k8s else ""),
+                   "Change après un GO de Trigger 1 ou 3 qui a promu un nouveau champion, ou après un rollback.")
+    g.add(stat("Modèle servi", PROM, "mlops_model_info", text_mode="name", legend="{{model}} v{{version}}",
+               thresholds=steps((None, BLUE)), no_value="—", desc=model_desc), 12, 4)
 
     # K8s — tient-il la charge ?
     if k8s:
@@ -339,15 +547,29 @@ def access_dashboard(a: dict) -> dict:
         g.add(timeseries(f"Pods {dep} disponibles / demandés", ds, [
             target(ds, f'kube_deployment_status_replicas_available{{namespace="cac-mlops", deployment="{dep}"}}', "disponibles", ref="A"),
             target(ds, f'kube_deployment_spec_replicas{{namespace="cac-mlops", deployment="{dep}"}}', "demandés (HPA)", ref="B"),
-        ], desc="Jamais 0 disponible pendant un déploiement (rolling update)."), 12, 7)
+        ], desc=d(f"Le nombre de pods `{dep}` prêts à servir, comparé au nombre demandé.",
+                  "kube-state-metrics expose l'état des objets Kubernetes, relevé toutes les "
+                  f"{SCRAPE_S} s par le Prometheus du cluster. « Demandés » est fixé par l'autoscaler (HPA) "
+                  "selon la charge CPU.",
+                  "Les deux courbes doivent se superposer. Pendant un déploiement (rolling update), "
+                  "« disponibles » ne descend jamais à 0.")), 12, 7)
         g.add(stat("Redémarrages de pods", ds,
                    f'sum(increase(kube_pod_container_status_restarts_total{{namespace="cac-mlops", pod=~"{dep}-.*"}}[$__range])) or vector(0)',
-                   decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)), no_value=off), 12, 7)
+                   decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)), no_value=off,
+                   desc=d(f"Le nombre de redémarrages des conteneurs `{dep}` sur la période.",
+                          "kube-state-metrics compte les redémarrages décidés par Kubernetes (crash, sonde de "
+                          "vie en échec, mémoire dépassée).",
+                          "0 attendu. Un redémarrage = Kubernetes a réparé seul (auto-guérison) ; "
+                          "des redémarrages répétés = à investiguer dans les logs.")), 12, 7)
 
     # E — Que s'est-il passé ?
     g.row("E · Que s'est-il passé ?  (repères verticaux : GO · rollback · redémarrage planifié)")
-    g.add(logs("Erreurs de cet accès", f'{a["logs"]} |~ "\\b(ERROR|CRITICAL)\\b|Traceback"',
-               desc="Seulement les lignes d'erreur — pas le flux de logs complet."), 24, 9)
+    g.add(logs("Erreurs de cet accès", f'{a["logs"]} |~ "\\b(ERROR|CRITICAL)\\b|Traceback"', desc=d(
+        "Les lignes de log d'erreur du service, la plus récente en haut.",
+        "Promtail collecte la sortie de chaque conteneur" + (" (DaemonSet dans le cluster, relayé vers le Loki "
+                                                            "du VPS par le loki-forwarder via Tailscale)" if k8s else "")
+        + " dans Loki ; on ne garde que les lignes ERROR, CRITICAL ou Traceback.",
+        "Vide = aucune erreur. Déplier une ligne pour voir son contexte.")), 24, 9)
 
     return dashboard(a["uid"], a["title"], g, ["cac-access", a["env"]],
                      "Disponibilité, performance, usage et erreurs de l'accès, vus de l'utilisateur.")
@@ -357,41 +579,32 @@ def access_dashboard(a: dict) -> dict:
 def home_dashboard() -> dict:
     g = Grid()
     g.add(text("## CAC MLOps — Vue d'ensemble\nLes 4 accès publics, le modèle en production et les derniers événements. "
-               "Cliquer sur un statut ouvre le dashboard de l'accès."), 24, 3)
+               "Cliquer sur un statut ouvre le dashboard de l'accès ; survoler l'icône (i) pour la définition d'un indicateur."), 24, 3)
     g.row("Accès publics — sonde bout-en-bout, période choisie")
     for a in ACCESSES:
-        ds, ps = a["prom"], f'probe_success{{instance="{a["probe"]}"}}'
-        off = OFF_TEXT if a["env"] == "k8s" else "N/A"
-        link = [{"title": f"Ouvrir {a['title']}", "url": f"/d/{a['uid']}"}]
-        g.add(stat(a["short"], ds, ps, mappings=UP_MAP, thresholds=steps((None, RED), (1, GREEN)),
-                   no_value=off, links=link), 6, 4)
+        g.add(probe_status(a, a["short"], links=[{"title": f"Ouvrir {a['title']}", "url": f"/d/{a['uid']}"}]), 6, 4)
     for a in ACCESSES:
-        ds, ps = a["prom"], f'probe_success{{instance="{a["probe"]}"}}'
-        g.add(stat("Disponibilité", ds, f"avg_over_time({ps}[$__range]) * 100", unit="percent", decimals=2,
-                   thresholds=AVAIL_THR, no_value=OFF_TEXT if a["env"] == "k8s" else "N/A", color_mode="value"), 6, 3)
+        g.add(probe_availability(a, color_mode="value"), 6, 3)
     for a in ACCESSES:
-        g.add(stat("Temps de réponse p95", a["prom"],
-                   f'quantile_over_time(0.95, probe_duration_seconds{{instance="{a["probe"]}"}}[$__range])',
-                   unit="s", decimals=3, thresholds=steps((None, GREEN), (0.3, ORANGE), (1, RED)),
-                   no_value=OFF_TEXT if a["env"] == "k8s" else "N/A", color_mode="value"), 6, 3)
+        g.add(probe_p95(a, color_mode="value"), 6, 3)
 
     g.row("Modèle & données")
     g.add(stat("Modèle @Production", PROM, "mlops_model_info", text_mode="name", legend="{{model}} v{{version}}",
-               thresholds=steps((None, BLUE)), no_value="aucun"), 6, 4)
+               thresholds=steps((None, BLUE)), no_value="aucun", desc=d(
+                   "Le modèle et la version actuellement en production (alias @Production du registre MLflow).",
+                   f"À chaque relevé Prometheus ({SCRAPE_S} s), l'API interroge MLflow et expose "
+                   "`mlops_model_info{model, version}`.",
+                   "Change après un GO qui a promu un nouveau champion, ou après un rollback.")), 6, 4)
     g.add(stat("F1 du dernier champion", PROM, 'cac_mlops_train_metric{metric="f1"}', decimals=3,
-               thresholds=steps((None, RED), (0.60, GREEN)), desc="Seuil minimum de promotion : 0,60."), 6, 4)
+               thresholds=steps((None, RED), (0.60, GREEN)), desc=TRAIN_METRIC_DESC["f1"]), 6, 4)
     g.add(stat("Drift des données (dernier cycle)", PROM, "cac_mlops_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—"), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 6, 4)
     g.add(stat("Qualité des données (dernier ETL)", PROM, "cac_mlops_data_quality_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—"), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DATA_QUALITY_DESC), 6, 4)
 
     g.row("Alertes et derniers événements")
-    g.add({"type": "alertlist", "title": "Alertes actives", "options": {
-        "showOptions": "current", "maxItems": 10, "sortOrder": 1, "dashboardAlerts": False,
-        "alertName": "", "dashboardTitle": "", "tags": [],
-        "stateFilter": {"firing": True, "pending": True, "noData": False, "normal": False, "error": True}}}, 8, 9)
-    g.add(logs("Derniers événements du pipeline", FLOW_EVENTS,
-               desc="Gates, déploiements, rollbacks, pipelines CD — détail dans Flux MLOps."), 16, 9)
+    g.add(alertlist(), 8, 9)
+    g.add(logs("Derniers événements du pipeline", FLOW_JOURNAL, desc=JOURNAL_DESC), 16, 9)
     # uid historique conservé : Grafana rattache le fichier home.json à ce uid
     # en base ; le changer fait échouer la mise à jour en boucle
     # ("could not resolve dashboards:uid:... Dashboard not found").
@@ -399,9 +612,35 @@ def home_dashboard() -> dict:
                      "Page d'accueil : santé des 4 accès publics, modèle, alertes, événements.", "now-24h")
 
 
-FLOW_EVENTS = ('{service=~"prefect-worker|gradio|github-actions"} |~ '
-               '"event=(gate_open|gate_resolved|rollback|deploy_pipeline)|topic=(deploy_success|deploy_failure|'
-               'kapsule_success|kapsule_failure|no_champion|schema_validation|dvc_versioning_failed)"')
+# ── Descriptions partagées (modèle, drift, qualité) ───────────────────────────
+_REPORT_HOW = ("Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé "
+               f"Prometheus ({SCRAPE_S} s) et l'expose en métrique. La valeur reste celle du dernier rapport "
+               "jusqu'au cycle suivant.")
+KPI_MIN = {"f1": 0.60, "auc": 0.77, "recall": 0.58, "accuracy": 0.72}
+KPI_WHAT = {
+    "f1": "le F1-score (équilibre entre précision et rappel sur la classe « grave »)",
+    "auc": "l'AUC ROC (capacité à classer un accident grave au-dessus d'un non grave, 0,5 = hasard, 1 = parfait)",
+    "recall": "le rappel (part des accidents réellement graves que le modèle détecte)",
+    "accuracy": "l'accuracy (part de prédictions correctes, toutes classes confondues)",
+}
+TRAIN_METRIC_DESC = {
+    m: d(f"Pour le champion du dernier entraînement, {KPI_WHAT[m]}.",
+         "Calculé par le flow d'entraînement sur l'année la plus récente, jamais vue à l'entraînement "
+         "(split temporel), puis exposé par l'API (`cac_mlops_train_metric`).",
+         f"Seuil minimum de promotion : {KPI_MIN[m]}. En dessous (rouge), le candidat n'est pas promu. "
+         "Un candidat doit aussi faire mieux que le modèle en production.")
+    for m in KPI_MIN
+}
+DRIFT_LEVEL_DESC = d(
+    "L'écart entre les données de la dernière année chargée et les données d'entraînement du modèle.",
+    "Evidently compare la distribution de chaque variable (test statistique par variable). " + _REPORT_HOW,
+    "OK = moins de 10 % des variables ont dérivé · WARNING = plus de 10 % · CRITICAL = plus de 25 % "
+    "(le modèle risque de se dégrader : un réentraînement est recommandé).")
+DATA_QUALITY_DESC = d(
+    "La qualité des données brutes ONISR du dernier ETL : doublons et valeurs manquantes par table.",
+    "Contrôle Evidently exécuté par le flow ETL après chargement. " + _REPORT_HOW,
+    "OK = rien à signaler · WARNING = anomalies au-delà des seuils. Jamais bloquant : les anomalies connues "
+    "sont auto-corrigées en amont (voir « Auto-corrections ETL »).")
 
 
 # ── Flux MLOps ────────────────────────────────────────────────────────────────
@@ -409,70 +648,121 @@ def flux_dashboard() -> dict:
     g = Grid()
     g.add(text("## Flux MLOps\nDu merge d'une PR (ou de nouvelles données) jusqu'à la production : "
                "CD GitHub Actions → flow Prefect → gate GO/STOP → VPS → tests fonctionnels → Kubernetes. "
-               "Source : événements journalisés dans Loki (`event=…`)."), 24, 3)
+               "Source : événements journalisés dans Loki (`event=…`). Survoler l'icône (i) pour la définition d'un indicateur."), 24, 3)
 
     def cnt(expr: str) -> str:
         return f"sum(count_over_time({expr} [$__range])) or vector(0)"
 
+    loki_how = ("Le flow Prefect (ou le Cockpit, ou le CD GitHub Actions) écrit un log structuré à chaque étape ; "
+                "Promtail le collecte dans Loki et ce panneau compte les lignes correspondantes sur la période.")
     worker = '{service="prefect-worker"}'
     gates = '{service=~"prefect-worker|gradio"}'
     g.row("Déploiements — période choisie")
-    for title, expr, thr in [
-        ("Gates ouvertes", f'{gates} |= "event=gate_open"', steps((None, BLUE))),
-        ("GO", f'{gates} |= "event=gate_resolved" |= "decision=GO"', steps((None, GREEN))),
-        ("STOP", f'{gates} |= "event=gate_resolved" |= "decision=STOP"', steps((None, GREEN), (1, ORANGE))),
-        ("Déploiements réussis", f'{worker} |= "topic=deploy_success"', steps((None, GREEN))),
-        ("Rollbacks", f'{worker} |= "event=rollback"', steps((None, GREEN), (1, RED))),
-        ("Pipelines CD en échec", '{service="github-actions"} |= "event=deploy_pipeline" |= "status=failed"', steps((None, GREEN), (1, RED))),
+    for title, expr, thr, what, read in [
+        ("Gates ouvertes", f'{gates} |= "event=gate_open"', steps((None, BLUE)),
+         "Le nombre de mises en production proposées : chaque merge sur main (T2, T3) ou nouvelle donnée (T1) "
+         "prépare un déploiement puis s'arrête à la gate, en attente d'une décision humaine.",
+         "Gates ouvertes = GO + STOP + gates encore en attente ou expirées (24 h)."),
+        ("GO", f'{gates} |= "event=gate_resolved" |= "decision=GO"', steps((None, GREEN)),
+         "Le nombre de déploiements validés par un humain (bouton GO du Cockpit).",
+         "Chaque GO lance la mise en production sur le VPS, les tests fonctionnels puis Kubernetes."),
+        ("STOP", f'{gates} |= "event=gate_resolved" |= "decision=STOP"', steps((None, GREEN), (1, ORANGE)),
+         "Le nombre de déploiements refusés par un humain (bouton STOP du Cockpit).",
+         "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente."),
+        ("Déploiements réussis", f'{worker} |= "topic=deploy_success"', steps((None, GREEN)),
+         "Le nombre de mises en production terminées avec succès, tests fonctionnels compris.",
+         "Idéalement égal au nombre de GO. L'écart = déploiements en échec (voir Rollbacks)."),
+        ("Rollbacks", f'{worker} |= "event=rollback"', steps((None, GREEN), (1, RED)),
+         "Le nombre de retours automatiques à la version précédente après un échec.",
+         "Un rollback = un déploiement a échoué (healthcheck ou tests fonctionnels) et la version précédente "
+         "a été restaurée sans intervention. Déclenche une alerte email."),
+        ("Pipelines CD en échec", '{service="github-actions"} |= "event=deploy_pipeline" |= "status=failed"', steps((None, GREEN), (1, RED)),
+         "Le nombre d'exécutions du CD GitHub Actions en échec (build, scan Trivy, synchronisation Prefect).",
+         "Un CD en échec ne touche jamais la production : aucune gate n'est ouverte. Déclenche une alerte email."),
     ]:
-        g.add(stat(title, LOKI, cnt(expr), thresholds=thr, decimals=0), 4, 4)
+        g.add(stat(title, LOKI, cnt(expr), thresholds=thr, decimals=0, desc=d(what, loki_how, read)), 4, 4)
     g.add(timeseries("Décisions à la gate par jour", LOKI, [
         target(LOKI, f'sum by (decision) (count_over_time({gates} |= "event=gate_resolved" | logfmt [1d]))', "{{decision}}")],
-        bars=True, stack=True, interval="1d"), 12, 8)
+        bars=True, stack=True, interval="1d", desc=d(
+            "Le nombre de GO et de STOP par jour.", loki_how, "Vert = GO · une barre STOP = déploiement refusé.")), 12, 8)
     g.add(timeseries("Rollbacks et échecs par jour", LOKI, [
         target(LOKI, f'sum(count_over_time({worker} |= "event=rollback" [1d]))', "rollbacks", ref="A"),
         target(LOKI, 'sum(count_over_time({service="github-actions"} |= "status=failed" [1d]))', "CD en échec", ref="B")],
-        bars=True, interval="1d"), 12, 8)
-    g.add(logs("Journal des flux (le plus récent en haut)", FLOW_EVENTS,
-               desc="trigger=T1/T2/T3 · sha = commit déployé · decision=GO/STOP · topic = résultat."), 24, 10)
+        bars=True, interval="1d", desc=d(
+            "Le nombre de rollbacks automatiques et de CD GitHub en échec par jour.", loki_how,
+            "Vide = aucun incident de déploiement.")), 12, 8)
+    g.add(logs("Journal des flux (le plus récent en haut)", FLOW_JOURNAL, desc=JOURNAL_DESC), 24, 10)
 
     g.row("Données — ETL (Trigger 1)")
     g.add(stat("Auto-corrections ETL", LOKI, cnt(f'{worker} |~ "\\\\[AUTO_CORRECTED\\\\]|event=auto_corrected"'),
-               decimals=0, thresholds=steps((None, GREEN)),
-               desc="Anomalies connues corrigées automatiquement, sans alerte (cf. Catalogue ETL)."), 6, 4)
+               decimals=0, thresholds=steps((None, GREEN)), desc=d(
+                   "Le nombre d'anomalies de données connues corrigées automatiquement par l'ETL.",
+                   "Chaque correction écrit `[AUTO_CORRECTED]` dans les logs du flow ETL ; Loki les compte.",
+                   "Vert quelle que soit la valeur : une correction automatique n'est pas un incident. "
+                   "La liste des corrections est dans le Catalogue ETL.")), 6, 4)
     g.add(stat("Alertes qualité / schéma", LOKI, cnt(f'{worker} |= "topic=schema_validation"'),
-               decimals=0, thresholds=steps((None, GREEN), (1, ORANGE))), 6, 4)
+               decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)), desc=d(
+                   "Le nombre de fichiers ONISR dont le schéma s'écarte de l'attendu après auto-correction.",
+                   "Le flow ETL valide chaque fichier (colonnes, types) et logge `topic=schema_validation` "
+                   "en cas d'écart résiduel ; Loki les compte.",
+                   "0 attendu. Sinon, voir le journal : l'année concernée est indiquée.")), 6, 4)
     g.add(stat("Échecs de versioning DVC", LOKI, cnt(f'{worker} |= "topic=dvc_versioning_failed"'),
-               decimals=0, thresholds=steps((None, GREEN), (1, ORANGE))), 6, 4)
+               decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)), desc=d(
+                   "Le nombre d'échecs de versionnage des données (DVC + Git) après un ETL.",
+                   "Après chargement, l'ETL versionne les données (dvc add, push S3, commit Git) ; "
+                   "un échec logge `topic=dvc_versioning_failed` et déclenche une alerte.",
+                   "0 attendu. Les données restent utilisables, mais leur version n'est pas tracée.")), 6, 4)
     g.add(stat("Qualité des données (dernier ETL)", PROM, "cac_mlops_data_quality_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—"), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DATA_QUALITY_DESC), 6, 4)
 
     g.row("Modèle — dernier entraînement")
     g.add(stat("Champion", PROM, "cac_mlops_train_info", text_mode="name", legend="{{algorithm}} · données {{year}}",
-               thresholds=steps((None, BLUE)), no_value="—"), 4, 4)
-    for metric, thr in (("f1", 0.60), ("auc", 0.77), ("recall", 0.58), ("accuracy", 0.72)):
+               thresholds=steps((None, BLUE)), no_value="—", desc=d(
+                   "L'algorithme gagnant du dernier entraînement et l'année de données la plus récente utilisée.",
+                   "Le flow d'entraînement compare plusieurs algorithmes et retient le meilleur (champion) ; "
+                   "l'API l'expose (`cac_mlops_train_info`).",
+                   "Le champion n'est promu en production que s'il passe les seuils ET bat le modèle actuel.")), 4, 4)
+    for metric in KPI_MIN:
         g.add(stat(metric.upper() if metric != "accuracy" else "Accuracy", PROM, f'cac_mlops_train_metric{{metric="{metric}"}}',
-                   decimals=3, thresholds=steps((None, RED), (thr, GREEN)), desc=f"Seuil minimum : {thr}."), 5, 4)
+                   decimals=3, thresholds=steps((None, RED), (KPI_MIN[metric], GREEN)), desc=TRAIN_METRIC_DESC[metric]), 5, 4)
     g.add(stat("Aucun modèle meilleur", LOKI, cnt(f'{worker} |= "topic=no_champion"'), decimals=0,
-               thresholds=steps((None, GREEN), (1, ORANGE)),
-               desc="Entraînements terminés sans candidat assez bon : la production reste inchangée."), 12, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE)), desc=d(
+                   "Le nombre d'entraînements terminés sans candidat assez bon pour remplacer la production.",
+                   "Le flow d'entraînement logge `topic=no_champion` quand aucun candidat ne passe les seuils "
+                   "ou ne bat le modèle @Production ; Loki les compte.",
+                   "Ce n'est pas une panne : la production reste sur le modèle actuel, qui reste le meilleur.")), 12, 4)
     g.add(stat("Changement de décision vs @Production", PROM, "cac_mlops_model_diff_flipped_share * 100",
-               unit="percent", decimals=1, thresholds=steps((None, GREEN), (10, ORANGE)), no_value="—",
-               desc="Part des prédictions d'un jeu de référence qui changent de classe entre le candidat et le modèle en production."), 12, 4)
+               unit="percent", decimals=1, thresholds=steps((None, GREEN), (10, ORANGE)), no_value="—", desc=d(
+                   "Parmi un jeu de référence figé d'accidents, la part dont la prédiction change de classe entre "
+                   "le candidat et le modèle en production.",
+                   "Au dernier entraînement, les deux modèles prédisent le même jeu de référence ; "
+                   "le flow compare les réponses et l'API expose le résultat.",
+                   "Vert < 10 % · orange au-delà : le nouveau modèle se comporte très différemment, "
+                   "à examiner avant le GO. Jamais bloquant.")), 12, 4)
 
     g.row("Drift")
     g.add(stat("Drift des données", PROM, "cac_mlops_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—"), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 6, 4)
     g.add(stat("Variables en dérive", PROM, "cac_mlops_drift_share * 100", unit="percent", decimals=0,
-               thresholds=steps((None, GREEN), (10, ORANGE), (25, RED)), no_value="—",
-               desc="Part des variables dont la distribution a dérivé (seuils 10 % / 25 %)."), 6, 4)
+               thresholds=steps((None, GREEN), (10, ORANGE), (25, RED)), no_value="—", desc=d(
+                   "La part des variables dont la distribution a significativement changé entre la dernière année "
+                   "et les données d'entraînement.",
+                   "Evidently teste chaque variable. " + _REPORT_HOW,
+                   "Vert < 10 % · orange < 25 % · rouge au-delà (drift CRITICAL).")), 6, 4)
     g.add(stat("Drift du trafic réel", PROM, "cac_mlops_prediction_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="pas assez de trafic",
-               desc="Prédictions réelles des 90 derniers jours vs données d'entraînement."), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="pas assez de trafic", desc=d(
+                   "L'écart entre les demandes de prédiction réelles des 90 derniers jours et les données "
+                   "d'entraînement.",
+                   "Les prédictions réelles de l'API sont enregistrées en base (tests exclus) ; Evidently les "
+                   "compare aux données d'entraînement, à partir de 100 prédictions. " + _REPORT_HOW,
+                   "« pas assez de trafic » = moins de 100 prédictions réelles sur 90 jours. "
+                   "OK / WARNING / CRITICAL : mêmes seuils que le drift des données.")), 6, 4)
     g.add(stat("Drift de la cible", PROM, "cac_mlops_drift_target_detected",
                mappings=[{"type": "value", "options": {"0": {"text": "non", "color": GREEN}, "1": {"text": "oui", "color": ORANGE}}}],
-               thresholds=steps((None, GREEN), (1, ORANGE)), no_value="—",
-               desc="Le taux d'accidents graves a-t-il changé entre les années ?"), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE)), no_value="—", desc=d(
+                   "Le taux d'accidents graves a-t-il changé entre la dernière année et les années de référence ?",
+                   "Evidently compare la distribution de la cible `grav` (distance de Jensen-Shannon). " + _REPORT_HOW,
+                   "oui = la réalité elle-même a changé : le modèle doit être réentraîné sur les données récentes.")), 6, 4)
     return dashboard("cac-flux", "CAC MLOps — Flux MLOps", g, ["flux"],
                      "PR → CD → flow Prefect → gate → déploiement → tests fonctionnels · ETL · modèle · drift.", "now-30d")
 
@@ -480,48 +770,132 @@ def flux_dashboard() -> dict:
 # ── Infrastructure ────────────────────────────────────────────────────────────
 def infra_dashboard() -> dict:
     g = Grid()
-    g.add(text("## Infrastructure\nVPS (Docker Compose), cluster Kubernetes Kapsule (allumé à la demande) et supervision."), 24, 3)
+    g.add(text("## Infrastructure\nVPS (Docker Compose), cluster Kubernetes Kapsule (allumé à la demande) et supervision. "
+               "Survoler l'icône (i) pour la définition d'un indicateur."), 24, 3)
+    node_how = (f"node-exporter (conteneur du VPS) lit les compteurs du système Linux ; le Prometheus du VPS "
+                f"les relève toutes les {SCRAPE_S} s.")
     g.row("VPS")
     g.add(stat("RAM disponible", PROM, "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100",
-               unit="percent", decimals=0, thresholds=steps((None, RED), (10, ORANGE), (25, GREEN))), 4, 4)
-    for mp, label in (("/data", "Disque /data libre"), ("/", "Disque système libre")):
+               unit="percent", decimals=0, thresholds=steps((None, RED), (10, ORANGE), (25, GREEN)), desc=d(
+                   "La part de mémoire vive encore utilisable sur le VPS (12 Go au total).",
+                   node_how + " Calcul : mémoire disponible / mémoire totale.",
+                   "Vert ≥ 25 % · orange ≥ 10 % · rouge en dessous : l'alerte « RAM critique » se déclenche "
+                   "après 2 min sous 10 %.")), 4, 4)
+    for mp, label, what in (("/data", "Disque /data libre", "le volume de données (bases, artefacts MLflow, images Docker, logs)"),
+                            ("/", "Disque système libre", "le disque système du VPS")):
         g.add(stat(label, PROM, f'node_filesystem_avail_bytes{{mountpoint="{mp}"}} / node_filesystem_size_bytes{{mountpoint="{mp}"}} * 100',
-                   unit="percent", decimals=0, thresholds=steps((None, RED), (15, ORANGE), (30, GREEN))), 4, 4)
+                   unit="percent", decimals=0, thresholds=steps((None, RED), (15, ORANGE), (30, GREEN)), desc=d(
+                       f"La part d'espace libre sur {what}.", node_how,
+                       "Vert ≥ 30 % · orange ≥ 15 % · rouge en dessous"
+                       + (" : l'alerte « Disque /data critique » se déclenche après 2 min sous 15 %." if mp == "/data" else "."))), 4, 4)
     g.add(stat("CPU utilisé", PROM, '100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100',
-               unit="percent", decimals=0, thresholds=steps((None, GREEN), (70, ORANGE), (90, RED))), 4, 4)
-    g.add(stat("Connexions nginx actives", PROM, "nginx_connections_active", decimals=0), 4, 4)
+               unit="percent", decimals=0, thresholds=steps((None, GREEN), (70, ORANGE), (90, RED)), desc=d(
+                   "L'occupation moyenne du processeur du VPS sur les 5 dernières minutes, tous cœurs confondus.",
+                   node_how + " Calcul : 100 % moins la part de temps où les cœurs sont inactifs.",
+                   "Vert < 70 % · orange < 90 % · rouge au-delà. Des pics pendant un entraînement ou un build sont normaux.")), 4, 4)
+    g.add(stat("Connexions nginx actives", PROM, "nginx_connections_active", decimals=0, desc=d(
+        "Le nombre de connexions HTTP ouvertes en ce moment sur nginx (reverse proxy de tous les accès du VPS).",
+        f"nginx-exporter lit la page d'état de nginx (`stub_status`) ; relevé toutes les {SCRAPE_S} s.",
+        "Quelques connexions = normal (sondes, Cockpit ouvert). Un pic soudain peut signaler un abus.")), 4, 4)
     g.add(stat("Cockpit admin (Tailscale)", PROM, 'probe_success{instance="http://gradio:7860/health"}',
-               mappings=UP_MAP, thresholds=steps((None, RED), (1, GREEN)), no_value="N/A"), 4, 4)
+               mappings=UP_MAP, thresholds=steps((None, RED), (1, GREEN)), no_value="N/A", desc=d(
+                   "Le Cockpit d'administration répond-il ?",
+                   f"Le blackbox-exporter appelle `http://gradio:7860/health` toutes les {SCRAPE_S} s par le réseau "
+                   "Docker interne : le Cockpit admin n'a pas d'adresse publique, il n'est joignable que par le VPN Tailscale.",
+                   "UP = HTTP 200 reçu · DOWN = pas de réponse.")), 4, 4)
     g.add(timeseries("RAM et disques (% libre)", PROM, [
         target(PROM, "node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100", "RAM disponible", ref="A"),
         target(PROM, 'node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"} * 100', "/data libre", ref="B"),
         target(PROM, 'node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100', "/ libre", ref="C"),
-    ], unit="percent"), 12, 8)
+    ], unit="percent", desc=d("L'évolution de la mémoire et de l'espace disque libres.", node_how,
+                              "Une baisse continue du disque = accumulation (images, logs) : le flow de nettoyage "
+                              "disque tourne après chaque déploiement.")), 12, 8)
     g.add(up_down_timeline("Services scrapés par Prometheus", PROM,
                            [('up{job=~"cac-mlops-api|gradio-admin-vps|gradio-public-vps|node-exporter|nginx-exporter|prometheus"}', "{{job}}")],
-                           desc="Scrape direct de chaque service (diagnostic interne — la disponibilité utilisateur est dans les dashboards d'accès)."), 12, 8)
+                           desc=d("Pour chaque service du VPS, Prometheus arrive-t-il à lire ses métriques ?",
+                                  f"Toutes les {SCRAPE_S} s, Prometheus appelle `/metrics` de chaque service par le "
+                                  "réseau Docker interne ; `up` = 1 si la lecture réussit.",
+                                  "Diagnostic interne : un service peut être UP ici et injoignable par Internet "
+                                  "(problème Caddy, DNS…) — la disponibilité vue de l'utilisateur est dans les dashboards d'accès.")), 12, 8)
 
+    k8s_how = (f"kube-state-metrics et node-exporter (dans le cluster) sont relevés toutes les {SCRAPE_S} s par le "
+               "Prometheus du cluster, que Grafana lit via le VPN Tailscale.")
     g.row("Kubernetes Kapsule")
-    g.add(stat("Nœuds actifs", PROM_K8S, 'count(up{job="node-exporter"} == 1)', decimals=0, no_value=OFF_TEXT), 6, 4)
+    g.add(stat("Nœuds actifs", PROM_K8S, 'count(up{job="node-exporter"} == 1)', decimals=0, no_value=OFF_TEXT, desc=d(
+        "Le nombre de machines (nœuds) du cluster Kapsule en service.", k8s_how,
+        "« Cluster éteint » = état normal hors démonstration (kapsule-up / kapsule-down).")), 6, 4)
     g.add(stat("Pods API disponibles", PROM_K8S, 'kube_deployment_status_replicas_available{namespace="cac-mlops", deployment="api"}',
-               decimals=0, thresholds=steps((None, RED), (2, GREEN)), no_value=OFF_TEXT, desc="Minimum HPA : 2."), 6, 4)
+               decimals=0, thresholds=steps((None, RED), (2, GREEN)), no_value=OFF_TEXT, desc=d(
+                   "Le nombre de pods API prêts à servir dans le cluster.", k8s_how,
+                   "Minimum 2 (autoscaler HPA) ; en dessous pendant 2 min, l'alerte « replicas api sous le minimum » se déclenche.")), 6, 4)
     g.add(stat("Redémarrages de pods", PROM_K8S, 'sum(increase(kube_pod_container_status_restarts_total{namespace="cac-mlops"}[$__range])) or vector(0)',
-               decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)), no_value=OFF_TEXT), 6, 4)
+               decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)), no_value=OFF_TEXT, desc=d(
+                   "Le nombre de redémarrages de conteneurs dans le cluster sur la période, tous services confondus.", k8s_how,
+                   "0 attendu. Un redémarrage = Kubernetes a réparé seul un conteneur en échec (auto-guérison).")), 6, 4)
     g.add(stat("RAM nœuds disponible (min)", PROM_K8S, "min(node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100)",
-               unit="percent", decimals=0, thresholds=steps((None, RED), (10, ORANGE), (25, GREEN)), no_value=OFF_TEXT), 6, 4)
+               unit="percent", decimals=0, thresholds=steps((None, RED), (10, ORANGE), (25, GREEN)), no_value=OFF_TEXT, desc=d(
+                   "La mémoire libre du nœud le plus chargé du cluster.", k8s_how,
+                   "Vert ≥ 25 % · orange ≥ 10 % · rouge en dessous : Kubernetes risque d'évincer des pods.")), 6, 4)
     g.add(timeseries("Pods disponibles par service", PROM_K8S, [
-        target(PROM_K8S, 'kube_deployment_status_replicas_available{namespace="cac-mlops"}', "{{deployment}}")]), 24, 7)
+        target(PROM_K8S, 'kube_deployment_status_replicas_available{namespace="cac-mlops"}', "{{deployment}}")], desc=d(
+            "Le nombre de pods prêts à servir, pour chaque service du cluster.", k8s_how,
+            "Une courbe qui monte = l'autoscaler ajoute des pods sous la charge ; qui tombe à 0 = service indisponible.")), 24, 7)
 
     g.row("Supervision")
-    g.add(stat("Séries Prometheus (VPS)", PROM, "prometheus_tsdb_head_series", decimals=0), 6, 4)
+    g.add(stat("Séries Prometheus (VPS)", PROM, "prometheus_tsdb_head_series", decimals=0, desc=d(
+        "Le nombre de séries temporelles distinctes actuellement suivies par le Prometheus du VPS.",
+        "Métrique interne de Prometheus. Une série = une métrique × une combinaison d'étiquettes. "
+        "Historique conservé 30 jours.",
+        "Stable attendu (quelques milliers). Une explosion = étiquette à valeurs illimitées, à corriger.")), 6, 4)
     g.add(stat("Scrapes en échec (VPS)", PROM, "count(up == 0) or vector(0)", decimals=0,
-               thresholds=steps((None, GREEN), (1, RED))), 6, 4)
-    g.add({"type": "alertlist", "title": "Alertes actives", "options": {
-        "showOptions": "current", "maxItems": 10, "sortOrder": 1, "dashboardAlerts": False,
-        "alertName": "", "dashboardTitle": "", "tags": [],
-        "stateFilter": {"firing": True, "pending": True, "noData": False, "normal": False, "error": True}}}, 12, 8)
+               thresholds=steps((None, GREEN), (1, RED)), desc=d(
+                   "Le nombre de cibles que le Prometheus du VPS n'arrive pas à lire en ce moment.",
+                   f"Toutes les {SCRAPE_S} s, Prometheus lit chacune de ses cibles ; on compte celles en échec (`up == 0`).",
+                   "0 attendu. Sinon, voir la frise « Services scrapés par Prometheus » pour identifier la cible.")), 6, 4)
+    g.add(alertlist(), 12, 8)
     return dashboard("cac-infra", "CAC MLOps — Infrastructure", g, ["infra"],
                      "VPS, Kubernetes et supervision.", "now-24h")
+
+
+def _md(txt: str) -> str:
+    """Mini-markdown des descriptions (**gras**, `code`) → HTML."""
+    out = html.escape(txt, quote=False)
+    out = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
+    return re.sub(r"`(.+?)`", r"<code>\1</code>", out)
+
+
+def _desc_cells(desc: str) -> str:
+    parts = dict.fromkeys(("Ce que ça mesure.", "Comment.", "Lecture."), "")
+    for chunk in desc.split("\n\n"):
+        for key in parts:
+            if chunk.startswith(f"**{key}** "):
+                parts[key] = chunk[len(key) + 5:]
+    return "".join(f"<td>{_md(v)}</td>" for v in parts.values())
+
+
+def write_doc(built: dict[str, dict]) -> None:
+    """Réécrit le catalogue des indicateurs entre les marqueurs de docs/monitoring.html."""
+    order = ["home.json", *[a["file"] for a in ACCESSES], "flux-mlops.json", "infrastructure.json"]
+    blocks = []
+    for name in order:
+        dash = built[name]
+        n = sum(p["type"] not in ("row", "text") for p in dash["panels"])
+        rows = []
+        for p in dash["panels"]:
+            if p["type"] == "row":
+                rows.append(f'<tr><td class="row-title" colspan="4">{html.escape(p["title"])}</td></tr>')
+            elif p["type"] != "text":
+                rows.append(f"<tr><td><strong>{html.escape(p['title'])}</strong></td>{_desc_cells(p['description'])}</tr>")
+        blocks.append(
+            f'<details class="sub"><summary>{html.escape(dash["title"])} <span class="count">{n}</span></summary>'
+            f'<div class="body"><p>{html.escape(dash["description"])} Fichier : <code>{name}</code>.</p>'
+            '<div class="overflow-x"><table><tr><th>Indicateur</th><th>Ce que ça mesure</th><th>Comment</th><th>Lecture</th></tr>'
+            + "".join(rows) + "</table></div></div></details>")
+    doc = DOC.read_text()
+    begin, end = "<!-- DASHBOARDS:BEGIN -->", "<!-- DASHBOARDS:END -->"
+    head, rest = doc.split(begin)
+    DOC.write_text(head + begin + "\n" + "\n".join(blocks) + "\n" + end + rest.split(end)[1])
+    print(f"doc      : {DOC.name} (catalogue de {len(order)} dashboards)")
 
 
 def main() -> None:
@@ -530,13 +904,18 @@ def main() -> None:
              "infrastructure.json": infra_dashboard()}
     for a in ACCESSES:
         built[a["file"]] = access_dashboard(a)
+    missing = [(n, p["title"]) for n, dash in built.items() for p in dash["panels"]
+               if p["type"] not in ("row", "text") and not p.get("description")]
+    if missing:
+        raise SystemExit(f"Panneaux sans description (i) : {missing}")
     for old in OUT.glob("*.json"):
         if old.name not in built:
             old.unlink()
             print(f"supprimé : {old.name}")
-    for name, d in built.items():
-        (OUT / name).write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-        print(f"généré   : {name} ({sum(p['type'] != 'row' for p in d['panels'])} panneaux)")
+    for name, dash in built.items():
+        (OUT / name).write_text(json.dumps(dash, ensure_ascii=False, indent=2) + "\n")
+        print(f"généré   : {name} ({sum(p['type'] != 'row' for p in dash['panels'])} panneaux)")
+    write_doc(built)
 
 
 if __name__ == "__main__":

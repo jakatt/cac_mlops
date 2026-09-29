@@ -248,14 +248,14 @@ ssh deploy@51.159.187.132 "cd /data/cac_mlops &amp;&amp; docker compose restart 
       <div class="tbl"><table>
         <thead><tr><th>Panel</th><th>Seuil d'alerte</th><th>Action</th></tr></thead>
         <tbody>
-          <tr><td>Latence p95</td><td>&gt; 300 ms (objectif, pas d'alerte)</td><td>Vérifier <code>docker compose logs api</code></td></tr>
-          <tr><td>Taux erreurs 5xx</td><td>&gt; 1%</td><td>Vérifier le modèle @Production</td></tr>
-          <tr><td>Distribution prédictions grav=1</td><td>Dérive anormale</td><td>Lancer drift-check</td></tr>
+          <tr><td>Temps de réponse p95 (sonde)</td><td>&gt; 300 ms (objectif, pas d'alerte)</td><td>Vérifier <code>docker compose logs api</code></td></tr>
+          <tr><td>Erreurs serveur (5xx)</td><td>&gt; 0 (pas d'alerte)</td><td>Lire les logs d'erreur (section E du dashboard d'accès), vérifier le modèle @Production</td></tr>
+          <tr><td>Part de prédictions « prioritaires »</td><td>Dérive anormale</td><td>Lancer drift-check</td></tr>
           <tr><td>RAM disponible</td><td>&lt; 10%</td><td>Libérer mémoire, vérifier OOM</td></tr>
           <tr><td>Disque /data</td><td>&lt; 15%</td><td>Lancer disk-cleanup manuellement</td></tr>
         </tbody>
       </table></div>
-      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code>. Liste complète des 12 règles : <a href="architecture.html">Architecture</a> (section Monitoring).</p>
+      <p>Les alertes email arrivent sur <code>jacques.cattelin@gmail.com</code>. Liste complète des 12 règles et définition de chaque indicateur : <a href="monitoring.html">Monitoring</a>.</p>
     </div>
   </details>
 
