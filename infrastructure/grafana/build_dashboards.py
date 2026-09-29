@@ -33,6 +33,7 @@ from src.utils.indicators import INDICATORS  # noqa: E402  (textes partagés ave
 
 OUT = Path(__file__).resolve().parent / "dashboards"
 DOC = Path(__file__).resolve().parents[2] / "docs" / "monitoring.html"
+DRIFT_DOC = DOC.with_name("drift.html")
 
 PROM = {"type": "prometheus", "uid": "prometheus"}
 PROM_K8S = {"type": "prometheus", "uid": "prometheus-k8s"}
@@ -906,11 +907,11 @@ def write_doc(built: dict[str, dict]) -> None:
         f"<tr><td><strong>{html.escape(labels[k][0])}</strong><br><span style='font-size:.72rem;color:var(--muted)'>"
         f"{html.escape(labels[k][1])}</span></td><td>{_md(ind.mesure)}</td><td>{_md(ind.comment)}</td><td>{_md(ind.lecture)}</td></tr>"
         for k, ind in INDICATORS.items())
-    doc = _replace_block(doc, "INDICATORS",
-                         '<div class="overflow-x"><table><tr><th>Indicateur · où le voir</th><th>Ce que ça mesure</th>'
-                         '<th>Comment</th><th>Lecture</th></tr>' + rows + "</table></div>")
-    DOC.write_text(doc)
-    print(f"doc      : {DOC.name} (catalogue de {len(order)} dashboards)")
+    table = ('<div class="overflow-x"><table><tr><th>Indicateur · où le voir</th><th>Ce que ça mesure</th>'
+             '<th>Comment</th><th>Lecture</th></tr>' + rows + "</table></div>")
+    DOC.write_text(_replace_block(doc, "INDICATORS", table))
+    DRIFT_DOC.write_text(_replace_block(DRIFT_DOC.read_text(), "INDICATORS", table))
+    print(f"doc      : {DOC.name} (catalogue de {len(order)} dashboards) · {DRIFT_DOC.name} (indicateurs)")
 
 
 def main() -> None:
