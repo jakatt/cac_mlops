@@ -523,42 +523,281 @@ def run_heatmap(min_grav_pct: float, min_accidents: int, filter_catr: list[int],
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Drift
+# Accordéons Drift et Modèles — indicateurs lisibles + rapports Evidently
 # ══════════════════════════════════════════════════════════════════════════════
+# L'accordéon Drift répond à 3 questions (données · cible · trafic réel) et
+# affiche la qualité des données du dernier ETL ; chaque indicateur porte une
+# icône (i) dont le texte vient de src/utils/indicators.py (mêmes définitions
+# que Grafana et la doc Monitoring). Les rapports Evidently complets restent
+# accessibles en lien. Les rapports de modèle (performance, comparaison avec
+# @Production) sont dans l'accordéon Modèles.
 
-def _list_drift_reports() -> list[str]:
+_ALGO_NAMES = {"rf": "Random Forest", "xgboost": "XGBoost", "lgbm": "LightGBM"}
+_LEVEL_STYLE = {
+    "OK": ("#dcfce7", "#166534", "OK"),
+    "WARNING": ("#fef3c7", "#92400e", "WARNING"),
+    "CRITICAL": ("#fee2e2", "#991b1b", "CRITICAL"),
+    "INSUFFICIENT_DATA": ("#f1f5f9", "#475569", "Pas assez de trafic"),
+}
+_CARDS_CSS = """<style>
+.cac-cards{font-family:Inter,'Segoe UI',sans-serif;color:#0d2233;}
+.cac-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px;}
+.cac-card{background:#fff;border:1px solid #c2dbe4;border-radius:10px;padding:14px 16px;}
+.cac-card h4{margin:0 0 10px;font-size:.95rem;color:#156082;display:flex;align-items:center;gap:6px;}
+.cac-badge{display:inline-block;padding:3px 12px;border-radius:12px;font-weight:700;font-size:.9rem;}
+.cac-big{font-size:1.6rem;font-weight:700;margin:8px 0 2px;}
+.cac-sub{font-size:.8rem;color:#5a7a8a;margin:2px 0;}
+.cac-row{display:flex;align-items:center;gap:8px;font-size:.8rem;margin:4px 0;}
+.cac-bar{flex:1;height:8px;background:#e8f2f7;border-radius:4px;position:relative;overflow:hidden;}
+.cac-bar span{position:absolute;left:0;top:0;bottom:0;border-radius:4px;}
+.cac-link{display:inline-block;margin-top:10px;font-size:.8rem;color:#156082;font-weight:600;text-decoration:none;}
+.cac-link:hover{text-decoration:underline;}
+.cac-table{width:100%;border-collapse:collapse;font-size:.8rem;margin-top:4px;}
+.cac-table th{text-align:left;color:#156082;background:#eaf4f9;padding:6px 8px;font-weight:600;}
+.cac-table td{padding:6px 8px;border-top:1px solid #e1edf2;}
+.cac-i{position:relative;display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;
+  border:1.5px solid #7aa7bd;border-radius:50%;color:#5a7a8a;font-size:11px;font-weight:700;font-style:normal;
+  cursor:help;flex-shrink:0;}
+.cac-i .cac-tip{visibility:hidden;opacity:0;transition:opacity .12s;position:absolute;z-index:1000;top:22px;left:-12px;
+  width:380px;max-width:80vw;background:#1f2d38;color:#f3f7fa;padding:11px 13px;border-radius:7px;font-size:12px;
+  line-height:1.5;font-weight:400;text-align:left;box-shadow:0 6px 18px rgba(0,0,0,.25);}
+.cac-i .cac-tip p{margin:0 0 7px;} .cac-i .cac-tip p:last-child{margin:0;}
+.cac-i .cac-tip code{background:rgba(255,255,255,.12);padding:0 4px;border-radius:3px;color:#fff;}
+.cac-i:hover .cac-tip,.cac-i:focus .cac-tip{visibility:visible;opacity:1;}
+.cac-i.cac-left .cac-tip{left:auto;right:-12px;}
+</style>"""
+
+
+def _inline_md(text: str) -> str:
+    out = html.escape(text, quote=False)
+    out = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
+    return re.sub(r"`(.+?)`", r"<code>\1</code>", out)
+
+
+def _fr(x: float, decimals: int = 1) -> str:
+    """Nombre au format français (virgule décimale)."""
+    return f"{x:.{decimals}f}".replace(".", ",")
+
+
+def _thousands(n: int) -> str:
+    return f"{n:,}".replace(",", " ")
+
+
+def _info(key: str, left: bool = False) -> str:
+    """Icône (i) avec la définition partagée de l'indicateur (survol ou focus clavier)."""
+    from src.utils.indicators import INDICATORS
+    ind = INDICATORS[key]
+    tip = "".join(f"<p><strong>{label}</strong> {_inline_md(txt)}</p>" for label, txt in (
+        ("Ce que ça mesure.", ind.mesure), ("Comment.", ind.comment), ("Lecture.", ind.lecture)))
+    cls = "cac-i cac-left" if left else "cac-i"
+    return f'<span class="{cls}" tabindex="0">i<span class="cac-tip">{tip}</span></span>'
+
+
+def _read_report_json(name: str) -> dict | None:
+    import json
+    try:
+        return json.loads((REPORTS_PATH / name).read_text())
+    except Exception:
+        return None
+
+
+def _report_link(filename: str | None, label: str = "Rapport détaillé Evidently ↗") -> str:
+    if not filename:
+        return ""
+    name = Path(filename).name
+    if not (REPORTS_PATH / name).exists():
+        return ""
+    return f'<a class="cac-link" href="/gradio_api/file={REPORTS_PATH / name}" target="_blank" rel="noopener">{label}</a>'
+
+
+def _badge(level: str, text: str | None = None) -> str:
+    bg, fg, default = _LEVEL_STYLE.get(level, ("#f1f5f9", "#475569", level or "—"))
+    text = text or default
+    return f'<span class="cac-badge" style="background:{bg};color:{fg};">{text}</span>'
+
+
+def _when(ts) -> str:
+    try:
+        return datetime.fromtimestamp(float(ts), ZoneInfo("Europe/Paris")).strftime("calculé le %d/%m/%Y")
+    except Exception:
+        return ""
+
+
+def _drift_years() -> list[str]:
     if not REPORTS_PATH.exists():
         return []
-    return sorted([f.name for f in REPORTS_PATH.glob("*.html")], reverse=True)
+    return sorted({m.group(1) for f in REPORTS_PATH.glob("drift_*.html")
+                   if (m := re.fullmatch(r"drift_(\d{4})\.html", f.name))}, reverse=True)
 
 
-def load_drift_report(report_name: str) -> str:
+def _drift_for_year(year: str) -> dict | None:
+    """Résumé de dérive d'une année : latest_summary.json pour la dernière
+    année analysée (contient aussi la cible), sinon relu du JSON Evidently."""
+    from src.utils.indicators import DRIFT_CRITICAL_SHARE, DRIFT_WARNING_SHARE
+    latest = _read_report_json("latest_summary.json")
+    if latest and str(latest.get("year")) == str(year):
+        return latest
+    raw = _read_report_json(f"drift_{year}.json")
+    if not raw:
+        return None
+    try:
+        table = next(m["result"] for m in raw["metrics"] if m["metric"] == "DataDriftTable")
+    except (KeyError, StopIteration):
+        return None
+    share = table.get("share_of_drifted_columns", 0.0)
+    cols = table.get("drift_by_columns", {})
+    return {
+        "year": int(year), "drift_share": share,
+        "drifted_count": table.get("number_of_drifted_columns", 0), "total_features": len(cols),
+        "level": "CRITICAL" if share > DRIFT_CRITICAL_SHARE else ("WARNING" if share > DRIFT_WARNING_SHARE else "OK"),
+        "feature_scores": {k: v.get("drift_score", 0.0) for k, v in cols.items()},
+    }
+
+
+def _top_features(scores: dict, n: int = 3) -> str:
+    from src.utils.indicators import DRIFT_SCORE_THRESHOLD
+    rows = []
+    for name, score in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:n]:
+        pct = min(100, score / DRIFT_SCORE_THRESHOLD * 100)
+        color = "#dc2626" if score > DRIFT_SCORE_THRESHOLD else ("#f59e0b" if pct >= 70 else "#22c55e")
+        rows.append(f'<div class="cac-row"><code style="min-width:120px">{html.escape(name)}</code>'
+                    f'<div class="cac-bar"><span style="width:{pct:.0f}%;background:{color};"></span></div>'
+                    f'<span style="min-width:72px;text-align:right">{_fr(score, 3)} / 0,1</span></div>')
+    return "".join(rows)
+
+
+def render_drift_panel(year: str | None = None) -> str:
+    years = _drift_years()
+    year = year or (years[0] if years else None)
+    cards = []
+
+    # 1 — Données
+    s = _drift_for_year(year) if year else None
+    if s:
+        ref = s.get("reference_years")
+        ref_txt = f" vs {min(ref)}–{max(ref)}" if ref else " vs années précédentes"
+        rows_txt = f" · {_thousands(s['rows'])} accidents" if s.get("rows") else ""
+        body = (f'{_badge(s.get("level", ""))}'
+                f'<div class="cac-big">{s.get("drift_share", 0) * 100:.0f} % des variables en dérive</div>'
+                f'<div class="cac-sub">{s.get("drifted_count", 0)} sur {s.get("total_features", 0)} · année {s["year"]}{ref_txt}{rows_txt}</div>'
+                f'<div class="cac-sub">{_when(s.get("timestamp"))}</div>'
+                f'<div class="cac-sub" style="margin-top:10px;display:flex;align-items:center;gap:6px;">'
+                f'<strong>Variables les plus proches du seuil</strong> {_info("drift_feature_score")}</div>'
+                f'{_top_features(s.get("feature_scores") or {})}'
+                f'{_report_link(f"drift_{year}.html")}')
+    else:
+        body = '<div class="cac-sub">Aucun rapport — disponible après le chargement d\'une 2ᵉ année de données.</div>'
+    cards.append(f'<div class="cac-card"><h4>1 · Les données ont-elles changé ? {_info("drift_data")}</h4>{body}</div>')
+
+    # 2 — Cible
+    if s and "target_reference_rate" in s:
+        detected = s.get("target_drift_detected")
+        body = (f'{_badge("WARNING", "Dérive") if detected else _badge("OK", "Stable")}'
+                f'<div class="cac-big">{_fr(s["target_reference_rate"] * 100)} % → {_fr(s["target_current_rate"] * 100)} %</div>'
+                f'<div class="cac-sub">accidents graves · référence → année {s["year"]}</div>'
+                f'<div class="cac-sub">score {_fr(s.get("target_drift_score", 0), 3)} / 0,1 (distance de Jensen-Shannon)</div>'
+                f'{_report_link(s.get("target_html_report") or f"drift_{year}_target.html")}')
+    elif year:
+        body = ('<div class="cac-sub">Taux détaillés disponibles pour la dernière année analysée ; '
+                'pour cette année, voir le rapport.</div>' + _report_link(f"drift_{year}_target.html"))
+    else:
+        body = '<div class="cac-sub">Aucun rapport.</div>'
+    cards.append(f'<div class="cac-card"><h4>2 · La réalité a-t-elle changé ? {_info("drift_target")}</h4>{body}</div>')
+
+    # 3 — Trafic réel
+    p = _read_report_json("latest_prediction_drift_summary.json")
+    if p and p.get("level") == "INSUFFICIENT_DATA":
+        pct = min(100, p.get("rows", 0) / max(1, p.get("min_rows", 100)) * 100)
+        body = (f'{_badge("INSUFFICIENT_DATA")}'
+                f'<div class="cac-big">{p.get("rows", 0)} / {p.get("min_rows", 100)}</div>'
+                f'<div class="cac-sub">prédictions réelles sur {p.get("lookback_days", 90)} jours (minimum requis)</div>'
+                f'<div class="cac-row"><div class="cac-bar"><span style="width:{pct:.0f}%;background:#94a3b8;"></span></div></div>'
+                f'<div class="cac-sub">{_when(p.get("timestamp"))}</div>')
+    elif p:
+        stab = ("probabilités stables" if not p.get("stability_drift_detected") else "probabilités instables")
+        body = (f'{_badge(p.get("level", ""))}'
+                f'<div class="cac-big">{p.get("drift_share", 0) * 100:.0f} % des variables en dérive</div>'
+                f'<div class="cac-sub">{p.get("rows", 0)} prédictions réelles sur {p.get("lookback_days", 90)} jours</div>'
+                f'<div class="cac-sub">{stab} : probabilité moyenne {_fr(p.get("stability_older_mean_probability", 0), 2)} → '
+                f'{_fr(p.get("stability_newer_mean_probability", 0), 2)} (1re → 2e moitié)</div>'
+                f'<div class="cac-sub">{_when(p.get("timestamp"))}</div>'
+                f'{_report_link(p.get("html_report"))} &nbsp; {_report_link(p.get("stability_html_report"), "Stabilité ↗")}')
+    else:
+        body = '<div class="cac-sub">Aucun calcul pour l\'instant (flow <code>prediction-drift-check</code>, chaque lundi).</div>'
+    cards.append(f'<div class="cac-card"><h4>3 · Les demandes reçues ressemblent-elles à l\'entraînement ? '
+                 f'{_info("prediction_drift", left=True)}</h4>{body}</div>')
+
+    # Qualité des données brutes (dernier ETL)
+    q = _read_report_json("latest_dataquality_summary.json")
+    if q:
+        rows = "".join(
+            f'<tr><td>{html.escape(name)}</td><td>{_thousands(t.get("rows", 0))}</td><td>{t.get("duplicated_rows", 0)}</td>'
+            f'<td>{_fr(t.get("missing_share", 0) * 100)} %</td><td>{_badge(t.get("level", ""))}</td>'
+            f'<td>{_report_link(t.get("html_report"), "rapport ↗")}</td></tr>'
+            for name, t in (q.get("tables") or {}).items())
+        quality = (f'<div class="cac-card"><h4>Qualité des données brutes — ETL {q.get("year", "")} '
+                   f'{_badge(q.get("level", ""))} {_info("data_quality")}</h4>'
+                   f'<table class="cac-table"><tr><th>Table ONISR</th><th>Lignes</th><th>Doublons</th>'
+                   f'<th>Valeurs manquantes</th><th>Niveau</th><th></th></tr>{rows}</table></div>')
+    else:
+        quality = ""
+    return f'{_CARDS_CSS}<div class="cac-cards"><div class="cac-grid">{"".join(cards)}</div>{quality}</div>'
+
+
+def refresh_drift_panel(year: str | None):
+    years = _drift_years()
+    year = year if year in years else (years[0] if years else None)
+    return gr.Dropdown(choices=years, value=year), render_drift_panel(year)
+
+
+def _model_report_label(name: str) -> str | None:
+    if m := re.fullmatch(r"performance_([a-z]+)_v(\d+)\.html", name):
+        return f"Performance · {_ALGO_NAMES.get(m[1], m[1])} v{m[2]}"
+    if m := re.fullmatch(r"model_diff_([a-z]+)_v(\d+)_vs_([a-z]+)_v(\d+)\.html", name):
+        return (f"Comparaison · {_ALGO_NAMES.get(m[1], m[1])} v{m[2]} (candidat) vs "
+                f"{_ALGO_NAMES.get(m[3], m[3])} v{m[4]} (production)")
+    return None
+
+
+def _list_model_reports() -> list[tuple[str, str]]:
+    """(libellé, fichier) — comparaisons d'abord (plus récente en tête), puis performances par algo."""
+    if not REPORTS_PATH.exists():
+        return []
+    files = [f.name for f in REPORTS_PATH.glob("*.html") if _model_report_label(f.name)]
+
+    def key(name: str):
+        nums = [int(x) for x in re.findall(r"_v(\d+)", name)]
+        return (0 if name.startswith("model_diff") else 1, re.sub(r"_v\d+.*", "", name), -(nums[0] if nums else 0))
+    return [(_model_report_label(n), n) for n in sorted(files, key=key)]
+
+
+def _default_model_report(choices: list[tuple[str, str]]) -> str | None:
+    """Par défaut : la performance du modèle comparé en dernier (candidat promu)."""
+    diff = _read_report_json("latest_model_diff_summary.json") or {}
+    wanted = f"performance_{diff.get('candidate_algorithm')}_v{diff.get('candidate_version')}.html"
+    files = [f for _, f in choices]
+    return wanted if wanted in files else (files[0] if files else None)
+
+
+def load_model_report(report_name: str | None) -> str:
     if not report_name:
-        return "<p style='color:#6B7280;padding:30px;font-size:0.95em;font-family:Inter,Segoe UI,sans-serif;'>Aucun rapport disponible — lancez au moins 2 cycles de training.</p>"
-    # Servi directement par ce Cockpit (route /file= de Gradio, cf. allowed_paths
-    # au lancement) plutôt que via PUBLIC_URL/reports_live : ce dernier n'est
-    # resynchronisé qu'au GO d'un déploiement (sync_static_assets_task), alors
-    # que ce Cockpit admin lit déjà reports/drift en brut pour lister les
-    # rapports — passer par le gate public créait un 404 entre deux déploiements.
+        return "<p style='color:#6B7280;padding:20px;font-family:Inter,Segoe UI,sans-serif;'>Aucun rapport disponible.</p>"
+    key = "model_diff" if report_name.startswith("model_diff") else "performance"
     report_url = f"/gradio_api/file={REPORTS_PATH / report_name}"
-    link = (
-        f'<div style="margin-bottom:8px;font-family:Inter,Segoe UI,sans-serif;font-size:0.88em;color:#6B7280;">'
-        f'⚠️ Si les graphes interactifs apparaissent vides, '
-        f'<a href="{report_url}" target="_blank" rel="noopener" '
-        f'style="color:#4a9fc4;font-weight:600;">ouvrir le rapport complet ↗</a>'
-        f'</div>'
-    )
-    iframe = (
-        f'<iframe src="{report_url}" width="100%" height="820px" '
-        f'frameborder="0" style="border:none;border-radius:4px;" '
-        f'allow="scripts"></iframe>'
-    )
-    return link + iframe
+    what = ("Comparaison du candidat avec le modèle en production (jeu de référence figé)" if key == "model_diff"
+            else "Performance sur l'année de test, jamais vue à l'entraînement")
+    head = (f'{_CARDS_CSS}<div class="cac-cards" style="display:flex;align-items:center;gap:8px;font-size:.85rem;'
+            f'margin-bottom:8px;">{_info(key)}<span style="color:#5a7a8a;">{what}'
+            f' · <a href="{report_url}" target="_blank" rel="noopener" style="color:#156082;font-weight:600;">ouvrir en plein écran ↗</a></span></div>')
+    return head + (f'<iframe src="{report_url}" width="100%" height="820px" frameborder="0" '
+                   f'style="border:none;border-radius:4px;"></iframe>')
 
 
-def refresh_drift_reports():
-    choices = _list_drift_reports()
-    return gr.Dropdown(choices=choices, value=choices[0] if choices else None)
+def refresh_model_reports(current: str | None):
+    choices = _list_model_reports()
+    files = [f for _, f in choices]
+    value = current if current in files else _default_model_report(choices)
+    return gr.Dropdown(choices=choices, value=value), load_model_report(value)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2331,8 +2570,11 @@ def build_docs_html() -> str:
          "Détail des 4 grandes étapes du pipeline ETL (Trigger 1) — téléchargement, validation, DVC, preprocessing",
          "etl_catalogue.html"),
         (f"{PUBLIC_BASE}/ci-docs/monitoring.html", "Monitoring",
-         "Prometheus · Loki · Grafana — schéma de collecte, catalogue des indicateurs des 7 dashboards, journal des flux, 12 alertes",
+         "Prometheus · Loki · Grafana — schéma de collecte, indicateurs des 7 dashboards, dérive et qualité des données, journal des flux, 12 alertes",
          "monitoring.html"),
+        (f"{PUBLIC_BASE}/ci-docs/drift.html", "Dérive des données — Evidently",
+         "Pourquoi et comment la dérive est surveillée : 3 questions, tests Evidently (Jensen-Shannon, Wasserstein), seuils, alertes, lecture des rapports",
+         "drift.html"),
         (f"{PUBLIC_BASE}/ci-docs/data_lineage.html", "Lignée des données",
          "DVC × Git × MLflow — du fichier ONISR au modèle @Production, version par version, vérifié à l'octet près",
          "data_lineage.html"),
@@ -2951,12 +3193,12 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         },
                         "Analyser le drift": {
                             "key": "drift-check",
-                            "desc": "Calcule les métriques de drift (PSI, KS) entre le jeu d'entraînement et les prédictions de la dernière année (drift year, auto-détectée). Génère le rapport Evidently dans l'onglet Drift.",
+                            "desc": "Compare les accidents de la dernière année chargée aux années précédentes (données d'entraînement), variable par variable — distance de Jensen-Shannon (catégorielles) ou de Wasserstein (numériques), seuil 0,1 — ainsi que la proportion d'accidents graves. Résultat dans l'accordéon Drift.",
                             "opts": None,
                         },
                         "Analyser le drift trafic réel": {
                             "key": "prediction-drift-check",
-                            "desc": "Compare les prédictions réelles récentes (table predictions, fenêtre glissante 90 jours) à la référence d'entraînement — indépendant des cycles de retrain. Nécessite au moins 100 lignes réelles sur la fenêtre, sinon rapport ignoré. Génère le rapport Evidently dans l'onglet Drift.",
+                            "desc": "Compare les prédictions réelles récentes (table predictions, fenêtre glissante 90 jours) à la référence d'entraînement — indépendant des cycles de retrain. Nécessite au moins 100 prédictions réelles sur la fenêtre, sinon « pas assez de trafic ». Résultat dans l'accordéon Drift (carte 3).",
                             "opts": None,
                         },
                         "Réinitialiser la solution": {
@@ -3129,18 +3371,27 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
             if not IS_KAPSULE:
                 with gr.Accordion(
-                    "📉  Drift — Rapports de dérive",
+                    "📉  Drift — Dérive des données et qualité",
                     open=False,
                     elem_id="acc-drift",
                 ) as acc_drift:
-                    gr.Markdown("### Rapports de derive par cycle (disponibles a partir du cycle 2)")
+                    gr.Markdown(
+                        "### Le modèle est-il toujours adapté au monde réel ?\n"
+                        "Trois questions, du plus structurel au plus immédiat, puis la qualité des données "
+                        "brutes du dernier chargement. Survoler **(i)** pour la définition de chaque indicateur ; "
+                        "les rapports Evidently complets s'ouvrent dans un nouvel onglet."
+                    )
                     with gr.Row():
-                        drift_dd      = gr.Dropdown(choices=_list_drift_reports(), label="Rapport", scale=3,
-                                                    value=(_list_drift_reports() or [None])[0])
-                        drift_refresh = gr.Button("Rafraichir", scale=1)
-                    drift_iframe = gr.HTML(value=load_drift_report((_list_drift_reports() or [None])[0]))
-                    drift_dd.change(fn=load_drift_report, inputs=drift_dd, outputs=drift_iframe)
-                    drift_refresh.click(fn=refresh_drift_reports, outputs=drift_dd)
+                        _years = _drift_years()
+                        drift_year = gr.Dropdown(choices=_years, value=(_years or [None])[0],
+                                                 label="Année analysée (données)", scale=3)
+                        drift_refresh = gr.Button("Rafraîchir", scale=1)
+                    drift_panel = gr.HTML(value=render_drift_panel((_years or [None])[0]))
+                    drift_year.change(fn=render_drift_panel, inputs=drift_year, outputs=drift_panel)
+                    drift_refresh.click(fn=refresh_drift_panel, inputs=drift_year, outputs=[drift_year, drift_panel])
+                    # Même raison que demo.load(refresh_models) ci-dessous : le layout
+                    # n'est construit qu'au démarrage du process, les rapports changent après.
+                    demo.load(fn=refresh_drift_panel, inputs=drift_year, outputs=[drift_year, drift_panel])
 
             if not IS_KAPSULE:
                 with gr.Accordion(
@@ -3173,7 +3424,18 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                         promote_btn = gr.Button("Promouvoir @Production", variant="primary", scale=1)
                     promote_result = gr.Markdown()
 
+                    gr.Markdown("#### Rapports par version — performance et comparaison avec la production")
+                    _mchoices = _list_model_reports()
+                    _mdefault = _default_model_report(_mchoices)
+                    model_report_dd = gr.Dropdown(choices=_mchoices, value=_mdefault, label="Rapport")
+                    model_report_view = gr.HTML(value=load_model_report(_mdefault))
+                    model_report_dd.change(fn=load_model_report, inputs=model_report_dd, outputs=model_report_view)
+                    demo.load(fn=refresh_model_reports, inputs=model_report_dd,
+                              outputs=[model_report_dd, model_report_view])
+
                     models_refresh.click(fn=refresh_models, outputs=[models_table, promote_dd])
+                    models_refresh.click(fn=refresh_model_reports, inputs=model_report_dd,
+                                         outputs=[model_report_dd, model_report_view])
                     promote_btn.click(fn=promote_version, inputs=promote_dd, outputs=promote_result)
                     # _init_df ci-dessus n'est calcule qu'une fois, au demarrage du process
                     # gradio (definition du layout Blocks) — sans ce hook, toute session/onglet
@@ -3260,6 +3522,6 @@ if __name__ == "__main__":
         show_error=True,
         theme=gr.themes.Base(),
         css=CSS,
-        allowed_paths=[str(REPORTS_PATH)],  # sert les rapports drift via /file=, cf. load_drift_report
+        allowed_paths=[str(REPORTS_PATH)],  # sert les rapports Evidently via /file= (accordéons Drift et Modèles)
     )
     uvicorn.run(_app, host="0.0.0.0", port=_port)

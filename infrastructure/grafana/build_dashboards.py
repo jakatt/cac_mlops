@@ -25,10 +25,15 @@ from __future__ import annotations
 import html
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.utils.indicators import INDICATORS  # noqa: E402  (textes partagés avec le Cockpit)
 
 OUT = Path(__file__).resolve().parent / "dashboards"
 DOC = Path(__file__).resolve().parents[2] / "docs" / "monitoring.html"
+DRIFT_DOC = DOC.with_name("drift.html")
 
 PROM = {"type": "prometheus", "uid": "prometheus"}
 PROM_K8S = {"type": "prometheus", "uid": "prometheus-k8s"}
@@ -81,6 +86,12 @@ def d(mesure: str, comment: str, lecture: str = "") -> str:
     """Description standard d'un panneau : quoi · comment · lecture."""
     out = f"**Ce que ça mesure.** {mesure}\n\n**Comment.** {comment}"
     return out + (f"\n\n**Lecture.** {lecture}" if lecture else "")
+
+
+def di(key: str, comment_suffix: str = "") -> str:
+    """Description d'un indicateur partagé avec le Cockpit (src/utils/indicators.py)."""
+    ind = INDICATORS[key]
+    return d(ind.mesure, ind.comment + (" " + comment_suffix if comment_suffix else ""), ind.lecture)
 
 
 def probe_how(a: dict) -> str:
@@ -231,6 +242,22 @@ def logs(title: str, expr: str, desc: str = "") -> dict:
     }
 
 
+def bargauge(title: str, ds: dict, expr: str, legend: str, *, unit: str = "short", thresholds=None,
+             max_=None, decimals=None, desc: str = "") -> dict:
+    defaults = {"unit": unit, "min": 0, "color": {"mode": "thresholds"},
+                "thresholds": thresholds or steps((None, BLUE))}
+    if max_ is not None:
+        defaults["max"] = max_
+    if decimals is not None:
+        defaults["decimals"] = decimals
+    return {"type": "bargauge", "title": title, "datasource": ds, "description": desc,
+            "targets": [target(ds, expr, legend, instant=True)],
+            "fieldConfig": {"defaults": defaults, "overrides": []},
+            "options": {"orientation": "horizontal", "displayMode": "gradient", "showUnfilled": True,
+                        "valueMode": "color", "namePlacement": "left",
+                        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
+
+
 def alertlist(desc: str = ALERTLIST_DESC) -> dict:
     return {"type": "alertlist", "title": "Alertes actives", "description": desc, "options": {
         "showOptions": "current", "maxItems": 10, "sortOrder": 1, "dashboardAlerts": False,
@@ -245,7 +272,10 @@ def text(content: str) -> dict:
 
 UP_MAP = [{"type": "value", "options": {"0": {"text": "DOWN", "color": RED},
                                         "1": {"text": "UP", "color": GREEN}}}]
-LEVEL_MAP = [{"type": "value", "options": {"0": {"text": "OK", "color": GREEN},
+# -1 = pas de résultat (rapport absent, trafic insuffisant) — publié par l'API
+# (_metrics.NO_RESULT) pour ne jamais afficher un faux « OK » par défaut.
+LEVEL_MAP = [{"type": "value", "options": {"-1": {"text": "pas de résultat", "color": GREY},
+                                           "0": {"text": "OK", "color": GREEN},
                                            "1": {"text": "WARNING", "color": ORANGE},
                                            "2": {"text": "CRITICAL", "color": RED}}}]
 AVAIL_THR = steps((None, RED), (99, ORANGE), (99.9, GREEN))
@@ -631,16 +661,8 @@ TRAIN_METRIC_DESC = {
          "Un candidat doit aussi faire mieux que le modèle en production.")
     for m in KPI_MIN
 }
-DRIFT_LEVEL_DESC = d(
-    "L'écart entre les données de la dernière année chargée et les données d'entraînement du modèle.",
-    "Evidently compare la distribution de chaque variable (test statistique par variable). " + _REPORT_HOW,
-    "OK = moins de 10 % des variables ont dérivé · WARNING = plus de 10 % · CRITICAL = plus de 25 % "
-    "(le modèle risque de se dégrader : un réentraînement est recommandé).")
-DATA_QUALITY_DESC = d(
-    "La qualité des données brutes ONISR du dernier ETL : doublons et valeurs manquantes par table.",
-    "Contrôle Evidently exécuté par le flow ETL après chargement. " + _REPORT_HOW,
-    "OK = rien à signaler · WARNING = anomalies au-delà des seuils. Jamais bloquant : les anomalies connues "
-    "sont auto-corrigées en amont (voir « Auto-corrections ETL »).")
+DRIFT_LEVEL_DESC = di("drift_data", _REPORT_HOW)
+DATA_QUALITY_DESC = di("data_quality", _REPORT_HOW)
 
 
 # ── Flux MLOps ────────────────────────────────────────────────────────────────
@@ -665,14 +687,14 @@ def flux_dashboard() -> dict:
         ("Gates ouvertes", cnt(g_open), steps((None, BLUE)),
          "Le nombre de mises en production proposées : chaque merge sur main (T2, T3) ou nouvelle donnée (T1) "
          "prépare un déploiement puis s'arrête à la gate, en attente d'une décision humaine.",
-         "Gates ouvertes = GO + STOP + Annulées ou en attente.", 3),
+         "Gates ouvertes = GO + STOP + Sans décision (annulées ou en attente).", 3),
         ("GO", cnt(g_go), steps((None, GREEN)),
          "Le nombre de déploiements validés par un humain (bouton GO du Cockpit).",
          "Chaque GO lance la mise en production sur le VPS, les tests fonctionnels puis Kubernetes.", 3),
         ("STOP", cnt(g_stop), steps((None, GREEN), (1, ORANGE)),
          "Le nombre de déploiements refusés par un humain (bouton STOP du Cockpit).",
          "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente.", 3),
-        ("Annulées ou en attente", f"({cnt(g_open)}) - ({cnt(g_go)}) - ({cnt(g_stop)})", steps((None, GREEN), (1, GREY)),
+        ("Sans décision", f"({cnt(g_open)}) - ({cnt(g_go)}) - ({cnt(g_stop)})", steps((None, GREEN), (1, GREY)),
          "Les gates ouvertes qui n'ont reçu ni GO ni STOP : encore en attente de décision, expirées (24 h sans "
          "décision) ou annulées directement dans Prefect au lieu du Cockpit.",
          "Calcul : gates ouvertes − GO − STOP. En temps normal 0, ou 1 pendant qu'une gate attend. Une valeur "
@@ -724,6 +746,13 @@ def flux_dashboard() -> dict:
     g.add(stat("Qualité des données (dernier ETL)", PROM, "cac_mlops_data_quality_level", mappings=LEVEL_MAP,
                thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DATA_QUALITY_DESC), 6, 4)
 
+    g.add(bargauge("Lignes en double par table ONISR (dernier ETL)", PROM, "cac_mlops_data_quality_duplicated_rows",
+                   "{{table}}", decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)),
+                   desc=di("data_quality", _REPORT_HOW)), 12, 6)
+    g.add(bargauge("Valeurs manquantes par table ONISR (dernier ETL)", PROM, "cac_mlops_data_quality_missing_share * 100",
+                   "{{table}}", unit="percent", decimals=1, max_=100, thresholds=steps((None, GREEN), (30, ORANGE)),
+                   desc=di("data_quality", _REPORT_HOW)), 12, 6)
+
     g.row("Modèle — dernier entraînement")
     g.add(stat("Champion", PROM, "cac_mlops_train_info", text_mode="name", legend="{{algorithm}} · données {{year}}",
                thresholds=steps((None, BLUE)), no_value="—", desc=d(
@@ -741,37 +770,46 @@ def flux_dashboard() -> dict:
                    "ou ne bat le modèle @Production ; Loki les compte.",
                    "Ce n'est pas une panne : la production reste sur le modèle actuel, qui reste le meilleur.")), 12, 4)
     g.add(stat("Changement de décision vs @Production", PROM, "cac_mlops_model_diff_flipped_share * 100",
-               unit="percent", decimals=1, thresholds=steps((None, GREEN), (10, ORANGE)), no_value="—", desc=d(
-                   "Parmi un jeu de référence figé d'accidents, la part dont la prédiction change de classe entre "
-                   "le candidat et le modèle en production.",
-                   "Au dernier entraînement, les deux modèles prédisent le même jeu de référence ; "
-                   "le flow compare les réponses et l'API expose le résultat.",
-                   "Vert < 10 % · orange au-delà : le nouveau modèle se comporte très différemment, "
-                   "à examiner avant le GO. Jamais bloquant.")), 12, 4)
+               unit="percent", decimals=1, thresholds=steps((None, GREEN), (20, ORANGE)), no_value="—",
+               desc=di("model_diff", _REPORT_HOW)), 12, 4)
 
-    g.row("Drift")
+    g.row("Drift — les données, la réalité et les demandes reçues ressemblent-elles à l'entraînement ?")
     g.add(stat("Drift des données", PROM, "cac_mlops_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 4, 4)
     g.add(stat("Variables en dérive", PROM, "cac_mlops_drift_share * 100", unit="percent", decimals=0,
-               thresholds=steps((None, GREEN), (10, ORANGE), (25, RED)), no_value="—", desc=d(
-                   "La part des variables dont la distribution a significativement changé entre la dernière année "
-                   "et les données d'entraînement.",
-                   "Evidently teste chaque variable. " + _REPORT_HOW,
-                   "Vert < 10 % · orange < 25 % · rouge au-delà (drift CRITICAL).")), 6, 4)
-    g.add(stat("Drift du trafic réel", PROM, "cac_mlops_prediction_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="pas assez de trafic", desc=d(
-                   "L'écart entre les demandes de prédiction réelles des 90 derniers jours et les données "
-                   "d'entraînement.",
-                   "Les prédictions réelles de l'API sont enregistrées en base (tests exclus) ; Evidently les "
-                   "compare aux données d'entraînement, à partir de 100 prédictions. " + _REPORT_HOW,
-                   "« pas assez de trafic » = moins de 100 prédictions réelles sur 90 jours. "
-                   "OK / WARNING / CRITICAL : mêmes seuils que le drift des données.")), 6, 4)
+               thresholds=steps((None, GREEN), (10, ORANGE), (25, RED)), no_value="—",
+               desc=di("drift_data", _REPORT_HOW)), 4, 4)
     g.add(stat("Drift de la cible", PROM, "cac_mlops_drift_target_detected",
-               mappings=[{"type": "value", "options": {"0": {"text": "non", "color": GREEN}, "1": {"text": "oui", "color": ORANGE}}}],
-               thresholds=steps((None, GREEN), (1, ORANGE)), no_value="—", desc=d(
-                   "Le taux d'accidents graves a-t-il changé entre la dernière année et les années de référence ?",
-                   "Evidently compare la distribution de la cible `grav` (distance de Jensen-Shannon). " + _REPORT_HOW,
-                   "oui = la réalité elle-même a changé : le modèle doit être réentraîné sur les données récentes.")), 6, 4)
+               mappings=[{"type": "value", "options": {"-1": {"text": "pas de résultat", "color": GREY},
+                                                       "0": {"text": "non", "color": GREEN},
+                                                       "1": {"text": "oui", "color": ORANGE}}}],
+               thresholds=steps((None, GREEN), (1, ORANGE)), no_value="—", desc=di("drift_target", _REPORT_HOW)), 4, 4)
+    g.add({**stat("Accidents graves : référence → année", PROM, "cac_mlops_drift_target_reference_rate * 100",
+                  unit="percent", decimals=1, no_value="—", thresholds=steps((None, BLUE)), color_mode="value",
+                  desc=di("drift_target", _REPORT_HOW + " Taux d'accidents graves des années de référence, "
+                          "puis de l'année analysée.")),
+           "targets": [target(PROM, "cac_mlops_drift_target_reference_rate * 100", "référence", instant=True, ref="A"),
+                       target(PROM, "cac_mlops_drift_target_current_rate * 100", "année analysée", instant=True, ref="B")]},
+          8, 4)
+    g.add(stat("Dernier calcul du drift", PROM, "cac_mlops_drift_report_timestamp * 1000", unit="dateTimeAsLocal",
+               no_value="jamais", thresholds=steps((None, BLUE)), color_mode="value", desc=d(
+                   "La date du dernier calcul de la dérive des données et de la cible.",
+                   "Horodatage du dernier rapport Evidently, écrit par le flow `drift-check` et exposé par l'API.",
+                   "Le calcul a lieu à chaque nouvelle année ONISR : une date ancienne est normale entre deux publications "
+                   "annuelles.")), 4, 4)
+    g.add(bargauge("Variables les plus proches du seuil de dérive (0,1)", PROM,
+                   "sort_desc(topk(5, cac_mlops_drift_feature_score))", "{{feature}}", decimals=3, max_=0.15,
+                   thresholds=steps((None, GREEN), (0.07, ORANGE), (0.1, RED)),
+                   desc=di("drift_feature_score", _REPORT_HOW)), 12, 7)
+    g.add(stat("Drift du trafic réel", PROM, "cac_mlops_prediction_drift_level",
+               mappings=[{"type": "value", "options": {**LEVEL_MAP[0]["options"],
+                                                       "-1": {"text": "pas assez de trafic", "color": GREY}}}],
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—",
+               desc=di("prediction_drift", _REPORT_HOW)), 6, 7)
+    g.add(stat("Prédictions réelles analysées (min. 100)", PROM, "cac_mlops_prediction_drift_rows", decimals=0,
+               unit="suffix: / 100", thresholds=steps((None, GREY), (100, GREEN)), no_value="—",
+               desc=di("prediction_drift", _REPORT_HOW + " Nombre de prédictions réelles sur les 90 derniers jours "
+                       "au dernier calcul (chaque lundi).")), 6, 7)
     return dashboard("cac-flux", "CAC MLOps — Flux MLOps", g, ["flux"],
                      "PR → CD → flow Prefect → gate → déploiement → tests fonctionnels · ETL · modèle · drift.", "now-30d")
 
@@ -882,6 +920,12 @@ def _desc_cells(desc: str) -> str:
     return "".join(f"<td>{_md(v)}</td>" for v in parts.values())
 
 
+def _replace_block(doc: str, name: str, content: str) -> str:
+    begin, end = f"<!-- {name}:BEGIN -->", f"<!-- {name}:END -->"
+    head, rest = doc.split(begin)
+    return head + begin + "\n" + content + "\n" + end + rest.split(end)[1]
+
+
 def write_doc(built: dict[str, dict]) -> None:
     """Réécrit le catalogue des indicateurs entre les marqueurs de docs/monitoring.html."""
     order = ["home.json", *[a["file"] for a in ACCESSES], "flux-mlops.json", "infrastructure.json"]
@@ -900,11 +944,25 @@ def write_doc(built: dict[str, dict]) -> None:
             f'<div class="body"><p>{html.escape(dash["description"])} Fichier : <code>{name}</code>.</p>'
             '<div class="overflow-x"><table><tr><th>Indicateur</th><th>Ce que ça mesure</th><th>Comment</th><th>Lecture</th></tr>'
             + "".join(rows) + "</table></div></div></details>")
-    doc = DOC.read_text()
-    begin, end = "<!-- DASHBOARDS:BEGIN -->", "<!-- DASHBOARDS:END -->"
-    head, rest = doc.split(begin)
-    DOC.write_text(head + begin + "\n" + "\n".join(blocks) + "\n" + end + rest.split(end)[1])
-    print(f"doc      : {DOC.name} (catalogue de {len(order)} dashboards)")
+    doc = _replace_block(DOC.read_text(), "DASHBOARDS", "\n".join(blocks))
+    labels = {
+        "drift_data": ("Dérive des données", "Cockpit carte 1 · Grafana « Drift des données », « Variables en dérive »"),
+        "drift_feature_score": ("Score de dérive d'une variable", "Cockpit carte 1 (variables les plus proches du seuil)"),
+        "drift_target": ("Dérive de la cible", "Cockpit carte 2 · Grafana « Drift de la cible »"),
+        "prediction_drift": ("Dérive du trafic réel", "Cockpit carte 3 · Grafana « Drift du trafic réel »"),
+        "data_quality": ("Qualité des données brutes", "Cockpit accordéon Drift · Grafana « Qualité des données »"),
+        "model_diff": ("Comparaison candidat / production", "Cockpit accordéon Modèles · Grafana « Changement de décision »"),
+        "performance": ("Performance d'un modèle", "Cockpit accordéon Modèles · Grafana F1, AUC, rappel, accuracy"),
+    }
+    rows = "".join(
+        f"<tr><td><strong>{html.escape(labels[k][0])}</strong><br><span style='font-size:.72rem;color:var(--muted)'>"
+        f"{html.escape(labels[k][1])}</span></td><td>{_md(ind.mesure)}</td><td>{_md(ind.comment)}</td><td>{_md(ind.lecture)}</td></tr>"
+        for k, ind in INDICATORS.items())
+    table = ('<div class="overflow-x"><table><tr><th>Indicateur · où le voir</th><th>Ce que ça mesure</th>'
+             '<th>Comment</th><th>Lecture</th></tr>' + rows + "</table></div>")
+    DOC.write_text(_replace_block(doc, "INDICATORS", table))
+    DRIFT_DOC.write_text(_replace_block(DRIFT_DOC.read_text(), "INDICATORS", table))
+    print(f"doc      : {DOC.name} (catalogue de {len(order)} dashboards) · {DRIFT_DOC.name} (indicateurs)")
 
 
 def main() -> None:

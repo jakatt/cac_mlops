@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dérive des données — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --vps: #2d5d7b; --vps-text: #ffffff; --k8s: #c9dce6; --k8s-text: #1d4660;
+  --gh: #eef1f4; --gh-text: #24313b; --gh-bd: #9aa7b1; --line: #2d5d7b; --vpn: #3b7dd8;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+    --vps: #3a77a0; --vps-text: #ffffff; --k8s: #1f3b4f; --k8s-text: #cfe3ee;
+    --gh: #1b2833; --gh-text: #d8e2ea; --gh-bd: #4b5b68; --line: #7fb3d3; --vpn: #6aa5f0;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  --vps: #3a77a0; --vps-text: #ffffff; --k8s: #1f3b4f; --k8s-text: #cfe3ee;
+  --gh: #1b2833; --gh-text: #d8e2ea; --gh-bd: #4b5b68; --line: #7fb3d3; --vpn: #6aa5f0;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+  --vps: #2d5d7b; --vps-text: #ffffff; --k8s: #c9dce6; --k8s-text: #1d4660;
+  --gh: #eef1f4; --gh-text: #24313b; --gh-bd: #9aa7b1; --line: #2d5d7b; --vpn: #3b7dd8;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc body, .ci-doc { background: var(--bg); }
+.ci-doc .wrapper { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:720px;margin-bottom:24px;line-height:1.6; }
+.ci-doc .summary-row { display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap; }
+.ci-doc .badge { display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);min-width:120px; }
+.ci-doc .badge-num { font-size:1.5rem;font-weight:700;color:var(--accent); }
+.ci-doc .badge-label { font-size:.72rem;font-weight:600;color:var(--muted);text-align:center; }
+
+.ci-doc details.section { border:1px solid var(--border);border-radius:8px;margin-bottom:18px;background:var(--surface); }
+.ci-doc details.section > summary { padding:12px 16px;font-size:.92rem;font-weight:700;color:var(--text);list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;border-radius:8px; }
+.ci-doc details.section > summary:hover { background:var(--accent-lt); }
+.ci-doc details.section[open] > summary { border-bottom:1px solid var(--border);border-radius:8px 8px 0 0; }
+.ci-doc details > summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc details > summary::-webkit-details-marker { display:none; }
+.ci-doc .section-body { padding:14px 16px 16px; font-size:.84rem; }
+.ci-doc .section-body > p { margin-bottom:10px; }
+.ci-doc details.sub { border:1px solid var(--border);border-radius:8px;margin:0 0 8px;background:var(--surface); }
+.ci-doc details.sub > summary { padding:10px 14px;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--accent);background:var(--sum-bg);border-radius:7px;list-style:none;display:flex;align-items:center;gap:8px;user-select:none; }
+.ci-doc details.sub > summary:hover { background:var(--sum-hover); }
+.ci-doc details.sub .body { padding:12px 14px 14px; }
+.ci-doc details.sub .body > p { font-size:.80rem;color:var(--muted);margin-bottom:10px; }
+.ci-doc .count { font-size:.73rem;font-weight:600;margin-left:4px;padding:1px 7px;border-radius:10px;background:var(--accent-lt);color:var(--accent); }
+
+.ci-doc .overflow-x { overflow-x:auto; }
+.ci-doc table { width:100%;border-collapse:collapse;font-size:.79rem; }
+.ci-doc th { text-align:left;padding:7px 10px;background:var(--sum-bg);color:var(--accent);font-weight:600;font-size:.73rem;letter-spacing:.04em;border-bottom:2px solid var(--border); }
+.ci-doc td { padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top; }
+.ci-doc tr:last-child td { border-bottom:none; }
+.ci-doc td.row-title { background:var(--accent-lt);color:var(--accent);font-weight:700;font-size:.76rem; }
+.ci-doc code { font-family:monospace;font-size:.78rem;background:var(--code-bg);padding:1px 5px;border-radius:3px;color:var(--accent);overflow-wrap:anywhere; }
+.ci-doc .note { font-size:.78rem;color:var(--muted);margin-top:10px;padding:8px 12px;border-left:2px solid var(--border); }
+.ci-doc ul { margin:4px 0 10px 18px; }
+.ci-doc li { margin-bottom:4px; }
+
+.ci-doc .schema { width:100%;height:auto;display:block; }
+.ci-doc .schema .vps rect { fill:var(--vps); }
+.ci-doc .schema .vps text { fill:var(--vps-text); }
+.ci-doc .schema .k8s rect { fill:var(--k8s); stroke:var(--border); }
+.ci-doc .schema .k8s text { fill:var(--k8s-text); }
+.ci-doc .schema .gh rect { fill:var(--gh); stroke:var(--gh-bd); }
+.ci-doc .schema .gh text { fill:var(--gh-text); }
+.ci-doc .schema text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size:11px; text-anchor:middle; }
+.ci-doc .schema text.t { font-weight:700; font-size:13px; }
+.ci-doc .schema .lbl { fill:var(--text); font-size:10.5px; }
+.ci-doc .schema .lbl-vpn { fill:var(--vpn); font-size:10.5px; font-weight:600; }
+.ci-doc .schema .ln { stroke:var(--line); stroke-width:1.6; fill:none; }
+.ci-doc .schema .ln-vpn { stroke:var(--vpn); stroke-width:1.8; fill:none; stroke-dasharray:4 4; }
+.ci-doc .schema .legend-t { fill:var(--text); text-anchor:start; font-size:11px; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">CAC MLOps · Surveillance du modèle</div>
+  <h1 class="page-title">Dérive des données — Evidently</h1>
+  <p class="page-sub">Un modèle apprend sur les accidents passés. S'ils ne ressemblent plus aux accidents d'aujourd'hui, ses prédictions se dégradent sans qu'aucune erreur technique ne le signale. Cette page explique comment la solution détecte cette dérive avec Evidently, comment lire chaque indicateur et ce qui se passe quand une dérive est détectée.</p>
+
+  <div class="summary-row">
+    <div class="badge"><span class="badge-num">3</span><span class="badge-label">questions surveillées</span></div>
+    <div class="badge"><span class="badge-num">24</span><span class="badge-label">variables d'entrée<br>comparées</span></div>
+    <div class="badge"><span class="badge-num">0,1</span><span class="badge-label">score au-delà duquel<br>une variable dérive</span></div>
+    <div class="badge"><span class="badge-num">10 % · 25 %</span><span class="badge-label">de variables en dérive<br>→ WARNING · CRITICAL</span></div>
+  </div>
+
+  <!-- 1 -->
+  <details class="section" open>
+    <summary>❓ Pourquoi surveiller la dérive ?</summary>
+    <div class="section-body">
+      <p>La qualité réelle d'un modèle se mesure en comparant ses prédictions aux vraies gravités. Or l'ONISR publie les gravités d'une année avec <strong>environ deux ans de retard</strong> : impossible de mesurer directement, en continu, si le modèle se trompe en production.</p>
+      <p>La dérive sert d'<strong>indicateur avancé</strong> : sans connaître les vraies réponses, on vérifie que les données restent comparables à celles de l'entraînement. Trois formes de dérive sont surveillées :</p>
+      <div class="overflow-x"><table>
+        <tr><th>Forme de dérive</th><th>Question</th><th>Ce qu'elle révèle</th></tr>
+        <tr><td><strong>Dérive des données</strong> (data drift)</td><td>Les accidents de l'année ressemblent-ils à ceux de l'entraînement ?</td><td>Les conditions ont changé (vitesses, véhicules, météo…) : le modèle extrapole</td></tr>
+        <tr><td><strong>Dérive de la cible</strong> (concept drift)</td><td>La proportion d'accidents graves a-t-elle changé ?</td><td>La réalité elle-même a changé : même avec des données identiques, le modèle se trompe</td></tr>
+        <tr><td><strong>Dérive du trafic réel</strong> (prediction drift)</td><td>Les demandes reçues par l'API ressemblent-elles à l'entraînement ?</td><td>Les utilisateurs soumettent des cas que le modèle n'a pas appris</td></tr>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 2 -->
+  <details class="section">
+    <summary>🧪 Evidently en bref — comment deux distributions sont comparées</summary>
+    <div class="section-body">
+      <p><strong>Evidently</strong> est une bibliothèque open source de monitoring de modèles. On lui donne deux jeux de données — une <strong>référence</strong> et un jeu <strong>courant</strong> — et il compare la distribution de chaque variable. Il produit un <strong>rapport HTML</strong> interactif (graphiques par variable) et un <strong>résultat JSON</strong>, que la solution transforme en indicateurs pour le Cockpit, Grafana et les alertes.</p>
+      <p>Pour chaque variable, Evidently calcule un <strong>score de dérive</strong>. Le test dépend du type de variable et de la taille des données :</p>
+      <div class="overflow-x"><table>
+        <tr><th>Variable</th><th>Plus de 1 000 lignes (données ONISR)</th><th>Jusqu'à 1 000 lignes</th></tr>
+        <tr><td>Catégorielle (catégorie de route, météo, département…)</td><td><strong>Distance de Jensen-Shannon</strong> : écart entre les fréquences de chaque modalité, de 0 (identiques) à 1 (aucune modalité en commun)</td><td>test du Chi² (ou test Z pour une variable binaire)</td></tr>
+        <tr><td>Numérique (âge, vitesse max, heure…)</td><td><strong>Distance de Wasserstein normalisée</strong> : de combien il faut « déplacer » la distribution, rapporté à sa dispersion</td><td>test de Kolmogorov-Smirnov</td></tr>
+      </table></div>
+      <p>Avec des dizaines de milliers d'accidents, un test statistique classique jugerait « significative » la moindre différence. Les <strong>distances</strong> (Jensen-Shannon, Wasserstein) mesurent au contraire l'<strong>ampleur</strong> de l'écart : une variable n'est comptée en dérive que si son score dépasse <strong>0,1</strong>.</p>
+      <p>Au niveau global, la solution compte la part de variables en dérive : <strong>OK</strong> en dessous de 10 %, <strong>WARNING</strong> au-delà, <strong>CRITICAL</strong> au-delà de 25 %.</p>
+    </div>
+  </details>
+
+  <!-- 3 -->
+  <details class="section">
+    <summary>📉 Les 3 questions en détail</summary>
+    <div class="section-body">
+      <details class="sub"><summary>1 · Les données ont-elles changé ? — dérive des données</summary><div class="body">
+        <ul>
+          <li><strong>Référence :</strong> toutes les années précédentes cumulées, c'est-à-dire les données d'entraînement du modèle. <strong>Courant :</strong> la dernière année chargée (celle qui sert d'année de test).</li>
+          <li><strong>24 variables</strong> comparées : 17 catégorielles, 7 numériques. Exclues : latitude et longitude (la géographie est déjà couverte par le département) et la commune (~19 000 valeurs, dont des milliers vues une seule fois : quasi-identifiant, score toujours élevé sans signal utile).</li>
+          <li><strong>Quand :</strong> automatiquement à chaque nouvelle année de données (Trigger 1) et à chaque cycle de réentraînement complet ; à la demande avec le flow <code>drift-check</code> (Cockpit → Orchestration).</li>
+          <li><strong>Où le voir :</strong> Cockpit, accordéon Drift, carte 1 (niveau, part de variables en dérive, les 3 variables les plus proches du seuil, choix de l'année) · Grafana, Flux MLOps (« Drift des données », « Variables en dérive ») · rapport <code>drift_{année}.html</code>.</li>
+        </ul>
+      </div></details>
+      <details class="sub"><summary>2 · La réalité a-t-elle changé ? — dérive de la cible</summary><div class="body">
+        <ul>
+          <li>Compare la distribution de la cible <code>grav</code> (accident grave ou non) entre les mêmes deux périodes, par la distance de Jensen-Shannon (seuil 0,1).</li>
+          <li><strong>Rapport séparé</strong> de celui des variables : inclure la cible dans le même rapport la compterait comme une 25ᵉ variable et fausserait la part de variables en dérive.</li>
+          <li><strong>Où le voir :</strong> Cockpit, carte 2 (taux d'accidents graves de la référence → de l'année) · Grafana « Drift de la cible » · rapport <code>drift_{année}_target.html</code>.</li>
+        </ul>
+      </div></details>
+      <details class="sub"><summary>3 · Les demandes reçues ressemblent-elles à l'entraînement ? — dérive du trafic réel</summary><div class="body">
+        <ul>
+          <li><strong>Référence :</strong> les données d'entraînement du dernier cycle. <strong>Courant :</strong> les prédictions réelles de l'API des <strong>90 derniers jours</strong>, enregistrées en base. Les tests automatiques (en-tête <code>X-Synthetic</code>) ne sont pas enregistrés, donc exclus.</li>
+          <li><strong>Deux signaux :</strong> la dérive des variables (mêmes seuils que la question 1) et la <strong>stabilité</strong> des probabilités prédites entre la 1re et la 2e moitié de la période (un modèle dont les scores glissent sans raison est suspect).</li>
+          <li><strong>Minimum 100 prédictions réelles</strong> : en dessous, le résultat est « pas assez de trafic », plutôt qu'un chiffre trompeur calculé sur trop peu de cas.</li>
+          <li><strong>Quand :</strong> chaque lundi à 9 h, ou à la demande (flow <code>prediction-drift-check</code>). C'est le seul signal calculé sur les données de production elles-mêmes, entre deux publications annuelles de l'ONISR.</li>
+          <li><strong>Où le voir :</strong> Cockpit, carte 3 · Grafana « Drift du trafic réel » · rapports <code>prediction_drift_{date}.html</code> et <code>prediction_stability_{date}.html</code>.</li>
+        </ul>
+      </div></details>
+    </div>
+  </details>
+
+  <!-- 4 -->
+  <details class="section">
+    <summary>🧰 Les autres rapports Evidently</summary>
+    <div class="section-body">
+      <div class="overflow-x"><table>
+        <tr><th>Rapport</th><th>Rôle</th><th>Produit</th><th>Où le voir</th></tr>
+        <tr><td><strong>Qualité des données brutes</strong><br><code>dataquality_{année}_{table}.html</code></td><td>Profil de chaque table ONISR (caractéristiques, lieux, usagers, véhicules) : lignes en double, valeurs manquantes, distribution de chaque colonne. Complète la validation de schéma, qui seule peut arrêter l'ETL.</td><td>à chaque ETL</td><td>Cockpit, accordéon Drift (tableau sous les cartes)</td></tr>
+        <tr><td><strong>Performance d'un modèle</strong><br><code>performance_{algo}_v{N}.html</code></td><td>Accuracy, précision, rappel, F1, matrice de confusion, courbes ROC et précision-rappel, sur l'année de test jamais vue à l'entraînement.</td><td>à chaque entraînement, pour chaque algorithme</td><td>Cockpit, accordéon Modèles</td></tr>
+        <tr><td><strong>Comparaison candidat / production</strong><br><code>model_diff_…_vs_….html</code></td><td>Les deux modèles prédisent le même jeu de référence figé (16 410 accidents) : part de décisions qui changent, écart entre les distributions de probabilités. Aide à la décision au moment du GO.</td><td>à chaque entraînement</td><td>Cockpit, accordéon Modèles · Grafana « Changement de décision »</td></tr>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- 5 -->
+  <details class="section">
+    <summary>🚨 Que se passe-t-il quand une dérive est détectée ?</summary>
+    <div class="section-body">
+      <div class="overflow-x"><table>
+        <tr><th>Résultat</th><th>Effet</th></tr>
+        <tr><td><span style="font-weight:700;color:#15803d">OK</span></td><td>Rien : l'indicateur passe au vert dans le Cockpit et dans Grafana.</td></tr>
+        <tr><td><span style="font-weight:700;color:#b45309">WARNING</span></td><td>Événement <code>event=alert severity=warning topic=drift</code> → email via Grafana (« MLOps — alerte warning »).</td></tr>
+        <tr><td><span style="font-weight:700;color:#b91c1c">CRITICAL</span></td><td>Événement <code>event=alert severity=critical topic=drift</code> → email via Grafana (« MLOps — alerte critique »).</td></tr>
+      </table></div>
+      <p style="margin-top:10px"><strong>Aucun réentraînement automatique.</strong> Réentraîner sans les vraies gravités de la nouvelle période redonnerait le même modèle, puisqu'on n'aurait pas de nouvelles réponses à apprendre. La dérive est un <strong>signal d'alerte</strong> : elle indique que le prochain cycle annuel est important, et elle aide à interpréter ses résultats. Le réentraînement a lieu quand l'ONISR publie une nouvelle année avec ses gravités (Trigger 1), puis passe par la gate GO/STOP comme tout déploiement.</p>
+      <p>Qualité des données et comparaison des modèles ne sont <strong>jamais bloquantes</strong> : elles informent (alerte warning) sans arrêter la chaîne.</p>
+    </div>
+  </details>
+
+  <!-- 6 -->
+  <details class="section">
+    <summary>📖 Catalogue des indicateurs — les textes des icônes (i)</summary>
+    <div class="section-body">
+      <p>Ces définitions sont affichées au survol de l'icône (i) dans le Cockpit et dans Grafana. Elles sont écrites une seule fois, dans <code>src/utils/indicators.py</code>, et ce tableau est généré à partir du même fichier.</p>
+<!-- INDICATORS:BEGIN -->
+<div class="overflow-x"><table><tr><th>Indicateur · où le voir</th><th>Ce que ça mesure</th><th>Comment</th><th>Lecture</th></tr><tr><td><strong>Dérive des données</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit carte 1 · Grafana « Drift des données », « Variables en dérive »</span></td><td>Les accidents de l'année analysée ressemblent-ils à ceux sur lesquels le modèle a appris ? Part des 24 variables d'entrée dont la distribution a significativement changé.</td><td>Evidently compare, variable par variable, l'année analysée aux années précédentes cumulées (les données d'entraînement). Distance de <strong>Jensen-Shannon</strong> pour les 17 variables catégorielles, distance de <strong>Wasserstein normalisée</strong> pour les 7 numériques ; une variable est en dérive si son score dépasse 0,1. Calculé à chaque nouvelle année de données (Trigger 1) ou à la demande (flow <code>drift-check</code>).</td><td>OK = moins de 10 % des variables en dérive · WARNING = plus de 10 % · CRITICAL = plus de 25 % : le modèle a appris sur un monde qui a changé, un réentraînement s'impose.</td></tr><tr><td><strong>Score de dérive d&#x27;une variable</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit carte 1 (variables les plus proches du seuil)</span></td><td>L'écart entre la distribution d'une variable dans l'année analysée et dans les données d'entraînement.</td><td>Variable catégorielle : distance de Jensen-Shannon entre les fréquences de chaque modalité (0 = identiques, 1 = aucune modalité en commun). Variable numérique : distance de Wasserstein normalisée (de combien il faut « déplacer » la distribution, rapporté à sa dispersion).</td><td>0 = aucune différence. Au-delà de 0,1, la variable est comptée en dérive. Les variables les plus proches du seuil sont celles à surveiller au prochain cycle.</td></tr><tr><td><strong>Dérive de la cible</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit carte 2 · Grafana « Drift de la cible »</span></td><td>La proportion d'accidents graves (blessé hospitalisé ou tué) a-t-elle changé entre l'année analysée et les années de référence ?</td><td>Evidently compare la distribution de la cible <code>grav</code> des deux périodes (distance de Jensen-Shannon, seuil 0,1), dans un rapport séparé pour ne pas fausser la part de variables en dérive.</td><td>Si la réalité elle-même change, le modèle se trompe même sur des données d'entrée identiques (dérive de concept) : un réentraînement s'impose.</td></tr><tr><td><strong>Dérive du trafic réel</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit carte 3 · Grafana « Drift du trafic réel »</span></td><td>Les demandes réellement reçues par l'API ressemblent-elles aux données d'entraînement du modèle ?</td><td>Chaque lundi à 9 h (ou à la demande, flow <code>prediction-drift-check</code>), Evidently compare les prédictions réelles des 90 derniers jours, enregistrées en base (tests exclus), aux données d'entraînement — mêmes tests et seuils que la dérive des données. Il vérifie aussi la stabilité des probabilités prédites entre la 1re et la 2e moitié de la période. Minimum 100 prédictions.</td><td>« Pas assez de trafic » = moins de 100 prédictions réelles sur 90 jours : pas de verdict plutôt qu'un chiffre trompeur. Sinon OK = moins de 10 % des variables en dérive · WARNING = plus de 10 % · CRITICAL = plus de 25 %. C'est le seul signal calculé sur les données de production elles-mêmes, entre deux publications annuelles ONISR.</td></tr><tr><td><strong>Qualité des données brutes</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit accordéon Drift · Grafana « Qualité des données »</span></td><td>La qualité des 4 fichiers bruts ONISR de la dernière année chargée : lignes en double et valeurs manquantes, table par table.</td><td>Evidently (DataQualityPreset) profile chaque table après le chargement ETL, en complément de la validation de schéma (Pandera) qui, elle, arrête l'ETL en cas d'erreur critique.</td><td>WARNING dès 1 ligne en double ou plus de 30 % de valeurs manquantes dans une table. Jamais bloquant : les anomalies connues sont auto-corrigées par l'ETL (voir Catalogue ETL).</td></tr><tr><td><strong>Comparaison candidat / production</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit accordéon Modèles · Grafana « Changement de décision »</span></td><td>Le nouveau modèle candidat se comporte-t-il très différemment du modèle en production ?</td><td>À chaque entraînement, les deux modèles prédisent le même jeu de référence figé (16 410 accidents, jamais modifié) : on mesure la part de décisions qui changent de classe et l'écart entre leurs distributions de probabilités.</td><td>Informatif, jamais bloquant : un meilleur modèle peut légitimement changer des décisions. Au-delà de 20 % de décisions changées, le candidat mérite un examen attentif avant le GO.</td></tr><tr><td><strong>Performance d&#x27;un modèle</strong><br><span style='font-size:.72rem;color:var(--muted)'>Cockpit accordéon Modèles · Grafana F1, AUC, rappel, accuracy</span></td><td>La qualité des prédictions d'un modèle sur l'année la plus récente, jamais vue à l'entraînement.</td><td>Evidently calcule accuracy, précision, rappel et F1, la matrice de confusion et les courbes ROC et précision-rappel, à partir des vraies gravités de l'année de test (split temporel).</td><td>Pour être promu, le champion doit dépasser les seuils (F1 ≥ 0,60 · AUC ≥ 0,77 · rappel ≥ 0,58 · accuracy ≥ 0,72) et battre le modèle en production.</td></tr></table></div>
+<!-- INDICATORS:END -->
+    </div>
+  </details>
+
+  <!-- 7 -->
+  <details class="section">
+    <summary>🔎 Lire un rapport Evidently de dérive</summary>
+    <div class="section-body">
+      <ol style="margin:4px 0 10px 18px;">
+        <li><strong>En-tête :</strong> nombre de colonnes analysées, nombre et part de colonnes en dérive. Le verdict global d'Evidently (« Dataset drift ») utilise son propre seuil de 50 % ; la solution applique les siens (10 % / 25 %), plus exigeants.</li>
+        <li><strong>Tableau des colonnes :</strong> pour chaque variable, son type, le test utilisé, le score et « Detected / Not detected ». Trier par score montre les variables qui bougent le plus.</li>
+        <li><strong>Détail d'une variable</strong> (clic sur la ligne) : les distributions de la référence et de l'année superposées. C'est le graphique à montrer pour expliquer une dérive (par exemple la répartition des vitesses maximales autorisées).</li>
+      </ol>
+      <p class="note">Si les graphiques d'un rapport apparaissent vides dans le Cockpit, l'ouvrir en plein écran (lien « ↗ ») : les rapports embarquent leur propre moteur de graphiques.</p>
+    </div>
+  </details>
+
+  <!-- 8 -->
+  <details class="section">
+    <summary>⚠️ Limites connues</summary>
+    <div class="section-body">
+      <ul>
+        <li><strong>Cadence annuelle.</strong> Les dérives des données et de la cible ne sont calculées qu'à la publication d'une nouvelle année ONISR : elles décrivent l'année écoulée, pas le trafic du jour.</li>
+        <li><strong>Trafic réel faible.</strong> Tant que l'API reçoit moins de 100 prédictions réelles en 90 jours, la dérive du trafic réel reste sans verdict. C'est le comportement voulu, pas une panne.</li>
+        <li><strong>Jeu de référence de la comparaison des modèles.</strong> Il est figé (accidents de 2021) pour comparer les cycles entre eux sur les mêmes lignes ; ces accidents font aussi partie des données d'entraînement. Il mesure donc un <em>changement de comportement</em> entre deux modèles, pas leur performance.</li>
+        <li><strong>La dérive ne dit pas si le modèle se trompe.</strong> Elle signale un risque. Seule la performance mesurée sur les vraies gravités (rapport de performance, gate de promotion) juge la qualité du modèle.</li>
+      </ul>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>
