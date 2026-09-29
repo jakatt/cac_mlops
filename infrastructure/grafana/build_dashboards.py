@@ -242,6 +242,22 @@ def logs(title: str, expr: str, desc: str = "") -> dict:
     }
 
 
+def bargauge(title: str, ds: dict, expr: str, legend: str, *, unit: str = "short", thresholds=None,
+             max_=None, decimals=None, desc: str = "") -> dict:
+    defaults = {"unit": unit, "min": 0, "color": {"mode": "thresholds"},
+                "thresholds": thresholds or steps((None, BLUE))}
+    if max_ is not None:
+        defaults["max"] = max_
+    if decimals is not None:
+        defaults["decimals"] = decimals
+    return {"type": "bargauge", "title": title, "datasource": ds, "description": desc,
+            "targets": [target(ds, expr, legend, instant=True)],
+            "fieldConfig": {"defaults": defaults, "overrides": []},
+            "options": {"orientation": "horizontal", "displayMode": "gradient", "showUnfilled": True,
+                        "valueMode": "color", "namePlacement": "left",
+                        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}}}
+
+
 def alertlist(desc: str = ALERTLIST_DESC) -> dict:
     return {"type": "alertlist", "title": "Alertes actives", "description": desc, "options": {
         "showOptions": "current", "maxItems": 10, "sortOrder": 1, "dashboardAlerts": False,
@@ -256,7 +272,10 @@ def text(content: str) -> dict:
 
 UP_MAP = [{"type": "value", "options": {"0": {"text": "DOWN", "color": RED},
                                         "1": {"text": "UP", "color": GREEN}}}]
-LEVEL_MAP = [{"type": "value", "options": {"0": {"text": "OK", "color": GREEN},
+# -1 = pas de résultat (rapport absent, trafic insuffisant) — publié par l'API
+# (_metrics.NO_RESULT) pour ne jamais afficher un faux « OK » par défaut.
+LEVEL_MAP = [{"type": "value", "options": {"-1": {"text": "pas de résultat", "color": GREY},
+                                           "0": {"text": "OK", "color": GREEN},
                                            "1": {"text": "WARNING", "color": ORANGE},
                                            "2": {"text": "CRITICAL", "color": RED}}}]
 AVAIL_THR = steps((None, RED), (99, ORANGE), (99.9, GREEN))
@@ -668,14 +687,14 @@ def flux_dashboard() -> dict:
         ("Gates ouvertes", cnt(g_open), steps((None, BLUE)),
          "Le nombre de mises en production proposées : chaque merge sur main (T2, T3) ou nouvelle donnée (T1) "
          "prépare un déploiement puis s'arrête à la gate, en attente d'une décision humaine.",
-         "Gates ouvertes = GO + STOP + Annulées ou en attente.", 3),
+         "Gates ouvertes = GO + STOP + Sans décision (annulées ou en attente).", 3),
         ("GO", cnt(g_go), steps((None, GREEN)),
          "Le nombre de déploiements validés par un humain (bouton GO du Cockpit).",
          "Chaque GO lance la mise en production sur le VPS, les tests fonctionnels puis Kubernetes.", 3),
         ("STOP", cnt(g_stop), steps((None, GREEN), (1, ORANGE)),
          "Le nombre de déploiements refusés par un humain (bouton STOP du Cockpit).",
          "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente.", 3),
-        ("Annulées ou en attente", f"({cnt(g_open)}) - ({cnt(g_go)}) - ({cnt(g_stop)})", steps((None, GREEN), (1, GREY)),
+        ("Sans décision", f"({cnt(g_open)}) - ({cnt(g_go)}) - ({cnt(g_stop)})", steps((None, GREEN), (1, GREY)),
          "Les gates ouvertes qui n'ont reçu ni GO ni STOP : encore en attente de décision, expirées (24 h sans "
          "décision) ou annulées directement dans Prefect au lieu du Cockpit.",
          "Calcul : gates ouvertes − GO − STOP. En temps normal 0, ou 1 pendant qu'une gate attend. Une valeur "
@@ -727,6 +746,13 @@ def flux_dashboard() -> dict:
     g.add(stat("Qualité des données (dernier ETL)", PROM, "cac_mlops_data_quality_level", mappings=LEVEL_MAP,
                thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DATA_QUALITY_DESC), 6, 4)
 
+    g.add(bargauge("Lignes en double par table ONISR (dernier ETL)", PROM, "cac_mlops_data_quality_duplicated_rows",
+                   "{{table}}", decimals=0, thresholds=steps((None, GREEN), (1, ORANGE)),
+                   desc=di("data_quality", _REPORT_HOW)), 12, 6)
+    g.add(bargauge("Valeurs manquantes par table ONISR (dernier ETL)", PROM, "cac_mlops_data_quality_missing_share * 100",
+                   "{{table}}", unit="percent", decimals=1, max_=100, thresholds=steps((None, GREEN), (30, ORANGE)),
+                   desc=di("data_quality", _REPORT_HOW)), 12, 6)
+
     g.row("Modèle — dernier entraînement")
     g.add(stat("Champion", PROM, "cac_mlops_train_info", text_mode="name", legend="{{algorithm}} · données {{year}}",
                thresholds=steps((None, BLUE)), no_value="—", desc=d(
@@ -747,18 +773,43 @@ def flux_dashboard() -> dict:
                unit="percent", decimals=1, thresholds=steps((None, GREEN), (20, ORANGE)), no_value="—",
                desc=di("model_diff", _REPORT_HOW)), 12, 4)
 
-    g.row("Drift")
+    g.row("Drift — les données, la réalité et les demandes reçues ressemblent-elles à l'entraînement ?")
     g.add(stat("Drift des données", PROM, "cac_mlops_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 4, 4)
     g.add(stat("Variables en dérive", PROM, "cac_mlops_drift_share * 100", unit="percent", decimals=0,
                thresholds=steps((None, GREEN), (10, ORANGE), (25, RED)), no_value="—",
-               desc=di("drift_data", _REPORT_HOW)), 6, 4)
-    g.add(stat("Drift du trafic réel", PROM, "cac_mlops_prediction_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="pas assez de trafic",
-               desc=di("prediction_drift", _REPORT_HOW)), 6, 4)
+               desc=di("drift_data", _REPORT_HOW)), 4, 4)
     g.add(stat("Drift de la cible", PROM, "cac_mlops_drift_target_detected",
-               mappings=[{"type": "value", "options": {"0": {"text": "non", "color": GREEN}, "1": {"text": "oui", "color": ORANGE}}}],
-               thresholds=steps((None, GREEN), (1, ORANGE)), no_value="—", desc=di("drift_target", _REPORT_HOW)), 6, 4)
+               mappings=[{"type": "value", "options": {"-1": {"text": "pas de résultat", "color": GREY},
+                                                       "0": {"text": "non", "color": GREEN},
+                                                       "1": {"text": "oui", "color": ORANGE}}}],
+               thresholds=steps((None, GREEN), (1, ORANGE)), no_value="—", desc=di("drift_target", _REPORT_HOW)), 4, 4)
+    g.add({**stat("Accidents graves : référence → année", PROM, "cac_mlops_drift_target_reference_rate * 100",
+                  unit="percent", decimals=1, no_value="—", thresholds=steps((None, BLUE)), color_mode="value",
+                  desc=di("drift_target", _REPORT_HOW + " Taux d'accidents graves des années de référence, "
+                          "puis de l'année analysée.")),
+           "targets": [target(PROM, "cac_mlops_drift_target_reference_rate * 100", "référence", instant=True, ref="A"),
+                       target(PROM, "cac_mlops_drift_target_current_rate * 100", "année analysée", instant=True, ref="B")]},
+          8, 4)
+    g.add(stat("Dernier calcul du drift", PROM, "cac_mlops_drift_report_timestamp * 1000", unit="dateTimeAsLocal",
+               no_value="jamais", thresholds=steps((None, BLUE)), color_mode="value", desc=d(
+                   "La date du dernier calcul de la dérive des données et de la cible.",
+                   "Horodatage du dernier rapport Evidently, écrit par le flow `drift-check` et exposé par l'API.",
+                   "Le calcul a lieu à chaque nouvelle année ONISR : une date ancienne est normale entre deux publications "
+                   "annuelles.")), 4, 4)
+    g.add(bargauge("Variables les plus proches du seuil de dérive (0,1)", PROM,
+                   "sort_desc(topk(5, cac_mlops_drift_feature_score))", "{{feature}}", decimals=3, max_=0.15,
+                   thresholds=steps((None, GREEN), (0.07, ORANGE), (0.1, RED)),
+                   desc=di("drift_feature_score", _REPORT_HOW)), 12, 7)
+    g.add(stat("Drift du trafic réel", PROM, "cac_mlops_prediction_drift_level",
+               mappings=[{"type": "value", "options": {**LEVEL_MAP[0]["options"],
+                                                       "-1": {"text": "pas assez de trafic", "color": GREY}}}],
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—",
+               desc=di("prediction_drift", _REPORT_HOW)), 6, 7)
+    g.add(stat("Prédictions réelles analysées (min. 100)", PROM, "cac_mlops_prediction_drift_rows", decimals=0,
+               unit="suffix: / 100", thresholds=steps((None, GREY), (100, GREEN)), no_value="—",
+               desc=di("prediction_drift", _REPORT_HOW + " Nombre de prédictions réelles sur les 90 derniers jours "
+                       "au dernier calcul (chaque lundi).")), 6, 7)
     return dashboard("cac-flux", "CAC MLOps — Flux MLOps", g, ["flux"],
                      "PR → CD → flow Prefect → gate → déploiement → tests fonctionnels · ETL · modèle · drift.", "now-30d")
 

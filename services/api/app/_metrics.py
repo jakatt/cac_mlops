@@ -173,6 +173,11 @@ MODEL_INFO = Gauge(
 )
 
 _LEVEL_MAP = {"OK": 0, "WARNING": 1, "CRITICAL": 2}
+# Niveau publié quand il n'y a pas de résultat (rapport absent, trafic réel
+# insuffisant, étape sautée). Sans lui, une Gauge jamais renseignée vaut 0,
+# que Grafana affiche « OK » : un faux vert (constaté 2026-09-29 sur le drift
+# du trafic réel, 79 prédictions < 100 requises, affiché OK dans Grafana).
+NO_RESULT = -1
 
 # ── Trafic réel vs trafic de test ────────────────────────────────────────────
 # Étiquette `traffic` ("real" | "test") sur les compteurs de requêtes et de
@@ -239,6 +244,8 @@ def update_drift_metrics_from_file(reports_path: Path) -> None:
     """Read latest_summary.json and update Prometheus Gauges. No-op if file absent."""
     summary_path = reports_path / "drift" / "latest_summary.json"
     if not summary_path.exists():
+        DRIFT_LEVEL.set(NO_RESULT)
+        DRIFT_TARGET_DETECTED.set(NO_RESULT)
         return
     try:
         data = json.loads(summary_path.read_text())
@@ -261,16 +268,20 @@ def update_drift_metrics_from_file(reports_path: Path) -> None:
 def update_prediction_drift_metrics_from_file(reports_path: Path) -> None:
     """Read latest_prediction_drift_summary.json and update Prometheus Gauges.
 
-    No-op si le fichier est absent OU si level="INSUFFICIENT_DATA" (pas encore
-    assez de trafic réel — cf. services/monitoring/prediction_drift.py::MIN_ROWS) :
-    on ne veut pas publier un share/level basé sur un échantillon trop petit.
+    Fichier absent ou level="INSUFFICIENT_DATA" (pas encore assez de trafic
+    réel — cf. services/monitoring/prediction_drift.py::MIN_ROWS) : niveau
+    NO_RESULT et nombre de lignes réel, jamais de share/level calculé sur un
+    échantillon trop petit.
     """
     summary_path = reports_path / "drift" / "latest_prediction_drift_summary.json"
     if not summary_path.exists():
+        PRED_DRIFT_LEVEL.set(NO_RESULT)
         return
     try:
         data = json.loads(summary_path.read_text())
         if data.get("level") == "INSUFFICIENT_DATA":
+            PRED_DRIFT_LEVEL.set(NO_RESULT)
+            PRED_DRIFT_ROWS.set(data.get("rows", 0))
             return
         PRED_DRIFT_SHARE.set(data.get("drift_share", 0.0))
         PRED_DRIFT_LEVEL.set(_LEVEL_MAP.get(data.get("level", "OK"), 0))
@@ -300,10 +311,12 @@ def update_data_quality_metrics_from_file(reports_path: Path) -> None:
     """Read latest_dataquality_summary.json and update Prometheus Gauges."""
     summary_path = reports_path / "drift" / "latest_dataquality_summary.json"
     if not summary_path.exists():
+        DATA_QUALITY_LEVEL.set(NO_RESULT)
         return
     try:
         data = json.loads(summary_path.read_text())
         if data.get("level") == "SKIPPED":
+            DATA_QUALITY_LEVEL.set(NO_RESULT)
             return
         DATA_QUALITY_LEVEL.set(_LEVEL_MAP.get(data.get("level", "OK"), 0))
         for table, info in data.get("tables", {}).items():

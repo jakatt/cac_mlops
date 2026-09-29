@@ -1259,6 +1259,10 @@
             {
               "type": "value",
               "options": {
+                "-1": {
+                  "text": "pas de résultat",
+                  "color": "#8e8e8e"
+                },
                 "0": {
                   "text": "OK",
                   "color": "green"
@@ -1347,6 +1351,10 @@
             {
               "type": "value",
               "options": {
+                "-1": {
+                  "text": "pas de résultat",
+                  "color": "#8e8e8e"
+                },
                 "0": {
                   "text": "OK",
                   "color": "green"

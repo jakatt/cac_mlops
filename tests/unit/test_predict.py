@@ -121,3 +121,38 @@ class TestTrafficLabel:
     def test_browser_or_client_is_real_traffic(self):
         assert traffic_of({"user-agent": "Mozilla/5.0"}) == "real"
         assert traffic_of({}) == "real"
+
+
+class TestDriftGaugesNoResult:
+    """Pas de résultat → niveau -1 publié, jamais le 0 par défaut (= « OK » dans Grafana)."""
+
+    @staticmethod
+    def _value(gauge) -> float:
+        return gauge._value.get()
+
+    def test_insufficient_traffic_is_not_ok(self, tmp_path):
+        from services.api.app import _metrics as m
+        (tmp_path / "drift").mkdir()
+        (tmp_path / "drift" / "latest_prediction_drift_summary.json").write_text(
+            json.dumps({"level": "INSUFFICIENT_DATA", "rows": 79, "min_rows": 100}))
+        m.update_prediction_drift_metrics_from_file(tmp_path)
+        assert self._value(m.PRED_DRIFT_LEVEL) == m.NO_RESULT
+        assert self._value(m.PRED_DRIFT_ROWS) == 79
+
+    def test_missing_reports_are_not_ok(self, tmp_path):
+        from services.api.app import _metrics as m
+        m.update_prediction_drift_metrics_from_file(tmp_path)
+        m.update_drift_metrics_from_file(tmp_path)
+        m.update_data_quality_metrics_from_file(tmp_path)
+        assert self._value(m.PRED_DRIFT_LEVEL) == m.NO_RESULT
+        assert self._value(m.DRIFT_LEVEL) == m.NO_RESULT
+        assert self._value(m.DATA_QUALITY_LEVEL) == m.NO_RESULT
+
+    def test_computed_level_is_published(self, tmp_path):
+        from services.api.app import _metrics as m
+        (tmp_path / "drift").mkdir()
+        (tmp_path / "drift" / "latest_prediction_drift_summary.json").write_text(
+            json.dumps({"level": "WARNING", "rows": 250, "drift_share": 0.12}))
+        m.update_prediction_drift_metrics_from_file(tmp_path)
+        assert self._value(m.PRED_DRIFT_LEVEL) == 1
+        assert self._value(m.PRED_DRIFT_ROWS) == 250
