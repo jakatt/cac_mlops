@@ -20,7 +20,7 @@
     {
       "title": "Vue d'ensemble",
       "type": "link",
-      "url": "/d/cac-home",
+      "url": "/d/cac-mlops-home",
       "icon": "dashboard"
     },
     {
@@ -107,7 +107,7 @@
       "transparent": true,
       "options": {
         "mode": "markdown",
-        "content": "### Accès · API · K8s\nAccès public **https://kapsule.jakat-inc.fr/docs** — API de prédiction (applications clientes, jeton JWT) · **Kubernetes Kapsule**, allumé à la demande : « Cluster éteint » = état normal hors démonstration. Tous les chiffres portent sur la période choisie en haut à droite ; trafic de test (sondes, tests fonctionnels) exclu des compteurs d'usage. La sonde tourne sur le VPS : un VPS arrêté (la nuit) n'apparaît pas comme une coupure."
+        "content": "### Accès · API · K8s\nAccès public **https://kapsule.jakat-inc.fr/docs** — API de prédiction (applications clientes, jeton JWT) · **Kubernetes Kapsule**, allumé à la demande : « Cluster éteint » = état normal hors démonstration. Sonde exécutée dans le cluster. Chiffres sur la période choisie en haut à droite ; le trafic de test est exclu des compteurs d'usage. Survoler l'icône (i) de chaque panneau pour sa définition."
       },
       "id": 1,
       "gridPos": {
@@ -137,7 +137,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Dernier résultat de la sonde blackbox (toutes les 15 s).",
+      "description": "**Ce que ça mesure.** L'accès **API · K8s** répond-il en ce moment depuis Internet ?\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). Valeur affichée : le résultat de la dernière sonde.\n\n**Lecture.** UP (vert) = la dernière sonde a reçu HTTP 200 · DOWN (rouge) = erreur, timeout ou code ≠ 200 · gris = aucune mesure (machine éteinte).",
       "targets": [
         {
           "datasource": {
@@ -221,7 +221,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Pourcentage de sondes réussies sur la période choisie en haut à droite.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). Calcul : moyenne de `probe_success` (1 = OK, 0 = KO) sur la période, × 100.\n\n**Lecture.** Vert ≥ 99,9 % · orange ≥ 99 % · rouge en dessous. Repère : 99,9 % sur 7 jours = 10 min d'arrêt au plus. Les périodes machine éteinte ne comptent ni pour ni contre.",
       "targets": [
         {
           "datasource": {
@@ -296,14 +296,14 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Durée cumulée pendant laquelle l'accès ne répondait pas, sur la période.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). Calcul : nombre de sondes en échec × 15 s (intervalle entre deux sondes).\n\n**Lecture.** Vert < 1 min · orange < 10 min · rouge au-delà. Inclut les redémarrages planifiés (repères orange sur les courbes) : c'est le temps réellement vécu par un utilisateur.",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus-k8s"
           },
-          "expr": "(1 - avg_over_time(probe_success{instance=\"https://kapsule.jakat-inc.fr/health\"}[$__range])) * $__range_s",
+          "expr": "(count_over_time(probe_success{instance=\"https://kapsule.jakat-inc.fr/health\"}[$__range]) - sum_over_time(probe_success{instance=\"https://kapsule.jakat-inc.fr/health\"}[$__range])) * 15",
           "refId": "A",
           "instant": true,
           "range": false
@@ -370,7 +370,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Nombre de passages UP → DOWN sur la période.",
+      "description": "**Ce que ça mesure.** Nombre d'interruptions distinctes sur la période.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). Calcul : nombre de changements d'état UP ↔ DOWN, divisé par deux (une coupure = une descente + une remontée).\n\n**Lecture.** 0 = aucune interruption. Une coupure isolée pendant un déploiement est normale (redémarrage du conteneur) ; plusieurs coupures sans déploiement = à investiguer.",
       "targets": [
         {
           "datasource": {
@@ -441,7 +441,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Jours avant l'expiration du certificat HTTPS présenté aux utilisateurs.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). La sonde lit la date d'expiration du certificat pendant la négociation TLS. Certificat Let's Encrypt (90 jours) renouvelé automatiquement par Caddy ~30 jours avant l'échéance.\n\n**Lecture.** Vert ≥ 30 j · orange ≥ 14 j · rouge en dessous = le renouvellement automatique a échoué.",
       "targets": [
         {
           "datasource": {
@@ -516,7 +516,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Vert = accessible depuis Internet, rouge = coupure (planifiée ou non).",
+      "description": "**Ce que ça mesure.** L'historique UP / DOWN de l'accès sur la période.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s).\n\n**Lecture.** Vert = accessible depuis Internet · rouge = coupure (planifiée ou non) · vide = machine éteinte, pas de mesure. Les repères verticaux indiquent les GO, rollbacks et redémarrages planifiés.",
       "targets": [
         {
           "datasource": {
@@ -600,7 +600,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Temps de réponse vu d'un utilisateur (DNS + TLS + serveur). Objectif : < 300 ms.",
+      "description": "**Ce que ça mesure.** Temps de réponse vu d'un utilisateur : 95 % des sondes ont répondu plus vite que cette valeur.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). Durée mesurée par la sonde (`probe_duration_seconds`) : résolution DNS, connexion, négociation TLS et réponse du serveur ; puis 95e percentile sur la période.\n\n**Lecture.** Vert < 300 ms (objectif) · orange < 1 s · rouge au-delà. Le p95 écarte les 5 % de mesures les plus lentes (pics isolés) sans masquer une dégradation durable.",
       "targets": [
         {
           "datasource": {
@@ -675,7 +675,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** L'évolution du temps de réponse mesuré par la sonde, point par point.\n\n**Comment.** Le **blackbox-exporter** (pod du cluster Kapsule) appelle `https://kapsule.jakat-inc.fr/health` toutes les 15 s, à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s). Chaque point = durée totale d'une sonde (DNS + TLS + réponse).\n\n**Lecture.** La zone rouge marque l'objectif de 300 ms. Un pic isolé est normal (redémarrage, chargement du modèle) ; une montée durable signale une dégradation.",
       "targets": [
         {
           "datasource": {
@@ -746,7 +746,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Durée de traitement de POST /predict côté API (hors réseau).",
+      "description": "**Ce que ça mesure.** Le temps que met l'API à calculer une prédiction (POST /predict), réseau exclu.\n\n**Comment.** L'API chronomètre chaque requête (histogramme `api_request_duration_seconds`), relevé toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). p50 = médiane, p95 = 95 % des requêtes plus rapides.\n\n**Lecture.** Courbe vide = aucune prédiction sur la période. Comparer au temps vu de l'utilisateur : l'écart = réseau + TLS + proxys.",
       "targets": [
         {
           "datasource": {
@@ -832,7 +832,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Prédictions des vrais utilisateurs — sondes et tests fonctionnels exclus.",
+      "description": "**Ce que ça mesure.** Le nombre de prédictions demandées par de vrais utilisateurs sur la période.\n\n**Comment.** Chaque prédiction incrémente le compteur `api_predictions_total` (étiquette `result` = classe prédite). Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` et relevée toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). Étiquette `traffic` : **test** si la requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon.\n\n**Lecture.** Sondes, tests fonctionnels de déploiement et simulation de drift sont exclus : ce chiffre reflète l'usage réel.",
       "targets": [
         {
           "datasource": {
@@ -895,7 +895,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Tests fonctionnels de déploiement et simulation de drift.",
+      "description": "**Ce que ça mesure.** Le nombre de prédictions faites par les tests automatiques sur la période.\n\n**Comment.** Chaque prédiction incrémente le compteur `api_predictions_total` (étiquette `result` = classe prédite). Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` et relevée toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). Étiquette `traffic` : **test** si la requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon.\n\n**Lecture.** Chaque déploiement joue des tests fonctionnels qui font de vraies prédictions : ce compteur prouve qu'ils ont tourné. Ces prédictions ne sont pas enregistrées en base, donc n'influencent pas le calcul du drift.",
       "targets": [
         {
           "datasource": {
@@ -958,7 +958,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de réponses en erreur serveur (HTTP 500 à 599) sur la période, tout trafic confondu.\n\n**Comment.** Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` et relevée toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). Étiquette `traffic` : **test** si la requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon.\n\n**Lecture.** 0 attendu. Une erreur 5xx = une exception non gérée dans le service : voir la section E (logs d'erreur) pour la cause.",
       "targets": [
         {
           "datasource": {
@@ -1025,7 +1025,7 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "Requêtes refusées par nginx (limite par client 20/min et globale 60/min) — lues dans les logs d'accès nginx.",
+      "description": "**Ce que ça mesure.** Le nombre de prédictions refusées par la protection anti-abus sur la période.\n\n**Comment.** nginx limite `POST /predict` à 20 requêtes/min par client (rafale 5) et répond **HTTP 429** au-delà, sans transmettre à l'API. Promtail collecte les logs d'accès nginx dans Loki ; on compte les lignes `POST /predict` en 429.\n\n**Lecture.** Quelques refus = normal (le test anti-abus du Cockpit en provoque volontairement). Plus de 50 en 5 min déclenche l'alerte « DDoS / rate-limit ».",
       "targets": [
         {
           "datasource": {
@@ -1093,7 +1093,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de requêtes réelles rejetées faute de jeton JWT valide sur la période.\n\n**Comment.** Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` et relevée toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). Étiquette `traffic` : **test** si la requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon. L'API répond **HTTP 401** si le jeton est absent, invalide ou expiré.\n\n**Lecture.** Quelques 401 = client mal configuré. Plus de 20 en 5 min déclenche l'alerte « Brute force détecté ».",
       "targets": [
         {
           "datasource": {
@@ -1160,7 +1160,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de prédictions par intervalle de temps, en séparant usage réel et tests.\n\n**Comment.** Chaque prédiction incrémente le compteur `api_predictions_total` (étiquette `result` = classe prédite). Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` et relevée toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). Étiquette `traffic` : **test** si la requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon.\n\n**Lecture.** real = vrais utilisateurs · test = tests automatiques. Les barres de test apparaissent à chaque déploiement.",
       "targets": [
         {
           "datasource": {
@@ -1183,7 +1183,8 @@
             "spanNulls": true,
             "stacking": {
               "mode": "normal"
-            }
+            },
+            "barAlignment": -1
           },
           "thresholds": {
             "mode": "absolute",
@@ -1224,7 +1225,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le débit de requêtes sur POST /predict, par code de réponse HTTP (requêtes/seconde).\n\n**Comment.** Chaque requête HTTP est comptée par le service lui-même (middleware), exposée sur `/metrics` et relevée toutes les 15 s par le Prometheus du cluster Kapsule (lu via Tailscale). Étiquette `traffic` : **test** si la requête porte l'en-tête `X-Synthetic: 1` (tests fonctionnels) ou `X-Sim-Date` (simulation de drift), ou vient d'une sonde (blackbox, kube-probe, Prometheus) ; **real** sinon.\n\n**Lecture.** 200 = prédiction servie · 401 = sans jeton · 422 = données invalides · 5xx = erreur serveur. Les 429 n'apparaissent pas ici : nginx les refuse avant l'API.",
       "targets": [
         {
           "datasource": {
@@ -1301,7 +1302,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Accidents prédits graves (blessé hospitalisé ou tué) parmi les prédictions réelles.",
+      "description": "**Ce que ça mesure.** Parmi les prédictions réelles, la part classée « prioritaire » (accident grave prédit : blessé hospitalisé ou tué).\n\n**Comment.** Rapport entre les prédictions réelles de classe 1 et toutes les prédictions réelles (compteur `api_predictions_total`, étiquette `result`), sur la période.\n\n**Lecture.** À comparer au taux d'accidents graves des données d'entraînement : un écart durable peut révéler un changement du trafic (voir le drift dans Flux MLOps).",
       "targets": [
         {
           "datasource": {
@@ -1367,7 +1368,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Alias @Production du registre MLflow (VPS) — K8s sert la même version, exportée à chaque déploiement.",
+      "description": "**Ce que ça mesure.** Le modèle et la version actuellement en production (alias @Production du registre MLflow).\n\n**Comment.** À chaque relevé Prometheus (15 s), l'API du VPS interroge MLflow et expose `mlops_model_info{model, version}`. Le cluster K8s sert la même version : elle lui est exportée à chaque déploiement.\n\n**Lecture.** Change après un GO de Trigger 1 ou 3 qui a promu un nouveau champion, ou après un rollback.",
       "targets": [
         {
           "datasource": {
@@ -1446,7 +1447,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Jamais 0 disponible pendant un déploiement (rolling update).",
+      "description": "**Ce que ça mesure.** Le nombre de pods `api` prêts à servir, comparé au nombre demandé.\n\n**Comment.** kube-state-metrics expose l'état des objets Kubernetes, relevé toutes les 15 s par le Prometheus du cluster. « Demandés » est fixé par l'autoscaler (HPA) selon la charge CPU.\n\n**Lecture.** Les deux courbes doivent se superposer. Pendant un déploiement (rolling update), « disponibles » ne descend jamais à 0.",
       "targets": [
         {
           "datasource": {
@@ -1519,7 +1520,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de redémarrages des conteneurs `api` sur la période.\n\n**Comment.** kube-state-metrics compte les redémarrages décidés par Kubernetes (crash, sonde de vie en échec, mémoire dépassée).\n\n**Lecture.** 0 attendu. Un redémarrage = Kubernetes a réparé seul (auto-guérison) ; des redémarrages répétés = à investiguer dans les logs.",
       "targets": [
         {
           "datasource": {
@@ -1603,7 +1604,7 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "Seulement les lignes d'erreur — pas le flux de logs complet.",
+      "description": "**Ce que ça mesure.** Les lignes de log d'erreur du service, la plus récente en haut.\n\n**Comment.** Promtail collecte la sortie de chaque conteneur (DaemonSet dans le cluster, relayé vers le Loki du VPS par le loki-forwarder via Tailscale) dans Loki ; on ne garde que les lignes ERROR, CRITICAL ou Traceback.\n\n**Lecture.** Vide = aucune erreur. Déplier une ligne pour voir son contexte.",
       "targets": [
         {
           "datasource": {
@@ -1620,7 +1621,9 @@
         "sortOrder": "Descending",
         "enableLogDetails": true,
         "dedupStrategy": "none",
-        "prettifyLogMessage": false
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showCommonLabels": false
       },
       "id": 28,
       "gridPos": {

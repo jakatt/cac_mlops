@@ -3,7 +3,7 @@
 Système MLOps de bout en bout qui prédit si un accident de la route impliquera une victime grave (hospitalisée ou tuée), à partir des données officielles ONISR publiées sur data.gouv.fr (2021 → 2024).
 
 - **Cockpit public** : [mlops.jakat-inc.fr](https://mlops.jakat-inc.fr) (Predict · What-if · Points noirs)
-- **Documentation complète** (14 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/presentation.html)
+- **Documentation complète** (15 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/presentation.html)
 
 ## En bref
 
@@ -27,6 +27,7 @@ Système MLOps de bout en bout qui prédit si un accident de la route impliquera
 | [Flux MLOps](https://mlops.jakat-inc.fr/ci-docs/flux_mlops.html) | Public non technique |
 | [Architecture](https://mlops.jakat-inc.fr/ci-docs/architecture.html) · [Guide administrateur](https://mlops.jakat-inc.fr/ci-docs/guide_administrateur.html) | Équipe technique |
 | [Mécanismes de résilience](https://mlops.jakat-inc.fr/ci-docs/resilience_mechanisms.html) | Gates, rollbacks, interruptions par déclencheur |
+| [Monitoring](https://mlops.jakat-inc.fr/ci-docs/monitoring.html) | Prometheus, Loki, Grafana : collecte, indicateurs des 7 dashboards, alertes |
 | [Guide Data Scientist](https://mlops.jakat-inc.fr/ci-docs/ds_guide.html) · [Guide hyperparamètres](https://mlops.jakat-inc.fr/ci-docs/hyperparams_guide.html) | Data scientists |
 | [Guide MLOps Engineer](https://mlops.jakat-inc.fr/ci-docs/mlops_eng_guide.html) · [Guide MLOps Lead](https://mlops.jakat-inc.fr/ci-docs/mlops_lead_guide.html) | Exploitation |
 | [Catalogue des tests](https://mlops.jakat-inc.fr/ci-docs/tests_catalogue.html) · [Catalogue ETL](https://mlops.jakat-inc.fr/ci-docs/etl_catalogue.html) · [Lignée des données](https://mlops.jakat-inc.fr/ci-docs/data_lineage.html) | Qualité et traçabilité |

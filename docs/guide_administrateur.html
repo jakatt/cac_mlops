@@ -742,12 +742,13 @@ IP réelle du client : set_real_ip_from 172.16.0.0/12 + X-Forwarded-For
               <tr><td><strong>Prometheus</strong></td><td>Métriques numériques (API, système, drift)</td></tr>
               <tr><td><strong>Loki</strong></td><td>Logs centralisés (tous conteneurs Docker + K8s)</td></tr>
               <tr><td><strong>Grafana</strong></td><td>7 dashboards + 12 alertes (5 Prometheus dont 2 K8s + 7 Loki) · email</td></tr>
-              <tr><td><strong>Promtail</strong></td><td>Agent Docker → collecte logs → Loki</td></tr>
+              <tr><td><strong>Promtail</strong></td><td>Collecte des logs → Loki (VPS : conteneurs Docker + Caddy ; K8s : DaemonSet relayé par loki-forwarder via Tailscale)</td></tr>
               <tr><td><strong>Evidently</strong></td><td>Drift features (X_train vs année drift) + drift du trafic réel (prédictions 90 j) · rapports HTML + 6 gauges Prometheus</td></tr>
             </tbody>
           </table></div>
-          <p><strong>Métriques Prometheus API :</strong> <code>api_requests_total</code> · <code>api_request_duration_seconds</code> · <code>api_predictions_total</code> · <code>model_version_info</code></p>
-          <p><strong>Métriques Evidently :</strong> <code>drift_score{feature}</code> · <code>drift_detected</code> · <code>drift_share</code> · <code>drifted_features_count</code> · <code>production_rows</code> · <code>drift_level{level}</code></p>
+          <p><strong>Métriques de service</strong> (API et Cockpits, étiquette <code>traffic</code> = real / test) : <code>api_requests_total</code> · <code>api_request_duration_seconds</code> · <code>api_predictions_total</code> · <code>app_functional_errors_total</code> (Cockpits) · <code>mlops_model_info</code> (modèle @Production)</p>
+          <p><strong>Métriques MLOps</strong> (rapports des flows, relus par l'API) : <code>cac_mlops_drift_share</code> · <code>cac_mlops_drift_level</code> · <code>cac_mlops_drift_feature_score{feature}</code> · <code>cac_mlops_prediction_drift_level</code> · <code>cac_mlops_drift_target_detected</code> · <code>cac_mlops_data_quality_level</code> · <code>cac_mlops_train_metric{metric}</code> · <code>cac_mlops_model_diff_flipped_share</code></p>
+          <p>Schéma de collecte, définition de chaque indicateur et des 12 alertes : <a href="monitoring.html">doc Monitoring</a>.</p>
         </div>
       </details>
 

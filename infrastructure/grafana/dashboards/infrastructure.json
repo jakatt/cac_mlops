@@ -19,7 +19,7 @@
     {
       "title": "Vue d'ensemble",
       "type": "link",
-      "url": "/d/cac-home",
+      "url": "/d/cac-mlops-home",
       "icon": "dashboard"
     },
     {
@@ -106,7 +106,7 @@
       "transparent": true,
       "options": {
         "mode": "markdown",
-        "content": "## Infrastructure\nVPS (Docker Compose), cluster Kubernetes Kapsule (allumé à la demande) et supervision."
+        "content": "## Infrastructure\nVPS (Docker Compose), cluster Kubernetes Kapsule (allumé à la demande) et supervision. Survoler l'icône (i) pour la définition d'un indicateur."
       },
       "id": 1,
       "gridPos": {
@@ -136,7 +136,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** La part de mémoire vive encore utilisable sur le VPS (12 Go au total).\n\n**Comment.** node-exporter (conteneur du VPS) lit les compteurs du système Linux ; le Prometheus du VPS les relève toutes les 15 s. Calcul : mémoire disponible / mémoire totale.\n\n**Lecture.** Vert ≥ 25 % · orange ≥ 10 % · rouge en dessous : l'alerte « RAM critique » se déclenche après 2 min sous 10 %.",
       "targets": [
         {
           "datasource": {
@@ -207,7 +207,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** La part d'espace libre sur le volume de données (bases, artefacts MLflow, images Docker, logs).\n\n**Comment.** node-exporter (conteneur du VPS) lit les compteurs du système Linux ; le Prometheus du VPS les relève toutes les 15 s.\n\n**Lecture.** Vert ≥ 30 % · orange ≥ 15 % · rouge en dessous : l'alerte « Disque /data critique » se déclenche après 2 min sous 15 %.",
       "targets": [
         {
           "datasource": {
@@ -278,7 +278,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** La part d'espace libre sur le disque système du VPS.\n\n**Comment.** node-exporter (conteneur du VPS) lit les compteurs du système Linux ; le Prometheus du VPS les relève toutes les 15 s.\n\n**Lecture.** Vert ≥ 30 % · orange ≥ 15 % · rouge en dessous.",
       "targets": [
         {
           "datasource": {
@@ -349,7 +349,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** L'occupation moyenne du processeur du VPS sur les 5 dernières minutes, tous cœurs confondus.\n\n**Comment.** node-exporter (conteneur du VPS) lit les compteurs du système Linux ; le Prometheus du VPS les relève toutes les 15 s. Calcul : 100 % moins la part de temps où les cœurs sont inactifs.\n\n**Lecture.** Vert < 70 % · orange < 90 % · rouge au-delà. Des pics pendant un entraînement ou un build sont normaux.",
       "targets": [
         {
           "datasource": {
@@ -420,7 +420,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de connexions HTTP ouvertes en ce moment sur nginx (reverse proxy de tous les accès du VPS).\n\n**Comment.** nginx-exporter lit la page d'état de nginx (`stub_status`) ; relevé toutes les 15 s.\n\n**Lecture.** Quelques connexions = normal (sondes, Cockpit ouvert). Un pic soudain peut signaler un abus.",
       "targets": [
         {
           "datasource": {
@@ -483,7 +483,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le Cockpit d'administration répond-il ?\n\n**Comment.** Le blackbox-exporter appelle `http://gradio:7860/health` toutes les 15 s par le réseau Docker interne : le Cockpit admin n'a pas d'adresse publique, il n'est joignable que par le VPN Tailscale.\n\n**Lecture.** UP = HTTP 200 reçu · DOWN = pas de réponse.",
       "targets": [
         {
           "datasource": {
@@ -563,7 +563,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** L'évolution de la mémoire et de l'espace disque libres.\n\n**Comment.** node-exporter (conteneur du VPS) lit les compteurs du système Linux ; le Prometheus du VPS les relève toutes les 15 s.\n\n**Lecture.** Une baisse continue du disque = accumulation (images, logs) : le flow de nettoyage disque tourne après chaque déploiement.",
       "targets": [
         {
           "datasource": {
@@ -645,7 +645,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Scrape direct de chaque service (diagnostic interne — la disponibilité utilisateur est dans les dashboards d'accès).",
+      "description": "**Ce que ça mesure.** Pour chaque service du VPS, Prometheus arrive-t-il à lire ses métriques ?\n\n**Comment.** Toutes les 15 s, Prometheus appelle `/metrics` de chaque service par le réseau Docker interne ; `up` = 1 si la lecture réussit.\n\n**Lecture.** Diagnostic interne : un service peut être UP ici et injoignable par Internet (problème Caddy, DNS…) — la disponibilité vue de l'utilisateur est dans les dashboards d'accès.",
       "targets": [
         {
           "datasource": {
@@ -729,7 +729,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de machines (nœuds) du cluster Kapsule en service.\n\n**Comment.** kube-state-metrics et node-exporter (dans le cluster) sont relevés toutes les 15 s par le Prometheus du cluster, que Grafana lit via le VPN Tailscale.\n\n**Lecture.** « Cluster éteint » = état normal hors démonstration (kapsule-up / kapsule-down).",
       "targets": [
         {
           "datasource": {
@@ -796,7 +796,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "Minimum HPA : 2.",
+      "description": "**Ce que ça mesure.** Le nombre de pods API prêts à servir dans le cluster.\n\n**Comment.** kube-state-metrics et node-exporter (dans le cluster) sont relevés toutes les 15 s par le Prometheus du cluster, que Grafana lit via le VPN Tailscale.\n\n**Lecture.** Minimum 2 (autoscaler HPA) ; en dessous pendant 2 min, l'alerte « replicas api sous le minimum » se déclenche.",
       "targets": [
         {
           "datasource": {
@@ -867,7 +867,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de redémarrages de conteneurs dans le cluster sur la période, tous services confondus.\n\n**Comment.** kube-state-metrics et node-exporter (dans le cluster) sont relevés toutes les 15 s par le Prometheus du cluster, que Grafana lit via le VPN Tailscale.\n\n**Lecture.** 0 attendu. Un redémarrage = Kubernetes a réparé seul un conteneur en échec (auto-guérison).",
       "targets": [
         {
           "datasource": {
@@ -938,7 +938,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** La mémoire libre du nœud le plus chargé du cluster.\n\n**Comment.** kube-state-metrics et node-exporter (dans le cluster) sont relevés toutes les 15 s par le Prometheus du cluster, que Grafana lit via le VPN Tailscale.\n\n**Lecture.** Vert ≥ 25 % · orange ≥ 10 % · rouge en dessous : Kubernetes risque d'évincer des pods.",
       "targets": [
         {
           "datasource": {
@@ -1013,7 +1013,7 @@
         "type": "prometheus",
         "uid": "prometheus-k8s"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de pods prêts à servir, pour chaque service du cluster.\n\n**Comment.** kube-state-metrics et node-exporter (dans le cluster) sont relevés toutes les 15 s par le Prometheus du cluster, que Grafana lit via le VPN Tailscale.\n\n**Lecture.** Une courbe qui monte = l'autoscaler ajoute des pods sous la charge ; qui tombe à 0 = service indisponible.",
       "targets": [
         {
           "datasource": {
@@ -1090,7 +1090,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de séries temporelles distinctes actuellement suivies par le Prometheus du VPS.\n\n**Comment.** Métrique interne de Prometheus. Une série = une métrique × une combinaison d'étiquettes. Historique conservé 30 jours.\n\n**Lecture.** Stable attendu (quelques milliers). Une explosion = étiquette à valeurs illimitées, à corriger.",
       "targets": [
         {
           "datasource": {
@@ -1153,7 +1153,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "**Ce que ça mesure.** Le nombre de cibles que le Prometheus du VPS n'arrive pas à lire en ce moment.\n\n**Comment.** Toutes les 15 s, Prometheus lit chacune de ses cibles ; on compte celles en échec (`up == 0`).\n\n**Lecture.** 0 attendu. Sinon, voir la frise « Services scrapés par Prometheus » pour identifier la cible.",
       "targets": [
         {
           "datasource": {
@@ -1216,6 +1216,7 @@
     {
       "type": "alertlist",
       "title": "Alertes actives",
+      "description": "**Ce que ça mesure.** Les règles d'alerte Grafana actuellement déclenchées (firing) ou en cours de confirmation (pending).\n\n**Comment.** Grafana évalue ses 12 règles toutes les 1 à 2 min — 5 sur Prometheus (brute-force 401, RAM, disque, réplicas et sonde Kapsule), 7 sur les logs Loki (429 nginx, erreurs de flow, alertes MLOps, CD en échec, STOP, rollback). Chaque alerte déclenchée envoie un email (SMTP).\n\n**Lecture.** Vide = rien d'anormal. Le détail de chaque règle est dans la doc Monitoring.",
       "options": {
         "showOptions": "current",
         "maxItems": 10,

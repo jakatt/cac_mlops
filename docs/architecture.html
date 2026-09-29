@@ -234,52 +234,27 @@
           <div class="tbl"><table>
             <thead><tr><th>Source</th><th>Métriques</th></tr></thead>
             <tbody>
-              <tr><td><code>api:8000/metrics</code></td><td>requêtes, latence p50/p95/p99, prédictions, drift</td></tr>
-              <tr><td><code>node-exporter:9100</code></td><td>CPU / RAM / disk VPS</td></tr>
-              <tr><td><code>nginx-exporter:9113</code></td><td>connexions nginx, taux 4xx/5xx</td></tr>
+              <tr><td><code>api:8000/metrics</code></td><td>requêtes, latence, prédictions (réel / test), modèle @Production, drift, qualité des données, métriques d'entraînement</td></tr>
+              <tr><td><code>gradio:7860</code> · <code>gradio-public:7862</code></td><td>Cockpits admin et public : requêtes, latence, prédictions, erreurs fonctionnelles</td></tr>
+              <tr><td><code>blackbox-exporter</code></td><td>sondes HTTPS toutes les 15 s : API et Cockpit public par l'adresse publique, Cockpit admin en interne</td></tr>
+              <tr><td><code>node-exporter:9100</code></td><td>CPU / RAM / disques du VPS</td></tr>
+              <tr><td><code>nginx-exporter:9113</code></td><td>connexions nginx actives</td></tr>
             </tbody>
           </table></div>
           <p class="sec-label">Prometheus K8s — datasource Grafana directe (via Tailscale)</p>
           <div class="tbl"><table>
             <thead><tr><th>Source</th><th>Métriques</th></tr></thead>
             <tbody>
-              <tr><td><code>api:8000/metrics</code></td><td>requêtes, latence, disponibilité</td></tr>
+              <tr><td><code>api:8000/metrics</code> · <code>gradio-public:7862</code></td><td>requêtes, latence, prédictions, erreurs fonctionnelles</td></tr>
               <tr><td><code>kube-state-metrics</code></td><td>réplicas disponibles par Deployment</td></tr>
-              <tr><td><code>blackbox-exporter</code></td><td>sonde HTTP publique (<code>kapsule.jakat-inc.fr/health</code>)</td></tr>
+              <tr><td><code>blackbox-exporter</code></td><td>sondes HTTPS publiques (<code>kapsule.jakat-inc.fr/health</code> et <code>/gradio-public-health</code>)</td></tr>
               <tr><td><code>node-exporter ×2</code></td><td>CPU / RAM / disk des nœuds K8s</td></tr>
             </tbody>
           </table></div>
-          <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 7 dashboards provisionnés (dossier <code>cac-mlops</code>), seule instance du projet, générés par <code>infrastructure/grafana/build_dashboards.py</code></p>
-          <div class="tbl"><table>
-            <thead><tr><th>Dashboard</th><th>Contenu</th></tr></thead>
-            <tbody>
-              <tr><td><code>home</code> — Vue d'ensemble</td><td>Page d'accueil : état UP/DOWN des 4 accès publics (lien vers leur dashboard), modèle en prod et F1, drift, qualité des données, alertes actives, derniers événements du pipeline</td></tr>
-              <tr><td><code>access-api-vps</code> · <code>access-gradio-vps</code> · <code>access-api-k8s</code> · <code>access-gradio-k8s</code></td><td>Un dashboard par accès public, même structure (un seul modèle) : <strong>disponibilité</strong> (statut, % sur la période, temps d'arrêt, coupures, certificat TLS) · <strong>performance</strong> (temps de réponse sonde et p50/p95 réels) · <strong>usage</strong> (prédictions réelles vs de test, erreurs 5xx, 429 rate-limit et 401 pour l'API, erreurs fonctionnelles pour Gradio) · <strong>modèle servi</strong> · réplicas et redémarrages (K8s) · logs d'erreur</td></tr>
-              <tr><td><code>flux-mlops</code> — Flux MLOps</td><td>Récapitulatif des flux : gates ouvertes, GO / STOP, déploiements, rollbacks, échecs CD, journal des événements · ETL (auto-corrections, validation de schéma, versionnage DVC, qualité) · modèle (champion, métriques d'entraînement) · drift des données et des prédictions</td></tr>
-              <tr><td><code>infrastructure</code></td><td>VPS (RAM, disques, CPU, connexions nginx, sonde Cockpit admin, cibles Prometheus UP/DOWN) · Kapsule (nœuds, pods, redémarrages, RAM) · santé de la supervision (scrapes en échec, alertes)</td></tr>
-            </tbody>
-          </table></div>
-          <p>Le trafic est étiqueté <code>traffic="real"|"test"</code> dans les métriques : les flows de test envoient l'en-tête <code>X-Synthetic: 1</code> (les sondes blackbox/kube-probe sont reconnues par leur User-Agent), ce qui sépare l'usage réel des tests automatiques. Les prédictions de test ne sont pas enregistrées en base, donc n'influencent pas le drift. La sonde de disponibilité tourne sur le VPS : VPS éteint = absence de mesure, pas une coupure.</p>
-          <p><strong>Loki + Promtail</strong> — Promtail (VPS) scrape les logs de tous les conteneurs, dont les événements logfmt structurés (<code>event=gate_open/gate_resolved/interruption_*/rollback/alert</code>). Promtail (K8s, DaemonSet) fait de même pour tous les pods Kapsule, relayé via <code>loki-forwarder</code> (label <code>cluster="kapsule"</code>).</p>
-          <p class="sec-label">12 règles d'alerte Grafana (email SMTP) — Grafana/Loki sont l'unique voie d'alerte</p>
-          <p>Chaque flow loggue <code>event=alert severity=...</code>, Grafana évalue et notifie — un seul chemin, pas de doublon.</p>
-          <div class="tbl"><table>
-            <thead><tr><th>Type</th><th>Alerte</th><th>Détection</th></tr></thead>
-            <tbody>
-              <tr><td>Prometheus</td><td>Brute-force 401</td><td>&gt; 20 / 5 min</td></tr>
-              <tr><td>Loki</td><td>DDoS / rate-limit 429</td><td>&gt; 50 requêtes refusées en 429 par nginx / 5 min (logs d'accès nginx — les 429 n'atteignent jamais FastAPI)</td></tr>
-              <tr><td>Prometheus</td><td>RAM critique</td><td>&lt; 10%</td></tr>
-              <tr><td>Prometheus</td><td>Disk /data</td><td>&lt; 15%</td></tr>
-              <tr><td>Loki</td><td>Erreur flow Prefect</td><td><code>ERROR|CRITICAL</code> dans les logs</td></tr>
-              <tr><td>Loki</td><td>MLOps critique</td><td><code>event=alert severity=critical</code> (schema validation, drift, échec deploy/Kapsule)</td></tr>
-              <tr><td>Loki</td><td>MLOps warning</td><td><code>event=alert severity=warning</code> (aucun champion, drift modéré, ONISR partiel)</td></tr>
-              <tr><td>Loki</td><td>Gate refusée (STOP)</td><td><code>event=gate_resolved decision=STOP</code></td></tr>
-              <tr><td>Loki</td><td>Rollback déclenché</td><td><code>event=rollback</code></td></tr>
-              <tr><td>Loki</td><td>Pipeline CI/CD en échec</td><td>logs <code>event=deploy_pipeline status=failed</code> poussés par <code>deploy.yml</code> (Trivy, schémas Prefect, déclenchement du flow)</td></tr>
-              <tr><td>Prometheus K8s</td><td>Replicas api &lt; min HPA</td><td><code>kube_deployment_status_replicas_available &lt; 2</code> — 2 min</td></tr>
-              <tr><td>Prometheus K8s</td><td>Endpoint public K8s down</td><td><code>probe_success == 0</code> sur <code>kapsule.jakat-inc.fr/health</code> — 2 min</td></tr>
-            </tbody>
-          </table></div>
+          <p class="sec-label">Grafana <code>:3000</code> (Tailscale) — 7 dashboards, 12 règles d'alerte (email SMTP), seule instance du projet</p>
+          <p>Vue d'ensemble · 4 dashboards d'accès (API et Cockpit public × VPS et K8s : disponibilité, performance, usage, erreurs) · Flux MLOps (déploiements, ETL, modèle, drift) · Infrastructure. Le trafic de test est séparé du trafic réel (étiquette <code>traffic</code>, en-tête <code>X-Synthetic</code>).</p>
+          <p><strong>Loki + Promtail</strong> — Promtail (VPS) collecte les logs de tous les conteneurs, dont les événements structurés (<code>event=gate_open/gate_resolved/rollback/alert</code>) ; Promtail (K8s, DaemonSet) fait de même pour les pods Kapsule, relayé par <code>loki-forwarder</code> via Tailscale (label <code>cluster="kapsule"</code>).</p>
+          <p>Schéma de collecte, catalogue de chaque indicateur (ce qu'il mesure, comment, comment le lire) et détail des 12 alertes : <a href="monitoring.html"><strong>doc Monitoring</strong></a> — source unique.</p>
         </div>
       </details>
 
