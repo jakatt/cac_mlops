@@ -215,7 +215,7 @@ def annotations() -> dict:
 
 
 NAV_LINKS = [
-    {"title": "Vue d'ensemble", "type": "link", "url": "/d/cac-home", "icon": "dashboard"},
+    {"title": "Vue d'ensemble", "type": "link", "url": "/d/cac-mlops-home", "icon": "dashboard"},
     {"title": "Accès", "type": "dashboards", "tags": ["cac-access"], "asDropdown": True, "icon": "external link"},
     {"title": "Flux MLOps", "type": "link", "url": "/d/cac-flux", "icon": "dashboard"},
     {"title": "Infrastructure", "type": "link", "url": "/d/cac-infra", "icon": "dashboard"},
@@ -392,7 +392,10 @@ def home_dashboard() -> dict:
         "stateFilter": {"firing": True, "pending": True, "noData": False, "normal": False, "error": True}}}, 8, 9)
     g.add(logs("Derniers événements du pipeline", FLOW_EVENTS,
                desc="Gates, déploiements, rollbacks, pipelines CD — détail dans Flux MLOps."), 16, 9)
-    return dashboard("cac-home", "CAC MLOps — Vue d'ensemble", g, ["home"],
+    # uid historique conservé : Grafana rattache le fichier home.json à ce uid
+    # en base ; le changer fait échouer la mise à jour en boucle
+    # ("could not resolve dashboards:uid:... Dashboard not found").
+    return dashboard("cac-mlops-home", "CAC MLOps — Vue d'ensemble", g, ["home"],
                      "Page d'accueil : santé des 4 accès publics, modèle, alertes, événements.", "now-24h")
 
 

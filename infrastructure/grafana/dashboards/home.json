@@ -1,5 +1,5 @@
 {
-  "uid": "cac-home",
+  "uid": "cac-mlops-home",
   "title": "CAC MLOps — Vue d'ensemble",
   "description": "Page d'accueil : santé des 4 accès publics, modèle, alertes, événements.",
   "tags": [
@@ -19,7 +19,7 @@
     {
       "title": "Vue d'ensemble",
       "type": "link",
-      "url": "/d/cac-home",
+      "url": "/d/cac-mlops-home",
       "icon": "dashboard"
     },
     {
