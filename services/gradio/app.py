@@ -526,7 +526,10 @@ _CARDS_CSS = """<style>
   width:380px;max-width:80vw;background:#1f2d38;color:#f3f7fa;padding:11px 13px;border-radius:7px;font-size:12px;
   line-height:1.5;font-weight:400;text-align:left;box-shadow:0 6px 18px rgba(0,0,0,.25);}
 .cac-i .cac-tip p{margin:0 0 7px;} .cac-i .cac-tip p:last-child{margin:0;}
-.cac-i .cac-tip code{background:rgba(255,255,255,.12);padding:0 4px;border-radius:3px;color:#fff;}
+/* Gradio impose sa couleur de texte (prose) : sans !important, texte sombre sur fond sombre */
+.cac-i .cac-tip,.cac-i .cac-tip p,.cac-i .cac-tip span{color:#f3f7fa !important;}
+.cac-i .cac-tip strong{color:#9fd3ea !important;}
+.cac-i .cac-tip code{background:rgba(255,255,255,.12);padding:0 4px;border-radius:3px;color:#fff !important;}
 .cac-i:hover .cac-tip,.cac-i:focus .cac-tip{visibility:visible;opacity:1;}
 .cac-i.cac-left .cac-tip{left:auto;right:-12px;}
 </style>"""
