@@ -310,7 +310,7 @@ def setup_tailscale_secret(kubeconfig: str) -> str:
 
 
 @task(name="apply-k8s-manifests")
-def apply_manifests(kubeconfig: str) -> str:
+def apply_manifests(kubeconfig: str, include_probe: bool = True) -> str:
     """Pas de "prefect" ici volontairement : prefect-server/prefect-worker
     K8s ont été retirés (2026-07-11) — aucune deployment n'est jamais
     enregistrée dessus (`prefect deploy --all` ne tourne que sur le
@@ -333,10 +333,13 @@ def apply_manifests(kubeconfig: str) -> str:
     logger = get_run_logger()
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "namespace.yaml")])
     _kubectl(kubeconfig, ["apply", "-f", str(K8S_DIR / "configmap.yaml")])
+    # include_probe=False : kapsule-up déploie la sonde de disponibilité
+    # (blackbox-exporter) seulement une fois l'adresse publique ouverte, cf.
+    # start_availability_probe_task.
     for subdir in [
         "api", "nginx", "prometheus", "gradio-public",
-        "caddy", "tailscale", "kube-state-metrics", "blackbox-exporter", "node-exporter",
-        "loki-forwarder", "promtail",
+        "caddy", "tailscale", "kube-state-metrics", "node-exporter",
+        "loki-forwarder", "promtail", *(["blackbox-exporter"] if include_probe else []),
     ]:
         d = K8S_DIR / subdir
         if d.exists():
@@ -455,6 +458,21 @@ def wait_public_endpoint(max_minutes: int = 15, interval_s: int = 15) -> str:
     )
 
 
+@task(name="start-availability-probe")
+def start_availability_probe_task(kubeconfig: str) -> None:
+    """Déploie la sonde de disponibilité publique (blackbox-exporter) une fois
+    le service ouvert au public, pas avant. Déployée avec le reste, elle
+    comptait comme « DOWN » les ~5 min pendant lesquelles le load balancer
+    Scaleway n'accepte pas encore de connexions : le Prometheus du cluster
+    repartant de zéro à chaque kapsule-up, cette mise en route pesait à elle
+    seule ~35 % de la disponibilité affichée 15 min après le démarrage
+    (constaté 2026-09-29 : 64 % alors qu'aucune coupure n'avait eu lieu).
+    Même principe que le VPS éteint : la mise en route n'est pas une coupure
+    du service."""
+    _kubectl(kubeconfig, ["apply", "-f", f"{K8S_DIR / 'blackbox-exporter'}/"])
+    get_run_logger().info("✓ Sonde de disponibilité démarrée (kubectl apply k8s/blackbox-exporter/)")
+
+
 @task(name="silence-bootstrap-alerts")
 def silence_bootstrap_alerts_task(duration_minutes: int = 15) -> None:
     """Kapsule vient de démarrer : Caddy doit obtenir son IP LoadBalancer, la
@@ -518,8 +536,8 @@ def kapsule_up_flow(
       5. Upload modele @Production → S3 (s3://cac-mlops-data/k8s-model/)
       6. Upload X_test/y_test → S3 (s3://cac-mlops-data/k8s-gradio-data/)
       7. Namespace + Secrets K8s (app + tailscale-auth)
-      8. kubectl apply de tous les manifests k8s/ (dont le subnet-router Tailscale,
-         kube-state-metrics, blackbox-exporter, node-exporter, loki-forwarder,
+      8. kubectl apply des manifests k8s/ (dont le subnet-router Tailscale,
+         kube-state-metrics, node-exporter, loki-forwarder,
          promtail — pas de prefect, retiré le 2026-07-11, jamais fonctionnel ;
          pas de grafana, retiré le 2026-07-12, remplacé par une datasource
          distante depuis le Grafana du VPS)
@@ -527,6 +545,8 @@ def kapsule_up_flow(
       10. Écrit les adresses dans state/kapsule_ips (URL publique HTTPS via
           caddy, DNS interne pour gradio — reachable via Tailscale)
       11. Attend que https://kapsule.jakat-inc.fr réponde 200 (LB + DNS + TLS)
+      12. Démarre la sonde de disponibilité (blackbox-exporter) : la
+          disponibilité se mesure à partir de l'ouverture du service
     """
     silence_bootstrap_alerts_task()
     create_node_pool(node_type, node_count)
@@ -536,8 +556,13 @@ def kapsule_up_flow(
     upload_data_s3()
     setup_namespace_secrets(kubeconfig)
     setup_tailscale_secret(kubeconfig)
-    apply_manifests(kubeconfig)
+    apply_manifests(kubeconfig, include_probe=False)
     wait_api_ready(kubeconfig)
     ips = write_kapsule_state(kubeconfig)
-    wait_public_endpoint()
+    try:
+        wait_public_endpoint()
+    finally:
+        # Même si l'adresse publique n'ouvre pas, la sonde est déployée : une
+        # vraie panne doit rester visible dans Grafana.
+        start_availability_probe_task(kubeconfig)
     return ips

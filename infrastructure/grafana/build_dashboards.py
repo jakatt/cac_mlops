@@ -105,8 +105,10 @@ def probe_how(a: dict) -> str:
     return (f"Le **blackbox-exporter** (pod du cluster Kapsule) appelle `{a['probe']}` toutes les {SCRAPE_S} s, "
             "à la demande du Prometheus du cluster : requête GET, réponse **HTTP 200** attendue en moins de 5 s. "
             "La requête sort par l'adresse publique — DNS, load balancer Scaleway, Caddy, nginx, puis le service. "
-            "Grafana lit ce Prometheus à travers le VPN Tailscale. Cluster éteint = aucune mesure, affiché "
-            "« Cluster éteint » (état normal hors démonstration). Historique conservé 7 jours (Prometheus K8s).")
+            "Grafana lit ce Prometheus à travers le VPN Tailscale. La sonde démarre quand le service est ouvert "
+            "au public (fin du flow `kapsule-up`) : les minutes de mise en route du cluster ne comptent pas comme "
+            "une coupure. Cluster éteint = aucune mesure, affiché « Cluster éteint » (état normal hors "
+            "démonstration). Historique repris à zéro à chaque démarrage du cluster.")
 
 
 ALERTLIST_DESC = d(
