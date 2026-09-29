@@ -39,6 +39,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
+from services.gradio._data import load_features
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -169,53 +170,16 @@ def _get_model():
 
 def _get_data() -> pd.DataFrame | None:
     global _df
-    if _df is not None:
-        return _df
-    candidates = [
-        DATA_ROOT / "X_test.csv",
-        DATA_ROOT / "cumul_2021_2022_2023" / "X_test.csv",
-        DATA_ROOT / "cumul_2021_2022" / "X_test.csv",
-        DATA_ROOT / "2023" / "X_test.csv",
-        DATA_ROOT / "2022" / "X_test.csv",
-    ]
-    for p in candidates:
-        if p.exists():
-            logger.info("Loading data from %s", p)
-            df = pd.read_csv(p)
-            missing = [c for c in FEATURE_COLS if c not in df.columns]
-            for c in missing:
-                df[c] = 0
-            _df = df[FEATURE_COLS].copy()
-            return _df
-    logger.error("No preprocessed data found in %s", DATA_ROOT)
-    return None
+    if _df is None:
+        _df = load_features(DATA_ROOT, FEATURE_COLS)
+    return _df
 
 
 def _get_data_with_labels() -> pd.DataFrame | None:
     global _df_full
-    if _df_full is not None:
-        return _df_full
-    candidates = [
-        (DATA_ROOT / "X_test.csv",                           DATA_ROOT / "y_test.csv"),
-        (DATA_ROOT / "cumul_2021_2022_2023" / "X_test.csv",  DATA_ROOT / "cumul_2021_2022_2023" / "y_test.csv"),
-        (DATA_ROOT / "cumul_2021_2022" / "X_test.csv",       DATA_ROOT / "cumul_2021_2022" / "y_test.csv"),
-        (DATA_ROOT / "2023" / "X_test.csv",                  DATA_ROOT / "2023" / "y_test.csv"),
-        (DATA_ROOT / "2022" / "X_test.csv",                  DATA_ROOT / "2022" / "y_test.csv"),
-    ]
-    for x_path, y_path in candidates:
-        if x_path.exists() and y_path.exists():
-            logger.info("Loading data+labels from %s", x_path.parent)
-            df = pd.read_csv(x_path)
-            y  = pd.read_csv(y_path)
-            missing = [c for c in FEATURE_COLS if c not in df.columns]
-            for c in missing:
-                df[c] = 0
-            df = df[FEATURE_COLS].copy()
-            df["grav"] = y["grav"].values
-            _df_full = df
-            return _df_full
-    logger.error("No preprocessed data with labels found in %s", DATA_ROOT)
-    return None
+    if _df_full is None:
+        _df_full = load_features(DATA_ROOT, FEATURE_COLS, with_labels=True)
+    return _df_full
 
 
 _FLOAT_COLS = {
@@ -385,16 +349,16 @@ def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> 
         extra_rows  = len(df_mod) - len(df_orig)
         context_rows_label = f"{n_rows:,} accidents {scenario['context_label'].split('(')[0].strip().lower()}"
         extra_label = f"+{extra_rows:,} accidents ajoutés"
-        scope_label = "Gravite globale reelle"
-        scope_label2 = "Gravite globale scenario"
+        scope_label = "Gravité globale prédite (actuelle)"
+        scope_label2 = "Gravité globale prédite (scénario)"
     else:
         title_label = scenario["label"]
         context_rows_label = str(n_rows)
         extra_label = None
-        scope_label = "Gravite reelle"
-        scope_label2 = "Gravite scenario"
+        scope_label = "Gravité prédite (situation actuelle)"
+        scope_label2 = "Gravité prédite (scénario)"
 
-    categories = ["Situation reelle", "Scenario simule"]
+    categories = ["Situation actuelle", "Scénario simulé"]
     values     = [pct_avant, pct_apres]
     bar_colors = [NAVY, BLUE2]
     fig = go.Figure()
@@ -2985,7 +2949,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     run_btn     = gr.Button("Lancer l'analyse", variant="primary", size="lg")
                     stats_md    = gr.Markdown(value="*Les resultats s'afficheront ici apres l'analyse.*")
                 with gr.Column(scale=2):
-                    chart_out = gr.Plot(label="Gravite reelle vs scenario simule")
+                    chart_out = gr.Plot(label="Gravité prédite : situation actuelle vs scénario")
 
             def _on_whatif_scenario_change(key):
                 has_mult = SCENARIOS.get(key, {}).get("has_multiplier", False)
