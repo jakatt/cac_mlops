@@ -24,6 +24,7 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
+from services.gradio._data import load_features
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -115,44 +116,16 @@ def _get_model():
 
 def _get_data() -> pd.DataFrame | None:
     global _df
-    if _df is not None:
-        return _df
-    for p in [
-        DATA_ROOT / "X_test.csv",
-        DATA_ROOT / "cumul_2021_2022_2023" / "X_test.csv",
-        DATA_ROOT / "cumul_2021_2022" / "X_test.csv",
-        DATA_ROOT / "2023" / "X_test.csv",
-    ]:
-        if p.exists():
-            df = pd.read_csv(p)
-            for c in [c for c in FEATURE_COLS if c not in df.columns]:
-                df[c] = 0
-            _df = df[FEATURE_COLS].copy()
-            return _df
-    return None
+    if _df is None:
+        _df = load_features(DATA_ROOT, FEATURE_COLS)
+    return _df
 
 
 def _get_data_with_labels() -> pd.DataFrame | None:
     global _df_full
-    if _df_full is not None:
-        return _df_full
-    candidates = [
-        (DATA_ROOT / "X_test.csv",                          DATA_ROOT / "y_test.csv"),
-        (DATA_ROOT / "cumul_2021_2022_2023" / "X_test.csv", DATA_ROOT / "cumul_2021_2022_2023" / "y_test.csv"),
-        (DATA_ROOT / "cumul_2021_2022" / "X_test.csv",      DATA_ROOT / "cumul_2021_2022" / "y_test.csv"),
-        (DATA_ROOT / "2023" / "X_test.csv",                 DATA_ROOT / "2023" / "y_test.csv"),
-    ]
-    for x_path, y_path in candidates:
-        if x_path.exists() and y_path.exists():
-            df = pd.read_csv(x_path)
-            y  = pd.read_csv(y_path)
-            for c in [c for c in FEATURE_COLS if c not in df.columns]:
-                df[c] = 0
-            df = df[FEATURE_COLS].copy()
-            df["grav"] = y["grav"].values
-            _df_full = df
-            return _df_full
-    return None
+    if _df_full is None:
+        _df_full = load_features(DATA_ROOT, FEATURE_COLS, with_labels=True)
+    return _df_full
 
 
 _FLOAT_COLS = {
@@ -311,7 +284,7 @@ def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> 
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=["Situation reelle", "Scenario simule"],
+        x=["Situation actuelle", "Scénario simulé"],
         y=[pct_avant, pct_apres],
         marker_color=[NAVY, BLUE2],
         text=[f"{v:.1f}%" for v in [pct_avant, pct_apres]],
@@ -355,8 +328,8 @@ def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> 
 |---|---|
 | {volume_label} | **{n_rows:,}** |
 | Contexte | {context_line} |
-| Gravite reelle | **{pct_avant:.1f}%** |
-| Gravite scenario | **{pct_apres:.1f}%** |
+| Gravité prédite (situation actuelle) | **{pct_avant:.1f}%** |
+| Gravité prédite (scénario) | **{pct_apres:.1f}%** |
 | Delta | **{delta:+.1f} points** |
 | Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
 
@@ -590,7 +563,7 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                     run_btn  = gr.Button("Lancer l'analyse", variant="primary", size="lg")
                     stats_md = gr.Markdown(value="*Les resultats s'afficheront ici.*")
                 with gr.Column(scale=2):
-                    chart_out = gr.Plot(label="Gravite reelle vs scenario simule")
+                    chart_out = gr.Plot(label="Gravité prédite : situation actuelle vs scénario")
             scenario_dd.change(
                 fn=lambda k: gr.update(visible=SCENARIOS.get(k, {}).get("has_multiplier", False)),
                 inputs=[scenario_dd],
