@@ -990,7 +990,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** La qualité des données brutes ONISR du dernier ETL : doublons et valeurs manquantes par table.\n\n**Comment.** Contrôle Evidently exécuté par le flow ETL après chargement. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** OK = rien à signaler · WARNING = anomalies au-delà des seuils. Jamais bloquant : les anomalies connues sont auto-corrigées en amont (voir « Auto-corrections ETL »).",
+      "description": "**Ce que ça mesure.** La qualité des 4 fichiers bruts ONISR de la dernière année chargée : lignes en double et valeurs manquantes, table par table.\n\n**Comment.** Evidently (DataQualityPreset) profile chaque table après le chargement ETL, en complément de la validation de schéma (Pandera) qui, elle, arrête l'ETL en cas d'erreur critique. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** WARNING dès 1 ligne en double ou plus de 30 % de valeurs manquantes dans une table. Jamais bloquant : les anomalies connues sont auto-corrigées par l'ETL (voir Catalogue ETL).",
       "targets": [
         {
           "datasource": {
@@ -1493,7 +1493,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Parmi un jeu de référence figé d'accidents, la part dont la prédiction change de classe entre le candidat et le modèle en production.\n\n**Comment.** Au dernier entraînement, les deux modèles prédisent le même jeu de référence ; le flow compare les réponses et l'API expose le résultat.\n\n**Lecture.** Vert < 10 % · orange au-delà : le nouveau modèle se comporte très différemment, à examiner avant le GO. Jamais bloquant.",
+      "description": "**Ce que ça mesure.** Le nouveau modèle candidat se comporte-t-il très différemment du modèle en production ?\n\n**Comment.** À chaque entraînement, les deux modèles prédisent le même jeu de référence figé (16 410 accidents, jamais modifié) : on mesure la part de décisions qui changent de classe et l'écart entre leurs distributions de probabilités. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** Informatif, jamais bloquant : un meilleur modèle peut légitimement changer des décisions. Au-delà de 20 % de décisions changées, le candidat mérite un examen attentif avant le GO.",
       "targets": [
         {
           "datasource": {
@@ -1522,7 +1522,7 @@
               },
               {
                 "color": "orange",
-                "value": 10
+                "value": 20
               }
             ]
           },
@@ -1573,7 +1573,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** L'écart entre les données de la dernière année chargée et les données d'entraînement du modèle.\n\n**Comment.** Evidently compare la distribution de chaque variable (test statistique par variable). Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** OK = moins de 10 % des variables ont dérivé · WARNING = plus de 10 % · CRITICAL = plus de 25 % (le modèle risque de se dégrader : un réentraînement est recommandé).",
+      "description": "**Ce que ça mesure.** Les accidents de l'année analysée ressemblent-ils à ceux sur lesquels le modèle a appris ? Part des 24 variables d'entrée dont la distribution a significativement changé.\n\n**Comment.** Evidently compare, variable par variable, l'année analysée aux années précédentes cumulées (les données d'entraînement). Distance de **Jensen-Shannon** pour les 17 variables catégorielles, distance de **Wasserstein normalisée** pour les 7 numériques ; une variable est en dérive si son score dépasse 0,1. Calculé à chaque nouvelle année de données (Trigger 1) ou à la demande (flow `drift-check`). Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** OK = moins de 10 % des variables en dérive · WARNING = plus de 10 % · CRITICAL = plus de 25 % : le modèle a appris sur un monde qui a changé, un réentraînement s'impose.",
       "targets": [
         {
           "datasource": {
@@ -1661,7 +1661,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** La part des variables dont la distribution a significativement changé entre la dernière année et les données d'entraînement.\n\n**Comment.** Evidently teste chaque variable. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** Vert < 10 % · orange < 25 % · rouge au-delà (drift CRITICAL).",
+      "description": "**Ce que ça mesure.** Les accidents de l'année analysée ressemblent-ils à ceux sur lesquels le modèle a appris ? Part des 24 variables d'entrée dont la distribution a significativement changé.\n\n**Comment.** Evidently compare, variable par variable, l'année analysée aux années précédentes cumulées (les données d'entraînement). Distance de **Jensen-Shannon** pour les 17 variables catégorielles, distance de **Wasserstein normalisée** pour les 7 numériques ; une variable est en dérive si son score dépasse 0,1. Calculé à chaque nouvelle année de données (Trigger 1) ou à la demande (flow `drift-check`). Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** OK = moins de 10 % des variables en dérive · WARNING = plus de 10 % · CRITICAL = plus de 25 % : le modèle a appris sur un monde qui a changé, un réentraînement s'impose.",
       "targets": [
         {
           "datasource": {
@@ -1732,7 +1732,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** L'écart entre les demandes de prédiction réelles des 90 derniers jours et les données d'entraînement.\n\n**Comment.** Les prédictions réelles de l'API sont enregistrées en base (tests exclus) ; Evidently les compare aux données d'entraînement, à partir de 100 prédictions. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** « pas assez de trafic » = moins de 100 prédictions réelles sur 90 jours. OK / WARNING / CRITICAL : mêmes seuils que le drift des données.",
+      "description": "**Ce que ça mesure.** Les demandes réellement reçues par l'API ressemblent-elles aux données d'entraînement du modèle ?\n\n**Comment.** Chaque lundi à 9 h (ou à la demande, flow `prediction-drift-check`), Evidently compare les prédictions réelles des 90 derniers jours, enregistrées en base (tests exclus), aux données d'entraînement — mêmes tests et seuils que la dérive des données. Il vérifie aussi la stabilité des probabilités prédites entre la 1re et la 2e moitié de la période. Minimum 100 prédictions. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** « Pas assez de trafic » = moins de 100 prédictions réelles sur 90 jours : pas de verdict plutôt qu'un chiffre trompeur. Sinon OK = moins de 10 % des variables en dérive · WARNING = plus de 10 % · CRITICAL = plus de 25 %. C'est le seul signal calculé sur les données de production elles-mêmes, entre deux publications annuelles ONISR.",
       "targets": [
         {
           "datasource": {
@@ -1820,7 +1820,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "**Ce que ça mesure.** Le taux d'accidents graves a-t-il changé entre la dernière année et les années de référence ?\n\n**Comment.** Evidently compare la distribution de la cible `grav` (distance de Jensen-Shannon). Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** oui = la réalité elle-même a changé : le modèle doit être réentraîné sur les données récentes.",
+      "description": "**Ce que ça mesure.** La proportion d'accidents graves (blessé hospitalisé ou tué) a-t-elle changé entre l'année analysée et les années de référence ?\n\n**Comment.** Evidently compare la distribution de la cible `grav` des deux périodes (distance de Jensen-Shannon, seuil 0,1), dans un rapport séparé pour ne pas fausser la part de variables en dérive. Le flow Prefect écrit un rapport JSON (Evidently) dans `reports/` ; l'API le relit à chaque relevé Prometheus (15 s) et l'expose en métrique. La valeur reste celle du dernier rapport jusqu'au cycle suivant.\n\n**Lecture.** Si la réalité elle-même change, le modèle se trompe même sur des données d'entrée identiques (dérive de concept) : un réentraînement s'impose.",
       "targets": [
         {
           "datasource": {

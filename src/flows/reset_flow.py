@@ -135,7 +135,9 @@ def clear_drift_reports_task() -> int:
     if not drift_dir.exists():
         logger.info("No drift reports directory found")
         return 0
-    files = list(drift_dir.glob("drift_*.html"))
+    # HTML et JSON : les JSON seuls restaient sinon après un reset (fichiers
+    # orphelins lus par l'accordéon Drift pour les années sans résumé).
+    files = [*drift_dir.glob("drift_*.html"), *drift_dir.glob("drift_*.json")]
     for f in files:
         f.unlink()
         logger.info("Deleted: %s", f.name)

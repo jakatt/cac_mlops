@@ -45,8 +45,12 @@ FEATURE_COLS = [
     "hour", "nb_victim", "nb_vehicules",
 ]
 
-# Features catégorielles — Evidently utilise Chi² au lieu de Wasserstein
-# → barplots par catégorie, test statistiquement adapté aux codes discrets
+# Features catégorielles — déclarées comme telles pour qu'Evidently les teste
+# par modalité (barplots) plutôt que comme des nombres. Sur ce volume (>1 000
+# lignes), Evidently choisit la distance de Jensen-Shannon pour les
+# catégorielles et la distance de Wasserstein normalisée pour les numériques,
+# seuil 0,1 (vérifié dans drift_{année}.json) — pas Chi², réservé aux petits
+# échantillons.
 CATEGORICAL_COLS = [
     "place", "catu", "sexe", "secu1", "catv", "obsm", "motor",
     "catr", "circ", "surf", "situ", "lum", "dep", "agg_",
