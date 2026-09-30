@@ -531,7 +531,7 @@ def build_accueil_html() -> str:
   <div class="pacc-hero">
     <div class="pacc-eyebrow">Sécurité routière · Intelligence artificielle</div>
     <h1>Bienvenue Julie</h1>
-    <p class="pacc-lead">Anticipez la gravité des accidents de la route, et décidez où et comment agir.</p>
+    <p class="pacc-lead">Anticipez la gravité des accidents de la route et décidez comment agir.</p>
     <p class="pacc-tagline">Notre modèle d'intelligence artificielle a appris de <b>plus de 220 000 accidents réels</b>
     recensés par l'Observatoire national de la sécurité routière. <b>Chaque année</b>, dès la publication des
     nouvelles statistiques officielles, il est réentraîné et vérifié avant d'être remis en ligne : vos analyses
