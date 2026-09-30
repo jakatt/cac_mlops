@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
 from services.gradio._accueil import ACCUEIL_BG, PERSONA_LEON
 from services.gradio._data import load_features
+from services.gradio._release import release_badge_html
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -2385,14 +2386,17 @@ def check_health_k8s() -> pd.DataFrame:
 # TAB 7 — Infra (liens + IPs Kapsule)
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Styles partagés — garantit un rendu strictement identique entre les
-# tables VPS et Kapsule K8s (même largeur de colonnes via colgroup, même
-# police/padding/hauteur de ligne).
-_LINKS_TH  = f"padding:8px 16px;background:#F3F4F6;text-align:left;color:{NAVY};font-size:0.8rem;letter-spacing:0.5px;text-transform:uppercase;font-weight:600;"
-_LINKS_TD1 = f"padding:6px 16px;color:{SLATE};font-family:Inter,Segoe UI,sans-serif;"
-_LINKS_TD2 = f"padding:6px 16px;font-family:Inter,Segoe UI,sans-serif;"
-_LINKS_TD3 = f"padding:6px 16px;font-size:0.78rem;color:{MUTED};font-family:Inter,Segoe UI,sans-serif;"
-_LINKS_COLGROUP = '<colgroup><col style="width:20%;"><col style="width:15%;"><col style="width:65%;"></colgroup>'
+# Styles partagés VPS / Kapsule K8s — même rendu que le tableau « Versions
+# MLflow » de l'accordéon Modèles (gr.Dataframe) : en-tête bleu clair en
+# capitales, police à chasse fixe, lignes alternées, bordures fines. Pleine
+# largeur, une seule ligne par cellule (nowrap ; défilement horizontal en
+# dernier recours sur écran étroit).
+_LINKS_FONT = "font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
+_LINKS_CELL = "padding:12px 12px;border:1px solid #E5E7EB;white-space:nowrap;text-align:left;"
+_LINKS_TH  = (f"{_LINKS_CELL}{_LINKS_FONT}background:#c2dbe4 !important;color:{NAVY} !important;"
+              "font-size:0.8rem !important;letter-spacing:0.5px;text-transform:uppercase;font-weight:700 !important;")
+_LINKS_TD  = f"{_LINKS_CELL}{_LINKS_FONT}font-size:0.85rem !important;color:{SLATE} !important;"
+_LINKS_ROW_BG = ("#FFFFFF", "#F9FAFB")
 _LINKS_NOTE = (
     f"<p style='margin:6px 0 0;font-size:0.78em;color:{MUTED};'>"
     "Ports admin accessibles via Tailscale VPN uniquement &mdash; API et cockpit public sur HTTPS.</p>"
@@ -2400,24 +2404,30 @@ _LINKS_NOTE = (
 
 
 def _link_row(label: str, url: str, access: str) -> str:
+    # Fond alterné appliqué dans _links_table (dépend du rang de la ligne).
     return (
-        f'<tr>'
-        f'<td style="{_LINKS_TD1}">{label}</td>'
-        f'<td style="{_LINKS_TD3}">{access}</td>'
-        f'<td style="{_LINKS_TD2}"><a href="{url}" target="_blank" '
-        f'style="color:{NAVY};text-decoration:none;">{url}</a></td>'
-        f'</tr>'
+        f'<td style="{_LINKS_TD}">{label}</td>'
+        f'<td style="{_LINKS_TD}">{access}</td>'
+        # max-width:0 + width:100% : la colonne URL prend la place restante et
+        # tronque une URL trop longue par « … » (URL complète au survol).
+        f'<td style="{_LINKS_TD}width:100%;max-width:0;overflow:hidden;text-overflow:ellipsis;">'
+        f'<a href="{url}" target="_blank" title="{url}" '
+        f'style="color:{NAVY} !important;text-decoration:none;">{url}</a></td>'
+        '</tr>'
     )
 
 
 def _links_table(rows: str, service_label: str) -> str:
+    cells = [r for r in rows.split("</tr>") if r.strip()]
+    body = "".join(f'<tr style="background:{_LINKS_ROW_BG[i % 2]} !important;">{c}</tr>'
+                   for i, c in enumerate(cells))
     return (
-        f'<table style="border-collapse:collapse;width:100%;table-layout:fixed;'
-        f'border:1px solid #E5E7EB;border-radius:4px;font-family:Inter,Segoe UI,sans-serif;">'
-        f'{_LINKS_COLGROUP}'
-        f'<tr><th style="{_LINKS_TH}">{service_label}</th><th style="{_LINKS_TH}">Accès</th><th style="{_LINKS_TH}">URL</th></tr>'
-        f'{rows}'
-        f'</table>'
+        '<div style="width:100%;overflow-x:auto;">'
+        '<table style="border-collapse:collapse;width:100%;table-layout:auto;border:1px solid #E5E7EB;">'
+        f'<tr><th style="{_LINKS_TH}">{service_label}</th><th style="{_LINKS_TH}">Accès</th>'
+        f'<th style="{_LINKS_TH}">URL</th></tr>'
+        f'{body}'
+        '</table></div>'
     )
 
 
@@ -2470,7 +2480,7 @@ def _kapsule_self_links_html() -> str:
 def build_links_html() -> str:
     if IS_KAPSULE:
         return f"""
-<div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
+<div style="padding:24px 0;font-family:Inter,'Segoe UI',sans-serif;width:100%;color:{SLATE};">
 
   {_kapsule_self_links_html()}
   {_LINKS_NOTE}
@@ -2495,7 +2505,7 @@ def build_links_html() -> str:
         + _link_row("DVC Data (.dvc files)",        f"https://github.com/{GITHUB_REPO}/tree/main/data/raw", "Public")
     )
     return f"""
-<div style="padding:24px;font-family:Inter,'Segoe UI',sans-serif;max-width:780px;color:{SLATE};">
+<div style="padding:24px 0;font-family:Inter,'Segoe UI',sans-serif;width:100%;color:{SLATE};">
 
   {_links_table(vps_rows, "Service VPS")}
   {_LINKS_NOTE}
@@ -2883,6 +2893,9 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         # ── Onglet Accueil ───────────────────────────────────────────────────
         with gr.Tab("Accueil", id="tab_accueil"):
             gr.HTML(build_accueil_html())
+            # Relu à chaque ouverture de page : change au GO d'une PR de démo (docs/release.json)
+            release_badge = gr.HTML(release_badge_html())
+            demo.load(fn=release_badge_html, outputs=release_badge)
 
         # ── Onglet Predict ───────────────────────────────────────────────────
         with gr.Tab("Predict"):

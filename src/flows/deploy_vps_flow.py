@@ -536,7 +536,27 @@ def _try_alias(client, model_name: str) -> bool:
         return False
 
 
-@flow(name="deploy-vps-flow", log_prints=True)
+# Noms affichés dans l'interface Prefect (graphe du run) : explicites pour
+# suivre un déploiement en direct, sans changer le nom technique des tâches.
+def _named(task_fn, label: str):
+    return task_fn.with_options(task_run_name=label)
+
+
+def _named_flow(flow_fn, label: str):
+    return flow_fn.with_options(flow_run_name=label)
+
+
+def _deploy_run_name() -> str:
+    from prefect.runtime import flow_run
+    params = flow_run.parameters or {}
+    if params.get("champion"):
+        return f"Déploiement VPS · nouveau modèle {params['champion']}"
+    if params.get("sha_tag"):
+        return f"Déploiement VPS · commit {params['sha_tag']}"
+    return "Déploiement VPS"
+
+
+@flow(name="deploy-vps-flow", flow_run_name=_deploy_run_name, log_prints=True)
 def deploy_vps_flow(
     champion: str | None = None,
     run_ids: dict | None = None,
@@ -578,7 +598,7 @@ def deploy_vps_flow(
     # ── 1. Smoke test ─────────────────────────────────────────────────────────
     # Pre-gate : santé globale des 3 accès VPS, indépendamment de ce que ce
     # déploiement va toucher (question "la prod est-elle déjà saine ?").
-    ok = smoke_test_task(services=("api", "gradio", "gradio-public"))
+    ok = _named(smoke_test_task, "Santé des 3 accès VPS (avant la gate)")(services=("api", "gradio", "gradio-public"))
     if not ok:
         log.error(
             "event=alert severity=critical topic=deploy_failure reason=smoke_test_pre_gate sha=%s",
@@ -615,22 +635,22 @@ def deploy_vps_flow(
     # Verrou acquis seulement APRÈS la gate : deux runs peuvent rester en pause
     # simultanément sans problème (aucune ressource touchée), seule la section
     # qui interrompt réellement le VPS doit être sérialisée.
-    lock_fd = acquire_deploy_lock_task()
+    lock_fd = _named(acquire_deploy_lock_task, "Verrou : un seul déploiement à la fois")()
     try:
         # ── 2bis. Assets statiques (docs/reports/dashboards) ────────────────────
         # Toujours exécuté, quel que soit le trigger — un changement docs-only
         # n'a ni champion ni rebuilt_services/restart_services, mais doit quand
         # même être synchronisé pour devenir visible.
-        ensure_static_services_task()
-        sync_static_assets_task()
+        _named(ensure_static_services_task, "Contrôle de la configuration nginx et Grafana")()
+        _named(sync_static_assets_task, "Mise en ligne des docs, rapports et dashboards")()
 
         # ── 3. Promote MLflow (Triggers 1 & 3 — nouveau modèle) ─────────────────
         previous_production: dict | None = None
         if champion and run_ids:
-            previous_production = get_current_production_task(champion)
+            previous_production = _named(get_current_production_task, "Mémorisation du modèle en production (pour rollback)")(champion)
             log.info("Promotion @Production → %s", champion)
-            promote_task(champion, run_ids)
-            restart_api_task()
+            _named(promote_task, f"Promotion @Production : {champion}")(champion, run_ids)
+            _named(restart_api_task, "Redémarrage de l'API sur le nouveau modèle")()
             log.info("API redémarrée avec le nouveau modèle @Production")
 
         # ── 3bis. Compose up (Triggers 2 & 3 — changement de code) ─────────────
@@ -641,24 +661,24 @@ def deploy_vps_flow(
             # api/gradio disparus, prod en 502 jusqu'à intervention manuelle
             # (incident 26/09/2026, mlflow unhealthy au démarrage).
             try:
-                compose_up_task(rebuilt_services, restart_services)
+                _named(compose_up_task, "Recréation des services modifiés")(rebuilt_services, restart_services)
             except Exception as exc:
                 log.error(
                     "event=alert severity=critical topic=deploy_failure reason=compose_up sha=%s — %s",
                     sha_tag or "N/A", exc,
                 )
-                docker_rollback_task(sha_tag, rebuilt_services)
+                _named(docker_rollback_task, "ROLLBACK · retour aux images précédentes")(sha_tag, rebuilt_services)
                 raise
             # Post-compose : ne vérifier que ce qui a réellement été touché par CE
             # déploiement (pas de check "aveugle" sur des services non concernés).
             touched = {s for s in f"{rebuilt_services},{restart_services}".split(",") if s}
-            ok = smoke_test_task(services=tuple(touched))
+            ok = _named(smoke_test_task, "Santé des services redémarrés")(services=tuple(touched))
             if not ok:
                 log.error(
                     "event=alert severity=critical topic=deploy_failure reason=smoke_test_post_compose sha=%s",
                     sha_tag or "N/A",
                 )
-                docker_rollback_task(sha_tag, rebuilt_services)
+                _named(docker_rollback_task, "ROLLBACK · retour aux images précédentes")(sha_tag, rebuilt_services)
                 raise RuntimeError(
                     f"Smoke test ÉCHOUÉ après compose up — {', '.join(sorted(touched)) or 'aucun accès'} "
                     f"ne répond(ent) pas après 90s.\n"
@@ -681,7 +701,8 @@ def deploy_vps_flow(
             )
         _step = "test-api interne"
         try:
-            test_api_flow(skip_rate_limit=True, require_model=_has_model)
+            _named_flow(test_api_flow, "Test API · interne (réseau Docker du VPS)")(
+                skip_rate_limit=True, require_model=_has_model)
             log.info("test-api interne OK ✓")
 
             # Test externe — même logique métier que ci-dessus, mais via le
@@ -692,7 +713,8 @@ def deploy_vps_flow(
             # public en plus (cf. rationalisation 2026-07-29, distinction
             # bug applicatif / souci d'accès externe).
             _step = "test-api externe"
-            test_api_flow(skip_rate_limit=True, require_model=_has_model, base_url=PUBLIC_URL)
+            _named_flow(test_api_flow, "Test API · externe (HTTPS public, comme un utilisateur)")(
+                skip_rate_limit=True, require_model=_has_model, base_url=PUBLIC_URL)
             log.info("test-api externe OK ✓")
 
             # gradio-public est le seul vrai point d'accès utilisateur du système
@@ -701,11 +723,11 @@ def deploy_vps_flow(
             # seulement un ping /health (cf. observabilité par accès, PR230).
             if _has_model:
                 _step = "test-gradio-public interne"
-                test_gradio_public_flow()
+                _named_flow(test_gradio_public_flow, "Test Cockpit public · interne (réseau Docker du VPS)")()
                 log.info("test-gradio-public interne OK ✓")
 
                 _step = "test-gradio-public externe"
-                test_gradio_public_flow(base_url=PUBLIC_URL)
+                _named_flow(test_gradio_public_flow, "Test Cockpit public · externe (HTTPS public)")(base_url=PUBLIC_URL)
                 log.info("test-gradio-public externe OK ✓")
         except Exception as exc:
             log.error("%s ÉCHOUÉ : %s", _step, exc)
@@ -713,15 +735,15 @@ def deploy_vps_flow(
             rolled_back_code = False
             if champion and run_ids:
                 log.info("Rollback promote @Production...")
-                rollback_promote_task(previous_production, champion)
-                restart_api_task()
+                _named(rollback_promote_task, "ROLLBACK · retour au modèle précédent")(previous_production, champion)
+                _named(restart_api_task, "ROLLBACK · redémarrage de l'API")()
                 rolled_back_model = True
                 if blueprint_promotion:
                     log.info("Revert du blueprint sur main (config/model_params.yml)...")
-                    revert_blueprint_task(sha_tag)
+                    _named(revert_blueprint_task, "ROLLBACK · annulation du blueprint sur main")(sha_tag)
             if rebuilt_services or restart_services:
                 log.info("Rollback Docker images :rollback (code)...")
-                docker_rollback_task(sha_tag, rebuilt_services)
+                _named(docker_rollback_task, "ROLLBACK · retour aux images précédentes")(sha_tag, rebuilt_services)
                 rolled_back_code = True
             log.error(
                 "event=alert severity=critical topic=deploy_failure reason=test_api step=%s sha=%s "
@@ -742,7 +764,7 @@ def deploy_vps_flow(
             )
 
         # ── 5. Deploy Kapsule (seulement si test-api OK) ─────────────────────────
-        deploy_kapsule_flow(
+        _named_flow(deploy_kapsule_flow, "Déploiement Kubernetes (si le cluster est allumé)")(
             new_model=bool(champion and run_ids),
             new_data=bool(year),
             new_images=bool(rebuilt_services),
@@ -756,10 +778,10 @@ def deploy_vps_flow(
         # plusieurs déploiements le même jour. Best-effort : ne bloque jamais
         # le flow si le nettoyage lui-même échoue.
         try:
-            disk_cleanup_flow()
+            _named_flow(disk_cleanup_flow, "Nettoyage disque (anciennes images)")()
         except Exception as exc:
             log.warning("disk_cleanup_flow a échoué après le deploy : %s", exc)
-        release_deploy_lock_task(lock_fd)
+        _named(release_deploy_lock_task, "Libération du verrou")(lock_fd)
 
     # Confirmation de succès : visible dans Loki/Grafana (Cockpit, dashboard
     # Résilience), mais pas d'email — un succès n'est pas une alerte. Seuls les
