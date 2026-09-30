@@ -108,7 +108,7 @@
         <div class="body">
           <p><code>check-new-data-flow</code> tourne chaque <strong>lundi 8h (heure de Paris)</strong>. S'il détecte une nouvelle année sur data.gouv.fr (4/4 fichiers disponibles) :</p>
           <pre>ETL → validation schéma → train (année incluse, test set temporel) → sélection champion
-  → GATE MANUELLE → promote → test-api (5 tests) + test-gradio-public → Kapsule (si OK) → drift</pre>
+  → GATE MANUELLE → promote → test-api (5 tests) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) → Kapsule (si OK) → drift</pre>
           <p><strong>Règle de promotion T1 :</strong> gate KPI absolue (F1≥0.60, AUC≥0.77, Recall≥0.58, Acc≥0.72). Le nouveau modèle est promu même s'il régresse légèrement vs @Production (test sets différents). Tolérance : régression sur <strong>au plus 1 métrique</strong>. Régression sur ≥2 → @Production inchangé.</p>
           <p><strong>Ton rôle :</strong> valider la gate — onglet <strong>Cockpit</strong> du cockpit Gradio (bouton GO/STOP) ou Prefect UI — quand tu reçois la notification email.</p>
         </div>
@@ -119,7 +119,7 @@
         <div class="body">
           <pre>build images (si nécessaire) → git pull VPS + pull images (préparation, sans interruption)
   → GATE MANUELLE (avant toute interruption VPS) → docker compose up + redémarrages ciblés
-  → smoke test → test-api (5 tests) + test-gradio-public → Kapsule (si OK)</pre>
+  → smoke test → test-api (5 tests) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) → Kapsule (si OK)</pre>
           <p>La gate intervient <strong>avant</strong> que quoi que ce soit soit appliqué sur le VPS — rien n'est interrompu tant que tu n'as pas validé. Un <strong>STOP</strong> annule proprement sans rollback (rien n'a encore tourné).</p>
           <p><strong>Ton rôle :</strong> valider la gate (onglet <strong>Cockpit</strong> — SHA du commit, images à reconstruire, services à redémarrer affichés) ou Prefect UI.</p>
         </div>

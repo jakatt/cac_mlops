@@ -282,7 +282,7 @@
         <summary>Étape 6 — Déploiement</summary>
         <div class="body">
           <p>Gate manuelle dans <strong>l'onglet Cockpit du cockpit Gradio</strong> (ou Prefect UI) → GO/STOP</p>
-          <p>Après GO : promotion @Production MLflow + restart API → test-api (5 tests) + test-gradio-public, en interne puis en externe → rolling update Kapsule (si actif)</p>
+          <p>Après GO : promotion @Production MLflow + restart API → test-api (5 tests) + test-gradio-public (3 tests : Predict, What-if, Points Noirs), en interne puis en externe → rolling update Kapsule (si actif)</p>
           <p>Interruption VPS : <strong>~30 s</strong> (redémarrage de l'API pour charger le nouveau modèle) — <strong>jamais avant</strong> la gate manuelle.</p>
           <p>Kapsule K8s : <strong>zéro interruption</strong> (<code>maxUnavailable:0</code>).</p>
         </div>

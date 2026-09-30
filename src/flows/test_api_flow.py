@@ -32,7 +32,7 @@ SAMPLE_PAYLOAD = {
 }
 
 
-@task(name="test-health", retries=2)
+@task(name="test-health", task_run_name="1 · API en ligne (GET /health)", retries=2)
 def test_health(base_url: str = NGINX_URL) -> str:
     r = http.get(f"{base_url}/health", timeout=10)
     assert r.status_code == 200, f"Health check: HTTP {r.status_code}"
@@ -40,7 +40,7 @@ def test_health(base_url: str = NGINX_URL) -> str:
     return "OK"
 
 
-@task(name="test-token")
+@task(name="test-token", task_run_name="2 · Connexion : obtenir un jeton")
 def test_token(base_url: str = NGINX_URL) -> str:
     r = http.post(
         f"{base_url}/token",
@@ -53,7 +53,7 @@ def test_token(base_url: str = NGINX_URL) -> str:
     return token
 
 
-@task(name="test-401-sans-token")
+@task(name="test-401-sans-token", task_run_name="3 · Sans jeton : accès refusé (401)")
 def test_no_auth(base_url: str = NGINX_URL) -> str:
     r = http.post(f"{base_url}/predict", json=SAMPLE_PAYLOAD, timeout=10)
     assert r.status_code == 401, f"Attendu 401, reçu {r.status_code}"
@@ -61,7 +61,7 @@ def test_no_auth(base_url: str = NGINX_URL) -> str:
     return "OK"
 
 
-@task(name="test-200-avec-token")
+@task(name="test-200-avec-token", task_run_name="4 · Prédiction avec jeton (200)")
 def test_with_auth(token: str, base_url: str = NGINX_URL) -> str:
     r = http.post(
         f"{base_url}/predict",
@@ -74,7 +74,7 @@ def test_with_auth(token: str, base_url: str = NGINX_URL) -> str:
     return "OK"
 
 
-@task(name="test-whatif-vitesse-90-vs-50")
+@task(name="test-whatif-vitesse-90-vs-50", task_run_name="5 · What-if : même accident à 90 puis 50 km/h")
 def test_whatif_speed(token: str, base_url: str = NGINX_URL) -> str:
     """Fonctionnel uniquement : la fonctionnalité What-If de l'interface doit
     répondre (comme si un utilisateur la sollicitait), rien de plus. Ne juge
@@ -106,7 +106,7 @@ def test_whatif_speed(token: str, base_url: str = NGINX_URL) -> str:
     return "OK"
 
 
-@task(name="test-429-rate-limit")
+@task(name="test-429-rate-limit", task_run_name="6 · Anti-abus : blocage au-delà de la limite (429)")
 def test_rate_limit(token: str, base_url: str = NGINX_URL) -> str:
     hit_429 = False
     for i in range(22):

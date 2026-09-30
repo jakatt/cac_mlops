@@ -127,27 +127,6 @@
 .ci-doc .note { font-size:.77rem;color:var(--muted);font-style:italic;margin-top:10px;padding:8px 12px;border-left:2px solid var(--border); }
 .ci-doc .tag-skip { font-size:.68rem;padding:1px 7px;border-radius:10px;background:#fef9c3;color:#92400e;font-weight:600; }
 .ci-doc .sec-label { font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:18px 0 6px; }
-
-/* ── Schéma introductif ── */
-.ci-doc .flow { display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin:6px 0 10px; }
-.ci-doc .step { flex:1;min-width:150px;border:1.5px solid;border-radius:10px;padding:12px 12px 10px;background:var(--surface); }
-.ci-doc .step.ci { border-color:var(--ci-bd);background:var(--ci-bg); }
-.ci-doc .step.cd { border-color:var(--cd-bd);background:var(--cd-bg); }
-.ci-doc .step.pf { border-color:var(--pf-bd);background:var(--pf-bg); }
-.ci-doc .step.gate { border-color:#fdba74;background:#fff7ed;flex:0 0 118px;min-width:118px;text-align:center; }
-.ci-doc .step .when { font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted); }
-.ci-doc .step .what { font-size:.92rem;font-weight:700;margin:4px 0 2px; }
-.ci-doc .step.ci .what { color:var(--ci-num); } .ci-doc .step.cd .what { color:var(--cd-num); }
-.ci-doc .step.pf .what { color:var(--pf-num); } .ci-doc .step.gate .what { color:#b45309; }
-.ci-doc .step .num { font-size:1.35rem;font-weight:800;color:var(--text);line-height:1.2; }
-.ci-doc .step .num small { font-size:.72rem;font-weight:600;color:var(--muted); }
-.ci-doc .step .fail { font-size:.74rem;color:var(--muted);margin-top:6px;line-height:1.4; }
-.ci-doc .arrow { align-self:center;color:var(--muted);font-size:1.2rem;font-weight:700; }
-.ci-doc .t1 { font-size:.78rem;color:var(--muted);border:1px dashed var(--border);border-radius:8px;padding:8px 12px;margin-bottom:26px; }
-.ci-doc .lead { font-size:.83rem;margin:12px 16px 10px;line-height:1.55; }
-.ci-doc .tag-auto { font-size:.66rem;padding:1px 6px;border-radius:10px;background:var(--pf-bd);color:var(--pf-num);font-weight:700; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ci-doc .step.gate { background:#2a1f00;border-color:#78350f; } }
-:root[data-theme="dark"] .ci-doc .step.gate { background:#2a1f00;border-color:#78350f; }
 </style>
 </head>
 <body>
@@ -156,49 +135,66 @@
 
   <div class="eyebrow">CI/CD — Qualité</div>
   <h1 class="page-title">Catalogue des tests</h1>
-  <p class="page-sub">Trois filets de sécurité successifs, du code proposé jusqu'à l'utilisateur final. Chaque étape doit réussir pour passer à la suivante ; après la mise en production, un échec déclenche un retour automatique à la version précédente.</p>
+  <p class="page-sub">
+    Trois niveaux de tests automatisés couvrent l'ensemble du cycle de vie : du commit local au déploiement en production.
+    Les tests CI bloquent toute PR, les tests CD valident le déploiement, les tests Prefect garantissent la stack en conditions réelles.
+  </p>
 
-  <!-- ════════════════════ SCHÉMA ════════════════════ -->
-  <div class="flow">
-    <div class="step ci">
-      <div class="when">① Avant le merge</div>
-      <div class="what">CI · tests unitaires</div>
-      <div class="num">79 <small>tests</small></div>
-      <div class="fail">Le code fait-il ce qu'on attend ? Un échec <b>bloque la PR</b>.</div>
-    </div>
-    <span class="arrow">→</span>
-    <div class="step cd">
-      <div class="when">② Après le merge</div>
-      <div class="what">CD · préparation</div>
-      <div class="num">11 <small>étapes</small></div>
-      <div class="fail">Construire, scanner (CVE), préparer le VPS. Un échec <b>arrête le déploiement</b>.</div>
-    </div>
-    <span class="arrow">→</span>
-    <div class="step gate">
-      <div class="when">Gate</div>
-      <div class="what">GO humain</div>
-      <div class="fail">dans le Cockpit</div>
-    </div>
-    <span class="arrow">→</span>
-    <div class="step pf">
-      <div class="when">③ Après le GO</div>
-      <div class="what">Tests fonctionnels</div>
-      <div class="num">8 <small>tests × interne / externe</small></div>
-      <div class="fail">Ça marche pour l'utilisateur ? Un échec déclenche un <b>rollback automatique</b>.</div>
-    </div>
+  <div class="summary-row">
+    <div class="badge ci"><span class="badge-num">79</span><span class="badge-label">Tests CI — API &amp; ETL/Data<br>17 + 62, sur données fictives de test</span></div>
+    <div class="badge cd"><span class="badge-num">11</span><span class="badge-label">Étapes pipeline CD<br>GitHub Actions → déclenche Prefect</span></div>
+    <div class="badge pf"><span class="badge-num">7</span><span class="badge-label">Tests fonctionnels<br>vus de l'utilisateur · API + Cockpit public</span></div>
   </div>
-  <div class="t1"><b>Trigger 1 — nouvelles données :</b> pas de PR, donc ni CI ni CD. Les vraies données sont contrôlées et auto-corrigées à chaque chargement (voir <a href="etl_catalogue.html">Catalogue ETL</a>), puis le déploiement passe par la même gate et les mêmes tests fonctionnels (③).</div>
+
+  <!-- ════════════════════ 0. RÉCAP PAR TRIGGER ════════════════════ -->
+  <details class="section tr">
+    <summary><span class="section-pill tr">Récap</span> Couverture par trigger</summary>
+    <div class="section-meta">Vue consolidée — checks CI/ETL, mécanismes d'auto-correction et étapes CD réellement exécutés pour chaque trigger</div>
+    <div style="padding:0 16px 16px;">
+    <div class="overflow-x">
+    <table>
+      <tr><th>Trigger</th><th>Checks CI/ETL</th><th>Mécanismes auto-correction</th><th>Étapes CD</th></tr>
+      <tr>
+        <td><strong>T1</strong> — Nouvelles données</td>
+        <td>62 (logique testée en CI, exécutée pour de vrai sur données réelles — voir <a href="etl_catalogue.html">Catalogue ETL</a>)</td>
+        <td>9 (voir plus bas) — 17 auto-corrections au total dans le <a href="etl_catalogue.html">Catalogue ETL</a></td>
+        <td>0 — <code>deploy.yml</code> ne se déclenche jamais (aucun push sur <code>main</code>, flow Prefect pur)</td>
+      </tr>
+      <tr>
+        <td><strong>T2</strong> — Code seul</td>
+        <td>79 (17 API + 62 ETL — suite complète, aucun filtrage par fichier changé)</td>
+        <td>n/a (pas de nouvelles données)</td>
+        <td>jusqu'à 11 — variable selon les services touchés (builds conditionnels par service)</td>
+      </tr>
+      <tr>
+        <td><strong>T3</strong> — Nouveau blueprint</td>
+        <td>79 (idem T2 — même suite complète)</td>
+        <td>n/a</td>
+        <td>4 étapes réelles (1·7·10·11) + 2 no-op (8·9) + 5 toujours sautées (2-6) — <code>config/model_params.yml</code> exclut structurellement tout build</td>
+      </tr>
+    </table>
+    </div>
+    <p class="note" style="margin-top:12px;">T1 affiche 0 test CI/CD — ce n'est pas un trou de couverture : sa protection réelle est différente (validation Pandera + auto-correction sur les <strong>vraies</strong> données, exécutées à chaque run, cf. <a href="etl_catalogue.html">Catalogue ETL</a> et <a href="resilience_mechanisms.html">Mécanismes de résilience</a>), plutôt que des tests pytest sur données fabriquées qui n'auraient rien de nouveau à valider tant que le code ETL n'a pas changé.</p>
+    </div>
+  </details><!-- section tr -->
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
   <details class="section ci">
-    <summary><span class="section-pill ci">① CI</span> Avant le merge — tests unitaires <span class="count">79</span></summary>
-    <p class="lead">À chaque PR vers <code>main</code>, GitHub Actions (<code>ci.yml</code>) lance <code>pytest tests/unit/</code> sur des données fictives. Un seul test en échec et la PR ne peut pas être mergée. Déclenchés par les Triggers 2 et 3 (code, blueprint) — jamais par le Trigger 1.</p>
+    <summary><span class="section-pill ci">CI</span> Tests unitaires</summary>
+    <div class="section-meta">pytest tests/unit/ -v --tb=short &nbsp;·&nbsp; Déclenchés sur PR vers main (T2/T3 uniquement — jamais T1) · les 13 tests d'intégration (<code>tests/integration/</code>, Docker Compose requis) ne tournent pas en CI</div>
 
     <details>
-      <summary>API — endpoint de prédiction et métriques <span class="count">17</span></summary>
-      <div class="body"><div class="overflow-x"><table>
-        <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
-        <tr><td><code>test_valid_request_returns_200</code></td><td>Payload 27 features valide → HTTP 200</td></tr>
+      <summary>API <span class="count">17</span> — <code>ci.yml</code></summary>
+      <div class="body">
+      <div style="padding:0;">
+
+    <details>
+      <summary>test_predict.py — Endpoint API <span class="count">17</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_valid_request_returns_200</code></td><td>Payload 27 features valide → HTTP 200</td></tr>
           <tr><td><code>test_response_has_required_fields</code></td><td>Réponse contient <code>prediction</code>, <code>probability</code>, <code>model_version</code></td></tr>
           <tr><td><code>test_prediction_is_binary</code></td><td><code>prediction</code> vaut 0 ou 1</td></tr>
           <tr><td><code>test_probability_in_range</code></td><td><code>probability</code> ∈ [0.0, 1.0]</td></tr>
@@ -215,20 +211,28 @@
           <tr><td><code>test_insufficient_traffic_is_not_ok</code></td><td>Moins de 100 prédictions réelles → niveau de drift « pas de résultat » (−1) et vrai nombre de prédictions publiés, jamais un faux « OK »</td></tr>
           <tr><td><code>test_missing_reports_are_not_ok</code></td><td>Rapports de drift / qualité absents (ex. après un reset) → niveaux « pas de résultat », jamais « OK »</td></tr>
           <tr><td><code>test_computed_level_is_published</code></td><td>Drift réellement calculé → niveau et nombre de prédictions publiés tels quels</td></tr>
-      </table></div>
-      <p class="note">Fichier <code>tests/unit/test_predict.py</code>.</p></div>
+        </table>
+        </div>
+      </div>
+    </details>
+
+      </div>
+      </div>
     </details>
 
     <details>
-      <summary>Données — chargement, validation, préparation <span class="count">62</span></summary>
-      <div class="body" style="padding:10px 0 4px;">
-        <p class="note" style="margin:0 16px 10px;">La même logique s'exécute pour de vrai sur les données réelles à chaque chargement (Trigger 1) — détail : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
+      <summary>DATAS <span class="count">62</span> — ETL (<code>etl_flow.py</code>, Trigger 1) · CI (<code>ci.yml</code>, T2/T3)</summary>
+      <div class="body">
+      <div style="padding:0;">
+        <p class="note" style="margin-top:0;">Ces 62 tests couvrent la même logique qui s'exécute pour de vrai sur données réelles côté Trigger 1 (<code>etl_flow.py</code>, aucun lien avec <code>ci.yml</code> qui ne se déclenche jamais sur ce trigger) — détail de cette exécution réelle : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
 
-        <details>
-          <summary>Préparation des variables — <code>test_preprocessing.py</code> <span class="count">18</span></summary>
-          <div class="body"><div class="overflow-x"><table>
-            <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
-            <tr><td><code>test_returns_one_row_per_accident</code></td><td>Une seule ligne par <code>Num_Acc</code> après fusion des 4 fichiers ONISR</td></tr>
+    <details>
+      <summary>test_preprocessing.py — Feature engineering <span class="count">18</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_returns_one_row_per_accident</code></td><td>Une seule ligne par <code>Num_Acc</code> après fusion des 4 fichiers ONISR</td></tr>
           <tr><td><code>test_grav_is_binary</code></td><td>Cible <code>grav</code> vaut uniquement 0 ou 1</td></tr>
           <tr><td><code>test_target_recoding_blessure_grave</code></td><td>Blessure grave (grav=2) → <code>grav=1</code></td></tr>
           <tr><td><code>test_grav_indemne_maps_to_zero</code></td><td>Indemne (grav=4) → <code>grav=0</code></td></tr>
@@ -246,14 +250,18 @@
                   <tr><td><code>test_all_formats_give_same_hour</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> <code>hrmn</code> en <code>14:30</code>, <code>1430</code>, <code>14</code>, <code>9:05</code>, <code>905</code>, <code>1430.0</code> → même heure (l'ancien code lisait <code>1430</code> comme 1 h)</td></tr>
           <tr><td><code>test_invalid_values_become_nan</code></td><td>Heure hors 0-23 ou texte → <code>NaN</code> (puis 0), jamais une heure fausse</td></tr>
           <tr><td><code>test_onisr_hh_mm_format_unchanged</code></td><td>Format réel ONISR <code>HH:MM</code> : résultat identique à l'ancien code (non-régression du dataset)</td></tr>
-          </table></div></div>
-        </details>
+</table>
+        </div>
+      </div>
+    </details>
 
-        <details>
-          <summary>Validation du schéma (Pandera) — <code>test_schema_validator.py</code> <span class="count">23</span></summary>
-          <div class="body"><div class="overflow-x"><table>
-            <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
-            <tr><td><code>test_all_files_present_returns_true</code></td><td>4 fichiers CSV ONISR présents → niveau 1 OK</td></tr>
+    <details>
+      <summary>test_schema_validator.py — Validation Pandera <span class="count">23</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_all_files_present_returns_true</code></td><td>4 fichiers CSV ONISR présents → niveau 1 OK</td></tr>
           <tr><td><code>test_missing_file_raises_critical</code></td><td>Fichier manquant → niveau CRITICAL (bloque le pipeline T1)</td></tr>
           <tr><td><code>test_empty_file_raises_critical</code></td><td>Fichier vide → CRITICAL</td></tr>
           <tr><td><code>test_nonexistent_dir_raises_critical</code></td><td>Répertoire source inexistant → CRITICAL</td></tr>
@@ -276,14 +284,18 @@
           <tr><td><code>test_known_unused_columns_are_info_not_warning</code></td><td>Colonnes ONISR connues (<code>an</code>, <code>adr</code>) → INFO, plus de WARNING récurrent</td></tr>
           <tr><td><code>test_really_new_column_still_warns</code></td><td>Colonne réellement nouvelle → WARNING conservé (le vrai signal n'est pas perdu)</td></tr>
           <tr><td><code>test_drom_coordinates_below_threshold_are_info</code></td><td>5 % de coordonnées DROM → INFO (WARNING seulement au-delà de 10 %)</td></tr>
-          </table></div></div>
-        </details>
+</table>
+        </div>
+      </div>
+    </details>
 
-        <details>
-          <summary>Téléchargement des fichiers ONISR — <code>test_import_raw_data.py</code> <span class="count">13</span></summary>
-          <div class="body"><div class="overflow-x"><table>
-            <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
-            <tr><td><code>test_strips_trailing_year</code></td><td><code>carcteristiques-2021</code> → <code>carcteristiques</code> (retire le suffixe année pour le matching fuzzy)</td></tr>
+    <details>
+      <summary>test_import_raw_data.py — Découverte + contrôle d'entrée des fichiers ONISR <span class="count">13</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_strips_trailing_year</code></td><td><code>carcteristiques-2021</code> → <code>carcteristiques</code> (retire le suffixe année pour le matching fuzzy)</td></tr>
           <tr><td><code>test_strips_underscore_year</code></td><td><code>Caract_2024</code> → <code>caract</code> (convention 2024, underscore)</td></tr>
           <tr><td><code>test_no_year_suffix_unchanged</code></td><td>Nom sans suffixe année laissé inchangé</td></tr>
           <tr><td><code>test_strict_match_canonical_names</code></td><td>Noms canoniques (<code>caracteristiques-2021.csv</code>…) → matching strict par mot-clé, sans fallback</td></tr>
@@ -295,14 +307,18 @@
           <tr><td><code>test_unknown_separator_rejected</code></td><td>Aucun séparateur reconnu → rejet (fichier réellement inexploitable)</td></tr>
           <tr><td><code>test_missing_required_column_rejected</code></td><td>Colonne obligatoire absente même après renommages connus → rejet</td></tr>
           <tr><td><code>test_too_small_file_rejected</code></td><td>Fichier &lt; 500 Ko (page d'erreur, dataset dérivé) → rejet</td></tr>
-          </table></div></div>
-        </details>
+        </table>
+        </div>
+      </div>
+    </details>
 
-        <details>
-          <summary>Correctifs connus — <code>test_known_fixes.py</code> <span class="count">8</span></summary>
-          <div class="body"><div class="overflow-x"><table>
-            <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
-            <tr><td><code>test_renames_accident_id_to_num_acc</code></td><td>Renommage ONISR 2022+ appliqué automatiquement</td></tr>
+    <details>
+      <summary>test_known_fixes.py — Registre centralisé de correctifs <span class="count">8</span></summary>
+      <div class="body">
+        <div class="overflow-x">
+        <table>
+          <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
+          <tr><td><code>test_renames_accident_id_to_num_acc</code></td><td>Renommage ONISR 2022+ appliqué automatiquement</td></tr>
           <tr><td><code>test_no_rename_when_num_acc_already_present</code></td><td>Ne renomme pas si <code>Num_Acc</code> existe déjà (évite d'écraser une colonne réelle)</td></tr>
           <tr><td><code>test_no_rename_for_other_tables</code></td><td>Le renommage <code>caracteristiques</code> ne s'applique pas aux 3 autres tables</td></tr>
           <tr><td><code>test_strips_nbsp_and_whitespace</code></td><td>Espaces insécables (<code>\xa0</code>) et superflus nettoyés sur les colonnes texte</td></tr>
@@ -310,14 +326,19 @@
                   <tr><td><code>test_bom_quotes_spaces_and_case</code></td><td><code>normalize_column_names()</code> : BOM, guillemets, espaces et casse → nom canonique</td></tr>
           <tr><td><code>test_unknown_column_left_untouched</code></td><td>Colonne sans équivalent canonique laissée telle quelle (traitée ensuite comme colonne inconnue)</td></tr>
           <tr><td><code>test_never_overwrites_existing_canonical_column</code></td><td>Jamais d'écrasement si la colonne canonique existe déjà (pas de perte silencieuse)</td></tr>
-          </table></div></div>
-        </details>
+</table>
+        </div>
+      </div>
+    </details>
 
-        <details>
-          <summary>Auto-corrections couvertes par ces tests <span class="count">9</span></summary>
-          <div class="body"><div class="overflow-x"><table>
-            <tr><th>#</th><th>Mécanisme</th><th>Module</th><th>Réagit à</th></tr>
-            <tr><td>1</td><td>Renommage <code>Accident_Id</code>→<code>Num_Acc</code></td><td><code>known_fixes.py</code></td><td>Format ONISR 2022+ (colonne renommée par la source)</td></tr>
+    <details>
+      <summary>Mécanismes d'auto-correction couverts <span class="count">9</span></summary>
+      <div class="body">
+        <p class="note" style="margin-top:0;">Sur les 8 tests de <code>test_known_fixes.py</code>, 3 couvrent un mécanisme réel (renommage, espaces, noms de colonnes) et 5 sont des garde-fous vérifiant qu'il ne s'applique <strong>pas</strong> là où il ne devrait pas. Tous modules confondus, 9 mécanismes d'auto-correction sont couverts par des tests unitaires (sur les 17 de la chaîne ETL, cf. <a href="etl_catalogue.html">Catalogue ETL</a>) :</p>
+        <div class="overflow-x">
+        <table>
+          <tr><th>#</th><th>Mécanisme</th><th>Module</th><th>Réagit à</th></tr>
+          <tr><td>1</td><td>Renommage <code>Accident_Id</code>→<code>Num_Acc</code></td><td><code>known_fixes.py</code></td><td>Format ONISR 2022+ (colonne renommée par la source)</td></tr>
           <tr><td>2</td><td>Nettoyage espaces insécables/superflus</td><td><code>known_fixes.py</code></td><td>Artefacts d'encodage sur colonnes texte</td></tr>
           <tr><td>3</td><td>Coercion de type Pandera</td><td><code>schema_validator.py</code></td><td>Colonne numérique lue en texte (artefact de formatage)</td></tr>
           <tr><td>4</td><td>Matching fuzzy de nom de fichier</td><td><code>import_raw_data.py</code></td><td>Faute de frappe ONISR sur le nom du fichier</td></tr>
@@ -326,118 +347,163 @@
           <tr><td>7</td><td>Suppression des lignes dupliquées</td><td><code>schema_validator.py</code></td><td>Doublons stricts (cas réel <code>lieux</code> 2024)</td></tr>
           <tr><td>8</td><td>Valeurs hors nomenclature → « non renseigné »</td><td><code>schema_validator.py</code></td><td>Nouveau code ONISR ou texte parasite dans une colonne codifiée</td></tr>
           <tr><td>9</td><td>Heure multi-format</td><td><code>make_dataset.py</code></td><td><code>hrmn</code> en <code>HHMM</code>, <code>H:MM</code>, numérique</td></tr>
-          </table></div>
-          <p class="note">9 des 17 auto-corrections de la chaîne ETL sont couvertes par des tests unitaires ; toutes sont décrites dans le <a href="etl_catalogue.html">Catalogue ETL</a>.</p></div>
-        </details>
+        </table>
+        </div>
+        <p class="note">Détail complet de chaque mécanisme en conditions réelles (pas seulement testé en CI) : <a href="etl_catalogue.html">Catalogue ETL</a>.</p>
       </div>
     </details>
 
-    <p class="note" style="margin:6px 16px 14px;">Les 13 tests d'intégration (<code>tests/integration/</code>) demandent la stack Docker complète : ils se lancent à la main, pas en CI.</p>
-  </details>
+      </div>
+      </div>
+    </details>
+  </details><!-- section ci -->
 
   <!-- ════════════════════ 2. CD ════════════════════ -->
   <details class="section cd">
-    <summary><span class="section-pill cd">② CD</span> Après le merge — préparation du déploiement <span class="count">11</span></summary>
-    <p class="lead">Après chaque merge sur <code>main</code>, GitHub Actions (<code>deploy.yml</code>) prépare le déploiement : étapes 1 à 6 sur les serveurs de GitHub, 7 à 11 sur le VPS. <b>Aucun service n'est interrompu ici</b> : tout redémarrage attend le GO. Les étapes de construction ne tournent que pour les images réellement modifiées.</p>
-    <div style="padding:0 16px 16px;"><div class="overflow-x"><table>
-      <tr><th>#</th><th>Étape</th><th>Ce qu'elle fait</th><th>Trigger 2 · 3</th></tr>
-      <tr><td>1</td><td>Détecter les changements</td><td>Quelles images reconstruire (API, MLflow, Gradio, Caddy) et quels services redémarrer après le GO.</td><td>toujours · toujours</td></tr>
-      <tr><td>2</td><td>Construire l'image API</td><td>Build + publication sur GHCR.</td><td>si modifiée · —</td></tr>
-      <tr><td>3</td><td>Construire l'image MLflow</td><td>Build + publication sur GHCR.</td><td>si modifiée · —</td></tr>
-      <tr><td>4</td><td>Construire l'image Gradio</td><td>Build + publication sur GHCR (Cockpits admin et public).</td><td>si modifiée · —</td></tr>
-      <tr><td>5</td><td>Construire l'image Caddy</td><td>Build + publication sur GHCR (Kubernetes uniquement).</td><td>si modifiée · —</td></tr>
-      <tr><td>6</td><td>Scan de sécurité Trivy</td><td>Vulnérabilités CRITICAL sur les 4 images → <b>bloque le déploiement</b>.</td><td>si build · —</td></tr>
-      <tr><td>7</td><td>Mettre à jour le code du VPS</td><td><code>git pull</code> sur le VPS.</td><td>toujours · toujours</td></tr>
-      <tr><td>8</td><td>Télécharger les nouvelles images</td><td>Les images en place sont d'abord marquées <code>:rollback</code> ; les conteneurs ne sont <b>pas</b> recréés.</td><td>si build · —</td></tr>
-      <tr><td>9</td><td>Lister les services à redémarrer</td><td>nginx, Cockpits, Grafana, Prometheus… — transmis au flow, redémarrés seulement après le GO.</td><td>si besoin · —</td></tr>
-      <tr><td>10</td><td>Synchroniser Prefect</td><td><code>prefect deploy --all</code> — bloque si un déploiement Prefect est invalide.</td><td>toujours · toujours</td></tr>
-      <tr><td>11</td><td>Lancer le flow de déploiement</td><td><code>deploy-vps-flow</code> (code) ou <code>update-model-flow</code> (blueprint) → la <b>gate</b> s'ouvre dans le Cockpit.</td><td>toujours · toujours</td></tr>
-    </table></div></div>
-  </details>
+    <summary><span class="section-pill cd">CD</span> Pipeline de déploiement — <code>deploy.yml</code></summary>
+    <div class="section-meta">Déclenché automatiquement après chaque merge sur main. Les 11 étapes sont pilotées par GitHub Actions (<code>deploy.yml</code>) : étapes 1 à 6 sur les serveurs de GitHub (détection des changements, construction et scan des images), étapes 7 à 11 sur le VPS via SSH (mise à jour du code, images, puis <strong>Prefect</strong> — enregistrement des flows et lancement du déploiement). Prefect prend ensuite le relais : gate GO/STOP, mise à jour des services, tests fonctionnels, Kubernetes (cf. section Tests fonctionnels et <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</div>
+
+    <div style="padding:0 16px 16px;">
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Étape</th><th>Description</th><th>Scope</th></tr>
+      <tr>
+        <td>1</td>
+        <td><code>check-changes</code></td>
+        <td>Détecte si Dockerfiles / <code>requirements.txt</code> / fichiers Python de service ont changé, <strong>service par service</strong> → <code>build_api</code> · <code>build_mlflow</code> · <code>build_gradio</code> · <code>build_caddy</code> (et <code>needs_build</code> global). Calcule aussi <code>RESTART_SERVICES</code> (nginx · gradio · grafana · prometheus · loki · promtail).</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Build API</td>
+        <td><code>docker build</code> + push <code>cac-mlops-api:latest</code> vers GHCR — skippé si ce service n'a pas changé</td>
+        <td>T2 (cond.) · T3 (sauté)</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Build MLflow</td>
+        <td><code>docker build</code> + push <code>cac-mlops-mlflow:latest</code> vers GHCR — skippé si ce service n'a pas changé</td>
+        <td>T2 (cond.) · T3 (sauté)</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>Build Gradio</td>
+        <td><code>docker build</code> + push <code>cac-mlops-gradio:latest</code> vers GHCR — skippé si ce service n'a pas changé</td>
+        <td>T2 (cond.) · T3 (sauté)</td>
+      </tr>
+<tr>
+<td>5</td>
+<td>Build Caddy</td>
+<td><code>docker build</code> + push <code>cac-mlops-caddy:latest</code> vers GHCR (Caddy + plugin de stockage S3, Kapsule uniquement) — skippé si ce service n'a pas changé</td>
+<td>T2 (cond.) · T3 (sauté)</td>
+</tr>
+      <tr>
+        <td>6</td>
+        <td>Scan Trivy</td>
+        <td>Scan CVE CRITICAL sur les 4 images — <strong>bloque le deploy</strong> si vulnérabilité non corrigée détectée</td>
+        <td>T2 (cond.) · T3 (sauté)</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>SSH VPS → git pull</td>
+        <td><code>git pull origin main</code> sur le VPS (+ stash des fichiers locaux bind-mountés)</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
+      </tr>
+      <tr>
+        <td>8</td>
+        <td><code>docker compose pull</code></td>
+        <td>Pull des nouvelles images des <strong>seuls services à image GHCR</strong> (si build) — images courantes retaggées <code>:rollback</code> juste avant — <strong>pas de <code>docker compose up</code> ici</strong> : le vrai redémarrage est appliqué par <code>deploy-vps-flow</code>/<code>update-model-flow</code> APRÈS la gate manuelle (<code>compose_up_task</code>), pour que la gate protège bien toute interruption de service</td>
+        <td>T2 (cond.) · T3 (à vide)</td>
+      </tr>
+      <tr>
+        <td>9</td>
+        <td>Calcul <code>RESTART_SERVICES</code></td>
+        <td>Détermine quels conteneurs (nginx · gradio · grafana · prometheus · loki · promtail) devront être redémarrés — passé en paramètre au flow Prefect, qui exécute le restart réel après la gate. Ne redémarre rien lui-même.</td>
+        <td>T2 (cond.) · T3 (à vide)</td>
+      </tr>
+      <tr>
+        <td>10</td>
+        <td>prefect deploy --all</td>
+        <td>Resynchronisation des schémas de déploiement Prefect — bloque le deploy si schéma périmé</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
+      </tr>
+      <tr>
+        <td>11</td>
+        <td>Déclenchement flow</td>
+        <td><code>update-model-flow</code> si <code>config/model_params.yml</code> modifié (T3) · <code>deploy-vps-flow</code> sinon (T2). Avant : recréation de prefect-worker s'il n'y a aucun run actif &lt; 48 h (montages fichier unique à jour). Aucun conteneur applicatif n'est touché avant la gate.</td>
+        <td>T2 (tjrs.) · T3 (tjrs.)</td>
+      </tr>
+    </table>
+    </div>
+    </div>
+  </details><!-- section cd -->
 
   <!-- ════════════════════ 3. TESTS FONCTIONNELS ════════════════════ -->
   <details class="section pf">
-    <summary><span class="section-pill pf">③ Prefect</span> Après le GO — tests fonctionnels <span class="count">8</span></summary>
-    <p class="lead">Après le GO, Prefect se comporte comme un utilisateur : il appelle l'API et clique dans chaque onglet du Cockpit public, puis vérifie la réponse. Ces tests vérifient que <b>ça marche</b>, jamais que le modèle a raison (c'est le rôle de son évaluation à l'entraînement). Au premier échec : retour automatique à la version précédente + alerte.</p>
+    <summary><span class="section-pill pf">PREFECT</span> Tests fonctionnels — la solution marche-t-elle pour l'utilisateur ?</summary>
+    <div class="section-meta">Après chaque déploiement, Prefect se comporte comme un utilisateur : il se connecte, demande une vraie prédiction et vérifie la réponse — sur chaque accès, sur le VPS puis sur Kubernetes. Au premier test en échec : retour automatique à la version précédente + alerte.</div>
 
-    <details>
-      <summary>Comment ils s'exécutent — interne puis externe, VPS puis Kubernetes</summary>
-      <div class="body">
-        <div class="overflow-x"><table>
-          <tr><th>Passage</th><th>Adresse appelée</th><th>Question posée</th></tr>
-          <tr><td><b>1. Interne</b></td><td>Le réseau du serveur (Docker sur le VPS, réseau du cluster sur K8s)</td><td>L'<b>application</b> fonctionne-t-elle ?</td></tr>
-          <tr><td><b>2. Externe</b></td><td>L'adresse publique HTTPS (<code>mlops.jakat-inc.fr</code>, <code>kapsule.jakat-inc.fr</code>)</td><td>L'utilisateur peut-il <b>y accéder</b> ? (nom de domaine, certificat, Caddy, load balancer)</td></tr>
-        </table></div>
-        <p class="note">L'externe ne tourne que si l'interne a réussi : un échec désigne donc directement la cause. Ordre : API interne → API externe → Cockpit public interne → Cockpit public externe.</p>
+    <div style="padding:0 16px 16px;">
 
-        <p class="sec-label">Quand</p>
-        <div class="overflow-x"><table>
-          <tr><th>Déclencheur</th><th>Environnement</th><th>Passages</th><th>Si un test échoue</th></tr>
-          <tr><td>Chaque déploiement, après le GO</td><td>VPS</td><td>interne puis externe</td><td>Rollback VPS (modèle et/ou images) + alerte ; Kubernetes n'est pas touché</td></tr>
-          <tr><td>Puis, si le cluster est allumé</td><td>Kubernetes</td><td>interne puis externe</td><td>Rollback K8s vers l'image précédente + alerte ; le VPS reste en place</td></tr>
-          <tr><td>Bouton Cockpit « Tester les 4 accès publics »</td><td>VPS et Kubernetes</td><td>externe uniquement</td><td>Rapport par accès dans le Cockpit, aucun rollback</td></tr>
-        </table></div>
-        <p class="note">Dans l'interface Prefect, chaque passage apparaît sous un nom explicite, par exemple « Test API VPS · interne (réseau Docker) » ou « Test Cockpit public K8s · externe (HTTPS public) ».</p>
-      </div>
-    </details>
+    <p class="sec-label" style="margin-top:12px;">1 · Quels accès sont testés, et où</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>Accès</th><th>Utilisé par</th><th>VPS — <code>mlops.jakat-inc.fr</code></th><th>Kubernetes — <code>kapsule.jakat-inc.fr</code></th></tr>
+      <tr><td><strong>Cockpit public</strong> (Gradio)</td><td>Grand public · démonstration</td><td>✅ Test fonctionnel : vraie prédiction</td><td>✅ Test fonctionnel : vraie prédiction</td></tr>
+      <tr><td><strong>API</strong> (FastAPI)</td><td>Applications clientes</td><td>✅ Test fonctionnel : 5 contrôles</td><td>✅ Test fonctionnel : 5 contrôles</td></tr>
+      <tr><td><strong>Cockpit admin</strong> (Gradio)</td><td>Équipe MLOps, via VPN Tailscale</td><td>⚪ Santé uniquement (<code>/health</code> avant et après le déploiement)</td><td>— non déployé sur Kubernetes</td></tr>
+    </table>
+    </div>
 
-    <details>
-      <summary>API — <code>test-api</code> <span class="count">5</span></summary>
-      <div class="body"><div class="overflow-x"><table>
-        <tr><th>#</th><th>Tâche Prefect</th><th>Attendu</th></tr>
-        <tr><td>1</td><td>API en ligne (GET /health)</td><td>200 : API démarrée, modèle chargé</td></tr>
-        <tr><td>2</td><td>Connexion : obtenir un jeton</td><td><code>POST /token</code> → jeton reçu</td></tr>
-        <tr><td>3</td><td>Sans jeton : accès refusé (401)</td><td>Prédiction sans jeton → refusée</td></tr>
-        <tr><td>4</td><td>Prédiction avec jeton (200)</td><td>Verdict, probabilité et version du modèle</td></tr>
-        <tr><td>5</td><td>What-if : même accident à 90 puis 50 km/h</td><td>Les deux prédictions répondent ; l'écart est affiché, pas jugé</td></tr>
-      </table></div>
-      <p class="note">Une 6ᵉ tâche (limite anti-abus, 429) existe mais est sautée pendant les déploiements : elle épuiserait le quota et ferait échouer les tests suivants. Elle est démontrée à part (ci-dessous).</p></div>
-    </details>
+    <p class="sec-label">2 · Interne puis externe : deux questions différentes</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>Passage</th><th>Adresse appelée</th><th>Question posée</th></tr>
+      <tr><td><strong>1. Interne</strong></td><td>Directement dans le réseau du serveur (nginx du VPS, service interne K8s)</td><td>L'<strong>application</strong> fonctionne-t-elle ?</td></tr>
+      <tr><td><strong>2. Externe</strong></td><td>L'adresse publique HTTPS, comme un vrai utilisateur</td><td>L'utilisateur peut-il <strong>y accéder</strong> ? (nom de domaine, certificat TLS, reverse-proxy Caddy, load balancer)</td></tr>
+    </table>
+    </div>
+    <p class="note" style="margin-top:6px;">L'externe n'est lancé que si l'interne réussit : un échec indique donc directement la cause — l'application elle-même, ou seulement le chemin d'accès public. Ordre sur chaque environnement : API interne → API externe → Cockpit public interne → Cockpit public externe.</p>
 
-    <details>
-      <summary>Cockpit public — <code>test-gradio-public</code> <span class="count">3</span></summary>
-      <div class="body"><div class="overflow-x"><table>
-        <tr><th>#</th><th>Tâche Prefect</th><th>Ce que fait le robot</th><th>Attendu</th></tr>
-        <tr><td>1</td><td>Onglet Predict : prédire un accident</td><td>Remplit le formulaire et clique « Prédire »</td><td>Verdict « prioritaire / non prioritaire » affiché, sans « Erreur »</td></tr>
-        <tr><td>2</td><td>Onglet What-if : simuler les giratoires</td><td>Choisit « Carrefours → Giratoires » et lance l'analyse</td><td>Graphique + tableau de résultats (gravité avant / après), sans « Erreur »</td></tr>
-        <tr><td>3</td><td>Onglet Points Noirs : générer la carte</td><td>Génère la carte avec les réglages par défaut</td><td>Carte + résumé des zones + top 10 non vide</td></tr>
-      </table></div>
-      <p class="note">Le robot (<code>gradio_client</code>) envoie au Cockpit exactement la même requête que le navigateur quand on clique sur le bouton — sans écran. Les Cockpits renvoient leurs erreurs sous forme de texte : le test lit donc le contenu affiché, pas seulement la réponse technique.</p></div>
-    </details>
+    <p class="sec-label">3 · Quand ces tests s'exécutent</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>Déclencheur</th><th>Accès testés</th><th>Passages</th><th>En cas d'échec</th></tr>
+      <tr><td>Chaque déploiement VPS (après le GO)</td><td>API + Cockpit public — VPS</td><td>Interne puis externe</td><td>Retour à la version précédente sur le VPS (modèle et/ou images) + alerte · Kubernetes n'est pas touché</td></tr>
+      <tr><td>Chaque déploiement Kubernetes (si le VPS est OK)</td><td>API + Cockpit public — K8s</td><td>Interne puis externe</td><td>Retour à l'image précédente sur K8s + alerte · le VPS reste en place</td></tr>
+      <tr><td>Bouton Cockpit « Tester les 4 accès publics »</td><td>API + Cockpit public — VPS et K8s</td><td>Externe uniquement</td><td>Rapport par accès dans le Cockpit — aucun rollback</td></tr>
+    </table>
+    </div>
 
-    <details>
-      <summary>Anti-abus de l'API — à la demande, <code>test-rate-limit</code> <span class="count">5</span></summary>
-      <div class="body">
-        <p style="font-size:.83rem;margin:0 0 8px;">Cockpit → Orchestration → « Tester la protection anti-abus sur l'API » (~5 s), jamais pendant un déploiement. Vérifie les 2 limites de nginx sur les prédictions : <b>par client</b> (20/min, rafale 10) et <b>globale</b> (60/min, rafale 30).</p>
-        <div class="overflow-x"><table>
-          <tr><th>#</th><th>Tâche Prefect</th><th>Attendu</th></tr>
-          <tr><td>1</td><td>API en ligne (GET health)</td><td>200</td></tr>
-          <tr><td>2</td><td>Obtenir un jeton JWT</td><td>Jeton reçu</td></tr>
-          <tr><td>3</td><td>Limite par client — rafale d'un seul client</td><td>Le client A est bloqué (429) après ~11 prédictions</td></tr>
-          <tr><td>4</td><td>Limite par client — un autre client n'est pas pénalisé</td><td>Le client B, juste après, est accepté (200)</td></tr>
-          <tr><td>5</td><td>Limite globale — plusieurs clients sous leur quota</td><td>Des clients raisonnables finissent bloqués (429) : la charge totale est plafonnée</td></tr>
-        </table></div>
-        <p class="note">Le Cockpit public n'est pas concerné : il calcule ses prédictions lui-même, sans passer par l'API. Après le test, le quota global reste épuisé ~15 s.</p>
-      </div>
-    </details>
+    <p class="sec-label">4 · Ce que vérifie chaque test</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>Accès</th><th>#</th><th>Contrôle (tâche Prefect)</th><th>Attendu</th></tr>
+      <tr><td rowspan="6"><strong>API</strong><br><code>test-api</code></td><td>1</td><td>L'API est en ligne<br><code>test-health</code></td><td><code>GET /health</code> → 200 : API démarrée, modèle chargé</td></tr>
+      <tr><td>2</td><td>Connexion<br><code>test-token</code></td><td><code>POST /token</code> avec identifiants → jeton d'accès reçu</td></tr>
+      <tr><td>3</td><td>Accès protégé<br><code>test-401-sans-token</code></td><td>Prédiction <strong>sans</strong> jeton → refusée (401)</td></tr>
+      <tr><td>4</td><td>Prédiction<br><code>test-200-avec-token</code></td><td>Prédiction avec jeton → 200 + verdict, probabilité et version du modèle</td></tr>
+      <tr><td>5</td><td>Simulation « what-if »<br><code>test-whatif-vitesse-90-vs-50</code></td><td>Même accident à 90 puis à 50 km/h → les deux prédictions répondent. L'écart est affiché mais <strong>pas jugé</strong> : le test vérifie que la fonctionnalité marche, pas le raisonnement du modèle (validé par ses métriques)</td></tr>
+      <tr><td>6</td><td>Protection anti-abus<br><code>test-429-rate-limit</code> <span class="tag-skip">hors déploiement</span></td><td>Sautée pendant les déploiements (elle bloquerait les tests suivants) — démontrée à part par <code>test-rate-limit</code>, ci-dessous</td></tr>
+      <tr><td><strong>Cockpit public</strong><br><code>test-gradio-public</code></td><td>1</td><td>Prédiction via l'interface<br><code>test-gradio-public-predict</code></td><td>Même appel que le bouton « Prédire » (<code>gradio_client</code>) → réponse non vide, sans « Erreur », contenant le verdict « prioritaire / non prioritaire »</td></tr>
+    </table>
+    </div>
 
-    <details>
-      <summary>Et le Cockpit admin ?</summary>
-      <div class="body"><p style="font-size:.83rem;">Accessible seulement par le VPN Tailscale, il n'est vérifié que par son <code>/health</code>, avant la gate et après son redémarrage. Il n'est pas déployé sur Kubernetes.</p></div>
-    </details>
-    <div style="height:6px"></div>
-  </details>
-
-  <!-- ════════════════════ 4. RÉCAP PAR TRIGGER ════════════════════ -->
-  <details class="section tr">
-    <summary><span class="section-pill tr">Récap</span> Ce qui tourne pour chaque trigger</summary>
-    <div style="padding:12px 16px 16px;"><div class="overflow-x"><table>
-      <tr><th>Trigger</th><th>① CI</th><th>② CD</th><th>③ Tests fonctionnels</th></tr>
-      <tr><td><b>T1</b> — nouvelles données</td><td>— (pas de PR) · contrôle des vraies données par l'ETL</td><td>— (flow Prefect direct)</td><td>✅ après le GO</td></tr>
-      <tr><td><b>T2</b> — nouveau code</td><td>✅ 79 tests</td><td>✅ jusqu'à 11 étapes (builds selon les images modifiées)</td><td>✅ après le GO</td></tr>
-      <tr><td><b>T3</b> — nouveau blueprint</td><td>✅ 79 tests</td><td>✅ 4 étapes (1, 7, 10, 11) — aucun build : seul <code>config/model_params.yml</code> change</td><td>✅ après le GO</td></tr>
-    </table></div></div>
-  </details>
+    <p class="sec-label">5 · Test fonctionnel anti-abus — à la demande</p>
+    <p style="font-size:.83rem;margin:4px 0 8px;">Cockpit → Orchestration → « Tester la protection anti-abus sur l'API » (<code>test-rate-limit</code>, ~5 s) — jamais pendant un déploiement. Vérifie les 2 niveaux de limite de nginx sur les prédictions de l'API : <strong>par client</strong> (20/min, rafale 10) et <strong>globale</strong> (60/min, rafale 30). Plusieurs clients sont simulés depuis le réseau interne (IP fictives) ; depuis Internet, impossible de se faire passer pour un autre client.</p>
+    <div class="overflow-x">
+    <table>
+      <tr><th>#</th><th>Contrôle (tâche Prefect)</th><th>Attendu</th></tr>
+      <tr><td>1</td><td><code>1 · API en ligne (GET health)</code></td><td>200</td></tr>
+      <tr><td>2</td><td><code>2 · Obtenir un jeton JWT</code></td><td>Jeton reçu</td></tr>
+      <tr><td>3</td><td><code>3 · Limite par client — rafale d'un seul client</code></td><td>Le client A est bloqué (429) après ~11 prédictions</td></tr>
+      <tr><td>4</td><td><code>4 · Limite par client — un autre client n'est pas pénalisé</code></td><td>Le client B, juste après, est accepté (200)</td></tr>
+      <tr><td>5</td><td><code>5 · Limite globale — plusieurs clients sous leur quota</code></td><td>Des clients raisonnables (3 requêtes chacun) finissent bloqués (429) : le serveur plafonne la charge totale</td></tr>
+    </table>
+    </div>
+    <p class="note">Le Cockpit public n'est pas concerné par cette limite : il calcule ses prédictions lui-même, sans passer par l'API. Après le test, le quota global de l'API reste épuisé ~15 s.</p>
+    </div>
+  </details><!-- section pf -->
 
 </div><!-- .wrapper -->
 </div><!-- .ci-doc -->

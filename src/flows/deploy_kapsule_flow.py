@@ -547,7 +547,8 @@ def deploy_kapsule_flow(
         # métier réel sur CET environnement (config K8s distincte du VPS).
         _step = "test-api Kapsule interne"
         try:
-            test_api_flow(skip_rate_limit=True, require_model=require_model, base_url=K8S_NGINX_URL)
+            test_api_flow.with_options(flow_run_name="Test API K8s · interne (réseau du cluster)")(
+                skip_rate_limit=True, require_model=require_model, base_url=K8S_NGINX_URL)
             log.info("test-api Kapsule interne OK ✓")
 
             # Test externe — même logique métier, mais via le vrai chemin
@@ -555,7 +556,8 @@ def deploy_kapsule_flow(
             # jusqu'ici (l'interne contourne Caddy/DNS/TLS K8s). Ne tourne
             # qu'après succès de l'interne (cf. rationalisation 2026-07-29).
             _step = "test-api Kapsule externe"
-            test_api_flow(skip_rate_limit=True, require_model=require_model, base_url=KAPSULE_PUBLIC_URL)
+            test_api_flow.with_options(flow_run_name="Test API K8s · externe (HTTPS public)")(
+                skip_rate_limit=True, require_model=require_model, base_url=KAPSULE_PUBLIC_URL)
             log.info("test-api Kapsule externe OK ✓")
 
             # gradio-public est le seul vrai point d'accès utilisateur — même
@@ -564,11 +566,13 @@ def deploy_kapsule_flow(
             # l'inférence fonctionne réellement sur CET environnement.
             if require_model:
                 _step = "test-gradio-public Kapsule interne"
-                test_gradio_public_flow(base_url=K8S_NGINX_URL)
+                test_gradio_public_flow.with_options(
+                    flow_run_name="Test Cockpit public K8s · interne (réseau du cluster)")(base_url=K8S_NGINX_URL)
                 log.info("test-gradio-public Kapsule interne OK ✓")
 
                 _step = "test-gradio-public Kapsule externe"
-                test_gradio_public_flow(base_url=KAPSULE_PUBLIC_URL)
+                test_gradio_public_flow.with_options(
+                    flow_run_name="Test Cockpit public K8s · externe (HTTPS public)")(base_url=KAPSULE_PUBLIC_URL)
                 log.info("test-gradio-public Kapsule externe OK ✓")
         except Exception as exc:
             log.error("%s ÉCHOUÉ : %s", _step, exc)
