@@ -25,7 +25,7 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
-from services.gradio._accueil import ACCUEIL_BG
+from services.gradio._accueil import ACCUEIL_BG, PERSONA_JULIE
 from services.gradio._data import load_features
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
@@ -501,9 +501,14 @@ def build_accueil_html() -> str:
 <style>
 .pacc-wrap{{font-family:'Inter','Segoe UI',sans-serif;color:#374151;text-align:left;}}
 .pacc-wrap *{{text-align:left;}}
-.pacc-hero{{border-radius:16px;padding:40px 40px 32px;margin-bottom:18px;overflow:hidden;
+.pacc-hero{{position:relative;border-radius:16px;padding:40px 40px 32px;margin-bottom:18px;overflow:hidden;
   background:linear-gradient(160deg,rgba(7,38,55,.86) 0%,rgba(21,96,130,.78) 55%,rgba(7,38,55,.9) 100%),
   url('{ACCUEIL_BG}') center/cover no-repeat;}}
+.pacc-persona{{position:absolute;top:28px;right:36px;width:124px;height:124px;border-radius:50%;
+  background:#eaf4f9;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 20px rgba(0,0,0,.28);
+  display:flex;align-items:flex-end;justify-content:center;overflow:hidden;}}
+.pacc-persona img{{width:84%;height:auto;display:block;}}
+@media (max-width:820px){{.pacc-persona{{width:84px;height:84px;top:18px;right:18px;}}}}
 .pacc-eyebrow{{font-size:.7rem;color:rgba(255,255,255,.6) !important;letter-spacing:4px;text-transform:uppercase;margin-bottom:8px;}}
 .pacc-hero h1{{color:#fff !important;font-size:2.1rem !important;font-weight:800 !important;letter-spacing:3px;
   margin:0 0 14px 0 !important;border:none !important;padding:0 !important;text-transform:uppercase;}}
@@ -529,6 +534,7 @@ def build_accueil_html() -> str:
 </style>
 <div class="pacc-wrap">
   <div class="pacc-hero">
+    <div class="pacc-persona"><img src="{PERSONA_JULIE}" alt="Julie"></div>
     <div class="pacc-eyebrow">Sécurité routière · Intelligence artificielle</div>
     <h1>Bienvenue Julie</h1>
     <p class="pacc-lead">Anticipez la gravité des accidents de la route et décidez comment agir.</p>

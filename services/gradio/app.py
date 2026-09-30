@@ -39,7 +39,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
-from services.gradio._accueil import ACCUEIL_BG
+from services.gradio._accueil import ACCUEIL_BG, PERSONA_LEON
 from services.gradio._data import load_features
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
@@ -2573,6 +2573,11 @@ def build_accueil_html() -> str:
 .acc-hero{{position:relative;border-radius:16px;padding:40px 40px 32px;margin-bottom:20px;overflow:hidden;
   background:linear-gradient(160deg,rgba(7,38,55,.86) 0%,rgba(21,96,130,.78) 55%,rgba(7,38,55,.9) 100%),
   url('{_ACCUEIL_BG}') center/cover no-repeat;}}
+.acc-persona{{position:absolute;top:28px;right:36px;width:124px;height:124px;border-radius:50%;
+  background:#eaf4f9;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 20px rgba(0,0,0,.28);
+  display:flex;align-items:flex-end;justify-content:center;overflow:hidden;}}
+.acc-persona img{{width:84%;height:auto;display:block;}}
+@media (max-width:820px){{.acc-persona{{width:84px;height:84px;top:18px;right:18px;}}}}
 .acc-eyebrow{{font-size:.7rem;color:rgba(255,255,255,.6) !important;letter-spacing:4px;text-transform:uppercase;margin-bottom:8px;}}
 .acc-hero h1{{color:#fff !important;font-size:2.1rem !important;font-weight:800 !important;letter-spacing:3px;
   margin:0 0 12px 0 !important;border:none !important;padding:0 !important;text-transform:uppercase;}}
@@ -2610,6 +2615,7 @@ def build_accueil_html() -> str:
 </style>
 <div class="acc-wrap">
   <div class="acc-hero">
+    <div class="acc-persona"><img src="{PERSONA_LEON}" alt="Léon"></div>
     <div class="acc-eyebrow">Cockpit MLOps — Sécurité routière</div>
     <h1>Bienvenue Léon</h1>
     <p class="acc-tagline">Prédire la <b>gravité d'un accident de la route</b> à partir des données publiques ONISR — un modèle
