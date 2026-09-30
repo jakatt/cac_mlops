@@ -468,92 +468,78 @@ footer { display: none !important; }
 
 # ── Page d'accueil ─────────────────────────────────────────────────────────────
 # Même charte que l'accueil du Cockpit admin (services/gradio/app.py), en plus
-# court : le principe du cycle annuel, puis une carte par onglet qui l'ouvre.
+# court et pour un public non technique : une promesse, puis une carte par
+# onglet qui l'ouvre.
 def build_accueil_html() -> str:
-    steps = [
-        ("1", "Publication annuelle",
-         "Chaque automne, l'ONISR publie les accidents corporels de l'année écoulée "
-         "(environ 55 000 accidents par an)."),
-        ("2", "Chargement et contrôle",
-         "Les nouvelles données sont détectées automatiquement, contrôlées puis ajoutées "
-         f"à l'historique ({_YEAR_RANGE})."),
-        ("3", "Réentraînement et évaluation",
-         "Le modèle réapprend sur les années passées, puis il est évalué sur la plus récente, "
-         "qu'il n'a jamais vue : on mesure sa capacité à prévoir l'avenir."),
-        ("4", "Mise en ligne validée",
-         "Le nouveau modèle ne remplace l'ancien que s'il fait mieux, et après validation humaine."),
-    ]
-    step_html = '<span class="pacc-arrow">→</span>'.join(
-        f'<div class="pacc-step"><span class="pacc-num">{n}</span><b>{t}</b><small>{d}</small></div>'
-        for n, t, d in steps)
+    proofs = ["4 années de statistiques officielles", "Mis à jour chaque année",
+              "Validé avant chaque mise en ligne"]
+    proof_html = "".join(f'<span class="pacc-proof">✓ {t}</span>' for t in proofs)
 
     tabs = [
-        ("Predict", "🎯", "Estimer la gravité d'un accident",
-         "Décrivez un accident — usager, véhicule, lieu, conditions — ou partez d'un exemple : "
-         "le modèle estime la probabilité qu'il soit grave."),
-        ("What-if", "🧪", "Simuler une mesure de sécurité",
-         "Giratoires, zone 30, 110 km/h sur autoroute… Comparez la gravité prédite avant et après "
-         "la mesure, sur des milliers d'accidents réels."),
-        ("Points Noirs", "🗺️", "Localiser les zones à risque",
-         "Carte de chaleur des lieux où les accidents graves se concentrent, filtrable par type "
-         "de route, avec le top 10 des zones."),
+        ("Predict", "🎯", "Évaluez le risque d'un accident en un clic",
+         "Décrivez une situation — la victime, le véhicule, la route, la météo, l'heure — ou partez "
+         "d'un exemple prêt à l'emploi. Le modèle vous dit instantanément si l'accident risque d'être "
+         "grave, et avec quelle probabilité.", "Lancer une prédiction"),
+        ("What-if", "🧪", "Mesurez l'effet d'une mesure avant de la décider",
+         "Carrefours transformés en giratoires, zone 30, 110 km/h sur autoroute, meilleur éclairage… "
+         "Choisissez une mesure : le modèle la rejoue sur des milliers d'accidents réels et chiffre "
+         "la baisse de la part d'accidents graves.", "Simuler une mesure"),
+        ("Points Noirs", "🗺️", "Repérez où agir en priorité",
+         "La carte de France des zones où les accidents graves se concentrent. Filtrez par type de "
+         "route et par niveau de gravité, et obtenez le top 10 des points noirs à traiter en premier.",
+         "Explorer la carte"),
     ]
     tab_cards = "".join(
         f'<div class="pacc-tab" role="button" tabindex="0" '
         f'onclick="(function(n){{var b=[].slice.call(document.querySelectorAll(\'button[role=tab]\'))'
         f'.find(function(x){{return x.textContent.trim()===n;}});if(b){{b.click();window.scrollTo(0,0);}}}})(\'{name}\')">'
-        f'<span class="pacc-tab-ic">{ic}</span><b>{title}</b><small>{desc}</small>'
-        f'<span class="pacc-go">Ouvrir l\'onglet {name} →</span></div>'
-        for name, ic, title, desc in tabs)
+        f'<span class="pacc-tab-ic">{ic}</span><span class="pacc-tab-name">{name}</span>'
+        f'<b>{title}</b><small>{desc}</small><span class="pacc-go">{cta} →</span></div>'
+        for name, ic, title, desc, cta in tabs)
 
     return f"""
 <style>
 .pacc-wrap{{font-family:'Inter','Segoe UI',sans-serif;color:#374151;text-align:left;}}
 .pacc-wrap *{{text-align:left;}}
-.pacc-hero{{border-radius:16px;padding:36px 40px 30px;margin-bottom:18px;overflow:hidden;
+.pacc-hero{{border-radius:16px;padding:40px 40px 32px;margin-bottom:18px;overflow:hidden;
   background:linear-gradient(160deg,rgba(7,38,55,.86) 0%,rgba(21,96,130,.78) 55%,rgba(7,38,55,.9) 100%),
   url('{ACCUEIL_BG}') center/cover no-repeat;}}
 .pacc-eyebrow{{font-size:.7rem;color:rgba(255,255,255,.6) !important;letter-spacing:4px;text-transform:uppercase;margin-bottom:8px;}}
 .pacc-hero h1{{color:#fff !important;font-size:2.1rem !important;font-weight:800 !important;letter-spacing:3px;
-  margin:0 0 12px 0 !important;border:none !important;padding:0 !important;text-transform:uppercase;}}
-.pacc-tagline{{color:rgba(255,255,255,.92) !important;font-size:1.02rem !important;line-height:1.55;margin:0 !important;max-width:800px;}}
+  margin:0 0 14px 0 !important;border:none !important;padding:0 !important;text-transform:uppercase;}}
+.pacc-lead{{color:#fff !important;font-size:1.25rem !important;font-weight:700;line-height:1.4;margin:0 0 10px 0 !important;max-width:820px;}}
+.pacc-tagline{{color:rgba(255,255,255,.9) !important;font-size:1rem !important;line-height:1.55;margin:0 0 22px 0 !important;max-width:820px;}}
 .pacc-tagline b{{color:#fff !important;font-weight:700;}}
+.pacc-proofs{{display:flex;flex-wrap:wrap;gap:8px;}}
+.pacc-proof{{padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);
+  color:#fff !important;font-size:.8rem;font-weight:600;}}
 .pacc-section{{background:#fff;border:1.5px solid #dbe8ee;border-radius:14px;padding:22px 24px;margin-bottom:18px;}}
-.pacc-title{{color:#156082 !important;font-size:.98rem;font-weight:700;margin-bottom:6px;}}
-.pacc-sub{{color:#5a7a8a !important;font-size:.84rem;line-height:1.5;margin:0 0 16px 0 !important;}}
-.pacc-flow{{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;}}
-.pacc-step{{flex:1;min-width:170px;background:#f4f8fb;border:1.5px solid #c2dbe4;border-radius:12px;padding:14px 14px 12px;}}
-.pacc-step b{{display:block;color:#0d2233 !important;font-size:.9rem;margin:8px 0 4px;}}
-.pacc-step small{{display:block;color:#5a7a8a !important;font-size:.79rem;line-height:1.45;}}
-.pacc-num{{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;
-  background:#156082;color:#fff !important;font-size:.8rem;font-weight:700;}}
-.pacc-arrow{{align-self:center;color:#7aa7bd !important;font-size:1.3rem;font-weight:700;}}
-.pacc-tabs{{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}}
-.pacc-tab{{cursor:pointer;display:flex;flex-direction:column;border:1.5px solid #c2dbe4;border-radius:12px;padding:18px;background:#fff;
+.pacc-title{{color:#156082 !important;font-size:1.02rem;font-weight:700;margin-bottom:16px;}}
+.pacc-tabs{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}}
+.pacc-tab{{cursor:pointer;display:flex;flex-direction:column;border:1.5px solid #c2dbe4;border-radius:12px;padding:20px;background:#fff;
   transition:border-color .15s,box-shadow .15s,transform .15s;}}
 .pacc-tab:hover,.pacc-tab:focus{{border-color:#156082;box-shadow:0 4px 14px rgba(21,96,130,.14);transform:translateY(-2px);outline:none;}}
-.pacc-tab-ic{{font-size:1.7rem;display:block;margin-bottom:8px;}}
-.pacc-tab b{{display:block;color:#156082 !important;font-size:.98rem;margin-bottom:6px;}}
-.pacc-tab small{{display:block;color:#6B7280 !important;font-size:.82rem;line-height:1.5;flex:1;}}
-.pacc-go{{display:block;margin-top:12px;color:#156082 !important;font-size:.8rem;font-weight:600;}}
+.pacc-tab-ic{{font-size:1.8rem;display:block;margin-bottom:8px;}}
+.pacc-tab-name{{display:block;color:#7aa7bd !important;font-size:.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}}
+.pacc-tab b{{display:block;color:#156082 !important;font-size:1.02rem;line-height:1.35;margin-bottom:8px;}}
+.pacc-tab small{{display:block;color:#5a6b78 !important;font-size:.85rem;line-height:1.55;flex:1;}}
+.pacc-go{{display:inline-block;margin-top:14px;padding:7px 14px;border-radius:8px;background:#156082;color:#fff !important;
+  font-size:.82rem;font-weight:600;align-self:flex-start;}}
 .pacc-note{{font-size:.76rem;color:#8a9aa5 !important;text-align:center !important;margin-top:4px;}}
 </style>
 <div class="pacc-wrap">
   <div class="pacc-hero">
-    <div class="pacc-eyebrow">Sécurité routière — Simulation &amp; zones à risque</div>
+    <div class="pacc-eyebrow">Sécurité routière · Intelligence artificielle</div>
     <h1>Bienvenue Julie</h1>
-    <p class="pacc-tagline">Un accident de la route fera-t-il un <b>blessé grave ou un tué</b> ? Un modèle de
-    Machine Learning l'estime à partir des <b>statistiques officielles des accidents corporels</b> (ONISR),
-    et il est <b>remis à jour chaque année</b> avec les dernières données publiées.</p>
+    <p class="pacc-lead">Anticipez la gravité des accidents de la route, et décidez où et comment agir.</p>
+    <p class="pacc-tagline">Notre modèle d'intelligence artificielle a appris de <b>plus de 220 000 accidents réels</b>
+    recensés par l'Observatoire national de la sécurité routière. <b>Chaque année</b>, dès la publication des
+    nouvelles statistiques officielles, il est réentraîné et vérifié avant d'être remis en ligne : vos analyses
+    reposent toujours sur <b>les données les plus récentes</b>.</p>
+    <div class="pacc-proofs">{proof_html}</div>
   </div>
   <div class="pacc-section">
-    <div class="pacc-title">Un modèle mis à jour chaque année</div>
-    <p class="pacc-sub">La gravité est évaluée pour la victime la plus touchée : <b>grave</b> = au moins un blessé
-    hospitalisé ou un tué. Chaque nouvelle année de statistiques suit le même parcours :</p>
-    <div class="pacc-flow">{step_html}</div>
-  </div>
-  <div class="pacc-section">
-    <div class="pacc-title">Trois outils à votre disposition</div>
+    <div class="pacc-title">Trois outils pour comprendre et agir</div>
     <div class="pacc-tabs">{tab_cards}</div>
   </div>
   <div class="pacc-note">Outil de recherche : les prédictions sont produites par un modèle de Machine Learning,
