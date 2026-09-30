@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
 from services.gradio._accueil import ACCUEIL_BG, PERSONA_LEON
 from services.gradio._data import load_features
+from services.gradio._release import release_badge_html
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -2883,6 +2884,9 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
         # ── Onglet Accueil ───────────────────────────────────────────────────
         with gr.Tab("Accueil", id="tab_accueil"):
             gr.HTML(build_accueil_html())
+            # Relu à chaque ouverture de page : change au GO d'une PR de démo (docs/release.json)
+            release_badge = gr.HTML(release_badge_html())
+            demo.load(fn=release_badge_html, outputs=release_badge)
 
         # ── Onglet Predict ───────────────────────────────────────────────────
         with gr.Tab("Predict"):

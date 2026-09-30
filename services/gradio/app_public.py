@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario
 from services.gradio._accueil import ACCUEIL_BG, PERSONA_JULIE
 from services.gradio._data import load_features
+from services.gradio._release import release_badge_html
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -567,6 +568,9 @@ Modele LightGBM — *outil de recherche, non operationnel.*
 
         with gr.Tab("Accueil"):
             gr.HTML(build_accueil_html())
+            # Relu à chaque ouverture de page : change au GO d'une PR de démo (docs/release.json)
+            release_badge = gr.HTML(release_badge_html())
+            demo.load(fn=release_badge_html, outputs=release_badge)
 
         with gr.Tab("Predict"):
             gr.Markdown("### Prédiction individuelle — saisir les caractéristiques de l'accident")
