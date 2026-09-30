@@ -701,7 +701,7 @@ def deploy_vps_flow(
             )
         _step = "test-api interne"
         try:
-            _named_flow(test_api_flow, "Test API · interne (réseau Docker du VPS)")(
+            _named_flow(test_api_flow, "Test API VPS · interne (réseau Docker)")(
                 skip_rate_limit=True, require_model=_has_model)
             log.info("test-api interne OK ✓")
 
@@ -713,7 +713,7 @@ def deploy_vps_flow(
             # public en plus (cf. rationalisation 2026-07-29, distinction
             # bug applicatif / souci d'accès externe).
             _step = "test-api externe"
-            _named_flow(test_api_flow, "Test API · externe (HTTPS public, comme un utilisateur)")(
+            _named_flow(test_api_flow, "Test API VPS · externe (HTTPS public, comme un utilisateur)")(
                 skip_rate_limit=True, require_model=_has_model, base_url=PUBLIC_URL)
             log.info("test-api externe OK ✓")
 
@@ -723,11 +723,11 @@ def deploy_vps_flow(
             # seulement un ping /health (cf. observabilité par accès, PR230).
             if _has_model:
                 _step = "test-gradio-public interne"
-                _named_flow(test_gradio_public_flow, "Test Cockpit public · interne (réseau Docker du VPS)")()
+                _named_flow(test_gradio_public_flow, "Test Cockpit public VPS · interne (réseau Docker)")()
                 log.info("test-gradio-public interne OK ✓")
 
                 _step = "test-gradio-public externe"
-                _named_flow(test_gradio_public_flow, "Test Cockpit public · externe (HTTPS public)")(base_url=PUBLIC_URL)
+                _named_flow(test_gradio_public_flow, "Test Cockpit public VPS · externe (HTTPS public)")(base_url=PUBLIC_URL)
                 log.info("test-gradio-public externe OK ✓")
         except Exception as exc:
             log.error("%s ÉCHOUÉ : %s", _step, exc)

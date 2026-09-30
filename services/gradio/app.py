@@ -1149,7 +1149,8 @@ def trigger_test_api() -> str:
     ]
     sections = []
     for label, deployment_name, params in checks:
-        result = _prefect_trigger(deployment_name, params)
+        # 120 s : test-gradio-public enchaîne 3 tests (Predict, What-if, Points Noirs)
+        result = _prefect_trigger(deployment_name, params, wait_s=120)
         icon = "✅" if result.startswith("✓") else "❌"
         sections.append(f"■ {icon} {label}\n{result}")
     separator = "\n" + "─" * 40 + "\n"
@@ -3110,7 +3111,7 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
                     _FLOW_CONFIGS = {
                         "Tester les 4 accès publics (fonctionnel)": {
                             "key": "test-api",
-                            "desc": "Teste FastAPI VPS/K8s (health, JWT, 401, /predict, what-if vitesse vma=90 vs 50) et Gradio Public VPS/K8s (vrai /predict via gradio_client) — via le chemin utilisateur réel (Caddy → HTTPS → domaine public), pas le réseau interne. Rapport détaillé par accès ci-dessous.",
+                            "desc": "Teste FastAPI VPS/K8s (health, JWT, 401, /predict, what-if vitesse vma=90 vs 50) et Gradio Public VPS/K8s (Predict, What-if giratoires, carte Points Noirs via gradio_client) — via le chemin utilisateur réel (Caddy → HTTPS → domaine public), pas le réseau interne. Rapport détaillé par accès ci-dessous.",
                             "opts": None,
                         },
                         "Tester la protection anti-abus sur l'API": {

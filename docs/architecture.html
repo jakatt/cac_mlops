@@ -215,7 +215,7 @@
                   <tr><td><strong>kapsule-down</strong></td><td>manuel</td><td>déprovision cluster Kapsule</td></tr>
                   <tr><td><strong>test-api</strong></td><td>CI/CD + manuel</td><td>5 tests fonctionnels en CD (health · JWT · 401 · /predict · what-if) — interne (réseau Docker/ClusterIP) puis externe (domaine public) si l'interne passe · la 6ᵉ tâche (429) ne tourne qu'en lancement manuel depuis Prefect</td></tr>
                   <tr><td><strong>test-rate-limit</strong></td><td>manuel (Cockpit Orchestration)</td><td>protection anti-abus nginx sur <code>/predict</code>, 2 niveaux : par client (IP réelle, 20/min, rafale 10) et global (60/min, rafale 30) — clients simulés via <code>X-Forwarded-For</code> · jamais en CD</td></tr>
-                  <tr><td><strong>test-gradio-public</strong></td><td>CI/CD + manuel</td><td>vrai <code>/predict</code> via <code>gradio_client</code> sur le cockpit public — même logique interne/externe que test-api</td></tr>
+                  <tr><td><strong>test-gradio-public</strong></td><td>CI/CD + manuel</td><td>3 tests via <code>gradio_client</code> sur le cockpit public, un par onglet (Predict · What-if giratoires · carte Points Noirs) — même logique interne/externe que test-api</td></tr>
                   <tr><td><strong>diag</strong></td><td>manuel</td><td>snapshot VPS : disk, docker ps, ports réseau</td></tr>
                   <tr><td><strong>k8s-daemonset-health</strong></td><td>manuel (Cockpit Healthcheck)</td><td>node-exporter/promtail/loki-forwarder/tailscale-subnet-router via kubectl — pas de Service stable ni HTTP pour ces 4</td></tr>
                   <tr><td><strong>disk-cleanup</strong></td><td>cron 2h UTC</td><td>nettoyage images Docker + alerte si disk &lt; 15%</td></tr>

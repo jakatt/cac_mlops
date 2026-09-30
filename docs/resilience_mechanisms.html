@@ -270,7 +270,7 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public — interne PUIS externe (vrai domaine public) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe (vrai domaine public) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
@@ -317,7 +317,7 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public — interne PUIS externe : si fail → rollback Docker <code>:rollback</code> + alerte</span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe : si fail → rollback Docker <code>:rollback</code> + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>
@@ -356,7 +356,7 @@
               </li>
               <li class="item-vps">
                 <span class="item-label">Gate 3 VPS</span>
-                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public — interne PUIS externe : si fail → rollback alias MLflow @Production + revert du blueprint sur main + alerte</span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe : si fail → rollback alias MLflow @Production + revert du blueprint sur main + alerte</span>
               </li>
               <li class="item-k8s">
                 <span class="item-label">Gate K8s (si VPS OK)</span>

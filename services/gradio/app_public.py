@@ -666,10 +666,13 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                 inputs=[scenario_dd],
                 outputs=[mult_sl],
             )
+            # api_name explicite : appelé par le test fonctionnel What-if
+            # (src/flows/test_gradio_public_flow.py), comme "predict".
             run_btn.click(
                 fn=run_whatif,
                 inputs=[scenario_dd, sample_sl, mult_sl],
                 outputs=[chart_out, stats_md],
+                api_name="whatif",
             )
 
         with gr.Tab("Points Noirs"):
@@ -697,6 +700,7 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                 fn=run_heatmap,
                 inputs=[grav_sl, acc_sl, catr_cb, samp_sl2],
                 outputs=[map_out, top_table, stats_map],
+                api_name="points_noirs",
             )
 
     gr.Markdown(f"---\n*Donnees ONISR {_YEAR_RANGE} — Ministere de l'Interieur*")
