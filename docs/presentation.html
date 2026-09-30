@@ -167,7 +167,7 @@
               <tr><td><strong>CI/CD GitHub Actions</strong></td><td>✅</td><td>3 workflows : ci · deploy · cleanup · 79 tests unitaires en CI (+ 13 tests d'intégration hors CI)</td></tr>
               <tr><td><strong>Orchestration Prefect</strong></td><td>✅</td><td>18 deployments · crons + déclenchements manuels + cockpit</td></tr>
               <tr><td><strong>Monitoring</strong></td><td>✅</td><td>Prometheus + Loki/Promtail + Grafana (VPS+Kapsule consolidés) · 7 dashboards · 12 alertes · SMTP ✓</td></tr>
-              <tr><td><strong>Cockpit</strong></td><td>✅</td><td>Gradio 6 onglets (Tailscale, dont Cockpit = 6 accordéons) + Gradio-public 3 onglets (internet)</td></tr>
+              <tr><td><strong>Cockpit</strong></td><td>✅</td><td>Gradio 6 onglets (Tailscale, dont Cockpit = 6 accordéons) + Gradio-public : accueil + 3 onglets (internet)</td></tr>
               <tr><td><strong>Kubernetes</strong></td><td>✅</td><td>Kapsule Scaleway (déprovisionné par défaut · kapsule-up/down flows)</td></tr>
             </tbody>
           </table></div>
@@ -193,7 +193,7 @@
           <tr><td>CI/CD</td><td><strong>GitHub Actions</strong></td><td>3 workflows (ci · deploy · cleanup) · Trivy CVE</td></tr>
           <tr><td>Monitoring</td><td><strong>Prometheus + Loki + Grafana</strong></td><td>PLG stack · 7 dashboards · 12 alertes email</td></tr>
           <tr><td>Drift</td><td><strong>Evidently</strong></td><td>Drift des features par année vs référence + drift du trafic réel (prédictions, 90 j)</td></tr>
-          <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>6 onglets admin (Tailscale, dont Cockpit = 6 accordéons) + 3 onglets public (internet)</td></tr>
+          <tr><td>Cockpit</td><td><strong>Gradio</strong></td><td>6 onglets admin (Tailscale, dont Cockpit = 6 accordéons) + accueil et 3 onglets public (internet)</td></tr>
           <tr><td>Infra VPS</td><td><strong>Scaleway DEV1-XL</strong></td><td>16 conteneurs Docker permanents · 4 vCPU / 12 GB RAM / 80 GB /data</td></tr>
           <tr><td>Infra K8s</td><td><strong>Scaleway Kapsule</strong></td><td>On-demand · HPA · zero-downtime rolling updates</td></tr>
           <tr><td>Sécurité</td><td><strong>Tailscale VPN</strong></td><td>Ports admin invisibles depuis internet · mesh réseau</td></tr>

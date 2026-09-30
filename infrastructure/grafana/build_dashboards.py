@@ -187,7 +187,7 @@ def steps(*pairs) -> dict:
 
 def stat(title: str, ds: dict, expr: str, *, unit: str = "short", thresholds=None, mappings=None,
          desc: str = "", no_value: str = "0", decimals=None, text_mode: str = "value",
-         legend: str = "", links=None, color_mode: str = "background", value_size=None) -> dict:
+         legend: str = "", links=None, data_links=None, color_mode: str = "background", value_size=None) -> dict:
     thr = thresholds or steps((None, BLUE))
     if no_value == OFF_TEXT:
         # Cluster éteint = état normal hors démonstration : gris, jamais rouge.
@@ -198,6 +198,9 @@ def stat(title: str, ds: dict, expr: str, *, unit: str = "short", thresholds=Non
                 "thresholds": thr, "mappings": mappings or []}
     if decimals is not None:
         defaults["decimals"] = decimals
+    if data_links:
+        # Liens portés par la valeur : un clic sur la tuile ouvre le lien (menu s'il y en a plusieurs).
+        defaults["links"] = data_links
     p = {
         "type": "stat", "title": title, "datasource": ds, "description": desc,
         "targets": [target(ds, expr, legend, instant=True)],
@@ -629,7 +632,8 @@ def access_dashboard(a: dict) -> dict:
 def home_dashboard() -> dict:
     g = Grid()
     g.add(text("## CAC MLOps — Vue d'ensemble\nLes 4 accès publics, le modèle en production et les derniers événements. "
-               "Cliquer sur un statut ouvre le dashboard de l'accès ; survoler l'icône (i) pour la définition d'un indicateur."), 24, 3)
+               "Cliquer sur un statut ouvre le dashboard de l'accès, sur une tuile Drift ou Qualité son détail ; "
+               "survoler l'icône (i) pour la définition d'un indicateur."), 24, 3)
     g.row("Accès publics — sonde bout-en-bout, période choisie")
     for a in ACCESSES:
         g.add(probe_status(a, a["short"], links=[{"title": f"Ouvrir {a['title']}", "url": f"/d/{a['uid']}"}]), 6, 4)
@@ -648,9 +652,13 @@ def home_dashboard() -> dict:
     g.add(stat("F1 du dernier champion", PROM, 'cac_mlops_train_metric{metric="f1"}', decimals=3,
                thresholds=steps((None, RED), (0.60, GREEN)), desc=TRAIN_METRIC_DESC["f1"]), 6, 4)
     g.add(stat("Drift des données (dernier cycle)", PROM, "cac_mlops_drift_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC + CLICK_HINT,
+               data_links=flux_links("Variables en dérive", "Variables les plus proches du seuil de dérive (0,1)",
+                                     "Drift de la cible", "Drift du trafic réel")), 6, 4)
     g.add(stat("Qualité des données (dernier ETL)", PROM, "cac_mlops_data_quality_level", mappings=LEVEL_MAP,
-               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DATA_QUALITY_DESC), 6, 4)
+               thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DATA_QUALITY_DESC + CLICK_HINT,
+               data_links=flux_links("Lignes en double par table ONISR (dernier ETL)",
+                                     "Valeurs manquantes par table ONISR (dernier ETL)")), 6, 4)
 
     g.row("Alertes et derniers événements")
     g.add(alertlist(), 8, 9)
@@ -660,6 +668,18 @@ def home_dashboard() -> dict:
     # ("could not resolve dashboards:uid:... Dashboard not found").
     return dashboard("cac-mlops-home", "CAC MLOps — Vue d'ensemble", g, ["home"],
                      "Page d'accueil : santé des 4 accès publics, modèle, alertes, événements.", "now-24h")
+
+
+CLICK_HINT = ("\n\n**Détail.** Cliquer sur la tuile : le détail (par table ONISR ou par variable) s'ouvre dans "
+              "le dashboard Flux MLOps. Le Cockpit (accordéon Drift) donne en plus les rapports Evidently complets.")
+
+
+def flux_links(*titles: str) -> list[dict]:
+    """Liens vers des panneaux du dashboard Flux MLOps, retrouvés par leur titre
+    (l'id d'un panneau dépend de sa position : ne jamais l'écrire en dur)."""
+    ids = {p["title"]: p["id"] for p in flux_dashboard()["panels"]}
+    return [{"title": f"Détail : {t}", "url": f"/d/cac-flux?viewPanel=panel-{ids[t]}&${{__url_time_range}}"}
+            for t in titles]
 
 
 # ── Descriptions partagées (modèle, drift, qualité) ───────────────────────────
