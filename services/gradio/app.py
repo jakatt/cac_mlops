@@ -2576,7 +2576,7 @@ def build_accueil_html() -> str:
 .acc-persona{{position:absolute;top:28px;right:36px;width:124px;height:124px;border-radius:50%;
   background:#eaf4f9;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 20px rgba(0,0,0,.28);
   display:flex;align-items:flex-end;justify-content:center;overflow:hidden;}}
-.acc-persona img{{width:84%;height:auto;display:block;}}
+.acc-persona img{{height:100%;width:auto;max-width:none;display:block;}}
 @media (max-width:820px){{.acc-persona{{width:84px;height:84px;top:18px;right:18px;}}}}
 .acc-eyebrow{{font-size:.7rem;color:rgba(255,255,255,.6) !important;letter-spacing:4px;text-transform:uppercase;margin-bottom:8px;}}
 .acc-hero h1{{color:#fff !important;font-size:2.1rem !important;font-weight:800 !important;letter-spacing:3px;
