@@ -780,7 +780,7 @@ IP réelle du client : set_real_ip_from 172.16.0.0/12 + X-Forwarded-For
             </tbody>
           </table></div>
           <p><em>Note historique :</em> <code>COCKPIT_ENV=kapsule</code> masquait certains accordéons sur un cockpit admin K8s — ce déploiement n'existe plus depuis 2026-07-13 (redondant avec celui du VPS), cette variable n'est donc plus jamais positionnée en pratique.</p>
-          <p><strong>Cockpit public</strong> (gradio-public) — <code>https://mlops.jakat-inc.fr</code> (VPS) et <code>https://kapsule.jakat-inc.fr</code> (K8s, même image, <code>DEPLOY_ENV</code> distingue les deux) · Script : <code>services/gradio/app_public.py</code> · 3 onglets (Predict + What-If + Points Noirs)</p>
+          <p><strong>Cockpit public</strong> (gradio-public) — <code>https://mlops.jakat-inc.fr</code> (VPS) et <code>https://kapsule.jakat-inc.fr</code> (K8s, même image, <code>DEPLOY_ENV</code> distingue les deux) · Script : <code>services/gradio/app_public.py</code> · page d'accueil + 3 onglets (Predict + What-If + Points Noirs)</p>
         </div>
       </details>
     </div>
@@ -939,7 +939,7 @@ docker compose up -d  # lance toute la stack locale (optionnel)</pre>
 ├── data/                  ignoré Git — géré DVC (raw/ + preprocessed/)
 ├── services/
 │   ├── api/               FastAPI (main, auth, model_loader, routes/, schemas/)
-│   ├── gradio/            app.py (6 onglets Tailscale, dont Cockpit = 6 accordéons) · app_public.py (3 onglets public)
+│   ├── gradio/            app.py (6 onglets Tailscale, dont Cockpit = 6 accordéons) · app_public.py (accueil + 3 onglets public)
 │   │                      scenarios.py · Dockerfile
 │   ├── mlflow/            Dockerfile custom (boto3 + psycopg2)
 │   ├── nginx/             nginx.conf (rate-limit + routing + /reports/)
