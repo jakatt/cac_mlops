@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Entraînement des modèles — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+
+.ci-doc .flow { display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin:4px 0 26px; }
+.ci-doc .step { flex:1;min-width:130px;border:1.5px solid var(--border);border-radius:10px;padding:12px;background:var(--surface); }
+.ci-doc .step .n { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:.72rem;font-weight:700; }
+.ci-doc .step b { display:block;font-size:.86rem;color:var(--text);margin:6px 0 3px; }
+.ci-doc .step span.d { display:block;font-size:.75rem;color:var(--muted);line-height:1.45; }
+.ci-doc .step.human { border-color:#fdba74;background:#fff7ed; }
+.ci-doc .step.human .n { background:#d97706; }
+.ci-doc .arrow { align-self:center;color:var(--muted);font-weight:700; }
+.ci-doc .two { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0; }
+@media (max-width:700px) { .ci-doc .two { grid-template-columns:1fr; } }
+.ci-doc .card { border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--surface); }
+.ci-doc .card h4 { font-size:.84rem;color:var(--accent);margin-bottom:6px; }
+.ci-doc .ok { color:#15803d;font-weight:700; } .ci-doc .ko { color:#b91c1c;font-weight:700; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ci-doc .step.human { background:#2a1f00;border-color:#78350f; } }
+:root[data-theme="dark"] .ci-doc .step.human { background:#2a1f00;border-color:#78350f; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">MLOps · Accidents routiers</div>
+  <h1 class="page-title">Entraînement des modèles</h1>
+  <p class="page-sub">Comment un modèle est entraîné, comparé, choisi et mis en production — côté production (automatique, à chaque nouvelle année ONISR ou nouveau blueprint) comme côté développement (exploration du Data Scientist) — et comment MLflow garde la trace de chaque version.</p>
+
+  <div class="flow">
+    <div class="step"><span class="n">1</span><b>Données</b><span class="d">Années passées pour apprendre, année la plus récente pour tester (jamais vue).</span></div>
+    <span class="arrow">→</span>
+    <div class="step"><span class="n">2</span><b>3 modèles entraînés</b><span class="d">Random Forest, XGBoost, LightGBM — mêmes données, mêmes métriques.</span></div>
+    <span class="arrow">→</span>
+    <div class="step"><span class="n">3</span><b>Un champion</b><span class="d">Le meilleur F1 parmi ceux qui passent les seuils, et s'il fait mieux que la production.</span></div>
+    <span class="arrow">→</span>
+    <div class="step human"><span class="n">4</span><b>Validation humaine</b><span class="d">GO ou STOP dans le Cockpit, avec la comparaison à la production.</span></div>
+    <span class="arrow">→</span>
+    <div class="step"><span class="n">5</span><b>@Production</b><span class="d">Promotion dans MLflow, tests fonctionnels, rollback si échec.</span></div>
+  </div>
+
+  <!-- ═══════════ 1. PRINCIPE ═══════════ -->
+  <details>
+    <summary>1 — Ce que le modèle apprend et comment il est évalué</summary>
+    <div class="body">
+      <p><strong>La question posée :</strong> un accident corporel fera-t-il au moins une victime <strong>grave</strong> (blessé hospitalisé ou tué) ? Classification binaire sur <strong>27 variables</strong> (usager, véhicule, lieu, conditions, heure…) issues des 4 fichiers annuels ONISR — voir le <a href="data_dictionary.html">Dictionnaire des données</a>.</p>
+
+      <details>
+        <summary>Split temporel : apprendre sur le passé, tester sur l'avenir</summary>
+        <div class="body">
+          <p>Les données de toutes les années disponibles sont cumulées. Le modèle apprend sur les <strong>années précédentes</strong> et il est évalué sur <strong>la plus récente</strong>, qu'il n'a jamais vue — exactement la situation de production, où il prédit des accidents futurs.</p>
+          <div class="tbl"><table>
+            <tr><th>Exemple (cycle 2024)</th><th>Années</th><th>Lignes</th></tr>
+            <tr><td>Apprentissage</td><td>2021 · 2022 · 2023</td><td>~173 000</td></tr>
+            <tr><td>Test</td><td>2024</td><td>~65 000</td></tr>
+          </table></div>
+          <p>Un split aléatoire mélangerait des accidents de la même année entre apprentissage et test et surestimerait la performance réelle.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Les 3 algorithmes comparés à chaque cycle</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Algorithme</th><th>Nom dans MLflow</th><th>Principe</th></tr>
+            <tr><td>Random Forest</td><td><code>rf_accidents</code></td><td>Des centaines d'arbres indépendants qui votent — robuste, peu sensible au réglage.</td></tr>
+            <tr><td>XGBoost</td><td><code>xgb_accidents</code></td><td>Arbres construits l'un après l'autre, chacun corrige les erreurs du précédent.</td></tr>
+            <tr><td>LightGBM</td><td><code>lgbm_accidents</code></td><td>Même principe que XGBoost, optimisé pour la vitesse et les grands volumes.</td></tr>
+          </table></div>
+          <p>Les trois sont entraînés à chaque cycle, sur exactement les mêmes données : le choix du meilleur est refait à chaque fois, il n'est jamais figé.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Les 4 métriques</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Métrique</th><th>Ce qu'elle mesure</th><th>Seuil minimum</th></tr>
+            <tr><td><strong>F1</strong> — métrique principale</td><td>Équilibre entre précision et rappel sur la classe « grave »</td><td>≥ 0,60</td></tr>
+            <tr><td>AUC ROC</td><td>Capacité à classer un accident grave au-dessus d'un non grave (0,5 = hasard, 1 = parfait)</td><td>≥ 0,77</td></tr>
+            <tr><td>Recall (rappel)</td><td>Part des accidents réellement graves que le modèle détecte</td><td>≥ 0,58</td></tr>
+            <tr><td>Accuracy</td><td>Part de prédictions correctes, toutes classes confondues</td><td>≥ 0,72</td></tr>
+          </table></div>
+          <p>Les seuils sont fixés ~8 % sous les performances observées : ils écartent un modèle nettement dégradé sans bloquer une variation normale d'une année à l'autre.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 2. CHAMPION ═══════════ -->
+  <details>
+    <summary>2 — Comment le champion est choisi, et à quelles conditions il est promu</summary>
+    <div class="body">
+      <div class="band"><strong>Trois filtres successifs</strong> (tâche Prefect <code>select-champion</code>) : ① passer les 4 seuils minimums → ② être le meilleur en F1 parmi les qualifiés → ③ faire mieux que le modèle en production, selon une règle qui dépend du déclencheur. Puis ④ un humain valide (GO).</div>
+
+      <details>
+        <summary>① Les seuils minimums (quality gate)</summary>
+        <div class="body">
+          <p>Un modèle sous un seul des 4 seuils (F1 ≥ 0,60 · AUC ≥ 0,77 · Recall ≥ 0,58 · Accuracy ≥ 0,72) est éliminé, quel que soit son F1. Le run porte le tag MLflow <code>kpi_gate=PASSED</code> ou <code>FAILED</code>. Si aucun des 3 ne passe : pas de champion, la production reste inchangée et une alerte est émise.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>② Le meilleur en F1</summary>
+        <div class="body">
+          <p>Parmi les modèles qualifiés, celui qui a le F1 le plus élevé devient le <strong>champion</strong> du cycle — les deux autres restent enregistrés dans MLflow pour comparaison.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>③ Faire mieux que la production — règle selon le déclencheur</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Déclencheur</th><th>Règle</th><th>Pourquoi</th></tr>
+            <tr><td><strong>Trigger 1</strong> — nouvelle année de données</td><td>Promu si au plus <strong>1 métrique sur 4</strong> régresse par rapport à la production (2 ou plus → pas de promotion)</td><td>Le nouveau modèle est testé sur une année plus récente que l'ancien : la comparaison stricte n'est pas équitable, mais une dégradation sur plusieurs métriques reste un signal fort.</td></tr>
+            <tr><td><strong>Trigger 3</strong> — nouveau blueprint (hyperparamètres)</td><td>Promu si son F1 dépasse celui de la production d'au moins <strong>+0,01</strong></td><td>Mêmes données, même test : la comparaison est directe. Le +0,01 évite de remplacer un modèle pour une différence due au hasard.</td></tr>
+            <tr><td>Aucun modèle en production (premier cycle, après une remise à zéro)</td><td>Le champion est promu directement</td><td>Rien à comparer.</td></tr>
+            <tr><td>Réentraînement complet (<code>full-retrain</code>, rejeu de l'historique)</td><td>Seuils minimums seulement</td><td>Chaque année rejouée remplace la précédente, comme dans la vraie vie.</td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>④ La validation humaine et la mise en production</summary>
+        <div class="body">
+          <ul>
+            <li>Le champion n'est <strong>pas</strong> promu tout de suite : le flow <code>deploy-vps-flow</code> s'arrête à la <strong>gate</strong>, qui affiche dans le Cockpit ses métriques face à celles de la production.</li>
+            <li><strong>GO</strong> → alias <code>@Production</code> déplacé vers le champion, redémarrage de l'API, tests fonctionnels ; si un test échoue → retour automatique au modèle précédent.</li>
+            <li><strong>STOP</strong> → rien ne change ; le run est tagué <code>gate_outcome=stopped</code> (visible « Stoppé » dans le Cockpit).</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Contrôle complémentaire : comparer les décisions (model diff)</summary>
+        <div class="body">
+          <p>Avant la gate, le champion et le modèle en production prédisent le <strong>même jeu de référence figé</strong> (issu des données 2021, jamais modifié). On mesure la part de décisions qui changent de classe. <strong>Informatif, jamais bloquant</strong> : au-delà de 20 % de décisions changées, le candidat mérite un examen attentif avant le GO. Rapport visible dans le Cockpit → Modèles.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 3. PROD ═══════════ -->
+  <details>
+    <summary>3 — L'entraînement de production</summary>
+    <div class="body">
+      <p>Entièrement automatisé, exécuté par Prefect sur le VPS. Les runs vont dans l'expérience MLflow <code>accidents_severity_prod</code> et chaque modèle est enregistré dans le registre.</p>
+
+      <details>
+        <summary>Qui le déclenche</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Déclencheur</th><th>Quand</th><th>Chaîne Prefect</th></tr>
+            <tr><td><strong>Trigger 1</strong> — nouvelles données</td><td>Détection chaque lundi à 8 h de la publication ONISR annuelle (en général à l'automne)</td><td><code>check-new-data</code> → ETL → <code>train-flow</code> → <code>deploy-vps-flow</code> (gate)</td></tr>
+            <tr><td><strong>Trigger 3</strong> — nouveau blueprint</td><td>Merge sur <code>main</code> d'une PR qui modifie <code>config/model_params.yml</code></td><td>CD → <code>update-model-flow</code> → <code>train-flow</code> → <code>deploy-vps-flow</code> (gate)</td></tr>
+            <tr><td>Réentraînement complet</td><td>À la main (Cockpit → Orchestration)</td><td><code>full-retrain</code> : rejoue tous les cycles annuels depuis zéro</td></tr>
+          </table></div>
+          <p>Un changement de code (Trigger 2) ne réentraîne jamais le modèle.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Les étapes du flow <code>train-flow</code></summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>#</th><th>Tâche Prefect</th><th>Ce qu'elle fait</th></tr>
+            <tr><td>1</td><td><code>train-model-rf</code> · <code>-xgboost</code> · <code>-lgbm</code></td><td>Entraîne chaque algorithme avec les hyperparamètres du blueprint, calcule les 4 métriques, enregistre le run et le modèle dans MLflow, produit le rapport de performance Evidently.</td></tr>
+            <tr><td>2</td><td><code>get-metrics-…</code></td><td>Relit les métriques de chaque run dans MLflow.</td></tr>
+            <tr><td>3</td><td><code>select-champion</code></td><td>Applique les filtres ①②③ (section 2).</td></tr>
+            <tr><td>4</td><td><code>write-performance-summary</code></td><td>Publie les métriques du champion pour Grafana (« F1 du dernier champion »).</td></tr>
+            <tr><td>5</td><td><code>model-diff</code></td><td>Compare les décisions du champion et de la production sur le jeu de référence.</td></tr>
+          </table></div>
+          <p>Le flow ne promeut pas lui-même : il passe le champion à <code>deploy-vps-flow</code>, qui attend le GO.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Rapports produits à chaque entraînement</summary>
+        <div class="body">
+          <ul>
+            <li><strong>Rapport de performance</strong> (Evidently) par algorithme et par version : matrice de confusion, courbes ROC et précision-rappel sur l'année de test — Cockpit → Modèles → « Rapports par version ».</li>
+            <li><strong>Rapport model diff</strong> champion vs production (section 2).</li>
+            <li><strong>Tableau de comparaison</strong> à la production, affiché à la gate.</li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 4. DEV ═══════════ -->
+  <details>
+    <summary>4 — L'entraînement de développement et le blueprint</summary>
+    <div class="body">
+      <p>Le Data Scientist explore en local, sans jamais toucher la production. Ses runs remontent dans le MLflow partagé, dans une expérience séparée (<code>accidents_severity_dev</code>). Quand il trouve de meilleurs hyperparamètres, il les propose via un <strong>blueprint</strong>. Détail des commandes : <a href="ds_guide.html">Guide Data Scientist</a>.</p>
+
+      <details>
+        <summary>Qu'est-ce que le blueprint ?</summary>
+        <div class="body">
+          <p>Le fichier <code>config/model_params.yml</code> : les <strong>hyperparamètres de référence</strong> des 3 algorithmes, versionnés dans Git. C'est lui que l'entraînement de production utilise, à chaque cycle. Le modifier est la seule façon de changer la façon dont la production entraîne ses modèles — et cela passe forcément par une PR relue.</p>
+          <p>Priorité à l'entraînement : option en ligne de commande (exploration DS) &gt; blueprint &gt; valeur par défaut de la librairie. Les paramètres techniques (<code>random_state=42</code>, <code>n_jobs=-1</code>, verbosité) sont imposés par le pipeline pour garantir la reproductibilité.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Le parcours du DS, de l'exploration à la production</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>#</th><th>Étape</th><th>Comment</th></tr>
+            <tr><td>1</td><td>Préparer sa session</td><td><code>./scripts/ds_session_start.sh</code> : synchronise la branche DS et récupère les données (DVC).</td></tr>
+            <tr><td>2</td><td>Explorer</td><td><code>python -m src.models.train_model --year 2024 --cumul --algorithm lgbm --num-leaves 127 … --no-register</code>, ou recherche automatique (Grid Search, Optuna). Runs dans <code>accidents_severity_dev</code>, non enregistrés dans le registre.</td></tr>
+            <tr><td>3</td><td>Se comparer à la production</td><td>Chaque entraînement affiche un tableau des 4 métriques face au modèle <code>@Production</code> et un verdict <strong>« Send to prod ? »</strong> (même règle que le Trigger 3).</td></tr>
+            <tr><td>4</td><td>Extraire le blueprint</td><td><code>python -m src.scripts.extract_blueprint &lt;run_id&gt;</code> : tague le run <code>export_to_prod=true</code> et réécrit <code>config/model_params.yml</code>.</td></tr>
+            <tr><td>5</td><td>Proposer</td><td>PR de la branche DS vers <code>main</code>, contenant <strong>seulement</strong> le blueprint (la CI refuse de le mélanger avec du code).</td></tr>
+            <tr><td>6</td><td>Production (Trigger 3)</td><td>Après merge : réentraînement des 3 algorithmes avec le nouveau blueprint sur les données de production, règle du +0,01 en F1, gate GO/STOP. Si STOP ou échec des tests : le blueprint est automatiquement retiré de <code>main</code> — le blueprint en place reste toujours celui du modèle en production.</td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Les hyperparamètres optimisables, par algorithme</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Algorithme</th><th>Paramètres du blueprint</th></tr>
+            <tr><td>Random Forest</td><td>n_estimators · max_depth · min_samples_split · min_samples_leaf · max_features · bootstrap · max_samples · criterion · class_weight</td></tr>
+            <tr><td>XGBoost</td><td>n_estimators · max_depth · learning_rate · subsample · colsample_bytree · min_child_weight · gamma · reg_alpha · reg_lambda · scale_pos_weight</td></tr>
+            <tr><td>LightGBM</td><td>n_estimators · num_leaves · max_depth · learning_rate · subsample · subsample_freq · colsample_bytree · min_child_samples · reg_alpha · reg_lambda · class_weight</td></tr>
+          </table></div>
+          <p>Rôle, plage de valeurs et conseils pour chacun : <a href="hyperparams_guide.html">Guide hyperparamètres</a>. Valeurs en vigueur : <code>config/model_params.yml</code> sur GitHub.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Production et développement : les différences</summary>
+        <div class="body">
+          <div class="two">
+            <div class="card"><h4>Production</h4><ul>
+              <li>Prefect, sur le VPS</li><li>Expérience <code>accidents_severity_prod</code></li>
+              <li>3 algorithmes, blueprint en vigueur</li><li>Modèles enregistrés dans le registre</li>
+              <li>Champion → gate → <code>@Production</code></li></ul></div>
+            <div class="card"><h4>Développement</h4><ul>
+              <li>Poste du Data Scientist</li><li>Expérience <code>accidents_severity_dev</code></li>
+              <li>Un algorithme, hyperparamètres libres</li><li>Non enregistrés (<code>--no-register</code>)</li>
+              <li>Meilleur run → blueprint → PR</li></ul></div>
+          </div>
+          <p>Les deux partagent le même code d'entraînement (<code>src/models/train_model.py</code>), les mêmes données versionnées par DVC et les mêmes métriques : un résultat obtenu en développement est reproductible en production.</p>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <!-- ═══════════ 5. MLFLOW ═══════════ -->
+  <details>
+    <summary>5 — MLflow : la trace de chaque entraînement et de chaque version</summary>
+    <div class="body">
+      <p>Serveur MLflow partagé sur le VPS (interface accessible par le VPN Tailscale, port 5001). Les métadonnées sont en base PostgreSQL, les modèles eux-mêmes dans le stockage objet MinIO.</p>
+
+      <details>
+        <summary>Deux expériences : production et développement</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Expérience</th><th>Contient</th><th>Alimentée par</th></tr>
+            <tr><td><code>accidents_severity_prod</code></td><td>Les entraînements officiels, 3 runs par cycle</td><td>Prefect (Triggers 1 et 3, full-retrain)</td></tr>
+            <tr><td><code>accidents_severity_dev</code></td><td>Les explorations du Data Scientist</td><td>Poste DS (<code>MLFLOW_RUN_MODE=explore</code>, par défaut)</td></tr>
+          </table></div>
+          <p>Le développement est tracé et partagé au même titre que la production : chaque essai reste consultable et comparable par toute l'équipe.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Ce qui est enregistré pour chaque run</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Catégorie</th><th>Contenu</th></tr>
+            <tr><td>Paramètres</td><td>Algorithme, années utilisées, nombre de lignes d'apprentissage et de test, nombre de variables, tous les hyperparamètres du blueprint</td></tr>
+            <tr><td>Jeux de données</td><td>Apprentissage et test (onglet « Datasets » de MLflow), fichiers issus des données versionnées par DVC — voir <a href="data_lineage.html">Lignée des données</a></td></tr>
+            <tr><td>Métriques</td><td>F1, AUC, Recall, Accuracy sur l'année de test</td></tr>
+            <tr><td>Tags</td><td><code>kpi_gate</code> (seuils passés ou non) · <code>trained_on</code> · <code>algorithm</code> · <code>export_to_prod</code> (run retenu comme blueprint) · <code>gate_outcome</code> (STOP à la gate)</td></tr>
+            <tr><td>Artefacts</td><td>Le modèle sérialisé et un exemple d'entrée</td></tr>
+          </table></div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Le registre des modèles et l'alias @Production</summary>
+        <div class="body">
+          <ul>
+            <li><strong>3 modèles enregistrés</strong> — <code>rf_accidents</code>, <code>xgb_accidents</code>, <code>lgbm_accidents</code> — chacun gagne une <strong>version</strong> à chaque entraînement de production (v1, v2…).</li>
+            <li><strong>Un seul alias <code>@Production</code></strong>, toutes familles confondues : c'est lui que l'API et les Cockpits chargent. Promouvoir = déplacer l'alias puis redémarrer l'API : aucune image n'est reconstruite.</li>
+            <li>Chaque promotion pose un tag <code>promoted_at</code> : le Cockpit en déduit l'historique (Prod −1, Prod −2…), que MLflow ne conserve pas nativement.</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Où consulter quoi</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>Besoin</th><th>Où</th></tr>
+            <tr><td>Versions, métriques, modèle en production et historique</td><td>Cockpit → Modèles → « Versions MLflow »</td></tr>
+            <tr><td>Revenir en urgence à la version précédente</td><td>Cockpit → Modèles → « Restaurer @Production » (seule la Prod −1 est proposée)</td></tr>
+            <tr><td>Rapports de performance et model diff</td><td>Cockpit → Modèles → « Rapports par version »</td></tr>
+            <tr><td>Comparer finement des runs, voir paramètres et artefacts</td><td>Interface MLflow (Tailscale, port 5001)</td></tr>
+            <tr><td>Suivre un entraînement en cours</td><td>Prefect → <code>train-flow</code></td></tr>
+            <tr><td>Évolution du F1 du champion</td><td>Grafana → Vue d'ensemble / Flux MLOps</td></tr>
+          </table></div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

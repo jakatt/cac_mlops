@@ -2545,7 +2545,7 @@ def build_accueil_html() -> str:
         ("🧠", "MLflow", "expériences · registre des modèles", f"{admin}:5001"),
         ("📊", "Grafana", "7 dashboards · 12 alertes", f"{admin}:3000"),
         ("⚡", "API", "prédiction en ligne (Swagger)", f"{PUBLIC_URL}/docs"),
-        ("📚", "Documentation", "16 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
+        ("📚", "Documentation", "17 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
     ]
     tool_tiles = "".join(
         f'<a class="acc-tool" href="{url}" target="_blank" rel="noopener">'
@@ -2670,6 +2670,9 @@ def build_docs_html() -> str:
          "Stack interactive : VPS · Docker · Prefect · CI/CD · monitoring · Kapsule K8s", "architecture.html"),
         (f"{PUBLIC_BASE}/ci-docs/ds_guide.html",      "Guide Data Scientist",
          "Workflow DS : expérimentation MLflow, blueprint, DVC",               "ds_guide.html"),
+        (f"{PUBLIC_BASE}/ci-docs/training.html", "Entraînement des modèles",
+         "3 algorithmes à chaque cycle, choix du champion et conditions de promotion, entraînement prod vs dev, blueprint, traçabilité MLflow",
+         "training.html"),
         (f"{PUBLIC_BASE}/ci-docs/mlops_eng_guide.html", "Guide MLOps Engineer",
          "Infrastructure, déploiement, maintenance VPS et Kapsule",           "mlops_eng_guide.html"),
         (f"{PUBLIC_BASE}/ci-docs/mlops_lead_guide.html","Guide MLOps Lead",
