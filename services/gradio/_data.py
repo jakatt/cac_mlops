@@ -10,7 +10,8 @@ Giratoires » sans aucun résultat) :
   et `int = 0` (code inexistant) transmis au modèle pour tous les autres ;
 - la liste des dossiers candidats était figée (2021-2023) : le Cockpit
   ignorait l'année la plus récente. Le dossier cumulatif le plus récent est
-  désormais choisi automatiquement.
+  désormais choisi automatiquement (src/utils/data_paths.py, partagé avec la
+  copie des données vers Kubernetes).
 """
 from __future__ import annotations
 
@@ -20,23 +21,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.utils.data_paths import latest_split_dir  # noqa: F401 — réexporté
+
 logger = logging.getLogger(__name__)
 
 _RENAMES = {"int": "intersection_type"}
-
-
-def latest_split_dir(root: Path) -> Path | None:
-    """Dossier contenant le X_test.csv le plus récent : `root` lui-même, sinon le
-    dossier cumulatif couvrant l'année la plus récente, sinon l'année seule la plus récente."""
-    if (root / "X_test.csv").exists():
-        return root
-    dirs = [d for d in root.glob("*") if d.is_dir() and (d / "X_test.csv").exists()
-            and re.fullmatch(r"(cumul_)?\d{4}(_\d{4})*", d.name)]
-
-    def key(d: Path):
-        years = [int(y) for y in re.findall(r"\d{4}", d.name)]
-        return (max(years), d.name.startswith("cumul_"), len(years))
-    return max(dirs, key=key) if dirs else None
 
 
 def load_features(root: Path, feature_cols: list[str], with_labels: bool = False) -> pd.DataFrame | None:
