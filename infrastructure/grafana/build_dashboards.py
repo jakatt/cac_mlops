@@ -328,6 +328,7 @@ _JOURNAL_TEMPLATE = (
     '{{ else if eq .kind "model_alias" }}modèle @Production précédent restauré'
     '{{ else if eq .kind "blueprint_git" }}blueprint remis à la version précédente'
     '{{ else if eq .kind "kapsule" }}Kubernetes remis à la version précédente'
+    '{{ else if eq .kind "manual" }}service rétabli manuellement ({{.services}})'
     '{{ else }}{{.kind}}{{ end }}{{ if $sha }} · {{$com}}{{ end }}'
     '{{ else if eq .event "deploy_pipeline" }}{{ if eq .status "ok" }}🚀 PR MERGÉE — CD GitHub Actions OK · {{$trig}}{{$com}}→ flow Prefect lancé'
     '{{ else }}❌ CD GITHUB ACTIONS EN ÉCHEC — {{$com}}→ rien n\'est déployé'
@@ -719,49 +720,59 @@ def flux_dashboard() -> dict:
                 "Promtail le collecte dans Loki et ce panneau compte les lignes correspondantes sur la période.")
     worker = '{service="prefect-worker"}'
     gates = '{service=~"prefect-worker|gradio"}'
-    g.row("Déploiements — période choisie")
-    g_open = f'{gates} |= "event=gate_open"'
     g_go = f'{gates} |= "event=gate_resolved" |= "decision=GO"'
     g_stop = f'{gates} |= "event=gate_resolved" |= "decision=STOP"'
-    for title, expr, thr, what, read, w in [
-        ("Gates ouvertes", cnt(g_open), steps((None, BLUE)),
-         "Le nombre de mises en production proposées : chaque merge sur main (T2, T3) ou nouvelle donnée (T1) "
-         "prépare un déploiement puis s'arrête à la gate, en attente d'une décision humaine.",
-         "Gates ouvertes = GO + STOP + Sans décision (annulées ou en attente).", 3),
+    cd_failed = '{service="github-actions"} |= "event=deploy_pipeline" |= "status=failed"'
+
+    # ① Avant le GO : le CD GitHub Actions prépare, puis la gate attend une décision humaine.
+    g.row("① Avant le GO — CD GitHub Actions, puis gate (période choisie)")
+    for title, expr, thr, what, read in [
+        ("Pipelines CD en échec", cnt(cd_failed), steps((None, GREEN), (1, RED)),
+         "Le nombre d'exécutions du CD GitHub Actions en échec (build, scan de sécurité Trivy, synchronisation "
+         "Prefect), AVANT toute gate.",
+         "Hors du décompte des gates : un CD en échec n'ouvre aucune gate et ne touche jamais la production. "
+         "Déclenche une alerte email."),
+        ("Gates ouvertes", f"({cnt(g_go)}) + ({cnt(g_stop)})", steps((None, BLUE)),
+         "Le nombre de mises en production soumises à une décision humaine : chaque merge sur main (T2, T3) "
+         "ou nouvelle donnée (T1) prépare un déploiement puis s'arrête à la gate.",
+         "**Gates ouvertes = GO + STOP.**"),
         ("GO", cnt(g_go), steps((None, GREEN)),
          "Le nombre de déploiements validés par un humain (bouton GO du Cockpit).",
-         "Chaque GO lance la mise en production sur le VPS, les tests fonctionnels puis Kubernetes.", 3),
+         "Chaque GO lance la mise en production (partie ② ci-dessous). **GO = déploiements réussis + rollbacks.**"),
         ("STOP", cnt(g_stop), steps((None, GREEN), (1, ORANGE)),
          "Le nombre de déploiements refusés par un humain (bouton STOP du Cockpit).",
-         "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente.", 3),
-        ("Sans décision", f"({cnt(g_open)}) - ({cnt(g_go)}) - ({cnt(g_stop)})", steps((None, GREEN), (1, GREY)),
-         "Les gates ouvertes qui n'ont reçu ni GO ni STOP : encore en attente de décision, expirées (24 h sans "
-         "décision) ou annulées directement dans Prefect au lieu du Cockpit.",
-         "Calcul : gates ouvertes − GO − STOP. En temps normal 0, ou 1 pendant qu'une gate attend. Une valeur "
-         "durable = gate fermée hors Cockpit : la production n'a pas changé, mais la décision n'a pas été "
-         "tracée — la voie normale reste le bouton GO ou STOP.", 3),
-        ("Déploiements réussis", cnt(f'{worker} |= "topic=deploy_success"'), steps((None, GREEN)),
-         "Le nombre de mises en production terminées avec succès, tests fonctionnels compris.",
-         "Idéalement égal au nombre de GO. L'écart = déploiements en échec (voir Rollbacks).", 4),
-        ("Rollbacks", cnt(f'{worker} |= "event=rollback"'), steps((None, GREEN), (1, RED)),
-         "Le nombre de retours automatiques à la version précédente après un échec.",
-         "Un rollback = un déploiement a échoué (healthcheck ou tests fonctionnels) et la version précédente "
-         "a été restaurée sans intervention. Déclenche une alerte email.", 4),
-        ("Pipelines CD en échec", cnt('{service="github-actions"} |= "event=deploy_pipeline" |= "status=failed"'), steps((None, GREEN), (1, RED)),
-         "Le nombre d'exécutions du CD GitHub Actions en échec (build, scan Trivy, synchronisation Prefect).",
-         "Un CD en échec ne touche jamais la production : aucune gate n'est ouverte. Déclenche une alerte email.", 4),
+         "Un STOP laisse la production strictement inchangée ; en T3 le blueprint est remis à sa version précédente."),
     ]:
-        g.add(stat(title, LOKI, expr, thresholds=thr, decimals=0, desc=d(what, loki_how, read)), w, 4)
+        g.add(stat(title, LOKI, expr, thresholds=thr, decimals=0, desc=d(what, loki_how, read)), 6, 4)
+    g.add(timeseries("Pipelines CD en échec par jour", LOKI, [
+        target(LOKI, f'sum(count_over_time({cd_failed} [1d]))', "CD en échec")],
+        bars=True, interval="1d", desc=d(
+            "Le nombre d'exécutions du CD GitHub Actions en échec, par jour.", loki_how,
+            "Vide = aucun CD en échec.")), 12, 7)
     g.add(timeseries("Décisions à la gate par jour", LOKI, [
         target(LOKI, f'sum by (decision) (count_over_time({gates} |= "event=gate_resolved" | logfmt [1d]))', "{{decision}}")],
         bars=True, stack=True, interval="1d", desc=d(
-            "Le nombre de GO et de STOP par jour.", loki_how, "Vert = GO · une barre STOP = déploiement refusé.")), 12, 8)
-    g.add(timeseries("Rollbacks et échecs par jour", LOKI, [
-        target(LOKI, f'sum(count_over_time({worker} |= "event=rollback" [1d]))', "rollbacks", ref="A"),
-        target(LOKI, 'sum(count_over_time({service="github-actions"} |= "status=failed" [1d]))', "CD en échec", ref="B")],
-        bars=True, interval="1d", desc=d(
-            "Le nombre de rollbacks automatiques et de CD GitHub en échec par jour.", loki_how,
-            "Vide = aucun incident de déploiement.")), 12, 8)
+            "Le nombre de GO et de STOP par jour.", loki_how, "Vert = GO · une barre STOP = déploiement refusé.")), 12, 7)
+
+    # ② Après le GO : le flow Prefect met en production, teste, et revient en arrière si besoin.
+    g.row("② Après le GO — mise en production par Prefect (période choisie)")
+    for title, expr, thr, what, read in [
+        ("Déploiements réussis", cnt(f'{worker} |= "topic=deploy_success"'), steps((None, GREEN)),
+         "Le nombre de mises en production terminées avec succès, tests fonctionnels compris.",
+         "**GO = déploiements réussis + rollbacks.**"),
+        ("Rollbacks", cnt(f'{worker} |= "event=rollback"'), steps((None, GREEN), (1, RED)),
+         "Le nombre de déploiements en échec après le GO, ramenés à la version précédente.",
+         "Un rollback = un déploiement a échoué (redémarrage, healthcheck ou tests fonctionnels) et la version "
+         "précédente a été restaurée — automatiquement, ou à la main pour les 2 incidents MLflow du 26/09, "
+         "antérieurs au rollback automatique sur échec de redémarrage. Déclenche une alerte email."),
+    ]:
+        g.add(stat(title, LOKI, expr, thresholds=thr, decimals=0, desc=d(what, loki_how, read)), 6, 4)
+    g.add(timeseries("Déploiements réussis et rollbacks par jour", LOKI, [
+        target(LOKI, f'sum(count_over_time({worker} |= "topic=deploy_success" [1d]))', "réussis", ref="A"),
+        target(LOKI, f'sum(count_over_time({worker} |= "event=rollback" [1d]))', "rollbacks", ref="B")],
+        bars=True, stack=True, interval="1d", desc=d(
+            "Le nombre de déploiements réussis et de rollbacks par jour.", loki_how,
+            "Une barre rouge = un déploiement revenu à la version précédente.")), 12, 4)
     g.add(logs("Journal des flux (le plus récent en haut)", FLOW_JOURNAL, desc=JOURNAL_DESC), 24, 10)
 
     g.row("Données — ETL (Trigger 1)")
