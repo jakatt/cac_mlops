@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/gradio/requirements.txt /tmp/gradio_req.txt
+# Téléchargements PyPI lents (gros paquets : xgboost ~130 Mo) : sans ces
+# réglages, pip abandonne après 15 s sans données et fait échouer tout le
+# CD (incident 01/10, 2 échecs de suite sur « Read timed out »).
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 RUN pip install --no-cache-dir -r /tmp/gradio_req.txt
 
 COPY services/gradio/ /app/services/gradio/
