@@ -2545,7 +2545,7 @@ def build_accueil_html() -> str:
         ("🧠", "MLflow", "expériences · registre des modèles", f"{admin}:5001"),
         ("📊", "Grafana", "7 dashboards · 12 alertes", f"{admin}:3000"),
         ("⚡", "API", "prédiction en ligne (Swagger)", f"{PUBLIC_URL}/docs"),
-        ("📚", "Documentation", "17 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
+        ("📚", "Documentation", "18 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
     ]
     tool_tiles = "".join(
         f'<a class="acc-tool" href="{url}" target="_blank" rel="noopener">'
@@ -2702,6 +2702,9 @@ def build_docs_html() -> str:
         (f"{PUBLIC_BASE}/ci-docs/flux_mlops.html", "Flux MLOps",
          "Version simplifiée et fonctionnelle des mécanismes de résilience — pour un public non technique",
          "flux_mlops.html"),
+        (f"{PUBLIC_BASE}/ci-docs/demos.html", "Démos live",
+         "3 démonstrations pour la soutenance : un changement mis en production (Trigger 2), un déploiement Kubernetes sans coupure, une panne de pod sans interruption",
+         "demos.html"),
         (f"{PUBLIC_BASE}/ci-docs/ci_cd_pipeline_runbook.html", "Runbook — échec pipeline CI/CD",
          "Que faire quand le déploiement post-merge échoue avant même de créer le flow run",
          "ci_cd_pipeline_runbook.html"),

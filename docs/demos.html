@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Démos live — CAC MLOps</title>
+<style>
+.ci-doc {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+@media (prefers-color-scheme: dark) {
+  .ci-doc {
+    --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+    --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+    --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+  }
+}
+:root[data-theme="dark"] .ci-doc {
+  --bg: #0d1b2a; --surface: #132535; --border: #1e3a4f;
+  --text: #e8f4f8; --muted: #7aafc0; --accent: #4a9fc4; --accent-lt: #0e2d3f;
+  --code-bg: #0e2d3f; --sum-bg: #0e2d3f; --sum-hover: #132f43;
+}
+:root[data-theme="light"] .ci-doc {
+  --bg: #f0f7fb; --surface: #ffffff; --border: #c8dfe8;
+  --text: #0d2233; --muted: #5a7a8a; --accent: #156082; --accent-lt: #e6f2f7;
+  --code-bg: #e8f2f7; --sum-bg: #eaf4f9; --sum-hover: #d6ecf5;
+}
+.ci-doc *, .ci-doc *::before, .ci-doc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+.ci-doc .wrapper { max-width: 860px; margin: 0 auto; padding: 32px 24px 56px; color: var(--text); }
+.ci-doc .eyebrow { font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px; }
+.ci-doc .page-title { font-size:1.45rem;font-weight:700;color:var(--text);line-height:1.2;margin-bottom:10px; }
+.ci-doc .page-sub { font-size:.82rem;color:var(--muted);max-width:620px;margin-bottom:28px; }
+.ci-doc details { border:1px solid var(--border);border-radius:8px;margin-bottom:10px;background:var(--surface); }
+.ci-doc details[open] { box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.ci-doc summary {
+  padding:13px 16px;cursor:pointer;font-size:.88rem;font-weight:600;
+  color:var(--accent);background:var(--sum-bg);border-radius:7px;
+  list-style:none;display:flex;align-items:center;gap:8px;user-select:none;
+}
+.ci-doc summary:hover { background:var(--sum-hover); }
+.ci-doc summary::after { content:"›";margin-left:auto;font-size:1.1rem;transition:transform .15s;color:var(--muted); }
+.ci-doc details[open] > summary::after { transform:rotate(90deg); }
+.ci-doc summary::-webkit-details-marker { display:none; }
+.ci-doc .body { padding:16px 18px 18px; }
+.ci-doc .body details { margin-bottom:8px; }
+.ci-doc .body details summary { font-size:.82rem;padding:10px 14px;font-weight:600; }
+.ci-doc .body details .body { padding:12px 16px 14px; }
+.ci-doc p { font-size:.83rem;color:var(--muted);margin-bottom:10px;line-height:1.55; }
+.ci-doc p strong { color:var(--text); }
+.ci-doc pre {
+  background:var(--code-bg);border:1px solid var(--border);border-radius:6px;
+  padding:12px 14px;font-size:.76rem;font-family:monospace;overflow-x:auto;
+  margin:10px 0;color:var(--text);line-height:1.5;white-space:pre;
+}
+.ci-doc code { font-size:.76rem;background:var(--code-bg);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:monospace; }
+.ci-doc .tbl { overflow-x:auto;margin:10px 0; }
+.ci-doc table { border-collapse:collapse;width:100%;font-size:.79rem; }
+.ci-doc th { background:var(--accent-lt);color:var(--accent);font-weight:700;text-align:left;padding:7px 12px;border:1px solid var(--border);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase; }
+.ci-doc td { padding:6px 12px;border:1px solid var(--border);vertical-align:top;color:var(--text); }
+.ci-doc tr:nth-child(even) td { background:var(--accent-lt); }
+.ci-doc td strong, .ci-doc td code { white-space:nowrap; }
+.ci-doc .band { background:var(--accent-lt);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:.79rem;color:var(--muted);margin-bottom:12px; }
+.ci-doc .band strong { color:var(--text); }
+.ci-doc .sec-label { font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px; }
+.ci-doc ul { padding-left:1.4em;margin:8px 0; }
+.ci-doc li { font-size:.83rem;color:var(--muted);margin-bottom:4px;line-height:1.5; }
+.ci-doc li strong { color:var(--text); }
+
+.ci-doc .flow { display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin:4px 0 26px; }
+.ci-doc .step { flex:1;min-width:130px;border:1.5px solid var(--border);border-radius:10px;padding:12px;background:var(--surface); }
+.ci-doc .step .n { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:.72rem;font-weight:700; }
+.ci-doc .step b { display:block;font-size:.86rem;color:var(--text);margin:6px 0 3px; }
+.ci-doc .step span.d { display:block;font-size:.75rem;color:var(--muted);line-height:1.45; }
+.ci-doc .step.human { border-color:#fdba74;background:#fff7ed; }
+.ci-doc .step.human .n { background:#d97706; }
+.ci-doc .arrow { align-self:center;color:var(--muted);font-weight:700; }
+.ci-doc .two { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0; }
+@media (max-width:700px) { .ci-doc .two { grid-template-columns:1fr; } }
+.ci-doc .card { border:1px solid var(--border);border-radius:8px;padding:12px 14px;background:var(--surface); }
+.ci-doc .card h4 { font-size:.84rem;color:var(--accent);margin-bottom:6px; }
+.ci-doc .ok { color:#15803d;font-weight:700; } .ci-doc .ko { color:#b91c1c;font-weight:700; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ci-doc .step.human { background:#2a1f00;border-color:#78350f; } }
+:root[data-theme="dark"] .ci-doc .step.human { background:#2a1f00;border-color:#78350f; }
+
+.ci-doc .term { background:#0d2233;color:#d6ecf5;border-radius:6px;padding:10px 14px;font-family:monospace;font-size:.76rem;line-height:1.5;margin:8px 0;white-space:pre;overflow-x:auto; }
+.ci-doc .term .ok { color:#4ade80;font-weight:400; } .ci-doc .term .dim { color:#7aafc0; }
+.ci-doc .say { border-left:3px solid var(--accent);background:var(--accent-lt);padding:8px 12px;border-radius:0 6px 6px 0;font-size:.82rem;color:var(--text);margin:10px 0;font-style:italic; }
+</style>
+</head>
+<body>
+<div class="ci-doc">
+<div class="wrapper">
+
+  <div class="eyebrow">MLOps · Accidents routiers</div>
+  <h1 class="page-title">Démos live</h1>
+  <p class="page-sub">Trois démonstrations courtes, lancées depuis le poste de l'administrateur, pour montrer en direct que la chaîne MLOps fonctionne de bout en bout et que le service ne s'interrompt pas. Tous les scripts sont dans <code>scripts/demo/</code>.</p>
+
+  <div class="flow">
+    <div class="step"><span class="n">1</span><b>Un changement en production</b><span class="d"><code>release.sh</code> — PR → CI → merge → gate → GO → visible. ~5 min.</span></div>
+    <span class="arrow">·</span>
+    <div class="step"><span class="n">2</span><b>Déployer sans couper</b><span class="d"><code>k8s.sh deploy</code> — pods remplacés un par un, réponses toujours 200. ~1 min.</span></div>
+    <span class="arrow">·</span>
+    <div class="step"><span class="n">3</span><b>Survivre à une panne</b><span class="d"><code>k8s.sh kill</code> — un pod supprimé, le service continue. ~30 s.</span></div>
+  </div>
+
+  <details>
+    <summary>Avant de commencer — prérequis et écrans à ouvrir</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <tr><th>Quoi</th><th>Pourquoi</th></tr>
+        <tr><td>Cluster Kubernetes allumé (<code>kapsule-up</code>, ~10 min)</td><td>Démos 2 et 3. La démo 1 marche aussi cluster éteint (plus rapide : pas d'étape K8s).</td></tr>
+        <tr><td><code>gh</code>, <code>scw</code> et <code>kubectl</code> authentifiés sur le poste</td><td><code>release.sh</code> ouvre la PR avec <code>gh</code> ; <code>k8s.sh</code> récupère seul l'accès au cluster avec <code>scw</code>.</td></tr>
+        <tr><td>Aucun déploiement en cours ni gate en attente</td><td>Un seul déploiement à la fois : la démo 1 attendrait derrière.</td></tr>
+        <tr><td>Onglets ouverts : GitHub (PR et Actions), Cockpit admin (accueil + Validation), Prefect, Grafana (<b>Flux MLOps</b> et <b>Accès · API · K8s</b>)</td><td>Pour montrer chaque étape sans chercher.</td></tr>
+        <tr><td>Deux terminaux, à la racine du dépôt</td><td>Démos 2 et 3 : un témoin, un terminal d'action.</td></tr>
+      </table></div>
+    </div>
+  </details>
+
+  <!-- DEMO 1 -->
+  <details>
+    <summary>Démo 1 — Un changement de code mis en production (Trigger 2)</summary>
+    <div class="body">
+      <p><strong>Ce qu'elle prouve :</strong> le chemin complet d'un changement, du code à l'utilisateur, avec ses garde-fous — tests automatiques, relecture humaine, gate GO, tests après mise en ligne — et sa traçabilité dans GitHub, Prefect et Grafana.</p>
+      <div class="term">scripts/demo/release.sh</div>
+
+      <details>
+        <summary>Ce que fait le script</summary>
+        <div class="body">
+          <ul>
+            <li>Crée une branche <code>demo/release-…</code> à partir de <code>main</code>, directement via l'API GitHub (le dépôt local n'est pas touché).</li>
+            <li>Change <strong>une seule ligne</strong> : <code>docs/release.json</code>, qui contient la date et l'heure du lancement.</li>
+            <li>Ouvre la PR et l'affiche dans le navigateur.</li>
+          </ul>
+          <p>Pourquoi ce fichier : un fichier de <code>docs/</code> ne reconstruit aucune image et ne redémarre aucun service — le déploiement est le plus court possible — et il n'est mis en ligne <strong>qu'au GO</strong> : la gate protège bien le changement. La date est affichée en bas de l'accueil des 3 Cockpits (« 🕒 Mise à jour du … »).</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Déroulé et ce qu'il faut montrer</summary>
+        <div class="body">
+          <div class="tbl"><table>
+            <tr><th>#</th><th>Étape</th><th>Durée</th><th>À montrer</th></tr>
+            <tr><td>1</td><td>Lancement du script</td><td>~5 s</td><td>La PR ouverte : une ligne changée</td></tr>
+            <tr><td>2</td><td>CI : lint + 82 tests unitaires</td><td>~1 min 15</td><td>GitHub → onglet Checks de la PR</td></tr>
+            <tr><td>3</td><td>Relecture et merge par Léon</td><td>à son rythme</td><td>Bouton « Squash and merge » : 1<sup>re</sup> validation humaine</td></tr>
+            <tr><td>4</td><td>CD GitHub Actions (aucune image à construire)</td><td>~1 min 30</td><td>GitHub → Actions ; Grafana Flux MLOps : « PR MERGÉE » dans le journal</td></tr>
+            <tr><td>5</td><td>Gate ouverte</td><td>—</td><td>Cockpit → Validation des déploiements : le changement attend une décision</td></tr>
+            <tr><td>6</td><td><strong>GO</strong></td><td>—</td><td>2<sup>e</sup> validation humaine</td></tr>
+            <tr><td>7</td><td>Mise en production et tests</td><td>~1 min (VPS)</td><td>Prefect → run « Déploiement VPS · commit … » : étapes nommées qui s'enchaînent (mise en ligne, Test API interne / externe, Test Cockpit public interne / externe, Kubernetes)</td></tr>
+            <tr><td>8</td><td>Résultat</td><td>—</td><td>Accueil du Cockpit : la nouvelle date en bas à droite ; Grafana : « EN PRODUCTION » dans le journal, compteurs GO et Déploiements réussis +1</td></tr>
+          </table></div>
+          <p>Cluster K8s allumé : l'étape Kubernetes ajoute environ une minute — les mêmes tests y sont rejoués, mais aucun pod n'est redémarré pour ce changement.</p>
+        </div>
+      </details>
+
+      <div class="say">« Une ligne de code suit exactement le même chemin qu'une vraie évolution : tests, relecture, gate, mise en ligne, puis tests vus de l'utilisateur. Si un test échoue après le GO, la version précédente est restaurée automatiquement. »</div>
+    </div>
+  </details>
+
+  <!-- DEMO 2 -->
+  <details>
+    <summary>Démo 2 — Déployer sur Kubernetes sans couper le service</summary>
+    <div class="body">
+      <p><strong>Ce qu'elle prouve :</strong> une mise à jour sur Kubernetes remplace les pods un par un ; pendant toute l'opération, l'API et le Cockpit public continuent de répondre.</p>
+      <div class="term"><span class="dim"># Terminal 1 — le témoin</span>
+scripts/demo/k8s.sh watch
+
+<span class="dim"># Terminal 2 — l'action</span>
+scripts/demo/k8s.sh deploy</div>
+
+      <details>
+        <summary>Ce que font les commandes</summary>
+        <div class="body">
+          <ul>
+            <li><code>watch</code> interroge l'adresse publique <code>kapsule.jakat-inc.fr</code> deux fois par seconde — santé de l'API et du Cockpit public — et affiche le code de réponse de chacun. Ctrl-C affiche le bilan : réponses OK et en erreur.</li>
+            <li><code>deploy</code> lance <code>kubectl rollout restart</code> sur l'API : <strong>exactement le mécanisme d'un vrai déploiement</strong>, puis attend la fin et affiche les nouveaux pods.</li>
+          </ul>
+          <div class="term">heure     API    Cockpit public
+14:32:01  <span class="ok">200</span>    <span class="ok">200</span>
+14:32:01  <span class="ok">200</span>    <span class="ok">200</span>
+…
+Bilan : 240 réponses OK · 0 en erreur</div>
+        </div>
+      </details>
+
+      <details>
+        <summary>Pourquoi il n'y a pas de coupure</summary>
+        <div class="body">
+          <ul>
+            <li><strong>2 pods</strong> par service (en pratique sur les 2 machines du cluster).</li>
+            <li><strong>Mise à jour progressive</strong> : un nouveau pod est créé, et l'ancien n'est arrêté qu'une fois le nouveau <strong>prêt</strong> (sonde <code>/health</code> réussie) — jamais moins de 2 pods en service.</li>
+            <li><strong>Arrêt en douceur</strong> : un pod qui s'arrête continue de répondre 5 s, le temps que son retrait du service se propage — aucune requête n'arrive sur un pod déjà arrêté.</li>
+          </ul>
+          <p>Dans Grafana (<b>Accès · API · K8s</b>) : la frise de disponibilité reste verte et le panneau « Pods api disponibles / demandés » montre le remplacement.</p>
+        </div>
+      </details>
+
+      <div class="say">« Pendant que les pods sont remplacés, le témoin ne voit que des 200 : l'utilisateur ne s'aperçoit de rien. C'est ce qui se passe à chaque déploiement sur Kubernetes, sans aucune intervention. »</div>
+    </div>
+  </details>
+
+  <!-- DEMO 3 -->
+  <details>
+    <summary>Démo 3 — Une panne de pod sans interruption</summary>
+    <div class="body">
+      <p><strong>Ce qu'elle prouve :</strong> si un pod disparaît (plantage, machine perdue), le service continue sur l'autre pod et Kubernetes en recrée un automatiquement.</p>
+      <div class="term"><span class="dim"># Terminal 1 — le témoin (s'il n'est pas déjà lancé)</span>
+scripts/demo/k8s.sh watch
+
+<span class="dim"># Terminal 2 — la panne</span>
+scripts/demo/k8s.sh kill</div>
+
+      <details>
+        <summary>Ce que fait la commande</summary>
+        <div class="body">
+          <ul>
+            <li>Choisit un pod API au hasard et le <strong>supprime</strong> (<code>kubectl delete pod</code>).</li>
+            <li>Affiche ensuite l'état des pods en direct : l'ancien passe à <code>Terminating</code>, un nouveau apparaît en <code>ContainerCreating</code> puis <code>Running</code> (~30 à 60 s). Ctrl-C pour arrêter le suivi.</li>
+          </ul>
+          <p>Le Deployment Kubernetes impose « 2 pods API » : dès qu'il en manque un, il le recrée. Pendant ce temps, le second pod sert toutes les requêtes.</p>
+        </div>
+      </details>
+
+      <div class="say">« Je viens de tuer un serveur en production. Le témoin reste à 200, et Kubernetes a déjà relancé un remplaçant : c'est l'auto-réparation. »</div>
+    </div>
+  </details>
+
+  <details>
+    <summary>Variantes et en cas de problème</summary>
+    <div class="body">
+      <div class="tbl"><table>
+        <tr><th>Situation</th><th>Que faire</th></tr>
+        <tr><td>Viser le Cockpit public plutôt que l'API</td><td><code>scripts/demo/k8s.sh deploy gradio-public</code> · <code>scripts/demo/k8s.sh kill gradio-public</code></td></tr>
+        <tr><td>Vérifier l'état des pods avant de commencer</td><td><code>scripts/demo/k8s.sh pods</code> — 2 pods api et 2 pods gradio-public en <code>Running</code></td></tr>
+        <tr><td>Le témoin affiche <code>000</code> partout</td><td>Cluster éteint ou adresse pas encore ouverte : vérifier que <code>kapsule-up</code> est terminé.</td></tr>
+        <tr><td>Une ligne « ← ERREUR » isolée</td><td>Réponse lente (&gt; 4 s) ou réseau du poste : le bilan et Grafana disent si le service a réellement été coupé.</td></tr>
+        <tr><td>Démo 1 : la gate ne s'ouvre pas</td><td>Un autre déploiement est en cours : attendre sa fin (Prefect). Le CD peut aussi être lent si PyPI ou GitHub le sont.</td></tr>
+        <tr><td>Après la démo 1</td><td>Supprimer la branche <code>demo/release-…</code> sur GitHub (bouton « Delete branch » de la PR).</td></tr>
+      </table></div>
+    </div>
+  </details>
+
+</div>
+</div>
+</body>
+</html>

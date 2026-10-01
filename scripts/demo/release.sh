@@ -13,7 +13,7 @@
 # Déroulé : ce script → CI (~1 min 15) → merge sur GitHub → CD → gate dans le
 # Cockpit → GO → date visible.
 #
-# Usage : scripts/demo_release.sh        (prérequis : gh authentifié)
+# Usage : scripts/demo/release.sh        (prérequis : gh authentifié)
 set -euo pipefail
 
 REPO="jakatt/cac_mlops"
