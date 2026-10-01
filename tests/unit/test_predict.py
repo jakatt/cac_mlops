@@ -156,3 +156,39 @@ class TestDriftGaugesNoResult:
         m.update_prediction_drift_metrics_from_file(tmp_path)
         assert self._value(m.PRED_DRIFT_LEVEL) == 1
         assert self._value(m.PRED_DRIFT_ROWS) == 250
+
+
+class TestK8sPredictionsOnS3:
+    """K8s n'a pas de base : ses prédictions réelles partent sur S3 par lots,
+    puis sont importées dans la table predictions du VPS (source='k8s')."""
+
+    def test_batch_is_written_as_json_lines(self):
+        from services.api.app import s3_sink
+        fake_s3 = MagicMock()
+        rows = [s3_sink.build_row({**VALID_PAYLOAD}, 1, 0.75, "lgbm_accidents/4") for _ in range(3)]
+        with patch.object(s3_sink, "_client", return_value=fake_s3):
+            s3_sink._put(rows)
+        kwargs = fake_s3.put_object.call_args.kwargs
+        assert kwargs["Key"].startswith("k8s-predictions/pending/") and kwargs["Key"].endswith(".jsonl")
+        lines = kwargs["Body"].decode().splitlines()
+        assert len(lines) == 3 and json.loads(lines[0])["int"] == 1
+
+    def test_batch_is_kept_when_upload_fails(self):
+        import asyncio
+        from services.api.app import s3_sink
+        s3_sink._buffer.clear()
+        s3_sink._buffer.append(s3_sink.build_row({**VALID_PAYLOAD}, 0, 0.6, "v"))
+        with patch.object(s3_sink, "_put", side_effect=RuntimeError("S3 indisponible")):
+            assert asyncio.run(s3_sink.flush()) == 0
+        assert len(s3_sink._buffer) == 1  # rien n'est perdu, nouvel essai au lot suivant
+        s3_sink._buffer.clear()
+
+    def test_imported_row_matches_predictions_table(self):
+        from services.api.app import s3_sink
+        from services.monitoring.import_k8s_predictions import _INSERT, parse_lines
+        row = s3_sink.build_row({**VALID_PAYLOAD}, 1, 0.75, "lgbm_accidents/4")
+        records = parse_lines((json.dumps(row) + "\n").encode())
+        assert len(records) == 1
+        rec = records[0]
+        assert len(rec) == _INSERT.count("$")  # une valeur par colonne insérée
+        assert rec[-1] == "k8s" and rec[1] == "lgbm_accidents/4" and rec[0].tzinfo is not None

@@ -163,7 +163,7 @@
     <div class="step ci">
       <div class="when">① Avant le merge</div>
       <div class="what">CI · tests unitaires</div>
-      <div class="num">79 <small>tests</small></div>
+      <div class="num">82 <small>tests</small></div>
       <div class="fail">Le code fait-il ce qu'on attend ? Un échec <b>bloque la PR</b>.</div>
     </div>
     <span class="arrow">→</span>
@@ -191,11 +191,11 @@
 
   <!-- ════════════════════ 1. CI ════════════════════ -->
   <details class="section ci">
-    <summary><span class="section-pill ci">① CI</span> Avant le merge — tests unitaires <span class="count">79</span></summary>
+    <summary><span class="section-pill ci">① CI</span> Avant le merge — tests unitaires <span class="count">82</span></summary>
     <p class="lead">À chaque PR vers <code>main</code>, GitHub Actions (<code>ci.yml</code>) lance <code>pytest tests/unit/</code> sur des données fictives. Un seul test en échec et la PR ne peut pas être mergée. Déclenchés par les Triggers 2 et 3 (code, blueprint) — jamais par le Trigger 1.</p>
 
     <details>
-      <summary>API — endpoint de prédiction et métriques <span class="count">17</span></summary>
+      <summary>API — endpoint de prédiction et métriques <span class="count">20</span></summary>
       <div class="body"><div class="overflow-x"><table>
         <tr><th>Test</th><th>Ce qui est vérifié</th></tr>
         <tr><td><code>test_valid_request_returns_200</code></td><td>Payload 27 features valide → HTTP 200</td></tr>
@@ -215,6 +215,9 @@
           <tr><td><code>test_insufficient_traffic_is_not_ok</code></td><td>Moins de 100 prédictions réelles → niveau de drift « pas de résultat » (−1) et vrai nombre de prédictions publiés, jamais un faux « OK »</td></tr>
           <tr><td><code>test_missing_reports_are_not_ok</code></td><td>Rapports de drift / qualité absents (ex. après un reset) → niveaux « pas de résultat », jamais « OK »</td></tr>
           <tr><td><code>test_computed_level_is_published</code></td><td>Drift réellement calculé → niveau et nombre de prédictions publiés tels quels</td></tr>
+      <tr><td><code>test_batch_is_written_as_json_lines</code></td><td>K8s : un lot de prédictions est déposé sur S3 en JSON Lines, dans <code>k8s-predictions/pending/</code></td></tr>
+        <tr><td><code>test_batch_is_kept_when_upload_fails</code></td><td>K8s : si S3 est injoignable, le lot reste en mémoire pour le prochain essai (rien n'est perdu)</td></tr>
+        <tr><td><code>test_imported_row_matches_predictions_table</code></td><td>VPS : une ligne déposée par K8s s'importe dans la table <code>predictions</code>, une valeur par colonne, <code>source='k8s'</code></td></tr>
       </table></div>
       <p class="note">Fichier <code>tests/unit/test_predict.py</code>.</p></div>
     </details>
@@ -434,8 +437,8 @@
     <div style="padding:12px 16px 16px;"><div class="overflow-x"><table>
       <tr><th>Trigger</th><th>① CI</th><th>② CD</th><th>③ Tests fonctionnels</th></tr>
       <tr><td><b>T1</b> — nouvelles données</td><td>— (pas de PR) · contrôle des vraies données par l'ETL</td><td>— (flow Prefect direct)</td><td>✅ après le GO</td></tr>
-      <tr><td><b>T2</b> — nouveau code</td><td>✅ 79 tests</td><td>✅ jusqu'à 11 étapes (builds selon les images modifiées)</td><td>✅ après le GO</td></tr>
-      <tr><td><b>T3</b> — nouveau blueprint</td><td>✅ 79 tests</td><td>✅ 4 étapes (1, 7, 10, 11) — aucun build : seul <code>config/model_params.yml</code> change</td><td>✅ après le GO</td></tr>
+      <tr><td><b>T2</b> — nouveau code</td><td>✅ 82 tests</td><td>✅ jusqu'à 11 étapes (builds selon les images modifiées)</td><td>✅ après le GO</td></tr>
+      <tr><td><b>T3</b> — nouveau blueprint</td><td>✅ 82 tests</td><td>✅ 4 étapes (1, 7, 10, 11) — aucun build : seul <code>config/model_params.yml</code> change</td><td>✅ après le GO</td></tr>
     </table></div></div>
   </details>
 

@@ -20,7 +20,17 @@ import json
 
 from prefect import flow, get_run_logger, task
 
+from services.monitoring.import_k8s_predictions import import_pending
 from services.monitoring.prediction_drift import run_prediction_drift_report
+
+
+@task(name="import-k8s-predictions", task_run_name="Importer les prédictions de K8s (S3)")
+def import_k8s_predictions_task() -> dict:
+    """Ramène dans la table predictions les lots déposés sur S3 par l'API K8s,
+    pour que le drift porte sur tout le trafic réel (VPS + K8s)."""
+    result = import_pending()
+    get_run_logger().info("Prédictions K8s importées : %(rows)d ligne(s), %(files)d fichier(s)", result)
+    return result
 
 
 @task(name="run-prediction-drift-report")
@@ -37,6 +47,7 @@ def prediction_drift_flow(days: int = 90) -> dict:
     log = get_run_logger()
     log.info("Prediction drift monitoring — lookback=%d days", days)
 
+    import_k8s_predictions_task()
     summary = prediction_drift_report_task(days)
     level = summary.get("level", "OK")
 

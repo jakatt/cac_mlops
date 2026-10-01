@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 
 _pool = None
 
+# "postgres" (VPS, par défaut) : la table predictions du PostgreSQL local.
+# "s3" (K8s) : lots JSON Lines dans S3, importés par le VPS — cf. s3_sink.py.
+SINK = os.getenv("PREDICTIONS_SINK", "postgres")
+
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS predictions (
     id            SERIAL PRIMARY KEY,
@@ -43,8 +47,11 @@ CREATE TABLE IF NOT EXISTS predictions (
     long          FLOAT,
     hour          INT,
     nb_victim     INT,
-    nb_vehicules  INT
+    nb_vehicules  INT,
+    source        TEXT DEFAULT 'vps'
 );
+-- Table créée avant l'import des prédictions K8s : ajoute la colonne d'origine.
+ALTER TABLE predictions ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'vps';
 """
 
 _INSERT = """
@@ -91,16 +98,15 @@ def _build_dsn() -> str:
 
 async def init_db() -> None:
     global _pool
+    if SINK == "s3":
+        from services.api.app import s3_sink
+        s3_sink.start()
+        return
     try:
         import asyncpg
-        # timeout court et explicite : le pool par défaut d'asyncpg attend 60s
-        # avant d'abandonner, ce qui grille presque toute la fenêtre de
-        # readiness K8s (30s + 6×10s = 90s, cf. k8s/api/deployment.yaml) et a
-        # fait échouer 2 rollouts d'affilée le 2026-07-12 — la connexion
-        # traverse le Tailscale jusqu'au Postgres du VPS depuis K8s (locale
-        # et quasi instantanée sur le VPS lui-même, d'où l'incident invisible
-        # jusqu'ici). Ce chemin est déjà "best effort" (dégradation propre
-        # ci-dessous) : pas de raison d'attendre une minute pleine.
+        # timeout court et explicite : sans base joignable, l'API démarre
+        # quand même rapidement (enregistrement désactivé, dégradation propre
+        # ci-dessous). Sur K8s ce chemin n'est jamais emprunté (SINK="s3").
         _pool = await asyncpg.create_pool(_build_dsn(), min_size=1, max_size=3, timeout=5)
         async with _pool.acquire() as conn:
             await conn.execute(_CREATE_TABLE)
@@ -112,6 +118,10 @@ async def init_db() -> None:
 
 async def close_db() -> None:
     global _pool
+    if SINK == "s3":
+        from services.api.app import s3_sink
+        await s3_sink.stop()  # dépose le dernier lot avant l'arrêt du pod
+        return
     if _pool:
         await _pool.close()
         _pool = None
@@ -125,6 +135,11 @@ async def log_prediction(
     sim_date: str | None = None,
 ) -> None:
     """Log prediction to DB. sim_date='YYYY-MM' overrides created_at for simulation cycles."""
+    if SINK == "s3":
+        from services.api.app import s3_sink
+        if not sim_date:  # la simulation de drift ne tourne que sur le VPS
+            await s3_sink.add(s3_sink.build_row(features, prediction, probability, model_version))
+        return
     if _pool is None:
         return
     try:

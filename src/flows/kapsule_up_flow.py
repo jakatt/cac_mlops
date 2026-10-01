@@ -436,14 +436,20 @@ def wait_public_endpoint(max_minutes: int = 15, interval_s: int = 15) -> str:
     publique répondait encore ERR_CONNECTION_REFUSED (constaté 2026-09-26)."""
     import time
     import requests as _req
+    import urllib3
 
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     logger = get_run_logger()
     url = f"https://{KAPSULE_DOMAIN}/"
     deadline = time.monotonic() + max_minutes * 60
     last_err = ""
     while time.monotonic() < deadline:
         try:
-            r = _req.get(url, timeout=10)
+            # verify=False : on teste ici l'ouverture du chemin public (LB, DNS,
+            # Caddy) ; la validité du certificat est traitée juste après par
+            # ensure_tls_certificate_task — un certificat expiré ne doit pas
+            # faire croire que le load balancer est fermé.
+            r = _req.get(url, timeout=10, verify=False)
             if r.status_code == 200:
                 logger.info("✓ %s répond 200 — Kapsule accessible publiquement", url)
                 return "ok"
@@ -455,6 +461,73 @@ def wait_public_endpoint(max_minutes: int = 15, interval_s: int = 15) -> str:
     raise RuntimeError(
         f"{url} toujours inaccessible après {max_minutes} min ({last_err}) — "
         "cluster provisionné mais chemin public LB/DNS/TLS KO"
+    )
+
+
+TLS_RENEW_BEFORE_DAYS = 30
+
+
+def _cert_days_left(host: str) -> float:
+    import socket
+    import ssl
+    from datetime import datetime, timezone
+
+    from cryptography import x509
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE  # lire aussi un certificat déjà expiré
+    with socket.create_connection((host, 443), timeout=10) as sock:
+        with ctx.wrap_socket(sock, server_hostname=host) as tls:
+            der = tls.getpeercert(binary_form=True)
+    expiry = x509.load_der_x509_certificate(der).not_valid_after_utc
+    return (expiry - datetime.now(timezone.utc)).total_seconds() / 86400
+
+
+@task(name="ensure-tls-certificate")
+def ensure_tls_certificate_task(kubeconfig: str, max_wait_minutes: int = 8) -> None:
+    """Fait renouveler le certificat HTTPS de K8s une fois l'adresse publique ouverte.
+
+    Caddy tente le renouvellement au démarrage de ses pods, quand le load
+    balancer Scaleway refuse encore les connexions : la vérification HTTP de
+    l'autorité (Let's Encrypt / ZeroSSL) échoue alors à chaque kapsule-up, et
+    le cluster n'étant allumé qu'à la demande, le certificat finit par expirer
+    (constaté 2026-10-01 : expiration le 10/10, renouvellement jamais abouti).
+    Ici le port 80 est ouvert : redémarrer Caddy relance le renouvellement
+    dans de bonnes conditions. La sonde de disponibilité n'est démarrée
+    qu'après, donc ce redémarrage n'apparaît pas dans Grafana. Jamais bloquant.
+    """
+    log = get_run_logger()
+    try:
+        days = _cert_days_left(KAPSULE_DOMAIN)
+    except Exception as exc:
+        log.warning("Certificat %s illisible (%s) — renouvellement tenté", KAPSULE_DOMAIN, exc)
+        days = 0.0
+    if days >= TLS_RENEW_BEFORE_DAYS:
+        log.info("✓ Certificat %s valide encore %.0f jours", KAPSULE_DOMAIN, days)
+        return
+
+    log.info("Certificat %s : %.0f jour(s) restant(s) — redémarrage de Caddy pour le renouveler", KAPSULE_DOMAIN, days)
+    try:
+        _kubectl(kubeconfig, ["-n", K8S_NAMESPACE, "rollout", "restart", "deploy/caddy"])
+        _kubectl(kubeconfig, ["-n", K8S_NAMESPACE, "rollout", "status", "deploy/caddy", "--timeout=300s"])
+    except Exception as exc:
+        log.warning("event=alert severity=warning topic=tls_renewal reason=caddy_restart — %s", exc)
+        return
+
+    deadline = time.monotonic() + max_wait_minutes * 60
+    while time.monotonic() < deadline:
+        time.sleep(20)
+        try:
+            days = _cert_days_left(KAPSULE_DOMAIN)
+        except Exception:
+            continue
+        if days >= TLS_RENEW_BEFORE_DAYS:
+            log.info("✓ Certificat %s renouvelé — valide %.0f jours", KAPSULE_DOMAIN, days)
+            return
+    log.warning(
+        "event=alert severity=warning topic=tls_renewal reason=not_renewed days_left=%.0f — "
+        "vérifier les logs Caddy (kubectl -n %s logs deploy/caddy)", days, K8S_NAMESPACE,
     )
 
 
@@ -561,6 +634,7 @@ def kapsule_up_flow(
     ips = write_kapsule_state(kubeconfig)
     try:
         wait_public_endpoint()
+        ensure_tls_certificate_task(kubeconfig)
     finally:
         # Même si l'adresse publique n'ouvre pas, la sonde est déployée : une
         # vraie panne doit rester visible dans Grafana.
