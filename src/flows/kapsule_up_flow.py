@@ -191,20 +191,18 @@ def upload_model_s3() -> str:
 @task(name="upload-data-s3")
 def upload_data_s3() -> str:
     logger = get_run_logger()
+    from src.utils.data_paths import latest_split_dir
+
     data_root = APP_DIR / "data" / "preprocessed"
-    candidates = [
-        data_root / "cumul_2021_2022_2023",
-        data_root / "cumul_2021_2022",
-        data_root / "2023",
-        data_root / "2022",
-    ]
-    s3 = _s3_client()
-    for ppath in candidates:
-        if (ppath / "X_test.csv").exists() and (ppath / "y_test.csv").exists():
-            for fname in ("X_test.csv", "y_test.csv"):
-                s3.upload_file(str(ppath / fname), SCW_BUCKET, f"k8s-gradio-data/{fname}")
-                logger.info("✓ %s uploadé depuis %s", fname, ppath)
-            return str(ppath)
+    # Même règle que les Cockpits du VPS : le jeu de test le plus récent
+    # (avant : liste figée 2021-2023 → Cockpit K8s resté sur 2023).
+    ppath = latest_split_dir(data_root)
+    if ppath is not None and (ppath / "y_test.csv").exists():
+        s3 = _s3_client()
+        for fname in ("X_test.csv", "y_test.csv"):
+            s3.upload_file(str(ppath / fname), SCW_BUCKET, f"k8s-gradio-data/{fname}")
+            logger.info("✓ %s uploadé depuis %s", fname, ppath)
+        return str(ppath)
     raise FileNotFoundError(f"Aucune donnée preprocessée trouvée dans {data_root}")
 
 
