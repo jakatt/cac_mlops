@@ -56,7 +56,8 @@ INDICATORS: dict[str, Indicator] = {
     "prediction_drift": Indicator(
         "Les demandes réellement reçues par l'API ressemblent-elles aux données d'entraînement du modèle ?",
         "Chaque lundi à 9 h (ou à la demande, flow `prediction-drift-check`), Evidently compare les "
-        "prédictions réelles des 90 derniers jours, enregistrées en base (tests exclus), aux données "
+        "prédictions réelles des 90 derniers jours — VPS et Kubernetes (déposées sur S3 par K8s, importées "
+            "au début du calcul), tests exclus — aux données "
         "d'entraînement — mêmes tests et seuils que la dérive des données. Il vérifie aussi la stabilité "
         "des probabilités prédites entre la 1re et la 2e moitié de la période. Minimum 100 prédictions.",
         "« Pas assez de trafic » = moins de 100 prédictions réelles sur 90 jours : pas de verdict plutôt "
