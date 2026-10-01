@@ -138,6 +138,15 @@ spec:
           limits:
             cpu: "1"
             memory: 1536Mi
+        # Arrêt en douceur : à la suppression d'un pod (déploiement, panne,
+        # démo), Kubernetes retire le pod du service EN MÊME TEMPS qu'il lui
+        # demande de s'arrêter. Ces 5 s laissent le temps à la mise à jour du
+        # service de se propager : aucune requête n'est envoyée vers un pod
+        # déjà arrêté (sinon 1 erreur 502 possible par pod remplacé).
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
         readinessProbe:
           httpGet:
             path: /health
