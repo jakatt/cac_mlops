@@ -36,6 +36,10 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins && \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
 COPY services/api/requirements.txt .
+# Téléchargements PyPI lents (gros paquets : xgboost ~130 Mo) : sans ces
+# réglages, pip abandonne après 15 s sans données et fait échouer tout le
+# CD (incident 01/10, 2 échecs de suite sur « Read timed out »).
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 RUN pip install --no-cache-dir -r requirements.txt
 
 # project source (for src/ imports)
