@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from services.gradio.scenarios import SCENARIOS, apply_scenario, method_html
 from services.gradio._accueil import ACCUEIL_BG, PERSONA_JULIE
 from services.gradio._data import load_features
+from services.gradio._tables import section_title, whatif_placeholder, whatif_results
 from services.gradio._release import release_badge_html
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
@@ -315,29 +316,24 @@ def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> 
         font=dict(family="Inter, Segoe UI, sans-serif"),
     )
 
-    sens = "amelioration" if delta < 0 else "deterioration"
+    sens = "amélioration" if delta < 0 else "détérioration"
     is_global = scenario.get("global", False)
     if is_global:
         extra_rows = len(df_mod) - len(df_orig)
-        context_line = f"**+{extra_rows:,}** accidents simulés ({multiplier:.1f}× trafic {scenario['context_label'].split('(')[0].strip().lower()})"
+        context_line = (f"<b>+{extra_rows:,}</b>".replace(",", " ")
+                        + f" accidents simulés ({multiplier:.1f}× trafic {scenario['context_label'].split('(')[0].strip().lower()})")
         volume_label = "Véhicules concernés (base)"
     else:
-        context_line = f"*{scenario['context_label']}*"
-        volume_label = "Accidents analyses"
-    stats = f"""
-### Resultats — {scenario['label']}
-
-| Indicateur | Valeur |
-|---|---|
-| {volume_label} | **{n_rows:,}** |
-| Contexte | {context_line} |
-| Gravité prédite (situation actuelle) | **{pct_avant:.1f}%** |
-| Gravité prédite (scénario) | **{pct_apres:.1f}%** |
-| Delta | **{delta:+.1f} points** |
-| Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
-
-*Projection predictive, non causale.*
-"""
+        context_line = f"<i>{scenario['context_label']}</i>"
+        volume_label = "Accidents analysés"
+    stats = whatif_results(scenario["label"], [
+        (volume_label, f"<b>{n_rows:,}</b>".replace(",", " ")),
+        ("Contexte", context_line),
+        ("Gravité prédite (situation actuelle)", f"<b>{pct_avant:.1f} %</b>"),
+        ("Gravité prédite (scénario)", f"<b>{pct_apres:.1f} %</b>"),
+        ("Delta", f"<b>{delta:+.1f} points</b>"),
+        ("Interprétation", f"<b>{sens.upper()} de {abs(delta):.1f} pts</b>"),
+    ], "Projection prédictive, non causale.")
     return fig, stats
 
 
@@ -464,14 +460,6 @@ label { font-size: 0.82rem !important; color: #374151 !important; font-weight: 5
 table th { background: #c2dbe4 !important; color: #156082 !important;
            font-size: 0.78rem !important; font-weight: 600 !important; }
 table td { font-size: 0.83rem !important; color: #374151 !important; }
-/* What-if : encart « Comment est faite la simulation » */
-.wi-how { border:1.5px solid #c2dbe4; border-radius:10px; background:#f4f8fb; padding:14px 16px; margin-top:6px; }
-.wi-how-title { color:#156082 !important; font-weight:700; font-size:.88rem; margin-bottom:6px; }
-.wi-how-desc { color:#374151 !important; font-size:.82rem; line-height:1.5; margin:0 0 8px 0 !important; }
-.wi-how ol { margin:0 0 8px 1.2em !important; padding:0 !important; }
-.wi-how li { color:#374151 !important; font-size:.8rem; line-height:1.5; margin-bottom:4px; }
-.wi-how b { color:#0d2233 !important; }
-.wi-how-note { color:#6B7280 !important; font-size:.75rem; font-style:italic; margin:0 !important; }
 footer { display: none !important; }
 """
 
@@ -649,10 +637,10 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                 _ex_buttons[_i].click(fn=lambda v=_ex_vals: v, outputs=_pred_inputs)
 
         with gr.Tab("What-if"):
-            gr.Markdown("### Simulation de l'impact d'une mesure de securite routiere")
             with gr.Row(equal_height=False):
                 # Colonne gauche : le choix (scénario + réglages) et l'explication de la méthode
                 with gr.Column(scale=1, min_width=320):
+                    gr.HTML(section_title("Simulation d'une mesure de sécurité routière"))  # même style que « Résultats — … » à droite
                     scenario_dd = gr.Dropdown(
                         choices=SCENARIO_CHOICES,
                         value=SCENARIO_CHOICES[0][1],
@@ -670,7 +658,7 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                     how_html = gr.HTML(method_html(SCENARIO_CHOICES[0][1]))
                 # Colonne droite : les résultats (tableau puis graphique)
                 with gr.Column(scale=2):
-                    stats_md  = gr.Markdown(value="*Les resultats s'afficheront ici.*")
+                    stats_md  = gr.HTML(whatif_placeholder())
                     chart_out = gr.Plot(label="Gravité prédite : situation actuelle vs scénario")
             scenario_dd.change(
                 fn=lambda k: (gr.update(visible=SCENARIOS.get(k, {}).get("has_multiplier", False)),

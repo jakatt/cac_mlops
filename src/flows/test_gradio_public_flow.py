@@ -60,8 +60,9 @@ def test_whatif(base_url: str = NGINX_URL) -> str:
     assert "Gravité prédite (scénario)" in stats, f"Tableau de résultats absent : {stats}"
     assert chart, "Graphique What-if absent"
 
-    delta = next((line for line in stats.splitlines() if line.startswith("| Delta")), "")
-    print(f"✓ gradio-public /whatif (giratoires) → {delta.strip('| ')}")
+    import re
+    m = re.search(r"Delta</td><td[^>]*>(?:<b>)?([^<]+)", stats)
+    print(f"✓ gradio-public /whatif (giratoires) → Delta {m.group(1) if m else '?'}")
     return stats
 
 
