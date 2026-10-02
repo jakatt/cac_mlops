@@ -24,7 +24,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from services.gradio.scenarios import SCENARIOS, apply_scenario
+from services.gradio.scenarios import SCENARIOS, apply_scenario, method_html
 from services.gradio._accueil import ACCUEIL_BG, PERSONA_JULIE
 from services.gradio._data import load_features
 from services.gradio._release import release_badge_html
@@ -464,6 +464,14 @@ label { font-size: 0.82rem !important; color: #374151 !important; font-weight: 5
 table th { background: #c2dbe4 !important; color: #156082 !important;
            font-size: 0.78rem !important; font-weight: 600 !important; }
 table td { font-size: 0.83rem !important; color: #374151 !important; }
+/* What-if : encart « Comment est faite la simulation » */
+.wi-how { border:1.5px solid #c2dbe4; border-radius:10px; background:#f4f8fb; padding:14px 16px; margin-top:6px; }
+.wi-how-title { color:#156082 !important; font-weight:700; font-size:.88rem; margin-bottom:6px; }
+.wi-how-desc { color:#374151 !important; font-size:.82rem; line-height:1.5; margin:0 0 8px 0 !important; }
+.wi-how ol { margin:0 0 8px 1.2em !important; padding:0 !important; }
+.wi-how li { color:#374151 !important; font-size:.8rem; line-height:1.5; margin-bottom:4px; }
+.wi-how b { color:#0d2233 !important; }
+.wi-how-note { color:#6B7280 !important; font-size:.75rem; font-style:italic; margin:0 !important; }
 footer { display: none !important; }
 """
 
@@ -642,8 +650,9 @@ Modele LightGBM — *outil de recherche, non operationnel.*
 
         with gr.Tab("What-if"):
             gr.Markdown("### Simulation de l'impact d'une mesure de securite routiere")
-            with gr.Row():
-                with gr.Column(scale=1, min_width=300):
+            with gr.Row(equal_height=False):
+                # Colonne gauche : le choix (scénario + réglages) et l'explication de la méthode
+                with gr.Column(scale=1, min_width=320):
                     scenario_dd = gr.Dropdown(
                         choices=SCENARIO_CHOICES,
                         value=SCENARIO_CHOICES[0][1],
@@ -658,13 +667,16 @@ Modele LightGBM — *outil de recherche, non operationnel.*
                         value=10000, label="Taille echantillon",
                     )
                     run_btn  = gr.Button("Lancer l'analyse", variant="primary", size="lg")
-                    stats_md = gr.Markdown(value="*Les resultats s'afficheront ici.*")
+                    how_html = gr.HTML(method_html(SCENARIO_CHOICES[0][1]))
+                # Colonne droite : les résultats (tableau puis graphique)
                 with gr.Column(scale=2):
+                    stats_md  = gr.Markdown(value="*Les resultats s'afficheront ici.*")
                     chart_out = gr.Plot(label="Gravité prédite : situation actuelle vs scénario")
             scenario_dd.change(
-                fn=lambda k: gr.update(visible=SCENARIOS.get(k, {}).get("has_multiplier", False)),
+                fn=lambda k: (gr.update(visible=SCENARIOS.get(k, {}).get("has_multiplier", False)),
+                              method_html(k)),
                 inputs=[scenario_dd],
-                outputs=[mult_sl],
+                outputs=[mult_sl, how_html],
             )
             # api_name explicite : appelé par le test fonctionnel What-if
             # (src/flows/test_gradio_public_flow.py), comme "predict".
