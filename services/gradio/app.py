@@ -38,9 +38,10 @@ import plotly.graph_objects as go
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from services.gradio.scenarios import SCENARIOS, apply_scenario
+from services.gradio.scenarios import SCENARIOS, apply_scenario, method_html
 from services.gradio._accueil import ACCUEIL_BG, PERSONA_LEON
 from services.gradio._data import load_features
+from services.gradio._tables import html_table, section_title, whatif_placeholder, whatif_results
 from services.gradio._release import release_badge_html
 from services.gradio._metrics import PREDICTIONS_TOTAL, mount_instrumentation, track_errors, traffic_of
 
@@ -390,39 +391,28 @@ def run_whatif(scenario_key: str, sample_size: int, multiplier: float = 2.0) -> 
         font=dict(family="Inter, Segoe UI, sans-serif"),
     )
 
-    sens = "amelioration" if delta < 0 else "deterioration"
+    sens = "amélioration" if delta < 0 else "détérioration"
+    sp = lambda n: f"{n:,}".replace(",", " ")  # séparateur de milliers français
 
     if is_global:
-        stats = f"""
-### Resultats — {title_label}
-
-| Indicateur | Valeur |
-|---|---|
-| Contexte | *{scenario['context_label']}* |
-| Accidents de reference | **{context_rows_label}** |
-| Accidents ajoutés (scénario) | **{extra_label}** |
-| {scope_label} | **{pct_avant:.1f}%** |
-| {scope_label2} | **{pct_apres:.1f}%** |
-| Delta | **{delta:+.1f} points** |
-| Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
-
-*Impact mesuré sur la gravité globale de l'ensemble des accidents. Projection predictive, non causale.*
-"""
+        stats = whatif_results(title_label, [
+            ("Contexte", f"<i>{scenario['context_label']}</i>"),
+            ("Accidents de référence", f"<b>{sp(n_rows)} accidents {scenario['context_label'].split('(')[0].strip().lower()}</b>"),
+            ("Accidents ajoutés (scénario)", f"<b>+{sp(extra_rows)} accidents ajoutés</b>"),
+            (scope_label, f"<b>{pct_avant:.1f} %</b>"),
+            (scope_label2, f"<b>{pct_apres:.1f} %</b>"),
+            ("Delta", f"<b>{delta:+.1f} points</b>"),
+            ("Interprétation", f"<b>{sens.upper()} de {abs(delta):.1f} pts</b>"),
+        ], "Impact mesuré sur la gravité globale de l'ensemble des accidents. Projection prédictive, non causale.")
     else:
-        stats = f"""
-### Resultats — {scenario['label']}
-
-| Indicateur | Valeur |
-|---|---|
-| Accidents analyses | **{n_rows:,}** |
-| Contexte | *{scenario['context_label']}* |
-| {scope_label} | **{pct_avant:.1f}%** |
-| {scope_label2} | **{pct_apres:.1f}%** |
-| Delta | **{delta:+.1f} points** |
-| Interpretation | **{sens.upper()} de {abs(delta):.1f} pts** |
-
-*Projection predictive, non causale.*
-"""
+        stats = whatif_results(scenario["label"], [
+            ("Accidents analysés", f"<b>{sp(n_rows)}</b>"),
+            ("Contexte", f"<i>{scenario['context_label']}</i>"),
+            (scope_label, f"<b>{pct_avant:.1f} %</b>"),
+            (scope_label2, f"<b>{pct_apres:.1f} %</b>"),
+            ("Delta", f"<b>{delta:+.1f} points</b>"),
+            ("Interprétation", f"<b>{sens.upper()} de {abs(delta):.1f} pts</b>"),
+        ], "Projection prédictive, non causale.")
     return fig, stats
 
 
@@ -699,15 +689,14 @@ def render_drift_panel(year: str | None = None) -> str:
     # Qualité des données brutes (dernier ETL)
     q = _read_report_json("latest_dataquality_summary.json")
     if q:
-        rows = "".join(
-            f'<tr><td>{html.escape(name)}</td><td>{_thousands(t.get("rows", 0))}</td><td>{t.get("duplicated_rows", 0)}</td>'
-            f'<td>{_fr(t.get("missing_share", 0) * 100)} %</td><td>{_badge(t.get("level", ""))}</td>'
-            f'<td>{_report_link(t.get("html_report"), "rapport ↗")}</td></tr>'
-            for name, t in (q.get("tables") or {}).items())
+        rows = [[html.escape(name), _thousands(t.get("rows", 0)), str(t.get("duplicated_rows", 0)),
+                 f'{_fr(t.get("missing_share", 0) * 100)} %', _badge(t.get("level", "")),
+                 _report_link(t.get("html_report"), "rapport ↗")]
+                for name, t in (q.get("tables") or {}).items()]
         quality = (f'<div class="cac-card"><h4>Qualité des données brutes — ETL {q.get("year", "")} '
                    f'{_badge(q.get("level", ""))} {_info("data_quality")}</h4>'
-                   f'<table class="cac-table"><tr><th>Table ONISR</th><th>Lignes</th><th>Doublons</th>'
-                   f'<th>Valeurs manquantes</th><th>Niveau</th><th></th></tr>{rows}</table></div>')
+                   + html_table(["Table ONISR", "Lignes", "Doublons", "Valeurs manquantes", "Niveau", ""], rows)
+                   + '</div>')
     else:
         quality = ""
     return f'{_CARDS_CSS}<div class="cac-cards"><div class="cac-grid">{"".join(cards)}</div>{quality}</div>'
@@ -1735,6 +1724,12 @@ def _render_gate_card(run_id: str) -> str:
         )
 
 
+def _svc_label(svc: str) -> str:
+    """Nom affiché d'un service : « gradio » est le Cockpit admin (nom Docker
+    technique inchangé, utilisé par nginx, Prometheus, Loki et le CD)."""
+    return "gradio-admin" if svc == "gradio" else svc
+
+
 def _render_gate_card_unsafe(run_id: str) -> str:
     if not run_id:
         return f"<p style='color:{MUTED};'>Sélectionnez un déploiement en attente.</p>"
@@ -1832,12 +1827,12 @@ def _render_gate_card_unsafe(run_id: str) -> str:
         if needs_build:
             rebuilt_order = [s for s in _BUILD_SERVICES if s in build_set]  # ordre d'affichage canonique
             rebuilt = " · ".join(
-                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in rebuilt_order
+                f"<b>{_svc_label(s)}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in rebuilt_order
             )
             impact_lines.append(f"Rebuild + restart : {rebuilt}")
         if restart_only:
             ro = " · ".join(
-                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '~2 s')})" for s in restart_only
+                f"<b>{_svc_label(s)}</b> ({_SVC_INTERRUPTION.get(s, '~2 s')})" for s in restart_only
             )
             impact_lines.append(f"Restart config-only : {ro}")
         if champion and not build_set and "api" not in set(rs_list):
@@ -2972,24 +2967,26 @@ Simulation, monitoring et gouvernance — benchmark RF / XGBoost / LightGBM — 
 
         # ── Onglet 1 : What-If ───────────────────────────────────────────────
         with gr.Tab("What-if"):
-            gr.Markdown("### Simulation de l'impact d'une mesure de securite routiere")
-            with gr.Row():
-                with gr.Column(scale=1, min_width=300):
+            with gr.Row(equal_height=False):
+                # Colonne gauche : scénario, réglages, bouton et méthode ; droite : résultats
+                with gr.Column(scale=1, min_width=320):
+                    gr.HTML(section_title("Simulation d'une mesure de sécurité routière"))  # même style que « Résultats — … » à droite
                     scenario_dd = gr.Dropdown(choices=SCENARIO_CHOICES, value=SCENARIO_CHOICES[0][1], label="Scenario")
                     mult_sl     = gr.Slider(minimum=0.1, maximum=10.0, step=0.1, value=2.0,
                                             label="Multiplicateur (× fois plus)", visible=False)
                     _df_base = _get_data(); _n_base = len(_df_base) if _df_base is not None else 0
                     sample_sl   = gr.Slider(minimum=2000, maximum=30000, step=1000, value=10000, label=f"Taille échantillon (base : {_n_base:,} accidents)")
                     run_btn     = gr.Button("Lancer l'analyse", variant="primary", size="lg")
-                    stats_md    = gr.Markdown(value="*Les resultats s'afficheront ici apres l'analyse.*")
+                    how_html    = gr.HTML(method_html(SCENARIO_CHOICES[0][1]))
                 with gr.Column(scale=2):
+                    stats_md  = gr.HTML(whatif_placeholder())
                     chart_out = gr.Plot(label="Gravité prédite : situation actuelle vs scénario")
 
             def _on_whatif_scenario_change(key):
                 has_mult = SCENARIOS.get(key, {}).get("has_multiplier", False)
-                return gr.update(visible=has_mult)
+                return gr.update(visible=has_mult), method_html(key)
 
-            scenario_dd.change(fn=_on_whatif_scenario_change, inputs=scenario_dd, outputs=mult_sl)
+            scenario_dd.change(fn=_on_whatif_scenario_change, inputs=scenario_dd, outputs=[mult_sl, how_html])
             run_btn.click(fn=run_whatif, inputs=[scenario_dd, sample_sl, mult_sl], outputs=[chart_out, stats_md])
 
         # ── Onglet 2 : Points Noirs ──────────────────────────────────────────

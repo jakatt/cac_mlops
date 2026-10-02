@@ -122,6 +122,9 @@ def _format_gate_message(
     }
     SVC_ORDER = ["api", "mlflow", "gradio", "gradio-public",
                  "nginx", "grafana", "prometheus", "loki", "promtail"]
+    # Nom affiché : le service Docker « gradio » est le Cockpit admin (nom
+    # technique inchangé : conteneur, image, Prometheus, Loki, CD en dépendent).
+    LABEL = {"gradio": "gradio-admin"}
 
     # rebuilt_services : CSV des services dont l'image a RÉELLEMENT été reconstruite
     # (calculé par service dans deploy.yml::check-changes) — remplace un ancien
@@ -166,7 +169,7 @@ def _format_gate_message(
             rb = CHK if svc in rebuilt  else DASH
             rs = CHK if svc in restarted else DASH
             it = INTERRUPT.get(svc, "~1 s") if svc in restarted else DASH
-            lines.append(f"  {svc:<{C}}│  {rb:<7}│  {rs:<7}│  {it}")
+            lines.append(f"  {LABEL.get(svc, svc):<{C}}│  {rb:<7}│  {rs:<7}│  {it}")
         lines.append("")
     elif not champion:
         lines += ["  Aucun service impacté.", ""]

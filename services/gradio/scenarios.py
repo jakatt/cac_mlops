@@ -122,6 +122,13 @@ SCENARIOS: dict[str, dict] = {
 }
 
 
+# Styles de l'encart, embarqués avec lui : il est affiché par les Cockpits
+# admin et public, qui ont chacun leur propre feuille de style.
+_METHOD_CSS = (
+    "<style>.wi-how { border:1.5px solid #c2dbe4; border-radius:10px; background:#f4f8fb; padding:14px 16px; margin-top:6px; } .wi-how-title { color:#156082 !important; font-weight:700; font-size:.88rem; margin-bottom:6px; } .wi-how-desc { color:#374151 !important; font-size:.82rem; line-height:1.5; margin:0 0 8px 0 !important; } .wi-how ol { margin:0 0 8px 1.2em !important; padding:0 !important; } .wi-how li { color:#374151 !important; font-size:.8rem; line-height:1.5; margin-bottom:4px; } .wi-how b { color:#0d2233 !important; } .wi-how-note { color:#6B7280 !important; font-size:.75rem; font-style:italic; margin:0 !important; }</style>"
+)
+
+
 def method_html(scenario_key: str) -> str:
     """Encart « Comment est faite la simulation » de l'onglet What-if."""
     sc = SCENARIOS[scenario_key]
@@ -143,7 +150,8 @@ def method_html(scenario_key: str) -> str:
         ]
     items = "".join(f"<li>{t}</li>" for t in steps)
     return (
-        '<div class="wi-how"><div class="wi-how-title">Comment est faite la simulation</div>'
+        _METHOD_CSS
+        + '<div class="wi-how"><div class="wi-how-title">Comment est faite la simulation</div>'
         f'<p class="wi-how-desc">{sc["description"]}</p><ol>{items}</ol>'
         '<p class="wi-how-note">Projection du modèle, pas une preuve de cause à effet : elle indique '
         "dans quel sens et dans quelle proportion la mesure ferait évoluer la gravité prédite.</p></div>"
