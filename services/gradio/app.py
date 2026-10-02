@@ -1735,6 +1735,12 @@ def _render_gate_card(run_id: str) -> str:
         )
 
 
+def _svc_label(svc: str) -> str:
+    """Nom affiché d'un service : « gradio » est le Cockpit admin (nom Docker
+    technique inchangé, utilisé par nginx, Prometheus, Loki et le CD)."""
+    return "gradio-admin" if svc == "gradio" else svc
+
+
 def _render_gate_card_unsafe(run_id: str) -> str:
     if not run_id:
         return f"<p style='color:{MUTED};'>Sélectionnez un déploiement en attente.</p>"
@@ -1832,12 +1838,12 @@ def _render_gate_card_unsafe(run_id: str) -> str:
         if needs_build:
             rebuilt_order = [s for s in _BUILD_SERVICES if s in build_set]  # ordre d'affichage canonique
             rebuilt = " · ".join(
-                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in rebuilt_order
+                f"<b>{_svc_label(s)}</b> ({_SVC_INTERRUPTION.get(s, '?')})" for s in rebuilt_order
             )
             impact_lines.append(f"Rebuild + restart : {rebuilt}")
         if restart_only:
             ro = " · ".join(
-                f"<b>{s}</b> ({_SVC_INTERRUPTION.get(s, '~2 s')})" for s in restart_only
+                f"<b>{_svc_label(s)}</b> ({_SVC_INTERRUPTION.get(s, '~2 s')})" for s in restart_only
             )
             impact_lines.append(f"Restart config-only : {ro}")
         if champion and not build_set and "api" not in set(rs_list):
