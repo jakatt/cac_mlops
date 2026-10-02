@@ -2540,7 +2540,7 @@ def build_accueil_html() -> str:
         ("🧠", "MLflow", "expériences · registre des modèles", f"{admin}:5001"),
         ("📊", "Grafana", "7 dashboards · 12 alertes", f"{admin}:3000"),
         ("⚡", "API", "prédiction en ligne (Swagger)", f"{PUBLIC_URL}/docs"),
-        ("📚", "Documentation", "18 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
+        ("📚", "Documentation", "19 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
     ]
     tool_tiles = "".join(
         f'<a class="acc-tool" href="{url}" target="_blank" rel="noopener">'
@@ -2655,6 +2655,9 @@ def build_docs_html() -> str:
     PUBLIC_BASE  = os.getenv("PUBLIC_URL", "https://mlops.jakat-inc.fr")
     # (url, title, desc, label)
     docs = [
+        (f"{PUBLIC_BASE}/ci-docs/rapport_projet.pdf", "Rapport projet (PDF)",
+         "Le rapport complet du projet : produit et personas, données et modèle, solution MLOps — avec les 3 schémas de synthèse expliqués",
+         "rapport_projet.pdf"),
         (f"{PUBLIC_BASE}/ci-docs/presentation.html",  "Présentation du projet",
          "Vue d'ensemble, stack, 3 déclencheurs, cycle annuel des données — point d'entrée de la documentation",
          "presentation.html"),

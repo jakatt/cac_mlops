@@ -3,7 +3,7 @@
 Système MLOps de bout en bout qui prédit si un accident de la route impliquera une victime grave (hospitalisée ou tuée), à partir des données officielles ONISR publiées sur data.gouv.fr (2021 → 2024).
 
 - **Cockpit public** : [mlops.jakat-inc.fr](https://mlops.jakat-inc.fr) (Predict · What-if · Points noirs)
-- **Documentation complète** (18 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/presentation.html)
+- **Documentation complète** (19 documents, à jour) : [mlops.jakat-inc.fr/ci-docs](https://mlops.jakat-inc.fr/ci-docs/presentation.html)
 
 ## En bref
 
@@ -23,6 +23,7 @@ Système MLOps de bout en bout qui prédit si un accident de la route impliquera
 
 | Document | Pour qui |
 | --- | --- |
+| [Rapport projet (PDF)](https://mlops.jakat-inc.fr/ci-docs/rapport_projet.pdf) | Rapport complet du projet, schémas de synthèse expliqués |
 | [Présentation du projet](https://mlops.jakat-inc.fr/ci-docs/presentation.html) | Point d'entrée · décideurs |
 | [Flux MLOps](https://mlops.jakat-inc.fr/ci-docs/flux_mlops.html) | Public non technique |
 | [Architecture](https://mlops.jakat-inc.fr/ci-docs/architecture.html) · [Guide administrateur](https://mlops.jakat-inc.fr/ci-docs/guide_administrateur.html) | Équipe technique |
