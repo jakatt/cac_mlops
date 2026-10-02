@@ -30,6 +30,8 @@ def _more_vehicles(df: pd.DataFrame, catv_val: int, mult: float) -> pd.DataFrame
 
 SCENARIOS: dict[str, dict] = {
     "vma_110_autoroute": {
+        "how_selected": "les accidents sur autoroute, hors agglomération, où la vitesse maximale autorisée est d'au moins 120 km/h",
+        "how_modified": "la vitesse maximale autorisée passe à <b>110 km/h</b>",
         "label": "130 → 110 km/h sur autoroute",
         "description": (
             "Réduit la vitesse maximale de 130 à 110 km/h sur les autoroutes hors agglomération. "
@@ -40,6 +42,8 @@ SCENARIOS: dict[str, dict] = {
         "context_label": "Autoroutes hors agglo (vma ≥ 120 km/h)",
     },
     "eclairage_nuit": {
+        "how_selected": "les accidents de nuit sur une voie sans éclairage, ou dont l'éclairage n'était pas allumé",
+        "how_modified": "la luminosité devient « nuit avec <b>éclairage allumé</b> »",
         "label": "Éclairage nocturne amélioré",
         "description": (
             "Simule l'activation de l'éclairage public sur les routes non éclairées la nuit. "
@@ -50,6 +54,8 @@ SCENARIOS: dict[str, dict] = {
         "context_label": "Accidents de nuit sans éclairage (lum=3 ou 4)",
     },
     "zone_30": {
+        "how_selected": "les accidents en agglomération sur une voie limitée à 50 km/h",
+        "how_modified": "la vitesse maximale autorisée passe à <b>30 km/h</b>",
         "label": "Zone 30 en agglomération (50 → 30 km/h)",
         "description": (
             "Abaisse la vitesse maximale de 50 à 30 km/h en agglomération. "
@@ -60,6 +66,8 @@ SCENARIOS: dict[str, dict] = {
         "context_label": "Accidents en agglo à 50 km/h",
     },
     "chaussee_seche": {
+        "how_selected": "les accidents sur chaussée enneigée ou verglacée",
+        "how_modified": "l'état de la chaussée devient « <b>normal</b> »",
         "label": "Suppression conditions hivernales (verglas/neige → sec)",
         "description": (
             "Remplace verglas et neige par une chaussée sèche. "
@@ -70,6 +78,8 @@ SCENARIOS: dict[str, dict] = {
         "context_label": "Accidents sur chaussée enneigée ou verglacée",
     },
     "giratoire": {
+        "how_selected": "les accidents survenus à un carrefour en X ou en T",
+        "how_modified": "le type d'intersection devient « <b>giratoire</b> »",
         "label": "Carrefours → Giratoires",
         "description": (
             "Convertit les carrefours en X et T en ronds-points. "
@@ -80,6 +90,8 @@ SCENARIOS: dict[str, dict] = {
         "context_label": "Accidents aux carrefours en X et T",
     },
     "velo_plus": {
+        "how_selected": "tout l'échantillon",
+        "how_modified": "les accidents impliquant un <b>vélo</b> sont dupliqués (tirés au hasard) pour multiplier leur nombre par le multiplicateur",
         "label": "Plus de vélos sur les routes",
         "description": (
             "Simule une hausse du trafic vélo. Les accidents impliquant un vélo (catv=5) "
@@ -93,6 +105,8 @@ SCENARIOS: dict[str, dict] = {
         "global": True,
     },
     "moto_plus": {
+        "how_selected": "tout l'échantillon",
+        "how_modified": "les accidents impliquant une <b>moto</b> sont dupliqués (tirés au hasard) pour multiplier leur nombre par le multiplicateur",
         "label": "Plus de motos sur les routes",
         "description": (
             "Simule une hausse du trafic moto. Les accidents impliquant une moto (catv=4) "
@@ -106,6 +120,34 @@ SCENARIOS: dict[str, dict] = {
         "global": True,
     },
 }
+
+
+def method_html(scenario_key: str) -> str:
+    """Encart « Comment est faite la simulation » de l'onglet What-if."""
+    sc = SCENARIOS[scenario_key]
+    if sc.get("global"):
+        steps = [
+            "On part d'un échantillon d'accidents réels de l'année de test (jamais vus par le modèle).",
+            f"On le garde <b>en entier</b>, puis {sc['how_modified']} (×2 = deux fois plus).",
+            "Le modèle prédit la gravité de chaque accident, avant et après l'ajout.",
+            "On compare la <b>part d'accidents prédits graves</b> sur l'ensemble : l'effet mesuré vient "
+            "du changement de composition du trafic accidenté.",
+        ]
+    else:
+        steps = [
+            "On part d'un échantillon d'accidents réels de l'année de test (jamais vus par le modèle).",
+            f"On ne garde que {sc['how_selected']}.",
+            f"Pour chacun, {sc['how_modified']} — tout le reste de l'accident est inchangé.",
+            "Le modèle prédit la gravité deux fois : telle quelle, puis avec la mesure, et on compare "
+            "la <b>part d'accidents prédits graves</b>.",
+        ]
+    items = "".join(f"<li>{t}</li>" for t in steps)
+    return (
+        '<div class="wi-how"><div class="wi-how-title">Comment est faite la simulation</div>'
+        f'<p class="wi-how-desc">{sc["description"]}</p><ol>{items}</ol>'
+        '<p class="wi-how-note">Projection du modèle, pas une preuve de cause à effet : elle indique '
+        "dans quel sens et dans quelle proportion la mesure ferait évoluer la gravité prédite.</p></div>"
+    )
 
 
 def apply_scenario(
