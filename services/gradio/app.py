@@ -2540,7 +2540,7 @@ def build_accueil_html() -> str:
         ("🧠", "MLflow", "expériences · registre des modèles", f"{admin}:5001"),
         ("📊", "Grafana", "7 dashboards · 12 alertes", f"{admin}:3000"),
         ("⚡", "API", "prédiction en ligne (Swagger)", f"{PUBLIC_URL}/docs"),
-        ("📚", "Documentation", "20 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
+        ("📚", "Documentation", "21 documents", f"{PUBLIC_URL}/ci-docs/presentation.html"),
     ]
     tool_tiles = "".join(
         f'<a class="acc-tool" href="{url}" target="_blank" rel="noopener">'
@@ -2709,6 +2709,9 @@ def build_docs_html() -> str:
         (f"{PUBLIC_BASE}/ci-docs/ci_cd_pipeline_runbook.html", "Runbook — échec pipeline CI/CD",
          "Que faire quand le déploiement post-merge échoue avant même de créer le flow run",
          "ci_cd_pipeline_runbook.html"),
+        (f"{PUBLIC_BASE}/ci-docs/projet_alternatif.html", "Projet alternatif",
+         "Une autre plateforme MLOps sur les mêmes données BAAC : architecture globale, README de référence, registre des risques et failure modes",
+         "projet_alternatif.html"),
     ]
     cards = "".join(f"""
   <a href="{url}" target="_blank"
