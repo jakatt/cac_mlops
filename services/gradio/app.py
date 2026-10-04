@@ -2551,7 +2551,7 @@ def build_accueil_html() -> str:
     steps = [
         ("1", "Un déclencheur", "Nouvelles données ONISR, nouveau code ou nouveau modèle (blueprint)"),
         ("2", "Tout est automatisé", "Tests, scan de sécurité, ETL, entraînement de 3 algorithmes, build"),
-        ("3", "Un humain décide", "GO ou STOP dans ce Cockpit, avant toute interruption de service"),
+        ("3", "Tu décides", "GO ou STOP dans ce Cockpit, avant toute interruption de service"),
         ("4", "En production, sous surveillance", "VPS + Kubernetes, tests fonctionnels, rollback automatique si échec"),
     ]
     step_html = '<span class="acc-arrow">→</span>'.join(
@@ -2625,7 +2625,7 @@ def build_accueil_html() -> str:
     <div class="acc-eyebrow">Cockpit MLOps — Sécurité routière</div>
     <h1>Bienvenue Léon</h1>
     <p class="acc-tagline">Prédire la <b>gravité d'un accident de la route</b> à partir des données publiques ONISR — un modèle
-    <b>réentraîné chaque année</b>, <b>validé par un humain</b> avant chaque mise en production et
+    <b>réentraîné chaque année</b>, <b>validé par TOI</b> avant chaque mise en production et
     <b>surveillé en continu</b>.</p>
     <div class="acc-tools">{tool_tiles}</div>
   </div>
