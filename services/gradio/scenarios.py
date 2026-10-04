@@ -41,6 +41,19 @@ SCENARIOS: dict[str, dict] = {
         "modify": lambda df: df.assign(vma=110),
         "context_label": "Autoroutes hors agglo (vma ≥ 120 km/h)",
     },
+    "vma_30_autoroute": {
+        "how_selected": "les accidents sur autoroute, hors agglomération, où la vitesse maximale autorisée est d'au moins 120 km/h",
+        "how_modified": "la vitesse maximale autorisée passe à <b>30 km/h</b>",
+        "label": "Vitesse 30 km/h sur autoroute",
+        "description": (
+            "Abaisse la vitesse maximale à 30 km/h sur les autoroutes hors agglomération. "
+            "Scénario extrême, jamais observé dans les données : mêmes accidents que le scénario "
+            "110 km/h, pour comparer jusqu'où le modèle relie la vitesse autorisée à la gravité."
+        ),
+        "filter": lambda df: (df["catr"] == 1) & (df["agg_"] == 1) & (df["vma"] >= 120),
+        "modify": lambda df: df.assign(vma=30),
+        "context_label": "Autoroutes hors agglo (vma ≥ 120 km/h)",
+    },
     "eclairage_nuit": {
         "how_selected": "les accidents de nuit sur une voie sans éclairage, ou dont l'éclairage n'était pas allumé",
         "how_modified": "la luminosité devient « nuit avec <b>éclairage allumé</b> »",

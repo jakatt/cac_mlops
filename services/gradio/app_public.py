@@ -478,7 +478,7 @@ def build_accueil_html() -> str:
          "d'un exemple prêt à l'emploi. Le modèle vous dit instantanément si l'accident risque d'être "
          "grave, et avec quelle probabilité.", "Lancer une prédiction"),
         ("What-if", "🧪", "Mesurez l'effet d'une mesure avant de la décider",
-         "Carrefours transformés en giratoires, zone 30, 110 km/h sur autoroute, meilleur éclairage… "
+         "Carrefours transformés en giratoires, zone 30, 110 ou 30 km/h sur autoroute, meilleur éclairage… "
          "Choisissez une mesure : le modèle la rejoue sur des milliers d'accidents réels et chiffre "
          "la baisse de la part d'accidents graves.", "Simuler une mesure"),
         ("Points Noirs", "🗺️", "Repérez où agir en priorité",
