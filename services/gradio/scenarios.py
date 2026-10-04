@@ -44,7 +44,7 @@ SCENARIOS: dict[str, dict] = {
     "vma_30_autoroute": {
         "how_selected": "les accidents sur autoroute, hors agglomération, où la vitesse maximale autorisée est d'au moins 120 km/h",
         "how_modified": "la vitesse maximale autorisée passe à <b>30 km/h</b>",
-        "label": "Vitesse 30 km/h sur autoroute",
+        "label": "130 → 30 km/h sur autoroute",
         "description": (
             "Abaisse la vitesse maximale à 30 km/h sur les autoroutes hors agglomération. "
             "Scénario extrême, jamais observé dans les données : mêmes accidents que le scénario "
