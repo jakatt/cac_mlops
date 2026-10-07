@@ -638,7 +638,7 @@ def render_drift_panel(year: str | None = None) -> str:
         rows_txt = f" · {_thousands(s['rows'])} accidents" if s.get("rows") else ""
         body = (f'{_badge(s.get("level", ""))}'
                 f'<div class="cac-big">{s.get("drift_share", 0) * 100:.0f} % des variables en dérive</div>'
-                f'<div class="cac-sub">{s.get("drifted_count", 0)} sur {s.get("total_features", 0)} · année {s["year"]}{ref_txt}{rows_txt}</div>'
+                f'<div class="cac-sub">{s.get("drifted_count", 0)} sur {s.get("total_features", 0)} (lat, long, com exclues) · année {s["year"]}{ref_txt}{rows_txt}</div>'
                 f'<div class="cac-sub">{_when(s.get("timestamp"))}</div>'
                 f'<div class="cac-sub" style="margin-top:10px;display:flex;align-items:center;gap:6px;">'
                 f'<strong>Variables les plus proches du seuil</strong> {_info("drift_feature_score")}</div>'
@@ -646,7 +646,7 @@ def render_drift_panel(year: str | None = None) -> str:
                 f'{_report_link(f"drift_{year}.html")}')
     else:
         body = '<div class="cac-sub">Aucun rapport — disponible après le chargement d\'une 2ᵉ année de données.</div>'
-    cards.append(f'<div class="cac-card"><h4>1 · Les données ont-elles changé ? {_info("drift_data")}</h4>{body}</div>')
+    cards.append(f'<div class="cac-card"><h4>1 · Les accidents de la nouvelle année ressemblent-ils à ceux des années précédentes ? {_info("drift_data")}</h4>{body}</div>')
 
     # 2 — Cible
     if s and "target_reference_rate" in s:
@@ -661,7 +661,7 @@ def render_drift_panel(year: str | None = None) -> str:
                 'pour cette année, voir le rapport.</div>' + _report_link(f"drift_{year}_target.html"))
     else:
         body = '<div class="cac-sub">Aucun rapport.</div>'
-    cards.append(f'<div class="cac-card"><h4>2 · La réalité a-t-elle changé ? {_info("drift_target")}</h4>{body}</div>')
+    cards.append(f'<div class="cac-card"><h4>2 · La part d\'accidents graves a-t-elle changé cette année ? {_info("drift_target")}</h4>{body}</div>')
 
     # 3 — Trafic réel
     p = _read_report_json("latest_prediction_drift_summary.json")
@@ -683,7 +683,7 @@ def render_drift_panel(year: str | None = None) -> str:
                 f'{_report_link(p.get("html_report"))} &nbsp; {_report_link(p.get("stability_html_report"), "Stabilité ↗")}')
     else:
         body = '<div class="cac-sub">Aucun calcul pour l\'instant (flow <code>prediction-drift-check</code>, chaque lundi).</div>'
-    cards.append(f'<div class="cac-card"><h4>3 · Les demandes reçues ressemblent-elles à l\'entraînement ? '
+    cards.append(f'<div class="cac-card"><h4>3 · Le modèle est-il utilisé sur des cas qu\'il connaît ? '
                  f'{_info("prediction_drift", left=True)}</h4>{body}</div>')
 
     # Qualité des données brutes (dernier ETL)

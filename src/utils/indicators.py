@@ -31,8 +31,10 @@ _LEVELS = ("OK = moins de 10 % des variables en dérive · WARNING = plus de 10 
 
 INDICATORS: dict[str, Indicator] = {
     "drift_data": Indicator(
-        "Les accidents de l'année analysée ressemblent-ils à ceux sur lesquels le modèle a appris ? "
-        "Part des 24 variables d'entrée dont la distribution a significativement changé.",
+        "Les accidents de la nouvelle année ressemblent-ils à ceux des années précédentes, sur lesquels "
+        "le modèle a appris ? Part des 24 variables d'entrée dont la distribution a significativement "
+        "changé (27 variables du modèle, moins lat et long — la géographie est suivie par dep — et com, "
+        "presque un identifiant avec ~19 000 communes).",
         "Evidently compare, variable par variable, l'année analysée aux années précédentes cumulées "
         "(les données d'entraînement). Distance de **Jensen-Shannon** pour les 17 variables catégorielles, "
         "distance de **Wasserstein normalisée** pour les 7 numériques ; une variable est en dérive si son "
@@ -47,14 +49,15 @@ INDICATORS: dict[str, Indicator] = {
         "0 = aucune différence. Au-delà de 0,1, la variable est comptée en dérive. Les variables les plus "
         "proches du seuil sont celles à surveiller au prochain cycle."),
     "drift_target": Indicator(
-        "La proportion d'accidents graves (blessé hospitalisé ou tué) a-t-elle changé entre l'année analysée "
-        "et les années de référence ?",
+        "La part d'accidents graves (blessé hospitalisé ou tué) a-t-elle changé cette année par rapport "
+        "aux années de référence ?",
         "Evidently compare la distribution de la cible `grav` des deux périodes (distance de Jensen-Shannon, "
         "seuil 0,1), dans un rapport séparé pour ne pas fausser la part de variables en dérive.",
-        "Si la réalité elle-même change, le modèle se trompe même sur des données d'entrée identiques "
-        "(dérive de concept) : un réentraînement s'impose."),
+        "Si la part d'accidents graves évolue, le modèle — calibré sur l'ancienne proportion — risque de "
+        "la sous-estimer ou de la surestimer : un réentraînement s'impose."),
     "prediction_drift": Indicator(
-        "Les demandes réellement reçues par l'API ressemblent-elles aux données d'entraînement du modèle ?",
+        "Le modèle est-il utilisé sur des cas qu'il connaît ? Les demandes réellement reçues par l'API "
+        "ressemblent-elles aux données d'entraînement ? Sinon, ses réponses sont moins fiables.",
         "Chaque lundi à 9 h (ou à la demande, flow `prediction-drift-check`), Evidently compare les "
         "prédictions réelles des 90 derniers jours — VPS et Kubernetes (déposées sur S3 par K8s, importées "
             "au début du calcul), tests exclus — aux données "

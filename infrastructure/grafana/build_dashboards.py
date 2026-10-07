@@ -825,7 +825,7 @@ def flux_dashboard() -> dict:
                unit="percent", decimals=1, thresholds=steps((None, GREEN), (20, ORANGE)), no_value="—",
                desc=di("model_diff", _REPORT_HOW)), 12, 4)
 
-    g.row("Drift — les données, la réalité et les demandes reçues ressemblent-elles à l'entraînement ?")
+    g.row("Drift — accidents de l'année, part d'accidents graves, cas soumis au modèle")
     g.add(stat("Drift des données", PROM, "cac_mlops_drift_level", mappings=LEVEL_MAP,
                thresholds=steps((None, GREEN), (1, ORANGE), (2, RED)), no_value="—", desc=DRIFT_LEVEL_DESC), 4, 4)
     g.add(stat("Variables en dérive", PROM, "cac_mlops_drift_share * 100", unit="percent", decimals=0,
