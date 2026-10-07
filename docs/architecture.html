@@ -317,7 +317,7 @@ Retour : API K8s ─► S3 k8s-predictions/pending/ ─► import avant chaque d
 
   <!-- KUBERNETES -->
   <details>
-    <summary>☸️ K8s — Scaleway (2 nœuds BASIC3-X2C-8G · 2 vCPU · 8 GB RAM · 50 GB disque chacun)</summary>
+    <summary>☸️ K8s Scaleway (2 nœuds BASIC3-X2C-8G · 2 vCPU · 8 GB RAM · 50 GB disque chacun)</summary>
     <div class="body">
       <div class="band">
         Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>). Pas de Cockpit admin sur K8s car dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
@@ -399,7 +399,7 @@ Retour : API K8s ─► S3 k8s-predictions/pending/ ─► import avant chaque d
 
   <!-- S3 SCALEWAY — service indépendant, hors VPS et hors K8s -->
   <details>
-    <summary>☁️ Service Scaleway S3 — Stockage objet (fr-par)</summary>
+    <summary>☁️ Service Scaleway S3 — Stockage objet</summary>
     <div class="body">
       <div class="band">
         <strong>Bucket</strong> : <code>s3://cac-mlops-data</code> · Scaleway Object Storage · région fr-par &nbsp;·&nbsp;
