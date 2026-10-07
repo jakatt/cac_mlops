@@ -38,6 +38,7 @@ import pandas as pd
 from services.monitoring.drift_detection import (
     CATEGORICAL_COLS, FEATURE_COLS, NUMERICAL_COLS, _preprocessed_dir,
 )
+from services.monitoring.report_style import legend_below
 from src.utils.logging_utils import init_logging
 
 init_logging()
@@ -157,7 +158,8 @@ def run_prediction_drift_report(days: int = DEFAULT_LOOKBACK_DAYS) -> dict:
         column_mapping=stability_mapping,
     )
     stability_html_path = REPORTS_DIR / f"prediction_stability_{today}.html"
-    stability_report.save_html(str(stability_html_path))
+    with legend_below():  # légende sous le graphique, sinon tronquée à droite
+        stability_report.save_html(str(stability_html_path))
     stability_result = stability_report.as_dict()["metrics"][0]["result"]
 
     summary = {

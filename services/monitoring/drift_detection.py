@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from services.monitoring.report_style import legend_below
 from src.utils.logging_utils import init_logging
 
 init_logging()
@@ -193,7 +194,8 @@ def run_drift_report(year: int | str) -> dict:
         column_mapping=target_mapping,
     )
     target_html_path = REPORTS_DIR / f"drift_{year}_target.html"
-    target_report.save_html(str(target_html_path))
+    with legend_below():  # légende sous le graphique, sinon tronquée à droite
+        target_report.save_html(str(target_html_path))
     target_result = target_report.as_dict()["metrics"][0]["result"]
 
     summary = {
