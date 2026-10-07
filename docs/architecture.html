@@ -92,6 +92,9 @@
   font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;
   color:var(--accent);margin:14px 0 6px;
 }
+.ci-doc .intro-fig { margin:0 0 22px; }
+.ci-doc .intro-fig img { display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:8px;background:#fff; }
+.ci-doc .intro-fig figcaption { font-size:.78rem;color:var(--muted);margin-top:8px;line-height:1.5; }
 </style>
 </head>
 <body>
@@ -102,6 +105,11 @@
     <h1 class="page-title">Architecture de la solution</h1>
     <p class="page-sub">VPS Scaleway DEV1-XL · Docker 17 services (16 permanents) · Prefect 18 deployments · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
   </header>
+
+  <figure class="intro-fig">
+    <a href="img/architecture_solution.png" target="_blank" title="Ouvrir le schéma en grand"><img src="img/architecture_solution.png" alt="Architecture de la solution : Dev local, GitHub (CI/CD), VPS, services Kubernetes et services S3 sur le cloud Scaleway"></a>
+    <figcaption>Vue d'ensemble — cliquer pour agrandir. Chaque bloc du schéma est détaillé dans un accordéon ci-dessous : <strong>Dev local</strong> · <strong>VPS</strong> (entrée du trafic, interfaces, plateforme ML, orchestration Prefect, monitoring, CI/CD GitHub et gate GO) · <strong>Kubernetes</strong> · <strong>Services S3</strong>, avec les flux qui les relient.</figcaption>
+  </figure>
 
   <!-- DEV LOCAL -->
   <details>
