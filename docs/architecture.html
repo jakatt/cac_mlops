@@ -92,6 +92,9 @@
   font-size:.62rem;font-weight:700;letter-spacing:.10em;text-transform:uppercase;
   color:var(--accent);margin:14px 0 6px;
 }
+.ci-doc .intro-fig { margin:0 0 22px; }
+.ci-doc .intro-fig img { display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:8px;background:#fff; }
+.ci-doc .intro-fig figcaption { font-size:.78rem;color:var(--muted);margin-top:8px;line-height:1.5; }
 </style>
 </head>
 <body>
@@ -102,6 +105,11 @@
     <h1 class="page-title">Architecture de la solution</h1>
     <p class="page-sub">VPS Scaleway DEV1-XL · Docker 17 services (16 permanents) · Prefect 18 deployments · 3 workflows GitHub Actions · Kapsule K8s (on-demand) · S3 Object Storage fr-par</p>
   </header>
+
+  <figure class="intro-fig">
+    <a href="img/architecture_solution.png" target="_blank" title="Ouvrir le schéma en grand"><img src="img/architecture_solution.png" alt="Architecture de la solution : Dev local, GitHub (CI/CD), VPS, services Kubernetes et services S3 sur le cloud Scaleway"></a>
+    <figcaption>Vue d'ensemble — cliquer pour agrandir. Chaque bloc du schéma est détaillé dans un accordéon ci-dessous : <strong>Dev local</strong> · <strong>VPS</strong> (entrée du trafic, interfaces, plateforme ML, orchestration Prefect, monitoring, CI/CD GitHub et gate GO) · <strong>Kubernetes</strong> · <strong>Services S3</strong>, avec les flux qui les relient.</figcaption>
+  </figure>
 
   <!-- DEV LOCAL -->
   <details>
@@ -133,7 +141,8 @@
     <div class="body">
       <div class="band">
         URL publique : <strong><a href="https://mlops.jakat-inc.fr" target="_blank" style="color:inherit;">https://mlops.jakat-inc.fr</a></strong> (Caddy TLS → nginx :8090 → gradio-public) &nbsp;·&nbsp;
-        Cockpit Admin : <strong><a href="http://100.117.99.62:7860" target="_blank" style="color:inherit;">http://100.117.99.62:7860</a></strong> (Tailscale — VPN uniquement)
+        Cockpit Admin : <strong><a href="http://100.117.99.62:7860" target="_blank" style="color:inherit;">http://100.117.99.62:7860</a></strong> (Tailscale — VPN uniquement) &nbsp;·&nbsp;
+        Caddy (chiffrement HTTPS) tourne directement sur le système du VPS, hors Docker
       </div>
 
       <!-- Docker -->
@@ -178,6 +187,29 @@
               <p><code>Tailscale</code> → 100.117.99.62 · <code>localhost</code> → 127.0.0.1 (hôte VPS) · <code>interne</code> → réseau Docker · <code>process pool</code> → aucun port · <code>EXIT</code> → one-shot init</p>
             </div>
           </details>
+        </div>
+      </details>
+
+      <!-- Plateforme ML -->
+      <details>
+        <summary>🧠 Plateforme ML — MLflow · PostgreSQL · MinIO</summary>
+        <div class="body">
+          <div class="band"><strong>En une phrase :</strong> MLflow tient le registre des modèles et désigne celui qui est en production (<code>@Production</code>) ; il range les <strong>fiches</strong> dans PostgreSQL et les <strong>fichiers</strong> dans MinIO. L'entraînement lui-même est lancé par Prefect.</div>
+          <div class="tbl"><table>
+            <thead><tr><th>Composant</th><th>Rôle</th><th>Contenu</th></tr></thead>
+            <tbody>
+              <tr><td><strong>MLflow</strong> <code>:5001</code></td><td>Chef d'orchestre — enregistre chaque entraînement, versionne les modèles, porte l'alias <code>@Production</code></td><td>Ne stocke rien lui-même : délègue à PostgreSQL et MinIO</td></tr>
+              <tr><td><strong>PostgreSQL</strong></td><td>Les fiches</td><td>Runs, paramètres, métriques, versions de modèles, alias <code>@Production</code> · table <code>predictions</code> : prédictions réelles du VPS et de K8s (colonne <code>source</code>), base du drift du trafic réel</td></tr>
+              <tr><td><strong>MinIO</strong> <code>:9000</code></td><td>Les fichiers — stockage compatible S3, local au VPS</td><td>Bucket <code>mlflow</code> : un dossier par version de modèle — <code>model.pkl</code> (le modèle), <code>MLmodel</code> (colonnes attendues), <code>requirements.txt</code>, exemple d'entrée</td></tr>
+            </tbody>
+          </table></div>
+          <p class="sec-label">Comment le modèle circule</p>
+          <pre>Prefect entraîne 3 algorithmes ─► MLflow : fiche (PostgreSQL) + fichier model.pkl (MinIO)
+GO à la gate ─► alias @Production ─► l'API VPS charge models:/…@Production
+Promotion vers K8s ─► export trained_model.joblib + model_info.txt ─► S3 k8s-model/ ─► pods K8s
+Retour : API K8s ─► S3 k8s-predictions/pending/ ─► import avant chaque drift ─► PostgreSQL (source='k8s')</pre>
+          <p>Les rapports de performance Evidently ne sont pas dans MLflow : ils sont écrits sur le disque du VPS (<code>reports/drift/</code>).</p>
+          <p><strong>Point d'attention :</strong> PostgreSQL et MinIO ne sont pas sauvegardés automatiquement. Les données ONISR (DVC) et le modèle <code>@Production</code> ont une copie sur S3 ; l'historique MLflow (runs, versions précédentes) et la table <code>predictions</code> n'existent que sur le disque du VPS.</p>
         </div>
       </details>
 
@@ -285,7 +317,7 @@
 
   <!-- KUBERNETES -->
   <details>
-    <summary>☸️ Kapsule K8s — Scaleway (on-demand, fr-par)</summary>
+    <summary>☸️ K8s — Scaleway (2 nœuds BASIC3-X2C-8G · 2 vCPU · 8 GB RAM · 50 GB disque chacun)</summary>
     <div class="body">
       <div class="band">
         Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>). Pas de Cockpit admin sur K8s car dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
@@ -302,7 +334,7 @@
               <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP, atteint uniquement via nginx→caddy</td></tr>
               <tr><td><strong>nginx</strong></td><td>ClusterIP — rate-limiting + routing (<code>/token</code> 5r/min, <code>/predict</code> 20r/min)</td></tr>
               <tr><td><strong>caddy</strong></td><td><strong>Seul point d'entrée public</strong> — LoadBalancer, TLS Let's Encrypt auto (<code>kapsule.jakat-inc.fr</code>), 2 pods · sticky-sessions LB Scaleway (mode <code>table</code>) — nécessaire en plus du <code>sessionAffinity</code> K8s pour garder une session Gradio sur le même pod bout en bout (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>)</td></tr>
-              <tr><td><strong>prometheus</strong></td><td>scrape api + kube-state-metrics + blackbox-exporter + node-exporter×2 — interrogé à distance par le Grafana du VPS</td></tr>
+              <tr><td><strong>prometheus</strong></td><td>scrape api + gradio-public + kube-state-metrics + blackbox-exporter + node-exporter×2 — interrogé à distance par le Grafana du VPS</td></tr>
               <tr><td><strong>tailscale-subnet-router</strong></td><td>pont vers le tailnet du VPS — advertise PodCIDR + ServiceCIDR</td></tr>
               <tr><td><strong>loki-forwarder</strong></td><td>client Tailscale userspace dédié (SOCKS5, pas de route advertisée) — relaie les push Promtail vers le Loki du VPS</td></tr>
               <tr><td><strong>kube-state-metrics</strong></td><td>RBAC scopé au namespace — réplicas disponibles par Deployment</td></tr>
@@ -385,15 +417,21 @@
           </tr>
           <tr>
             <td><code>k8s-model/</code></td>
-            <td><code>trained_model.joblib</code> — promotion du champion vers Kapsule</td>
+            <td><code>trained_model.joblib</code> + <code>model_info.txt</code> (ex. <code>lgbm:v4</code>) — copie du modèle <code>@Production</code>, exportée depuis MLflow (K8s n'a pas de MLflow)</td>
             <td>VPS — <code>kapsule-up-flow</code> (upload initial) · <code>deploy_kapsule_flow</code> (réexporte modèle + dataset à chaque deploy T1/T2/T3)</td>
             <td>Kapsule — initContainer <code>fetch-model</code> au démarrage pod</td>
           </tr>
           <tr>
             <td><code>k8s-gradio-data/</code></td>
             <td><code>X_test.csv</code> / <code>y_test.csv</code> — données des onglets What-if / Points Noirs du Gradio public K8s</td>
-            <td>VPS — <code>kapsule-up-flow</code></td>
+            <td>VPS — <code>kapsule-up-flow</code> · <code>deploy_kapsule_flow</code></td>
             <td>Kapsule — initContainer de <code>gradio-public</code></td>
+          </tr>
+          <tr>
+            <td><code>k8s-predictions/</code></td>
+            <td>Prédictions réelles de l'API K8s, déposées par lots (<code>pending/</code>, puis <code>processed/</code> une fois importées)</td>
+            <td>Kapsule — API (toutes les 100 prédictions ou 5 min)</td>
+            <td>VPS — <code>prediction-drift-check</code> : import dans PostgreSQL avant chaque calcul de drift</td>
           </tr>
           <tr>
             <td><code>secrets/</code></td>
@@ -403,7 +441,7 @@
           </tr>
           <tr>
             <td><code>caddy-certs/</code></td>
-            <td>Certificat TLS Let's Encrypt — partagé entre déploiements Kapsule</td>
+            <td>Certificat TLS (Let's Encrypt ou ZeroSSL) — partagé entre déploiements Kapsule, renouvelé par <code>kapsule-up</code> à moins de 30 jours de l'expiration</td>
             <td>Kapsule (Caddy auto-write, clé IAM restreinte)</td>
             <td>Kapsule (Caddy au restart — évite renouvellement inutile)</td>
           </tr>
@@ -416,12 +454,14 @@
         <tbody>
           <tr><td>VPS</td><td>S3</td><td><code>dvc push</code> — données ONISR après ETL · <code>deploy_kapsule_flow</code> — réexporte modèle joblib + dataset à chaque deploy</td></tr>
           <tr><td>S3</td><td>DEV LOCAL</td><td><code>dvc pull</code> — sync données versionnées pour expérimentation</td></tr>
-          <tr><td>S3</td><td>Kapsule</td><td>initContainer : télécharge <code>trained_model.joblib</code> · Caddy : certificat TLS partagé entre cycles provision/déprovision</td></tr>
-          <tr><td>VPS</td><td>Kapsule</td><td><code>deploy_kapsule_flow</code> → <code>kubectl rollout restart</code> (via Tailscale) — déclenche redémarrage pods · initContainer <code>fetch-model</code> repull modèle depuis S3</td></tr>
+          <tr><td>S3</td><td>Kapsule</td><td>initContainers : téléchargent <code>trained_model.joblib</code> et les données des Cockpits · Caddy : certificat TLS partagé entre cycles provision/déprovision</td></tr>
+          <tr><td>Kapsule</td><td>S3</td><td>API K8s — prédictions réelles par lots (<code>k8s-predictions/pending/</code>)</td></tr>
+          <tr><td>S3</td><td>VPS</td><td>Import des prédictions K8s dans PostgreSQL avant chaque calcul de drift</td></tr>
+          <tr><td>VPS</td><td>Kapsule</td><td><code>deploy_kapsule_flow</code> → <code>kubectl rollout restart</code> (par l'API Kubernetes de Scaleway, accès récupéré avec <code>scw</code>) — redémarre les pods, qui rechargent le modèle depuis S3 · Tailscale : Grafana lit le Prometheus K8s, Promtail pousse les logs vers le Loki du VPS</td></tr>
         </tbody>
       </table></div>
 
-      <p><strong>MinIO</strong> (VPS, <code>:9000</code> Tailscale) — stockage d'artefacts MLflow <em>local au VPS uniquement</em>, interface S3-compatible (<code>MLFLOW_S3_ENDPOINT_URL=http://minio:9000</code>). <code>data/</code> n'est jamais commité dans git — seule la référence DVC (<code>.dvc</code>) l'est.</p>
+      <p><strong>Pas d'artefacts MLflow sur S3</strong> : les fichiers des modèles sont dans MinIO, sur le VPS (voir <em>Plateforme ML</em>). <code>data/</code> n'est jamais commité dans git — seule la référence DVC (<code>.dvc</code>) l'est.</p>
     </div>
   </details>
 
