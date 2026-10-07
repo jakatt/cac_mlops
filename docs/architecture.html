@@ -137,7 +137,7 @@
 
   <!-- VPS -->
   <details>
-    <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12 GB RAM · 20 GB système + 80 GB block /data)</summary>
+    <summary>🖥️ VPS Scaleway — DEV1-XL (4 vCPU · 12GB RAM · 20GB système + 80GB block /data)</summary>
     <div class="body">
       <div class="band">
         URL publique : <strong><a href="https://mlops.jakat-inc.fr" target="_blank" style="color:inherit;">https://mlops.jakat-inc.fr</a></strong> (Caddy TLS → nginx :8090 → gradio-public) &nbsp;·&nbsp;
@@ -317,7 +317,7 @@ Retour : API K8s ─► S3 k8s-predictions/pending/ ─► import avant chaque d
 
   <!-- KUBERNETES -->
   <details>
-    <summary>☸️ K8s Scaleway (2 nœuds BASIC3-X2C-8G · 2 vCPU · 8 GB RAM · 50 GB disque chacun)</summary>
+    <summary>☸️ K8s Scaleway — 2 nœuds BASIC3-X2C-8G (2 vCPU · 8GB RAM · 50GB disque)</summary>
     <div class="body">
       <div class="band">
         Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>). Pas de Cockpit admin sur K8s car dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
