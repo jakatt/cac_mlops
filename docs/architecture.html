@@ -317,7 +317,7 @@ Retour : API K8s ─► S3 k8s-predictions/pending/ ─► import avant chaque d
 
   <!-- KUBERNETES -->
   <details>
-    <summary>☸️ Kapsule K8s — Scaleway (2 nœuds BASIC3-X2C-8G · 2 vCPU · 8 GB RAM · 50 GB disque chacun · on-demand, fr-par)</summary>
+    <summary>☸️ Kapsule K8s — Scaleway (2 nœuds BASIC3-X2C-8G · 2 vCPU · 8 GB RAM · 50 GB disque chacun)</summary>
     <div class="body">
       <div class="band">
         Triggers 1/2/3 se déploient sans jamais descendre sous 1 réplica disponible (<code>maxUnavailable: 0</code>). Pas de Cockpit admin sur K8s car dédié au seul chemin public HA (api/gradio-public/nginx/caddy). L'admin garde un seul Cockpit (VPS), dont le Healthcheck sonde aussi les services K8s via Tailscale.
