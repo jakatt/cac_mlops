@@ -172,7 +172,7 @@ body { margin:0; }
 
   <div class="proof">
     <span class="ic">✓</span>
-    <div><strong>Vérifié le 26/09/2026, en direct sur le serveur de production.</strong> Les 4 datasets préprocessés et les 16 fichiers bruts présents sur le VPS ont été hachés et comparés aux manifestes DVC stockés sur S3 : <strong>32 fichiers sur 32 identiques</strong>, tous présents sur le remote S3. Le réentraînement complet du 31/08 a reproduit exactement les données versionnées le 22/07 : le preprocessing est <strong>déterministe</strong>, aucune nouvelle version n'a donc été créée.</div>
+    <div><strong>Vérifié en direct sur le serveur de production.</strong> Les 4 datasets préprocessés et les 16 fichiers bruts présents sur le VPS ont été hachés et comparés aux manifestes DVC stockés sur S3 : <strong>32 fichiers sur 32 identiques</strong>, tous présents sur le remote S3. Le preprocessing est <strong>déterministe</strong> : un réentraînement complet reproduit exactement les données versionnées, sans créer de nouvelle version.</div>
   </div>
 
   <!-- ─── Frise des cycles ─── -->
@@ -285,7 +285,7 @@ body { margin:0; }
         <td><a href="https://github.com/jakatt/cac_mlops/commit/953ee4d14bc04ea7d40f442a4512c1b45d444410" target="_blank" rel="noopener">953ee4d</a> 21/07, <span class="who-auto">automatique (ETL Prefect)</span></td></tr>
     </table>
   </div>
-  <p class="note">L'historique raconte l'industrialisation : 2021 à 2023 ont été versionnées à la main pendant la mise en place, 2024 est la première année intégrée de bout en bout par le pipeline, sans intervention humaine. Le 22/07, le renommage canonique des fichiers de 2021 et 2022 (une faute de frappe côté ONISR, <code>carcteristiques</code>) a produit un nouveau md5 à taille identique : DVC trace même un simple changement de nom.</p>
+  <p class="note">Les années 2021 à 2023 sont versionnées à la main ; 2024 l'est de bout en bout par le pipeline (ETL Prefect), sans intervention humaine. DVC trace même un simple changement de nom : le renommage canonique des fichiers 2021 et 2022 (faute de frappe ONISR <code>carcteristiques</code>) produit un nouveau md5 à taille identique.</p>
 
   <!-- ─── Mécanisme ─── -->
   <h2>Comment ça marche</h2>
@@ -319,7 +319,7 @@ dvc pull data/preprocessed/cumul_2021_2022_2023_2024.dvc
 
 <span class="c"># → data/preprocessed/cumul_2021_2022_2023_2024/ identique à l'octet près</span></pre>
 
-  <div class="footer">Instantané généré le 26/09/2026 à partir de l'historique Git des fichiers <code>.dvc</code>, du registre MLflow et d'une vérification des hachages sur le VPS. Les liens MLflow nécessitent l'accès Tailscale.</div>
+  <div class="footer">Instantané généré à partir de l'historique Git des fichiers <code>.dvc</code>, du registre MLflow et d'une vérification des hachages sur le VPS. Les liens MLflow nécessitent l'accès Tailscale.</div>
 
 </div>
 </div>

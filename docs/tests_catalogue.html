@@ -246,9 +246,9 @@
           <tr><td><code>test_no_id_columns_in_output</code></td><td>Colonnes techniques supprimées (<code>Num_Acc</code>, <code>an_nais</code>, <code>hrmn</code>…)</td></tr>
           <tr><td><code>test_nb_victim_aggregated_per_accident</code></td><td><code>nb_victim</code> = nombre d'usagers impliqués par accident</td></tr>
           <tr><td><code>test_missing_raw_dir_raises_runtime_error</code></td><td><code>_load_year</code> (délègue à <code>load_and_validate_year</code>) lève <code>RuntimeError</code> si CRITICAL — stoppe le preprocessing au lieu de continuer silencieusement</td></tr>
-                  <tr><td><code>test_all_formats_give_same_hour</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> <code>hrmn</code> en <code>14:30</code>, <code>1430</code>, <code>14</code>, <code>9:05</code>, <code>905</code>, <code>1430.0</code> → même heure (l'ancien code lisait <code>1430</code> comme 1 h)</td></tr>
+                  <tr><td><code>test_all_formats_give_same_hour</code></td><td><span class="tag-auto">AUTO_CORRECTED</span> <code>hrmn</code> en <code>14:30</code>, <code>1430</code>, <code>14</code>, <code>9:05</code>, <code>905</code>, <code>1430.0</code> → même heure (<code>1430</code> lu comme 14 h 30, pas 1 h)</td></tr>
           <tr><td><code>test_invalid_values_become_nan</code></td><td>Heure hors 0-23 ou texte → <code>NaN</code> (puis 0), jamais une heure fausse</td></tr>
-          <tr><td><code>test_onisr_hh_mm_format_unchanged</code></td><td>Format réel ONISR <code>HH:MM</code> : résultat identique à l'ancien code (non-régression du dataset)</td></tr>
+          <tr><td><code>test_onisr_hh_mm_format_unchanged</code></td><td>Format réel ONISR <code>HH:MM</code> : heure lue sans transformation (non-régression du dataset)</td></tr>
           </table></div></div>
         </details>
 
@@ -290,7 +290,7 @@
           <tr><td><code>test_strips_underscore_year</code></td><td><code>Caract_2024</code> → <code>caract</code> (convention 2024, underscore)</td></tr>
           <tr><td><code>test_no_year_suffix_unchanged</code></td><td>Nom sans suffixe année laissé inchangé</td></tr>
           <tr><td><code>test_strict_match_canonical_names</code></td><td>Noms canoniques (<code>caracteristiques-2021.csv</code>…) → matching strict par mot-clé, sans fallback</td></tr>
-          <tr><td><code>test_fuzzy_fallback_catches_typo</code></td><td>Reproduit l'incident <code>carcteristiques-2021.csv</code> (faute de frappe source ONISR) → fallback fuzzy (difflib) retrouve le bon fichier + WARNING loggué</td></tr>
+          <tr><td><code>test_fuzzy_fallback_catches_typo</code></td><td>Reproduit le cas réel <code>carcteristiques-2021.csv</code> (faute de frappe source ONISR) → fallback fuzzy (difflib) retrouve le bon fichier + WARNING loggué</td></tr>
           <tr><td><code>test_unmatchable_file_raises_runtime_error</code></td><td>Nom trop éloigné de toute catégorie connue → <code>RuntimeError</code>, aucun faux positif</td></tr>
           <tr><td><code>test_nonexistent_dir_raises_file_not_found</code></td><td>Répertoire source inexistant → <code>FileNotFoundError</code></td></tr>
           <tr><td><code>test_accident_id_2022_accepted_via_known_rename</code></td><td>Entête ONISR 2022 (<code>Accident_Id</code> au lieu de <code>Num_Acc</code>) accepté au téléchargement grâce au renommage connu (<code>known_fixes</code>)</td></tr>

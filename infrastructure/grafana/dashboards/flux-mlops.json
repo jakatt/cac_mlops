@@ -609,7 +609,7 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "**Ce que ça mesure.** Le nombre de déploiements en échec après le GO, ramenés à la version précédente.\n\n**Comment.** Le flow Prefect (ou le Cockpit, ou le CD GitHub Actions) écrit un log structuré à chaque étape ; Promtail le collecte dans Loki et ce panneau compte les lignes correspondantes sur la période.\n\n**Lecture.** Un rollback = un déploiement a échoué (redémarrage, healthcheck ou tests fonctionnels) et la version précédente a été restaurée — automatiquement, ou à la main pour les 2 incidents MLflow du 26/09, antérieurs au rollback automatique sur échec de redémarrage. Déclenche une alerte email.",
+      "description": "**Ce que ça mesure.** Le nombre de déploiements en échec après le GO, ramenés à la version précédente.\n\n**Comment.** Le flow Prefect (ou le Cockpit, ou le CD GitHub Actions) écrit un log structuré à chaque étape ; Promtail le collecte dans Loki et ce panneau compte les lignes correspondantes sur la période.\n\n**Lecture.** Un rollback = un déploiement a échoué (redémarrage, healthcheck ou tests fonctionnels) et la version précédente a été restaurée. Déclenche une alerte email.",
       "targets": [
         {
           "datasource": {

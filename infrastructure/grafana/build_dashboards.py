@@ -764,8 +764,7 @@ def flux_dashboard() -> dict:
         ("Rollbacks", cnt(f'{worker} |= "event=rollback"'), steps((None, GREEN), (1, RED)),
          "Le nombre de déploiements en échec après le GO, ramenés à la version précédente.",
          "Un rollback = un déploiement a échoué (redémarrage, healthcheck ou tests fonctionnels) et la version "
-         "précédente a été restaurée — automatiquement, ou à la main pour les 2 incidents MLflow du 26/09, "
-         "antérieurs au rollback automatique sur échec de redémarrage. Déclenche une alerte email."),
+         "précédente a été restaurée. Déclenche une alerte email."),
     ]:
         g.add(stat(title, LOKI, expr, thresholds=thr, decimals=0, desc=d(what, loki_how, read)), 6, 4)
     g.add(timeseries("Déploiements réussis et rollbacks par jour", LOKI, [
