@@ -182,9 +182,9 @@
     <span class="arrow">→</span>
     <div class="step pf">
       <div class="when">③ Après le GO</div>
-      <div class="what">Mise en service + vérifications</div>
+      <div class="what">Tests fonctionnels</div>
       <div class="num">8 <small>tests × interne / externe</small></div>
-      <div class="fail">Mise à jour appliquée, healthcheck, puis : ça marche pour l'utilisateur ? Un échec déclenche un <b>rollback automatique</b>.</div>
+      <div class="fail">Ça marche pour l'utilisateur ? Un échec déclenche un <b>rollback automatique</b>.</div>
     </div>
   </div>
   <div class="t1"><b>Trigger 1 — nouvelles données :</b> pas de PR, donc ni CI ni CD. Les vraies données sont contrôlées et auto-corrigées à chaque chargement (voir <a href="etl_catalogue.html">Catalogue ETL</a>), puis le déploiement passe par la même gate et les mêmes tests fonctionnels (③).</div>
@@ -360,16 +360,8 @@
 
   <!-- ════════════════════ 3. TESTS FONCTIONNELS ════════════════════ -->
   <details class="section pf">
-    <summary><span class="section-pill pf">③ Prefect</span> Après le GO — mise en service et vérifications <span class="count">8</span></summary>
-    <p class="lead">Le flow de déploiement (<code>deploy-vps-flow</code>) vérifie d'abord, <b>avant même le GO</b>, que le VPS est en bonne santé (90 s sur <code>/health</code>) : sinon <b>Stop</b>, le GO/STOP n'est pas proposé. Après le GO, il applique la mise à jour puis la vérifie ; à chaque étape, un échec déclenche un <b>retour automatique à la version précédente</b> (rollback) + alerte.</p>
-    <div style="padding:0 16px 4px;"><div class="overflow-x"><table>
-      <tr><th>#</th><th>Étape</th><th>Ce qu'elle fait</th><th>Trigger 1 · 2 · 3</th></tr>
-      <tr><td>1</td><td>Appliquer la mise à jour</td><td>Nouveau modèle passé en @Production + redémarrage de l'API, <b>ou</b> recréation des conteneurs modifiés avec les nouvelles images (<code>docker compose up -d</code>) → rollback si un conteneur ne démarre pas.</td><td>modèle · conteneurs · modèle</td></tr>
-      <tr><td>2</td><td>Healthcheck</td><td>Les services redémarrés répondent sur <code>/health</code> (90 s) → rollback sinon.</td><td>— · toujours · —</td></tr>
-      <tr><td>3</td><td>Tests fonctionnels</td><td><code>test-api</code> + <code>test-gradio-public</code>, en interne puis en externe (détail ci-dessous) → rollback au premier échec.</td><td>toujours · toujours · toujours</td></tr>
-      <tr><td>4</td><td>Déployer sur Kubernetes</td><td>Seulement si le VPS est OK : mise à jour progressive (healthcheck intégré), puis les mêmes tests fonctionnels → rollback K8s si échec, le VPS reste inchangé.</td><td>toujours · toujours · toujours</td></tr>
-    </table></div></div>
-    <p class="lead">Les <b>8 tests fonctionnels</b> de l'étape 3 se comportent comme un utilisateur : ils appellent l'API et cliquent dans chaque onglet du Cockpit public, puis vérifient la réponse. Ils vérifient que <b>ça marche</b>, jamais que le modèle a raison (c'est le rôle de son évaluation à l'entraînement).</p>
+    <summary><span class="section-pill pf">③ Prefect</span> Après le GO — tests fonctionnels <span class="count">8</span></summary>
+    <p class="lead">Après le GO, Prefect se comporte comme un utilisateur : il appelle l'API et clique dans chaque onglet du Cockpit public, puis vérifie la réponse. Ces tests vérifient que <b>ça marche</b>, jamais que le modèle a raison (c'est le rôle de son évaluation à l'entraînement). Au premier échec : retour automatique à la version précédente + alerte.</p>
 
     <details>
       <summary>Comment ils s'exécutent — interne puis externe, VPS puis Kubernetes</summary>
