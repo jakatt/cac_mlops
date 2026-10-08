@@ -91,7 +91,7 @@
     <div class="card-title">Accès GHCR refusé (<code>denied</code> / 401) — jeton expiré <span class="tag tag-nok">bloquant</span></div>
     <div class="card-body">
       <div class="row"><span class="row-label">Symptôme</span><span class="row-value">Le job <code>trigger-deploy</code> échoue au <code>docker login ghcr.io</code> ou au <code>docker compose pull</code> (<code>denied</code>, <code>unauthorized</code>, 401). Variante côté flow T1 : échec du commit des pointeurs <code>.dvc</code> (alerte <code>dvc_versioning_failed</code>).</span></div>
-      <div class="row"><span class="row-label">Cause</span><span class="row-value">Jeton GitHub (PAT classic) expiré, sans aucun préavis : <code>GHCR_TOKEN</code> (<code>read:packages</code>, dans <code>/data/cac_mlops/.env</code>) ou jeton de l'ETL (<code>repo</code>, dans <code>s3://cac-mlops-data/secrets/gh_pat</code>). Prochaine expiration des deux : <strong>25/12/2026</strong> (déjà vécu le 26/09/2026).</span></div>
+      <div class="row"><span class="row-label">Cause</span><span class="row-value">Jeton GitHub (PAT classic) expiré, sans aucun préavis : <code>GHCR_TOKEN</code> (<code>read:packages</code>, dans <code>/data/cac_mlops/.env</code>) ou jeton de l'ETL (<code>repo</code>, dans <code>s3://cac-mlops-data/secrets/gh_pat</code>). Prochaine expiration des deux : <strong>25/12/2026</strong>.</span></div>
       <div class="row"><span class="row-label">Résolution</span>
         <ul class="fix-list">
           <li>Régénérer le jeton concerné sur GitHub (mêmes scopes), puis le remplacer dans <code>.env</code> (VPS) ou sur S3 — ne jamais le commiter.</li>

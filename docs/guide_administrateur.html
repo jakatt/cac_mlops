@@ -311,7 +311,7 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
               </div>
             </div>
             <div class="efd-stop">❌ CRITICAL sur une seule année du cumul → tout le preprocessing s'arrête</div>
-            <div class="efd-arrow">↓ features finales, corrections désormais persistées</div>
+            <div class="efd-arrow">↓ features finales, corrections persistées</div>
 
             <div class="efd-row">
               <div class="efd-step">
@@ -360,16 +360,16 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
       <details>
         <summary>Auto-correction — au-delà de la détection</summary>
         <div class="body">
-          <p>En plus de détecter et signaler les anomalies, certaines sont désormais <strong>corrigées automatiquement</strong> avant que la donnée n'atteigne le preprocessing — tracé dans le rapport sous un niveau dédié <strong>AUTO_CORRECTED</strong> (informatif, n'escalade jamais au-dessus de OK/WARNING).</p>
+          <p>En plus de détecter et signaler les anomalies, certaines sont <strong>corrigées automatiquement</strong> avant que la donnée n'atteigne le preprocessing — tracé dans le rapport sous un niveau dédié <strong>AUTO_CORRECTED</strong> (informatif, n'escalade jamais au-dessus de OK/WARNING).</p>
           <div class="tbl"><table>
             <thead><tr><th>Mécanisme</th><th>Corrige</th><th>Exemple</th></tr></thead>
             <tbody>
               <tr><td><strong>Registre centralisé</strong><br><code>known_fixes.py</code></td><td>Renommages ONISR connus + espaces insécables/superflus sur colonnes texte</td><td><code>Accident_Id</code> → <code>Num_Acc</code> (ONISR 2022+) — appliqué identiquement en validation <em>et</em> en preprocessing (source unique, ex-duplication corrigée)</td></tr>
               <tr><td><strong>Coercion de type</strong><br>Pandera <code>coerce=True</code></td><td>Colonne lue avec le mauvais type à cause d'un artefact de formatage</td><td>Colonne entière lue en texte (espace insécable résiduel) → reconvertie en <code>int</code>. Échec de conversion (valeur réellement invalide) → jamais de NaN silencieux, redescend proprement en WARNING</td></tr>
-              <tr><td><strong>Fallback fuzzy nom de fichier</strong><br><code>import_raw_data.discover_raw_files</code></td><td>Nom de fichier source légèrement différent de l'attendu</td><td>Incident réel <code>carcteristiques-2021.csv</code> (faute de frappe ONISR, jamais rattrapée) — similarité de chaîne (difflib) retrouve la bonne catégorie, WARNING loggué pour traçabilité</td></tr>
+              <tr><td><strong>Fallback fuzzy nom de fichier</strong><br><code>import_raw_data.discover_raw_files</code></td><td>Nom de fichier source légèrement différent de l'attendu</td><td>Cas réel <code>carcteristiques-2021.csv</code> (faute de frappe dans le nom de fichier ONISR) — similarité de chaîne (difflib) retrouve la bonne catégorie, WARNING loggué pour traçabilité</td></tr>
             </tbody>
           </table></div>
-          <p class="note" style="margin-top:10px;font-size:.78rem;color:var(--muted);">Depuis l'unification du pipeline (<code>load_and_validate_year</code>), <code>make_dataset.py</code> ne relit plus les CSV séparément : il consomme directement les DataFrames déjà corrigés/validés par <code>schema_validator.py</code>. Conséquence utile : <strong>chaque cycle ETL revalide automatiquement toutes les années du cumul</strong> avec les règles les plus récentes, pas seulement la nouvelle — un correctif qui casserait silencieusement une année déjà en production est détecté au prochain cycle, sans tâche dédiée.</p>
+          <p class="note" style="margin-top:10px;font-size:.78rem;color:var(--muted);"><code>make_dataset.py</code> ne relit pas les CSV séparément (<code>load_and_validate_year</code>) : il consomme directement les DataFrames déjà corrigés/validés par <code>schema_validator.py</code>. Conséquence utile : <strong>chaque cycle ETL revalide automatiquement toutes les années du cumul</strong> avec les règles les plus récentes, pas seulement la nouvelle — un correctif qui casserait silencieusement une année déjà en production est détecté au prochain cycle, sans tâche dédiée.</p>
         </div>
       </details>
     </div>
@@ -506,7 +506,7 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
       <details>
         <summary>Autre application sur ce VPS (NE PAS TOUCHER)</summary>
         <div class="body">
-          <div class="band">Caddy (port 80/443, partagé : sert aussi <code>mlops.jakat-inc.fr</code>) + application RAG séparée — 2× uvicorn Python (port 8000/8001) · Qdrant vector DB (Docker, localhost:6333-6334) — <strong>arrêtée par défaut depuis le 26/09/2026</strong> (<code>rag-on</code> / <code>rag-off</code>). Ne jamais supprimer ses images Docker (pas de <code>docker image prune -a</code>).</div>
+          <div class="band">Caddy (port 80/443, partagé : sert aussi <code>mlops.jakat-inc.fr</code>) + application RAG séparée — 2× uvicorn Python (port 8000/8001) · Qdrant vector DB (Docker, localhost:6333-6334) — <strong>arrêtée par défaut</strong> (<code>rag-on</code> / <code>rag-off</code>). Ne jamais supprimer ses images Docker (pas de <code>docker image prune -a</code>).</div>
         </div>
       </details>
 
@@ -591,7 +591,7 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
             <thead><tr><th>Deployment</th><th>Rôle</th><th>Note</th></tr></thead>
             <tbody>
               <tr><td><strong>api</strong></td><td>FastAPI inference</td><td>initContainer fetch S3 → /app/model/ · HPA CPU 70% uniquement (min 2→max 4 pods) · maxUnavailable: 0</td></tr>
-              <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP</td><td>via nginx→caddy — seul cockpit Gradio sur K8s (pas de "gradio" admin sur ce cluster depuis 2026-07-13, redondant avec celui du VPS)</td></tr>
+              <tr><td><strong>gradio-public</strong></td><td>Cockpit public — ClusterIP</td><td>via nginx→caddy — seul cockpit Gradio sur K8s (pas de Cockpit admin sur ce cluster, redondant avec celui du VPS)</td></tr>
               <tr><td><strong>nginx</strong></td><td>Rate-limiting + routing — ClusterIP</td><td>—</td></tr>
               <tr><td><strong>caddy</strong></td><td>SEUL point d'entrée public — LoadBalancer</td><td>TLS Let's Encrypt auto · kapsule.jakat-inc.fr · 2 pods, <code>sessionAffinity: ClientIP</code> + <code>externalTrafficPolicy: Local</code> + sticky-sessions LB Scaleway (mode <code>table</code>, cf. §résilience) — nécessaire aux 3 pour que la session Gradio (queue/join puis queue/data) reste sur le même pod bout en bout</td></tr>
               <tr><td><strong>prometheus</strong></td><td>Scrape api + kube-state-metrics + blackbox + node-exporter</td><td>Interrogé à distance par Grafana VPS</td></tr>
@@ -608,9 +608,9 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
       </details>
 
       <details>
-        <summary>Monitoring K8s — consolidé dans Grafana/Loki VPS (2026-07-12)</summary>
+        <summary>Monitoring K8s — consolidé dans Grafana/Loki VPS</summary>
         <div class="body">
-          <p>Plus de Grafana ni de Loki propres à K8s — consolidés dans les instances VPS (simplicité opérationnelle + libère des ressources).</p>
+          <p>Pas de Grafana ni de Loki propres à K8s — tout est consolidé dans les instances VPS (simplicité opérationnelle, ressources des nœuds préservées).</p>
           <ul>
             <li><strong>Métriques :</strong> Grafana VPS interroge Prometheus K8s via Tailscale (datasource uid: prometheus-k8s) · Dashboard "Kapsule K8s"</li>
             <li><strong>Logs :</strong> Promtail (DaemonSet) → loki-forwarder (SOCKS5) → Loki VPS · label <code>cluster="kapsule"</code></li>
@@ -620,9 +620,9 @@ Cumul 4 années (v4) : 172 693 lignes train (2021-23) + 64 934 test (2024)</pre>
       </details>
 
       <details>
-        <summary>Prefect retiré de K8s (2026-07-11)</summary>
+        <summary>Pas de Prefect sur K8s</summary>
         <div class="body">
-          <p>prefect-server/prefect-worker existaient sur K8s mais n'avaient jamais de deployments enregistrés. Toute l'orchestration Kapsule est pilotée depuis le Prefect du VPS via kubectl/scw, jamais depuis l'intérieur du cluster. Retiré — ressources libérées sur nœuds sous pression.</p>
+          <p>Toute l'orchestration Kapsule est pilotée depuis le Prefect du VPS via kubectl/scw, jamais depuis l'intérieur du cluster : aucun Prefect ne tourne sur K8s, ce qui préserve les ressources des nœuds.</p>
         </div>
       </details>
 
@@ -729,7 +729,7 @@ IP réelle du client : set_real_ip_from 172.16.0.0/12 + X-Forwarded-For
               <tr><td><code>disk-cleanup</code></td><td>disk_cleanup_flow.py</td><td>cron 2h UTC quotidien</td></tr>
             </tbody>
           </table></div>
-          <p style="margin-top:10px;">Depuis 2026-07-29, <code>test-api</code>/<code>test-gradio-public</code> s'exécutent <strong>deux fois</strong> à chaque déploiement VPS et Kapsule : une fois en interne (réseau Docker/ClusterIP) puis, si l'interne passe, une fois en externe (vrai domaine public <code>mlops.jakat-inc.fr</code>/<code>kapsule.jakat-inc.fr</code>) — le test interne seul ne prouvait pas qu'un utilisateur réel pouvait accéder au service (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</p>
+          <p style="margin-top:10px;"><code>test-api</code>/<code>test-gradio-public</code> s'exécutent <strong>deux fois</strong> à chaque déploiement VPS et Kapsule : une fois en interne (réseau Docker/ClusterIP) puis, si l'interne passe, une fois en externe (vrai domaine public <code>mlops.jakat-inc.fr</code>/<code>kapsule.jakat-inc.fr</code>) — le test interne seul ne prouve pas qu'un utilisateur réel peut accéder au service (cf. <a href="resilience_mechanisms.html">Mécanismes de résilience</a>).</p>
         </div>
       </details>
 
@@ -776,10 +776,9 @@ IP réelle du client : set_real_ip_from 172.16.0.0/12 + X-Forwarded-For
               <tr><td><strong>Healthcheck</strong></td><td>Tableaux VPS/K8s — vérification HTTP directe pour la majorité des composants ; TCP direct pour PostgreSQL ; statut ONLINE/OFFLINE de l'API Prefect pour prefect-worker ; flow Prefect dédié <code>k8s-daemonset-health</code> (via kubectl) pour node-exporter/promtail/loki-forwarder/tailscale-subnet-router</td></tr>
               <tr><td><strong>Drift</strong></td><td>3 cartes, une par question : les accidents de la nouvelle année ressemblent-ils à ceux des années précédentes ? la part d'accidents graves a-t-elle changé cette année ? le modèle est-il utilisé sur des cas qu'il connaît (trafic réel, 90 jours) ? · qualité des données brutes du dernier ETL · icône (i) sur chaque indicateur, rapports Evidently en lien</td></tr>
               <tr><td><strong>Modèles</strong></td><td>Versions MLflow enregistrées + promotion manuelle (bypass CI/CD, urgence uniquement) · rapports par version : performance sur l'année de test et comparaison candidat / production</td></tr>
-              <tr><td><strong>Liens</strong></td><td>URLs Tailscale admin + API publique + IPs Kapsule — rafraîchi automatiquement à chaque connexion (<code>demo.load()</code>), plus de bouton "Rafraîchir" manuel (retiré 2026-07-29, sans effet réel puisque l'URL affichée est une constante)</td></tr>
+              <tr><td><strong>Liens</strong></td><td>URLs Tailscale admin + API publique + IPs Kapsule — rafraîchi automatiquement à chaque connexion (<code>demo.load()</code>)</td></tr>
             </tbody>
           </table></div>
-          <p><em>Note historique :</em> <code>COCKPIT_ENV=kapsule</code> masquait certains accordéons sur un cockpit admin K8s — ce déploiement n'existe plus depuis 2026-07-13 (redondant avec celui du VPS), cette variable n'est donc plus jamais positionnée en pratique.</p>
           <p><strong>Cockpit public</strong> (gradio-public) — <code>https://mlops.jakat-inc.fr</code> (VPS) et <code>https://kapsule.jakat-inc.fr</code> (K8s, même image, <code>DEPLOY_ENV</code> distingue les deux) · Script : <code>services/gradio/app_public.py</code> · page d'accueil + 3 onglets (Predict + What-If + Points Noirs)</p>
         </div>
       </details>
