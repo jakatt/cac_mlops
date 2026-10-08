@@ -142,6 +142,18 @@
 .ci-doc .item-k8s .item-label::before { content:"→";color:var(--k8s-num); }
 .ci-doc .item-k8s .item-desc { color:var(--text); }
 .ci-doc .item-k8s .item-desc code { background:color-mix(in srgb,var(--k8s-bd) 50%,transparent);color:var(--k8s-num); }
+/* Pastilles d'effet (repérage rapide, comme la doc Flux MLOps) */
+.ci-doc .tag { display:inline-block;font-size:.56rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:4px;border:1px solid;margin-left:4px;line-height:1.5; }
+.ci-doc .tag-stop  { color:var(--stop-num);background:var(--stop-bg);border-color:var(--stop-bd); }
+.ci-doc .tag-rb    { color:var(--rb-num);background:var(--rb-bg);border-color:var(--rb-bd); }
+.ci-doc .tag-go    { color:var(--man-num);background:var(--man-bg);border-color:var(--man-bd); }
+.ci-doc .tag-alert { color:var(--alt-num);background:var(--alt-bg);border-color:var(--alt-bd); }
+.ci-doc b.k-stop  { color:var(--stop-num); }
+.ci-doc b.k-rb    { color:var(--rb-num); }
+.ci-doc b.k-go    { color:var(--man-num); }
+.ci-doc b.k-alert { color:var(--alt-num); }
+.ci-doc .item-label { display:block;line-height:1.55; }
+.ci-doc .item-label::before { margin-right:5px; }
 /* K8s banner (bas de page) */
 .ci-doc .k8s-banner { display:flex;align-items:flex-start;gap:12px;background:var(--k8s-bg);border:1px solid var(--k8s-bd);border-radius:8px;padding:14px 16px;margin-top:24px; }
 .ci-doc .k8s-banner-icon { font-size:1.1rem;flex-shrink:0;margin-top:2px;color:var(--k8s-num); }
@@ -160,7 +172,7 @@
   <header class="page-header">
     <p class="eyebrow">MLOps · Accidents routiers — VPS Docker Compose + Scaleway Kapsule (K8s)</p>
     <h1 class="page-title">Mécanismes de résilience par trigger</h1>
-    <p class="page-sub">Gate humaine → déploiement VPS → Kapsule uniquement si VPS passe. Un seul verrou protège les deux environnements.</p>
+    <p class="page-sub">GO/STOP humain → déploiement VPS → K8s uniquement si le VPS passe. Un seul verrou humain protège les deux environnements. Chaque ligne du détail porte son effet — <b class="k-stop">Stop</b>, <b class="k-go">GO/STOP</b>, <b class="k-rb">Rollback</b>, <b class="k-alert">Alerte</b> — et leur nombre est celui du tableau.</p>
   </header>
 
   <div class="tbl-wrap">
@@ -188,7 +200,7 @@
       <tbody>
         <!-- Validation humaine -->
         <tr>
-          <td><span class="row-label">Validation<br>humaine</span></td>
+          <td><span class="row-label">Validation<br>humaine<span class="row-sub" style="color:var(--man-num);">merge PR · GO/STOP</span></span></td>
           <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">1</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span></span></div></td>
           <td><div class="count-cell"><span class="badge badge-man"><span class="badge-num">2</span></span></div></td>
@@ -238,133 +250,133 @@
 
           <!-- T1 -->
           <td>
-            <p class="desc-title">VPS · 4 Stops — 1 Validation humaine — 1 Interruption — 1 Rollback<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
+            <p class="desc-title">4 Stops · 1 Validation humaine (GO/STOP) · 3 Rollbacks (1 VPS + 2 K8s) · 8 Alertes</p>
             <ul class="desc-list">
               <li>
-                <span class="item-label">Gate 1</span>
-                <span class="item-desc">Source data.gouv inaccessible ou fichier absent → flow Prefect stoppé + alerte</span>
+                <span class="item-label">Contrôle · source de données <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Source data.gouv inaccessible ou fichier absent → <b class="k-stop">Stop</b> (flow Prefect arrêté) + <b class="k-alert">Alerte</b></span>
               </li>
               <li>
-                <span class="item-label">Gate 2</span>
-                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → ETL stoppé + alerte</span>
+                <span class="item-label">Contrôle · qualité des données <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Pandera CRITICAL : format, colonnes, volumétrie hors norme → <b class="k-stop">Stop</b> (ETL arrêté) + <b class="k-alert">Alerte</b></span>
               </li>
               <li>
                 <span class="item-label" style="opacity:.7;">Auto-correction<br><span style="font-weight:400;font-size:.9em;">(non bloquant)</span></span>
                 <span class="item-desc">Pandera ne fait pas que bloquer ou passer : 17 auto-corrections journalisées (renommage de colonne ONISR 2022, noms de colonnes / BOM / casse, séparateur <code>;</code>/<code>,</code>/tabulation, nom de fichier par similarité, doublons, codes hors nomenclature → « non renseigné », types, format horaire, coordonnées…) et 2 réessais automatiques — sur 2021→2024, chaque ETL se termine <strong>OK sans aucune alerte</strong> sans interrompre le flow — détail complet dans le <a href="tests_catalogue.html">Catalogue des tests</a> et le <a href="etl_catalogue.html">Catalogue ETL</a>.</span>
               </li>
               <li>
-                <span class="item-label">Gate 3</span>
-                <span class="item-desc">Gate KPI + comparaison @Production : aucun algo RF/XGB/LGBM ne passe les seuils absolus, <strong>ou</strong> le champion régresse sur ≥ 2 métriques vs @Production (test sets d'années différentes, comparaison stricte non valide) → @Production inchangé + alerte, <strong>aucune gate ouverte</strong></span>
+                <span class="item-label">Contrôle · performance du modèle <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Seuils de qualité + comparaison @Production : aucun algo RF/XGB/LGBM ne passe les seuils absolus, <strong>ou</strong> le champion régresse sur ≥ 2 métriques vs @Production (test sets d'années différentes, comparaison stricte non valide) → <b class="k-stop">Stop</b> : @Production inchangé + <b class="k-alert">Alerte</b>, <strong>aucun GO/STOP proposé</strong></span>
               </li>
               <li>
-                <span class="item-label" style="opacity:.7;">Versioning DVC<br><span style="font-weight:400;font-size:.9em;">(non bloquant)</span></span>
-                <span class="item-desc">Échec du versioning des données (DVC push / commit git du <code>.dvc</code>) → log ERROR + alerte, le flow continue : les données sont utilisables, seule leur traçabilité est à rattraper (cf. <a href="data_lineage.html">Lignée des données</a>).</span>
+                <span class="item-label">Archivage des données · DVC<br><span style="font-weight:400;font-size:.9em;">(non bloquant)</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Échec du versioning des données (DVC push / commit git du <code>.dvc</code>) → log ERROR + <b class="k-alert">Alerte</b>, le flow continue : les données sont utilisables, seule leur traçabilité est à rattraper (cf. <a href="data_lineage.html">Lignée des données</a>).</span>
               </li>
               <li>
-                <span class="item-label">Smoke test pré-gate</span>
-                <span class="item-desc">Santé VPS vérifiée (90 s sur <code>/health</code>) avant ouverture de la gate : si fail → flow stoppé immédiatement, rien de déployé.</span>
+                <span class="item-label">Contrôle · santé du VPS avant GO/STOP <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Santé VPS vérifiée (90 s sur <code>/health</code>) avant le GO/STOP : si échec → <b class="k-stop">Stop</b> immédiat + <b class="k-alert">Alerte</b>, rien de déployé.</span>
               </li>
               <li class="item-manual">
-                <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques des 3 algos, puis <strong>tableau de comparaison @Production vs candidat</strong> (F1 / Recall / AUC / Accuracy, écart 🟢/🔴) et verdict de la règle Trigger 1, affichés dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> GO → promotion @Production + redémarrage API (~30 s). STOP → run annulé, @Production inchangé, aucun impact.</span>
+                <span class="item-label">Validation humaine · GO/STOP <span class="tag tag-go">GO/STOP</span></span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques des 3 algos, puis <strong>tableau de comparaison @Production vs candidat</strong> (F1 / Recall / AUC / Accuracy, écart 🟢/🔴) et verdict de la règle Trigger 1, affichés dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> <b>GO</b> → promotion @Production + redémarrage API (~30 s). <b>STOP</b> → run annulé, @Production inchangé, aucun impact.</span>
               </li>
               <li class="item-vps">
-                <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe (vrai domaine public) : si fail → rollback alias MLflow @Production + restart API + alerte</span>
+                <span class="item-label">Vérification VPS · tests fonctionnels <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe (vrai domaine public) : si échec → <b class="k-rb">Rollback</b> (alias MLflow @Production + redémarrage API) + <b class="k-alert">Alerte</b></span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout) + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-label">Vérification K8s · healthcheck (si VPS OK) <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Readiness probe <code>/health</code> : le nouveau pod doit être prêt avant la suppression de l'ancien → 0 interruption. Si échec → <b class="k-rb">Rollback</b> vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout) + <b class="k-alert">Alerte</b> (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s — FTe (interne + externe)</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — d'abord en interne (ClusterIP), puis en externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe. Le readiness probe seul ne détecte pas une dérive de config entre VPS et K8s, et l'interne seul ne détecte pas un problème propre au chemin public (cf. bannière ci-dessous). Si fail (interne ou externe) → rollback digest + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-label">Vérification K8s · tests fonctionnels <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — d'abord en interne (ClusterIP), puis en externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe. Le healthcheck seul ne détecte pas une dérive de config entre VPS et K8s, et l'interne seul ne détecte pas un problème propre au chemin public (cf. bannière ci-dessous). Si échec (interne ou externe) → <b class="k-rb">Rollback</b> digest + <b class="k-alert">Alerte</b> (pas de rollback MLflow : le modèle est déjà validé côté VPS)</span>
               </li>
             </ul>
           </td>
 
           <!-- T2 -->
           <td>
-            <p class="desc-title">VPS · 3 Stops — 2 Validations humaines — 1 Interruption — 3 Rollbacks<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
+            <p class="desc-title">3 Stops · 2 Validations humaines (merge PR + GO/STOP) · 5 Rollbacks (3 VPS + 2 K8s) · 7 Alertes</p>
             <ul class="desc-list">
               <li>
-                <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail → merge bloqué par branch protection + notification GitHub Actions (pas d'alerte Loki/email — ci.yml n'a aucun canal vers le VPS, cf. footnote)</span>
+                <span class="item-label">Contrôle · tests du code (CI) <span class="tag tag-stop">Stop</span></span>
+                <span class="item-desc">CI lint/pytest en échec → <b class="k-stop">Stop</b> : merge bloqué par la branch protection + notification GitHub Actions (pas d'alerte email — ci.yml n'a aucun canal vers le VPS, cf. note)</span>
               </li>
               <li class="item-manual">
-                <span class="item-label">Merge PR</span>
-                <span class="item-desc">MLOps lead review et merge la PR — premier verrou humain, <strong>avant</strong> tout déclenchement du pipeline CD.</span>
+                <span class="item-label">Validation humaine · relecture et merge de la PR <span class="tag tag-go">Validation</span></span>
+                <span class="item-desc">Le MLOps lead relit et merge la PR — premier verrou humain, <strong>avant</strong> tout déclenchement du pipeline CD.</span>
               </li>
               <li>
-                <span class="item-label">Gate 2</span>
-                <span class="item-desc">Trivy CVE CRITICAL → deploy annulé avant tout contact VPS + annotation erreur + alerte (job <code>notify-pipeline-failure</code>, catch-all SSH→Loki sur tout échec du job "build")</span>
+                <span class="item-label">Contrôle · sécurité des images (Trivy) <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Trivy CVE CRITICAL → <b class="k-stop">Stop</b> : déploiement annulé avant tout contact avec le VPS + annotation d'erreur + <b class="k-alert">Alerte</b> (job <code>notify-pipeline-failure</code>, catch-all SSH→Loki sur tout échec du job « build »)</span>
               </li>
               <li>
-                <span class="item-label">Smoke test pré-gate</span>
-                <span class="item-desc">Santé VPS vérifiée (90 s sur <code>/health</code>) : si fail → flow stoppé, images déjà pull-ées mais aucun conteneur touché.</span>
+                <span class="item-label">Contrôle · santé du VPS avant GO/STOP <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Santé VPS vérifiée (90 s sur <code>/health</code>) avant le GO/STOP : si échec → <b class="k-stop">Stop</b> immédiat + <b class="k-alert">Alerte</b>, images déjà téléchargées mais aucun conteneur touché.</span>
               </li>
               <li class="item-manual">
-                <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : SHA, images à builder et services à redémarrer affichés dans le Cockpit ou Prefect UI. Images <code>pull</code>-ées mais <strong>pas encore appliquées</strong>. GO → <code>docker compose up -d</code>. STOP → run annulé, aucun conteneur touché.</span>
+                <span class="item-label">Validation humaine · GO/STOP <span class="tag tag-go">GO/STOP</span></span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : SHA, images à builder et services à redémarrer affichés dans le Cockpit ou Prefect UI. Images téléchargées mais <strong>pas encore appliquées</strong>. <b>GO</b> → <code>docker compose up -d</code>. <b>STOP</b> → run annulé, aucun conteneur touché.</span>
               </li>
               <li class="item-vps">
-                <span class="item-label">Compose up VPS</span>
-                <span class="item-desc">Échec de <code>docker compose up -d</code> lui-même (conteneur qui ne démarre pas) → rollback Docker <code>:rollback</code> + alerte (depuis le 2026-09-26 : auparavant, les conteneurs recréés-non-démarrés étaient ensuite supprimés par le nettoyage disque → prod en 502)</span>
+                <span class="item-label">Vérification VPS · démarrage des conteneurs <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Échec de <code>docker compose up -d</code> lui-même (conteneur qui ne démarre pas) → <b class="k-rb">Rollback</b> (images Docker <code>:rollback</code>) + <b class="k-alert">Alerte</b></span>
               </li>
               <li class="item-vps">
-                <span class="item-label">Gate 3 VPS</span>
-                <span class="item-desc">Smoke test (90 s) après <code>docker compose up -d</code> : si fail → rollback Docker <code>:rollback</code> + alerte</span>
+                <span class="item-label">Vérification VPS · healthcheck <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Santé des services redémarrés (90 s) après <code>docker compose up -d</code> : si échec → <b class="k-rb">Rollback</b> (images <code>:rollback</code>) + <b class="k-alert">Alerte</b></span>
               </li>
               <li class="item-vps">
-                <span class="item-label">Gate 4 VPS</span>
-                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe : si fail → rollback Docker <code>:rollback</code> + alerte</span>
+                <span class="item-label">Vérification VPS · tests fonctionnels <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe (vrai domaine public) : si échec → <b class="k-rb">Rollback</b> (images <code>:rollback</code>) + <b class="k-alert">Alerte</b></span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, api / gradio-public) + alerte</span>
+                <span class="item-label">Vérification K8s · healthcheck (si VPS OK) <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Readiness probe <code>/health</code> : le nouveau pod doit être prêt avant la suppression de l'ancien → 0 interruption. Si échec → <b class="k-rb">Rollback</b> vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, api / gradio-public) + <b class="k-alert">Alerte</b></span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s — FTe (interne + externe)</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — interne (ClusterIP) puis externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe — contre l'endpoint K8s après le rollout. Si fail (interne ou externe) → rollback digest + alerte</span>
+                <span class="item-label">Vérification K8s · tests fonctionnels <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — interne (ClusterIP) puis externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe. Si échec (interne ou externe) → <b class="k-rb">Rollback</b> digest + <b class="k-alert">Alerte</b></span>
               </li>
             </ul>
           </td>
 
           <!-- T3 -->
           <td>
-            <p class="desc-title">VPS · 3 Stops — 2 Validations humaines — 1 Interruption — 1 Rollback<br>K8s · 0 Stop — 2 Rollbacks — 0 interruption</p>
+            <p class="desc-title">3 Stops · 2 Validations humaines (merge PR + GO/STOP) · 3 Rollbacks (1 VPS + 2 K8s) · 5 Alertes</p>
             <ul class="desc-list">
               <li>
-                <span class="item-label">Gate 1</span>
-                <span class="item-desc">CI lint/pytest fail — blueprint pur, pas de build Docker, pas de Trivy (pas d'alerte Loki/email, cf. footnote)</span>
+                <span class="item-label">Contrôle · tests du code (CI) <span class="tag tag-stop">Stop</span></span>
+                <span class="item-desc">CI lint/pytest en échec → <b class="k-stop">Stop</b> : merge bloqué — blueprint pur, pas de build Docker ni de Trivy (pas d'alerte email, cf. note)</span>
               </li>
               <li class="item-manual">
-                <span class="item-label">Merge PR</span>
-                <span class="item-desc">MLOps lead review et merge la PR DS — premier verrou humain, <strong>avant</strong> le lancement du retrain.</span>
+                <span class="item-label">Validation humaine · relecture et merge de la PR <span class="tag tag-go">Validation</span></span>
+                <span class="item-desc">Le MLOps lead relit et merge la PR du DS — premier verrou humain, <strong>avant</strong> le lancement du réentraînement.</span>
               </li>
               <li>
-                <span class="item-label">Gate 2</span>
-                <span class="item-desc">Gate KPI + comparaison @Production : aucun algo ne passe les seuils absolus, <strong>ou</strong> le champion ne dépasse pas @Production d'au moins <strong>+0.01 de F1</strong> → @Production inchangé + alerte, <strong>aucune gate ouverte</strong></span>
+                <span class="item-label">Contrôle · performance du modèle <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Seuils de qualité + comparaison @Production : aucun algo ne passe les seuils absolus, <strong>ou</strong> le champion ne dépasse pas @Production d'au moins <strong>+0.01 de F1</strong> → <b class="k-stop">Stop</b> : @Production inchangé + <b class="k-alert">Alerte</b>, <strong>aucun GO/STOP proposé</strong></span>
               </li>
               <li>
-                <span class="item-label">Smoke test pré-gate</span>
-                <span class="item-desc">Santé VPS vérifiée (90 s sur <code>/health</code>) : si fail → flow stoppé, rien de déployé.</span>
+                <span class="item-label">Contrôle · santé du VPS avant GO/STOP <span class="tag tag-stop">Stop</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Santé VPS vérifiée (90 s sur <code>/health</code>) avant le GO/STOP : si échec → <b class="k-stop">Stop</b> immédiat + <b class="k-alert">Alerte</b>, rien de déployé.</span>
               </li>
               <li class="item-manual">
-                <span class="item-label">Gate manuelle</span>
-                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint, puis <strong>tableau de comparaison @Production vs candidat</strong> et verdict de la règle Trigger 3 (écart F1 ≥ +0.01), affichés dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> GO → promotion @Production + restart API (~30 s). STOP → run annulé, aucun impact en prod, et blueprint <strong>reverté sur main</strong> (<code>config/model_params.yml</code> resynchronisé avec @Production).</span>
+                <span class="item-label">Validation humaine · GO/STOP <span class="tag tag-go">GO/STOP</span></span>
+                <span class="item-desc">Flow <code>deploy-vps-flow</code> mis en pause : métriques du nouveau blueprint, puis <strong>tableau de comparaison @Production vs candidat</strong> et verdict de la règle Trigger 3 (écart F1 ≥ +0.01), affichés dans le Cockpit ou Prefect UI. <strong>Rien n'est appliqué en prod à ce stade.</strong> <b>GO</b> → promotion @Production + redémarrage API (~30 s). <b>STOP</b> → run annulé, aucun impact en prod, et blueprint <strong>annulé sur main</strong> (<code>config/model_params.yml</code> resynchronisé avec @Production).</span>
               </li>
               <li class="item-vps">
-                <span class="item-label">Gate 3 VPS</span>
-                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe : si fail → rollback alias MLflow @Production + revert du blueprint sur main + alerte</span>
+                <span class="item-label">Vérification VPS · tests fonctionnels <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">test-api (5 tâches — la 6ᵉ, rate-limit, est sautée en CD) + test-gradio-public (3 tests : Predict, What-if, Points Noirs) — interne PUIS externe (vrai domaine public) : si échec → <b class="k-rb">Rollback</b> (alias MLflow @Production + annulation du blueprint sur main) + <b class="k-alert">Alerte</b></span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s (si VPS OK)</span>
-                <span class="item-desc">Readiness probe <code>/health</code> (pod avec nouveau modèle) : nouveau pod Ready avant suppression de l'ancien → 0 interruption. Si fail → rollback vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>) + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-label">Vérification K8s · healthcheck (si VPS OK) <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Readiness probe <code>/health</code> : le nouveau pod doit être prêt avant la suppression de l'ancien → 0 interruption. Si échec → <b class="k-rb">Rollback</b> vers le <strong>digest précis</strong> de l'image précédente (<code>kubectl set image</code>, capturé avant le rollout) + <b class="k-alert">Alerte</b> (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
               </li>
               <li class="item-k8s">
-                <span class="item-label">Gate K8s — FTe (interne + externe)</span>
-                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — interne puis externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe — contre l'endpoint K8s après le rollout. Si fail (interne ou externe) → rollback digest + alerte (pas de rollback MLflow : le modèle est déjà validé côté VPS, seul l'environnement K8s est en cause)</span>
+                <span class="item-label">Vérification K8s · tests fonctionnels <span class="tag tag-rb">Rollback</span> <span class="tag tag-alert">Alerte</span></span>
+                <span class="item-desc">Test fonctionnel complet (JWT, <code>/predict</code>, cohérence what-if, prédiction réelle via gradio-public) — d'abord en interne (ClusterIP), puis en externe (<code>kapsule.jakat-inc.fr</code>) si l'interne passe. Le healthcheck seul ne détecte pas une dérive de config entre VPS et K8s, et l'interne seul ne détecte pas un problème propre au chemin public (cf. bannière ci-dessous). Si échec (interne ou externe) → <b class="k-rb">Rollback</b> digest + <b class="k-alert">Alerte</b> (pas de rollback MLflow : le modèle est déjà validé côté VPS)</span>
               </li>
             </ul>
           </td>
@@ -383,12 +395,12 @@
       <p class="k8s-banner-text"><strong>FTe post-rollout — interne PUIS externe (fix 2026-07-29) :</strong> le readiness probe valide seulement que le pod démarre, pas le comportement métier réel sur cet environnement. Un test fonctionnel complet (JWT, <code>/predict</code>, what-if, prédiction réelle via gradio-public) est rejoué en interne (réseau ClusterIP), puis — si l'interne passe — une seconde fois via le vrai domaine public <code>kapsule.jakat-inc.fr</code> (Caddy → LB Scaleway). Le test interne seul ne suffisait pas : une régression de sticky-sessions (ligne suivante) a été détectée uniquement grâce à ce 2ᵉ passage externe, alors que l'interne passait à 100%. Même rollback digest si l'une ou l'autre étape échoue.</p>
       <p class="k8s-banner-text"><strong>Sticky-sessions LB Scaleway (fix 2026-07-29) :</strong> Caddy tourne en 2 pods sur 2 nœuds différents ; <code>sessionAffinity: ClientIP</code> + <code>externalTrafficPolicy: Local</code> au niveau K8s ne suffisent pas seuls — c'est le Load Balancer Scaleway lui-même qui choisit sur quel nœud atterrit chaque connexion, et son algorithme par défaut n'est pas sticky par client. Deux requêtes d'une même session Gradio (<code>queue/join</code> puis <code>queue/data</code>) pouvaient atterrir sur 2 pods Caddy différents → <code>CancelledError</code> systématique (100% de reproductibilité constatée). Fix : annotation <code>service.beta.kubernetes.io/scw-loadbalancer-sticky-sessions: "table"</code> (hash par IP source, au niveau du LB) — le mode <code>cookie</code> ne fonctionne pas ici car le backend est en <code>FORWARD PROTOCOL=tcp</code> (Caddy termine son propre TLS, le LB n'a aucune visibilité HTTP).</p>
       <p class="k8s-banner-text"><strong>DiskPressure / éviction de pods (fix 2026-07-29) :</strong> incident récurrent (2026-07-10, 24/07, 25/07, 29/07) — un rollout tire une nouvelle image pendant que l'ancienne est encore présente, et si le nœud manque d'espace le pod est évincé puis retente (re-pull de la même image, parfois plusieurs fois de suite), ce qui aggrave la pression au lieu de la résoudre. Nettoyage déjà en place (<code>crictl rmi --prune</code> systématique en fin de déploiement, succès ou échec, + purge ciblée en pré-déploiement) mais insuffisant : la marge réelle mesurée n'était que de 6.5GB sur 17GB en régime stable, sans aucun cruft non collecté (vérifié en direct). Root cause = dimensionnement, pas nettoyage → root volume des nœuds porté de 20GB à 50GB.</p>
-      <p class="k8s-banner-text"><strong>Double protection :</strong> Kapsule n'a pas de gate manuelle propre. Le verrou humain est côté VPS (<code>deploy-vps-flow</code> mis en pause). <code>deploy-kapsule-flow</code> ne démarre qu'après GO <em>et</em> <code>test-api</code> VPS réussi — K8s est protégé par deux verrous en série : gate humaine + validation VPS.</p>
+      <p class="k8s-banner-text"><strong>Double protection :</strong> K8s n'a pas de GO/STOP propre. Le verrou humain est côté VPS (<code>deploy-vps-flow</code> mis en pause). <code>deploy-kapsule-flow</code> ne démarre qu'après le GO <em>et</em> les vérifications VPS réussies — K8s est protégé par deux verrous en série : GO/STOP humain + vérifications VPS.</p>
     </div>
   </div>
 
   <div class="footnote">
-    <span>Alerte = log Loki → alerte Grafana → email SMTP · Seule exception (T2 Gate 1 · T3 Gate 1) : CI lint/pytest tourne dans ci.yml (job PR, aucun canal SSH vers le VPS) → notification GitHub Actions uniquement, pas d'email. Trivy (T2 Gate 2, dans deploy.yml) envoie bien une alerte via le job catch-all <code>notify-pipeline-failure</code>.</span>
+    <span>Alerte = log Loki → alerte Grafana → email SMTP · Seule exception (contrôle des tests du code, T2 et T3) : CI lint/pytest tourne dans ci.yml (job PR, aucun canal SSH vers le VPS) → notification GitHub Actions uniquement, pas d'email. Trivy (contrôle de sécurité des images, T2, dans deploy.yml) envoie bien une alerte via le job catch-all <code>notify-pipeline-failure</code>.</span>
     <span>Rollback VPS T1/T3 : alias MLflow @Production (T3 : + revert du blueprint sur main) · Rollback VPS T2 : images Docker <code>:rollback</code> (échec de <code>compose up</code>, smoke test ou test-api) · Rollback K8s (tous triggers, 2 déclencheurs possibles — readiness probe KO ou FTe interne/externe KO) : digest précis de l'image précédente via <code>kubectl set image</code> (fallback <code>rollout undo</code> si aucun digest capturé) — ne touche jamais à l'alias MLflow : le modèle, déjà validé sur le VPS, reste @Production</span>
   </div>
 </div>
