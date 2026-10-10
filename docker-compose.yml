@@ -405,6 +405,11 @@ services:
       GF_UNIFIED_ALERTING_STATE_HISTORY_ENABLED:          "true"
       GF_UNIFIED_ALERTING_STATE_HISTORY_BACKEND:          loki
       GF_UNIFIED_ALERTING_STATE_HISTORY_LOKI_REMOTE_URL:  http://loki:3100
+      # Sans ces deux options, Grafana 11 ignore le backend loki ci-dessus et
+      # garde l'historique des alertes dans sa propre base (log « Forcing
+      # Annotation backend »). Avec : écriture dans Loki (principal, label
+      # from="state-history") + base Grafana en secours.
+      GF_FEATURE_TOGGLES_ENABLE:            alertStateHistoryLokiSecondary,alertStateHistoryLokiPrimary
     volumes:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
